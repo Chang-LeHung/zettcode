@@ -133,7 +133,7 @@ async def test_a_compiled_in_plugin_is_switched_by_its_configuration_key(tmp_pat
         entry = client.set_plugin_enabled("skills", False)
         assert entry.enabled is False, "the answer is the list as it now stands"
         assert "[skills]\nenabled = false" in path.read_text(encoding="utf-8")
-        assert client.plugins.entries[0].setting == "skills.enabled"
+        assert [entry.setting for entry in client.plugins.entries if entry.name == "skills"] == ["skills.enabled"]
 
         assert client.set_plugin_enabled("skills", True).enabled is True
         assert "[skills]\nenabled = true" in path.read_text(encoding="utf-8")

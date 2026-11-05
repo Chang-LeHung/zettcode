@@ -554,7 +554,10 @@ def test_the_first_provider_that_knows_a_name_decides_whether_it_is_replaced():
 
     from zettcode.prompt import MentionPart, mention_parts
 
-    registry = MentionRegistry([_TextMentions("file", {"web": "a file"}), SessionMentions(lambda: [peer("web")])])
+    class _First(_TextMentions):
+        precedence = -30  # asked ahead of a session, which is what "came first" means once providers rank themselves
+
+    registry = MentionRegistry([_First("file", {"web": "a file"}), SessionMentions(lambda: [peer("web")])])
 
     assert mention_parts((MentionPart("@web"),), registry) == (MentionPart("@web"),), "a file of that name came first"
 

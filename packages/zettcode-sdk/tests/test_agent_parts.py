@@ -3,17 +3,23 @@ listed when the runtime did the listing, and their one real service dependency i
 
 from __future__ import annotations
 
+import dataclasses
 from importlib.metadata import entry_points
 from pathlib import Path
 
 from plugin_helpers import runtime_state  # noqa: E402  (support/ is on the path)
 from zettcode._compat import tomllib
 from zettcode.config import ModelConfig, ZettCodeConfig
-from zettcode.engine.plugins import loader
+from zettcode.engine.plugins import AgentBuild, loader
 from zettcode.engine.plugins.loader import AGENT_PART_GROUP, run
 from zettcode.sdk.builtins import AGENT_PLUGIN_NAMES, AGENT_PLUGINS, require_agent_parts
 
 PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
+
+
+def _sdk_points() -> list:
+    """The entry points this distribution publishes: the group also holds the parts of the skills and the MCP client."""
+    return [point for point in entry_points(group=AGENT_PART_GROUP) if point.dist and point.dist.name == "zettcode-sdk"]
 
 
 def _config(tmp_path: Path, **changes: object) -> ZettCodeConfig:
@@ -36,14 +42,14 @@ def test_the_distribution_publishes_exactly_the_plugins_the_list_names_in_that_o
 
 
 def test_the_installed_environment_advertises_the_same():
-    found = {point.name: point.value for point in entry_points(group=AGENT_PART_GROUP)}
+    found = {point.name: point.value for point in _sdk_points()}
 
     assert found == {plugin.name: f"zettcode.sdk.builtins:{type(plugin).__name__}" for plugin in AGENT_PLUGINS}
 
 
 def test_discovery_activates_them_in_the_order_of_the_list_and_not_in_the_order_the_names_sort(tmp_path: Path):
     """Extensions that share a priority keep the order they registered in, so this order is behaviour."""
-    points = sorted(entry_points(group=AGENT_PART_GROUP), key=lambda point: point.name)
+    points = sorted(_sdk_points(), key=lambda point: point.name)
     assert [point.name for point in points] != list(AGENT_PLUGIN_NAMES), "sorted by name, they are in another order"
 
     plugins = run(
@@ -90,7 +96,7 @@ def test_a_disable_line_does_not_reach_the_plugins_that_compose_the_agent(tmp_pa
 
 def test_plugins_switched_off_as_a_whole_still_load_them(tmp_path: Path):
     config = _config(tmp_path, plugins_enabled=False)
-    points = list(entry_points(group=AGENT_PART_GROUP))
+    points = _sdk_points()
 
     plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=points)
 
@@ -140,7 +146,7 @@ def test_a_foreign_distribution_cannot_join_the_program_by_declaring_its_group(t
     from zettcode.engine.plugins import catalog, load_plugins
 
     config = _config(tmp_path, disabled_plugins=("aaa",))
-    points = [_Foreign("aaa"), *entry_points(group=AGENT_PART_GROUP)]
+    points = [_Foreign("aaa"), *_sdk_points()]
 
     plugins = load_plugins(config, builtins=(), entry_points=points, shared=runtime_state(config))
 
@@ -175,9 +181,30 @@ def test_passing_the_list_as_builtins_beside_discovery_is_not_a_set_of_duplicate
     from zettcode.engine.plugins import load_plugins
 
     config = _config(tmp_path)
-    points = list(entry_points(group=AGENT_PART_GROUP))
+    points = _sdk_points()
 
     plugins = load_plugins(config, builtins=AGENT_PLUGINS, entry_points=points, shared=runtime_state(config))
 
     assert plugins.failed == ()
     assert [plugin.name for plugin in plugins.plugins] == list(AGENT_PLUGIN_NAMES)
+
+
+def test_the_skills_and_the_mcp_client_are_parts_of_the_agent_published_by_distributions_of_their_own(tmp_path: Path):
+    """They are discovered with the SDK's, count as the program's own, and the agent still receives their extensions."""
+    (tmp_path / "mcp.json").write_text('{"servers": {"docs": {"url": "http://127.0.0.1:9/a"}}}', encoding="utf-8")
+    config = dataclasses.replace(
+        _config(tmp_path, disabled_plugins=("skills", "mcp")),
+        skills_enabled=True,
+        mcp_enabled=True,
+        mcp_config=tmp_path / "mcp.json",
+    )
+    points = list(entry_points(group=AGENT_PART_GROUP))
+
+    plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=points)
+
+    names = [plugin.name for plugin in plugins.plugins]
+    assert {"skills", "skill-tool", "mcp"} <= set(names)
+    assert {"skills", "skill-tool", "mcp"} <= set(plugins.builtins), "a disable line does not reach them"
+    assert plugins.failed == ()
+    built = [type(extension).__name__ for extension in plugins.agent_extensions(AgentBuild(model=object()))]  # type: ignore[arg-type]
+    assert {"SkillExtension", "ReportingMcpExtension"} <= set(built)

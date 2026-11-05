@@ -12,6 +12,7 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import ClassVar
 
 from zettcode.registry import Provider, Registry
 
@@ -45,6 +46,11 @@ class MentionProvider(Provider[Mention], ABC):
 
     #: Short name shown in the completion menu's type column, e.g. ``"skill"``.
     kind: str
+
+    #: Where the provider stands when two offer one name: the lower number is asked first, and providers that share a
+    #: number keep the order they were registered in. A provider that lives in a plugin cannot count on being
+    #: registered before the workspace's files, so the more specific kinds say so here (a session, then a skill).
+    precedence: ClassVar[int] = 0
 
     @abstractmethod
     def candidates(self, query: str) -> Sequence[Mention]:
@@ -95,8 +101,9 @@ class MentionRegistry(Registry[Mention]):
 
     @property
     def mention_providers(self) -> tuple[MentionProvider, ...]:
-        """Return the providers as the ``@``-specific type that can expand tokens."""
-        return tuple(provider for provider in self.providers if isinstance(provider, MentionProvider))
+        """Return the providers as the ``@``-specific type that can expand tokens, the most specific first."""
+        found = (provider for provider in self.providers if isinstance(provider, MentionProvider))
+        return tuple(sorted(found, key=lambda provider: provider.precedence))
 
     def expand_token(self, token: str) -> str | None:
         """Resolve one typed ``@`` token into the text it contributes, if any.

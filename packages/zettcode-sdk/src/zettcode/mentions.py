@@ -1,7 +1,7 @@
 """``@`` references: resources a draft can pull into one message.
 
 A mention is a token like ``@code-review`` typed in the composer. A provider
-owns one kind of resource — the builtin one is skills — and both lists
+owns one kind of resource (files, other sessions, and the skills of ``zettcode-skills``) and both lists
 candidates for the completion menu and expands a token into the text the model
 should see. The draft the user typed stays the message that is stored and
 shown; the expansion is carried as a message attribute, so a session loaded
@@ -17,10 +17,7 @@ from pathlib import Path
 from time import monotonic
 from typing import TypeAlias
 
-from zett_agent.extensions.skill import SkillExtension
-
 from zettcode.broker.text import folder_name
-from zettcode.config import ZettCodeConfig
 from zettcode.mention import Mention, MentionProvider, MentionRegistry
 from zettcode.relay import Peer
 
@@ -34,42 +31,7 @@ __all__ = [
     "MentionProvider",
     "MentionRegistry",
     "SessionMentions",
-    "SkillMentions",
 ]
-
-
-class SkillMentions(MentionProvider):
-    """Skills discovered from the configured roots, named for the model to load."""
-
-    kind = "skill"
-
-    def __init__(self, config: ZettCodeConfig) -> None:
-        """Discover skills once, the same way the agent's skill extension does."""
-        self._skills = {skill.name: skill for skill in SkillExtension(config.skill_search_roots()).skills}
-
-    def candidates(self, query: str) -> Sequence[Mention]:
-        """List the discovered skills whose name starts with ``query``."""
-        return tuple(
-            Mention(token=f"@{skill.name}", kind=self.kind, name=skill.name, description=skill.description)
-            for skill in self._skills.values()
-            if skill.name.startswith(query)
-        )
-
-    def expand(self, name: str) -> str | None:
-        """Name the skill and leave loading its instructions to the model.
-
-        The system prompt already catalogs every skill, and ``read_skill`` loads
-        the file, so the message only has to say which one the user meant;
-        inlining the body would spend context on instructions that may not be
-        needed.
-        """
-        skill = self._skills.get(name)
-        if skill is None:
-            return None
-        return (
-            f'Use the "{skill.name}" skill: call read_skill(name="{skill.name}") '
-            "if its instructions are useful and not already in context."
-        )
 
 
 class SessionMentions(MentionProvider):
@@ -84,6 +46,8 @@ class SessionMentions(MentionProvider):
     """
 
     kind = "session"
+    #: A session is the most specific thing a name can mean, ahead of a skill and a file.
+    precedence = -20
 
     def __init__(self, peers: Callable[[], Sequence[Peer]]) -> None:
         """Offer whichever sessions ``peers`` returns when asked.

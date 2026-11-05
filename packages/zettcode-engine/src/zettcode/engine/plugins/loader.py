@@ -75,7 +75,7 @@ AGENT_PART_GROUP = "zettcode.agent"
 #: program, not of whoever declares the group in a `pyproject.toml`: a point from any other distribution is an
 #: ordinary plugin whatever group it is in. A point that says nothing of its distribution (a test's stand-in) passes.
 PROGRAM_DISTRIBUTIONS: dict[str, frozenset[str]] = {
-    AGENT_PART_GROUP: frozenset({"zettcode-sdk"}),
+    AGENT_PART_GROUP: frozenset({"zettcode-sdk", "zettcode-skills", "zettcode-mcp"}),
     TERMINAL_PART_GROUP: frozenset({"zettcode-app", "zettcode-commands", "zettcode-pets", "zettcode-presenters"}),
 }
 

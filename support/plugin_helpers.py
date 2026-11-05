@@ -6,6 +6,7 @@ gives a test the same bundle, over a fresh session store and policy, and the ext
 
 from __future__ import annotations
 
+from importlib.metadata import entry_points
 from typing import TYPE_CHECKING
 
 from zettcode.engine.extensions.compaction import CompactionCounter
@@ -13,8 +14,8 @@ from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.permission import ShellPolicy
 from zettcode.engine.plugins import AgentBuild, Plugins, load_plugins
 from zettcode.engine.plugins import services as names
+from zettcode.engine.plugins.loader import AGENT_PART_GROUP
 from zettcode.engine.storage import SessionStore
-from zettcode.sdk.builtins import AGENT_PLUGINS
 
 if TYPE_CHECKING:
     from zett_agent.extensions.base import AgentExtension
@@ -51,7 +52,9 @@ def agent_plugins(config: ZettCodeConfig, **shared: object) -> Plugins:
     """Load only the agent-side built-in plugins for ``config``, over fresh state; ``shared`` adds or replaces."""
     state = runtime_state(config)
     state.update(shared)
-    return load_plugins(config, builtins=AGENT_PLUGINS, entry_points=[], shared=state)
+    # Discovered, as the runtime does: the agent's parts are published by several distributions (the SDK, the skills, the
+    # MCP client), and only discovery gives each its place.
+    return load_plugins(config, builtins=(), entry_points=list(entry_points(group=AGENT_PART_GROUP)), shared=state)
 
 
 def agent_extensions(config: ZettCodeConfig, **shared: object) -> tuple[AgentExtension, ...]:

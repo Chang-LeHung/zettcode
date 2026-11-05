@@ -23,9 +23,9 @@ from zettcode.mentions import (
     Mention,
     MentionProvider,
     MentionRegistry,
-    SkillMentions,
 )
 from zettcode.prompt import MentionPart, mention_hint
+from zettcode.skills.mentions import SkillMentions
 from zettcode.tui import TextArea
 
 #: What each ``@`` token expands to in the table-driven tests below.
@@ -65,16 +65,6 @@ class _TextMentions(MentionProvider):
         return self.entries.get(name)
 
 
-class _Roots:
-    """The slice of config a skill provider reads."""
-
-    def __init__(self, roots: Sequence[Path]) -> None:
-        self._roots = tuple(roots)
-
-    def skill_search_roots(self) -> tuple[Path, ...]:
-        return self._roots
-
-
 def _write_skill(root: Path, name: str, description: str, body: str) -> None:
     """Write one valid SKILL.md under ``root``."""
     directory = root / name
@@ -87,7 +77,7 @@ def _write_skill(root: Path, name: str, description: str, body: str) -> None:
 
 def test_the_registry_expands_known_mentions_and_leaves_unknown_ones_alone(tmp_path: Path):
     _write_skill(tmp_path, "code-review", "review a diff", "Check the diff for regressions.")
-    registry = MentionRegistry([SkillMentions(_Roots((tmp_path,)))])
+    registry = MentionRegistry([SkillMentions((tmp_path,))])
 
     assert [mention.token for mention in registry.candidates("cod")] == ["@code-review"]
     assert [mention.kind for mention in registry.candidates("cod")] == ["skill"]

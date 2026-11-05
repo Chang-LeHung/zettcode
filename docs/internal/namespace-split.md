@@ -49,6 +49,8 @@ union of what is installed and every distribution contributes its own parts to i
 | `zettcode-presenters` | `zettcode/presenters/**`: the built-in rows — the presenters of every kind of entry, their wording (`text`), the pulse (`pulse`) and the brand mark (`brand`) | `zettcode-plugin-api`, `zettcode-tui`, `zettcode-sdk` |
 | `zettcode-commands` | `zettcode/commands/**`: the slash commands that act on the application (`/help`, `/plugins`, `/resume`, `/model`, `/btw`, `/code-review`, `/bash`, `/clear`, `/usage`) as the one plugin `commands`, which the terminal requires; the pages they open are the application's widgets, so it sits above `zettcode-app` | `zettcode-app`, `zettcode-plugin-api`, `zettcode-engine`, `zettcode-tui`, `zettcode-sdk` |
 | `zettcode-pets` | `zettcode/pets/**`: the thirteen pets that ship and `PetsPlugin`, which offers them to `/pet`; found through the `zettcode.terminal` entry point, not required | `zettcode-plugin-api` |
+| `zettcode-skills` | `zettcode/skills/**`: the `@` provider for skills (`SkillMentions`) and the plugins `skills` and `skill-tool`; found through the `zettcode.agent` entry point, switched off by `[skills] enabled`; the SDK and `zettcode` depend on it | `zettcode-engine` |
+| `zettcode-mcp` | `zettcode/mcp/**`: the MCP extension that says what its servers do (`extension`, imported only when the agent is built) and the plugin `mcp`; found through the `zettcode.agent` entry point, switched off by `[mcp] enabled`; the SDK and `zettcode` depend on it | `zettcode-engine` |
 | `zettcode-app` | `zettcode/app/**`, `zettcode/collector.py`, `zettcode/statusline.py` (the rendering half), `zettcode/update.py` | `zettcode-engine`, `zettcode-tui`, `zettcode-sdk`, `zettcode-broker`, `zettcode-plugin-api`, `zettcode-presenters` |
 | `zettcode` | `zettcode/cli.py`, `plugin_cli.py`, `oneshot.py`, the console scripts | all of the above |
 
@@ -91,7 +93,7 @@ a third-party library the engine must not carry:
 | `engine/messenger.py` | `zettcode/sdk/messenger.py` | It speaks to the broker (httpx/websockets). `ZettCodeEngine.preview` stops creating one; the caller passes it (`messenger=None` by default). |
 | `engine/extensions/messaging.py` | `zettcode/sdk/extensions/messaging.py` | Broker client and modes. |
 | `engine/extensions/context.py` | `zettcode/sdk/extensions/context.py` | `tiktoken`, which the engine must not carry. |
-| `engine/extensions/mcp.py` | `zettcode/sdk/extensions/mcp.py` | The MCP client and its config. |
+| `engine/extensions/mcp.py` | `zettcode/mcp/extension.py` (distribution `zettcode-mcp`) | The MCP client and its config. |
 | `engine/plugins/loader.py`'s default `builtins=AGENT_PLUGINS` | removed | The engine cannot reach the SDK; the loader takes `builtins` from its caller. |
 
 `engine/plugins/switches.py` stays: it needs `config`, `config_edit`, `paths` and `filelock`, which the engine ships.
