@@ -21,6 +21,11 @@ publishes and activates them by the rank that list gives them (``Plugin.rank``),
 reads from another, such as the capabilities the subagents are sized by, is a ``deps`` entry and not a position. What
 a plugin builds on (the session store, the permission policy) is handed over by the runtime by name, see
 :mod:`zettcode.engine.plugins.services`.
+
+A part that lives in a distribution of its own (the skills, the MCP client, the files, the harness, the ``ask_user``
+tool, the project instructions and the plan) states no rank, so it is activated ahead of this list and registers its
+extension first; each of those still runs where its own priority puts it. ``ask-user`` and ``todos`` share the 100
+nearly everything else here has, so they run before what this module contributes in that band.
 """
 
 from __future__ import annotations
@@ -52,7 +57,6 @@ from zettcode.engine.plugins.services import (
     POLICY,
     SELECTED_MODEL,
     SIDES,
-    TODOS,
     USAGE,
 )
 from zettcode.engine.storage import SessionStore
@@ -336,69 +340,6 @@ class ToolGuidance(Plugin):
         ctx.agent.register_extension_factory("ToolGuidelinesExtension", build)
 
 
-class AskUser(Plugin):
-    """The ``ask_user`` tool: how the model puts a question to the reader instead of guessing."""
-
-    name = "ask-user"
-    description = "The ask_user tool"
-    setting = PluginSetting("ask_user_enabled", "ask_user")
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Hand the agent the tool, unless the configuration turned it off."""
-        if not ctx.config.ask_user_enabled:
-            return
-
-        def build(_: AgentBuild) -> AgentExtension:
-            from zett_agent.extensions.ask_user import AskUserExtension
-
-            return AskUserExtension()
-
-        ctx.agent.register_extension_factory("AskUserExtension", build)
-
-
-class ProjectInstructions(Plugin):
-    """The workspace's ``AGENTS.md`` files, read again for every request so an edit applies at once."""
-
-    name = "project-instructions"
-    description = "The workspace's AGENTS.md instructions"
-    setting = PluginSetting("agents_md_enabled", "agents_md")
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Hand the agent the instructions, unless the configuration turned them off."""
-        config = ctx.config
-        if not config.agents_md_enabled:
-            return
-
-        def build(_: AgentBuild) -> AgentExtension:
-            from zett_agent.extensions.agents_md import AgentsMdExtension
-
-            return AgentsMdExtension(config.workspace)
-
-        ctx.agent.register_extension_factory("AgentsMdExtension", build)
-
-
-class TodoPlan(Plugin):
-    """The ``todo_write`` tool, and the plan it keeps, shown in the shell's panel.
-
-    The extension is provided as a service whether or not the tool is on, because the shell asks it for the
-    plan on every turn and an extension nobody registered simply has none to show. Only
-    ``[harness] todowrite`` decides whether the model is given the tool.
-    """
-
-    name = "todos"
-    description = "The todo_write tool and the plan it keeps"
-    setting = PluginSetting("todowrite_enabled", "harness", "todowrite")
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Provide the extension, and hand it to the agent when the tool is on."""
-        from zett_agent.extensions.todo import TodoWriteExtension
-
-        extension = TodoWriteExtension()
-        ctx.agent.provide(TODOS, extension)
-        if ctx.config.todowrite_enabled:
-            ctx.agent.register_extension(extension)
-
-
 class SelfCompaction(Plugin):
     """The switch for letting the model compact its own context.
 
@@ -455,13 +396,10 @@ AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     Messaging(),
     ShellPermission(),
     SessionLog(),
-    TodoPlan(),
     UsageTracking(),
     ContextTracking(),
     SideQuestionBoundary(),
     ToolGuidance(),
-    AskUser(),
-    ProjectInstructions(),
     SelfCompaction(),
     Compaction(),
 )
@@ -475,8 +413,19 @@ assert len({type(plugin) for plugin in AGENT_PLUGINS}) == len(AGENT_PLUGINS), "A
 #: The names of those plugins, which the program cannot run without.
 AGENT_PLUGIN_NAMES: tuple[str, ...] = tuple(plugin.name for plugin in AGENT_PLUGINS)
 
-#: Those and the parts that live in distributions of their own (skills, MCP): what an installation must hold.
-REQUIRED_AGENT_NAMES: tuple[str, ...] = (*AGENT_PLUGIN_NAMES, "files", "harness", "skills", "skill-tool", "mcp")
+#: Those and the parts that live in distributions of their own (skills, MCP, files, harness, ask-user, the project
+#: instructions, the plan): what an installation must hold.
+REQUIRED_AGENT_NAMES: tuple[str, ...] = (
+    *AGENT_PLUGIN_NAMES,
+    "files",
+    "harness",
+    "skills",
+    "skill-tool",
+    "mcp",
+    "ask-user",
+    "project-instructions",
+    "todos",
+)
 
 
 def require_agent_parts(plugins: _P) -> _P:

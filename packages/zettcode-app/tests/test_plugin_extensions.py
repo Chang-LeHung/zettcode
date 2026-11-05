@@ -12,15 +12,19 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from zett_agent.agent import Agent, AgentRunConfig
 from zett_agent.extensions.agents_md import AgentsMdExtension
 from zett_agent.extensions.ask_user import AskUserExtension
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.extensions.skill import SkillExtension
 from zett_agent.extensions.todo import TodoWriteExtension
+from zett_agent.messages import AssistantMessage
+from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 
 from plugin_helpers import agent_extensions, agent_plugins, runtime_inputs
 from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.plugins import BUILTIN_PLUGINS
+from zettcode.ask_user import AskUser
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine.plugins import (
@@ -31,8 +35,10 @@ from zettcode.engine.plugins import (
     load_plugins,
 )
 from zettcode.engine.plugins import services as names
+from zettcode.instructions import ProjectInstructions
 from zettcode.sdk.builtins import AGENT_PLUGINS, load_agent_plugins
 from zettcode.sdk.messenger import Messenger
+from zettcode.todos import TodoPlan
 
 
 class FakeEntryPoint:
@@ -329,12 +335,18 @@ def test_a_long_result_is_shortened_before_the_store_sees_it(tmp_path):
     assert names.index("LongOutputExtension") < names.index("SessionStore")
 
 
-def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_the_runtime_used_to_list_in_order(tmp_path):
+def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_in_registration_order(tmp_path):
     extensions = agent_extensions(make_config(tmp_path, skills_enabled=False, subagent_enabled=False))
 
+    # `AskUserExtension` is first and `AgentsMdExtension` stands where the `project-instructions` part sorts: the
+    # three parts that came out of the SDK's list (`ask-user`, `project-instructions`, `todos`) have no rank of their
+    # own, so they are activated at rank 0, ahead of the SDK's `coding`, and register their extensions there. What the
+    # agent runs in which order is each extension's priority (see the run-order list below), not this list.
     assert [extension.name for extension in extensions] == [
+        "AskUserExtension",
         "CodingBundle",
         "SwitchedHarness",
+        "AgentsMdExtension",
         "ToolOutputExtension",
         "LongOutputExtension",
         "ModelCapabilities",
@@ -345,9 +357,28 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_the_ru
         "ContextExtension",
         "SideQuestions",
         "ToolGuidelinesExtension",
-        "AskUserExtension",
-        "AgentsMdExtension",
         "OnDemandCompaction",
+    ]
+    # The order the agent keeps them in: a stable sort by priority. Compared with the list the SDK alone gave, only
+    # the two extensions that share 100 with everything the SDK registers moved — `AskUserExtension` (rank 0 now) and
+    # `TodoWriteExtension`, which is absent here because the tool is off — and `AgentsMdExtension` is still first on
+    # its 10. Nothing either of them competes with the others for.
+    assert [extension.name for extension in sorted(extensions, key=lambda extension: extension.priority)] == [
+        "AgentsMdExtension",
+        "ShellDenyExtension",
+        "AskUserExtension",
+        "CodingBundle",
+        "ToolOutputExtension",
+        "LongOutputExtension",
+        "ShellApprovalExtension",
+        "SessionStore",
+        "UsageExtension",
+        "ContextExtension",
+        "ToolGuidelinesExtension",
+        "OnDemandCompaction",
+        "ModelCapabilities",
+        "SideQuestions",
+        "SwitchedHarness",
     ]
 
 
@@ -384,9 +415,14 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
     names_ = [extension.name for extension in agent_extensions(config, **{names.MESSENGER: messenger})]
 
     assert names_ == [
+        # The three parts of other distributions that used to be listed here (`ask-user`, `project-instructions`,
+        # `todos`) are activated at rank 0, so their extensions register ahead of the SDK's `coding`.
+        "AskUserExtension",
         "CodingBundle",
         "SwitchedHarness",
+        "AgentsMdExtension",
         "SkillExtension",
+        "TodoWriteExtension",
         "ToolOutputExtension",
         "LongOutputExtension",
         "ModelCapabilities",
@@ -395,15 +431,83 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
         "ShellDenyExtension",
         "ShellApprovalExtension",
         "SessionStore",
-        "TodoWriteExtension",
         "UsageExtension",
         "ContextExtension",
         "SideQuestions",
         "ToolGuidelinesExtension",
-        "AskUserExtension",
-        "AgentsMdExtension",
         "OnDemandCompaction",
     ]
+
+
+def test_the_order_the_agent_runs_them_in_is_the_priority_of_each(tmp_path):
+    """The list above is registration order; the agent keeps a stable sort by priority, and that is the real order.
+
+    Compared with the order the SDK's own list alone used to give, only two extensions moved, and only because
+    `ask-user` and `todos` left that list: they are parts of other distributions now, activated at rank 0 with a
+    priority of their own of 100 — the band nearly everything the SDK contributes shares — so they are handed over,
+    and so run, first among those. `AgentsMdExtension` is still first on its 10, the permissions still run at 50, the
+    skills at 80, and the capabilities and side questions at 110 and 120. Neither of the two is ordered against
+    anything it competes with: the question tool and the plan tool are tools of their own, and the shell reads the plan
+    by name rather than from a position.
+    """
+    extensions = agent_extensions(make_config(tmp_path, todowrite_enabled=True))
+
+    assert [extension.name for extension in sorted(extensions, key=lambda extension: extension.priority)] == [
+        "AgentsMdExtension",
+        "ShellDenyExtension",
+        "SkillExtension",
+        "AskUserExtension",
+        "CodingBundle",
+        "TodoWriteExtension",
+        "ToolOutputExtension",
+        "LongOutputExtension",
+        "ParentModelSubAgents",
+        "ShellApprovalExtension",
+        "SessionStore",
+        "UsageExtension",
+        "ContextExtension",
+        "ToolGuidelinesExtension",
+        "OnDemandCompaction",
+        "ModelCapabilities",
+        "SideQuestions",
+        "SwitchedHarness",
+    ]
+
+
+class _RecordingModel:
+    """A model adapter that answers at once and keeps the tools each request offered it."""
+
+    retry = RetryOptions(max_retries=0)
+
+    def __init__(self) -> None:
+        self.offered: list[list[str]] = []
+
+    async def stream(self, request):
+        self.offered.append([tool.name for tool in request.tools])
+        yield ModelEvent.completed(ModelResponse(AssistantMessage(content="ok")))
+
+
+async def test_the_tools_the_model_is_offered_are_in_the_order_the_extensions_registered_them(tmp_path):
+    """The one place registration order is visible: the tools array the provider is handed.
+
+    The agent builds it as ``tuple(tool.definition for tool in context.tools.values())`` after every extension's
+    ``on_tool`` has run in priority order, so within one priority it is the order the extensions registered their
+    tools in. That is why this test changes when `ask-user` or `todos` move: both are parts of other distributions now,
+    activated at rank 0, so `ask_user` is offered before the coding bundle's `read` and `todo_write` before the
+    subagents' `task`, where the old list put them last and second to last. Nothing reads a tool's position — the
+    model picks one by name and every extension finds its own — so this array is the whole effect of the move.
+    """
+    config = make_config(tmp_path, todowrite_enabled=True, subagent_enabled=True, skills_enabled=True)
+    model = _RecordingModel()
+    agent = await Agent.create(
+        model,  # type: ignore[arg-type]
+        config=AgentRunConfig(session_id="s"),
+        extensions=list(agent_extensions(config)),
+    )
+
+    [event async for event in agent.stream("hi", config=AgentRunConfig(session_id="s"))]
+
+    assert model.offered == [["ask_user", "read", "write_file", "edit", "bash", "todo_write", "task"]]
 
 
 def test_switching_the_optional_extensions_off_leaves_them_out(tmp_path):
@@ -492,7 +596,14 @@ async def test_the_runtime_gives_the_agent_the_plugins_extensions_then_the_host(
     config = make_config(tmp_path, todowrite_enabled=True)
     runtime = runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
     extra = FakeEntryPoint("extra", offering("extra", "extra-ext"))
-    runtime.plugins = load_plugins(config, builtins=AGENT_PLUGINS, entry_points=[extra], shared=runtime_inputs(runtime))
+    # The parts of other distributions are passed here the way discovery would offer them: this test replaces
+    # discovery with one entry point of its own, and the plan is one of them now.
+    runtime.plugins = load_plugins(
+        config,
+        builtins=(*AGENT_PLUGINS, AskUser(), ProjectInstructions(), TodoPlan()),
+        entry_points=[extra],
+        shared=runtime_inputs(runtime),
+    )
     await runtime.start()
 
     (extensions,) = given

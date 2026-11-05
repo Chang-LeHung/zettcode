@@ -46,13 +46,10 @@ AGENT_PARTS = tuple(
             ("messaging", "Messaging"),
             ("shell-permission", "ShellPermission"),
             ("session-log", "SessionLog"),
-            ("todos", "TodoPlan"),
             ("usage-tracking", "UsageTracking"),
             ("context-tracking", "ContextTracking"),
             ("side-questions", "SideQuestionBoundary"),
             ("tool-guidelines", "ToolGuidance"),
-            ("ask-user", "AskUser"),
-            ("project-instructions", "ProjectInstructions"),
             ("self-compaction", "SelfCompaction"),
             ("compaction", "Compaction"),
         )
@@ -60,14 +57,18 @@ AGENT_PARTS = tuple(
 )
 
 
-#: The parts of the agent that live in distributions of their own (`zettcode-skills`, `zettcode-mcp`), published under the
-#: same `zettcode.agent` group, sorted by name. `test_structure.py` compares this with their `pyproject.toml` files.
+#: The parts of the agent that live in distributions of their own (`zettcode-skills`, `zettcode-mcp`, ...), published
+#: under the same `zettcode.agent` group, sorted by name. `test_structure.py` compares this with their `pyproject.toml`
+#: files.
 EXTERNAL_AGENT_PARTS = (
+    ("ask-user", "zettcode.ask_user.plugin:AskUser"),
     ("files", "zettcode.files.plugin:FileResources"),
     ("harness", "zettcode.harness.plugin:Harness"),
     ("mcp", "zettcode.mcp.plugin:McpTools"),
+    ("project-instructions", "zettcode.instructions.plugin:ProjectInstructions"),
     ("skill-tool", "zettcode.skills.plugin:SkillTool"),
     ("skills", "zettcode.skills.plugin:SkillResources"),
+    ("todos", "zettcode.todos.plugin:TodoPlan"),
 )
 
 
