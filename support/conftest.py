@@ -38,7 +38,6 @@ AGENT_PARTS = tuple(
     sorted(
         (name, f"zettcode.sdk.builtins:{cls}")
         for name, cls in (
-            ("skills", "SkillResources"),
             ("files", "FileResources"),
             ("coding", "CodingTools"),
             ("tool-output", "ToolOutput"),
@@ -56,12 +55,19 @@ AGENT_PARTS = tuple(
             ("tool-guidelines", "ToolGuidance"),
             ("ask-user", "AskUser"),
             ("project-instructions", "ProjectInstructions"),
-            ("skill-tool", "SkillTool"),
-            ("mcp", "McpTools"),
             ("self-compaction", "SelfCompaction"),
             ("compaction", "Compaction"),
         )
     )
+)
+
+
+#: The parts of the agent that live in distributions of their own (`zettcode-skills`, `zettcode-mcp`), published under the
+#: same `zettcode.agent` group, sorted by name. `test_structure.py` compares this with their `pyproject.toml` files.
+EXTERNAL_AGENT_PARTS = (
+    ("mcp", "zettcode.mcp.plugin:McpTools"),
+    ("skill-tool", "zettcode.skills.plugin:SkillTool"),
+    ("skills", "zettcode.skills.plugin:SkillResources"),
 )
 
 
@@ -94,7 +100,10 @@ def _no_installed_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
 
     from zettcode.engine.plugins import loader
 
-    agent = tuple(EntryPoint(name, value, loader.AGENT_PART_GROUP) for name, value in AGENT_PARTS)
+    agent = tuple(
+        EntryPoint(name, value, loader.AGENT_PART_GROUP)
+        for name, value in sorted((*AGENT_PARTS, *EXTERNAL_AGENT_PARTS))
+    )
     points = (*agent, *tuple(EntryPoint(name, value, loader.TERMINAL_PART_GROUP) for name, value in PROGRAM_PARTS))
     monkeypatch.setattr(loader, "installed_entry_points", lambda: points)
 

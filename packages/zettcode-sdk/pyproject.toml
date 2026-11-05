@@ -19,6 +19,10 @@ classifiers = [
 dependencies = [
   "zettcode-engine",
   "zettcode-broker",
+  # Parts of the agent that live in distributions of their own, found through the same `zettcode.agent` entry point as
+  # the ones published here. An SDK client offers skills and MCP servers, so it installs them.
+  "zettcode-skills",
+  "zettcode-mcp",
   "zett-agent>=0.2.7,<0.3",
   "httpx>=0.27,<1",
 ]
@@ -26,7 +30,6 @@ dependencies = [
 # The plugins that compose the agent. A part of the program, not a plugin: the `zettcode.plugins` group is what the
 # plugin release line looks for. They are activated by the rank `builtins.py` gives them, then by their `deps`.
 [project.entry-points."zettcode.agent"]
-skills = "zettcode.sdk.builtins:SkillResources"
 files = "zettcode.sdk.builtins:FileResources"
 coding = "zettcode.sdk.builtins:CodingTools"
 tool-output = "zettcode.sdk.builtins:ToolOutput"
@@ -44,8 +47,6 @@ side-questions = "zettcode.sdk.builtins:SideQuestionBoundary"
 tool-guidelines = "zettcode.sdk.builtins:ToolGuidance"
 ask-user = "zettcode.sdk.builtins:AskUser"
 project-instructions = "zettcode.sdk.builtins:ProjectInstructions"
-skill-tool = "zettcode.sdk.builtins:SkillTool"
-mcp = "zettcode.sdk.builtins:McpTools"
 self-compaction = "zettcode.sdk.builtins:SelfCompaction"
 compaction = "zettcode.sdk.builtins:Compaction"
 

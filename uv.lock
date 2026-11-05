@@ -18,6 +18,7 @@ members = [
     "zettcode-commands",
     "zettcode-engine",
     "zettcode-gateway",
+    "zettcode-mcp",
     "zettcode-monitor",
     "zettcode-pets",
     "zettcode-plugin-api",
@@ -25,6 +26,7 @@ members = [
     "zettcode-recap",
     "zettcode-sdk",
     "zettcode-server",
+    "zettcode-skills",
     "zettcode-tui",
     "zettcode-workspace",
 ]
@@ -2910,11 +2912,13 @@ dependencies = [
     { name = "zettcode-commands" },
     { name = "zettcode-engine", extra = ["tiktoken"] },
     { name = "zettcode-gateway" },
+    { name = "zettcode-mcp" },
     { name = "zettcode-pets" },
     { name = "zettcode-plugin-api" },
     { name = "zettcode-presenters" },
     { name = "zettcode-sdk" },
     { name = "zettcode-server" },
+    { name = "zettcode-skills" },
     { name = "zettcode-tui" },
 ]
 
@@ -2938,6 +2942,7 @@ requires-dist = [
     { name = "zettcode-commands", editable = "packages/zettcode-commands" },
     { name = "zettcode-engine", extras = ["tiktoken"], editable = "packages/zettcode-engine" },
     { name = "zettcode-gateway", editable = "packages/zettcode-gateway" },
+    { name = "zettcode-mcp", editable = "packages/zettcode-mcp" },
     { name = "zettcode-monitor", marker = "extra == 'all'", editable = "packages/zettcode-monitor" },
     { name = "zettcode-monitor", marker = "extra == 'monitor'", editable = "packages/zettcode-monitor" },
     { name = "zettcode-pets", editable = "packages/zettcode-pets" },
@@ -2947,6 +2952,7 @@ requires-dist = [
     { name = "zettcode-recap", marker = "extra == 'recap'", editable = "packages/zettcode-recap" },
     { name = "zettcode-sdk", editable = "packages/zettcode-sdk" },
     { name = "zettcode-server", editable = "packages/zettcode-server" },
+    { name = "zettcode-skills", editable = "packages/zettcode-skills" },
     { name = "zettcode-tui", editable = "packages/zettcode-tui" },
 ]
 provides-extras = ["all", "monitor", "recap"]
@@ -3063,6 +3069,20 @@ requires-dist = [
 ]
 
 [[package]]
+name = "zettcode-mcp"
+source = { editable = "packages/zettcode-mcp" }
+dependencies = [
+    { name = "zett-agent" },
+    { name = "zettcode-engine" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zettcode-engine", editable = "packages/zettcode-engine" },
+]
+
+[[package]]
 name = "zettcode-monitor"
 source = { editable = "packages/zettcode-monitor" }
 dependencies = [
@@ -3174,6 +3194,8 @@ dependencies = [
     { name = "zett-agent" },
     { name = "zettcode-broker" },
     { name = "zettcode-engine" },
+    { name = "zettcode-mcp" },
+    { name = "zettcode-skills" },
 ]
 
 [package.metadata]
@@ -3182,6 +3204,8 @@ requires-dist = [
     { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
     { name = "zettcode-broker", editable = "packages/zettcode-broker" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
+    { name = "zettcode-mcp", editable = "packages/zettcode-mcp" },
+    { name = "zettcode-skills", editable = "packages/zettcode-skills" },
 ]
 
 [[package]]
@@ -3205,6 +3229,20 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.35,<1" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
     { name = "zettcode-sdk", editable = "packages/zettcode-sdk" },
+]
+
+[[package]]
+name = "zettcode-skills"
+source = { editable = "packages/zettcode-skills" }
+dependencies = [
+    { name = "zett-agent" },
+    { name = "zettcode-engine" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zettcode-engine", editable = "packages/zettcode-engine" },
 ]
 
 [[package]]

@@ -18,16 +18,23 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
   - `zettcode.plugins`: what a reader installs. Own version, own release line.
   - `zettcode.terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`). The SDK and
     the server do not load it. `REQUIRED_PLUGINS = (shell, presenters, commands)` in `app/plugins/loader.py`.
-  - `zettcode.agent`: the 22 plugins that compose the agent, published by `zettcode-sdk`. Every loader reads it
-    (the engine's own default does not: `agent=False`). None can be switched off — they are protected like a
-    compiled-in plugin, `[skills] enabled` and the other configuration keys being what turns a feature off — but a
-    failure to activate one is recorded in `failed`, not raised, as it was when they were compiled in.
+  - `zettcode.agent`: the plugins that compose the agent. 19 are published by `zettcode-sdk`; `zettcode-skills`
+    (`skills`, `skill-tool`) and `zettcode-mcp` (`mcp`) are distributions of their own, allowed into the group by
+    `PROGRAM_DISTRIBUTIONS`. Every loader reads it (the engine's own default does not: `agent=False`). None can be
+    switched off — they are protected like a compiled-in plugin, `[skills] enabled` and the other configuration keys
+    being what turns a feature off — but a failure to activate one is recorded in `failed`, not raised, as it was when
+    they were compiled in. `zettcode-sdk` and `zettcode` depend on both, so installing the program installs them.
 - Order inside a group is `(Plugin.rank, name)`, then `deps`. `AGENT_PLUGINS` in `sdk/builtins.py` is the one list that
-  says the order (and gives each class its rank); the entry points in the SDK's `pyproject.toml` repeat it, and
-  `test_agent_parts.py` and `test_structure.py` hold the two, and the suite's literal copy in `support/conftest.py`,
-  together. The only service one reads from another is `subagents` ← `capabilities`, written as a `deps`.
-- `require_agent_parts(plugins)` refuses an installation that has none of the 22 (a damaged one), in the SDK's and the
-  terminal's loaders.
+  says the order of the SDK's own (and gives each class its rank); the entry points in the SDK's `pyproject.toml`
+  repeat it, and `test_agent_parts.py` and `test_structure.py` hold the two, and the suite's literal copies in
+  `support/conftest.py`, together. The only service one reads from another is `subagents` ← `capabilities`, written
+  as a `deps`. A part in another distribution states no rank: its extension has a `priority` of its own (the
+  skills 80, MCP 70, against the 100 nearly everything else shares), and the agent sorts by that. What registration
+  order used to decide for the skills — a skill beating a file of the same name in `@` — is
+  `MentionProvider.precedence` now (a session −20, a skill −10, anything else 0).
+- `require_agent_parts(plugins)` refuses an installation that has none of the SDK's 19 (a damaged one), in the SDK's and
+  the terminal's loaders. The skills and the MCP client are not required: without them the agent runs, with no skills
+  and no MCP tools.
 
 ## Left
 

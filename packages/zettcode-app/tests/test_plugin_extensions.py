@@ -362,19 +362,20 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     shared = [e.name for e in parent if _shared_with_children(messaging=False)(e)]
     with_messaging = [e.name for e in parent if _shared_with_children(messaging=True)(e)]
 
+    # The skills are a part of their own, activated ahead of the SDK's; where they stand at run time is their priority.
     assert shared == [
+        "SkillExtension",
         "CodingBundle",
         "ToolOutputExtension",
         "LongOutputExtension",
         "ShellDenyExtension",
         "ShellApprovalExtension",
-        "SkillExtension",
         "OnDemandCompaction",
     ]
     assert "ParentModelSubAgents" not in shared and "SwitchedHarness" not in shared, "no task, no harness"
     assert "AskUserExtension" not in shared, "a child works through its task; it does not ask the person"
     assert "TodoWriteExtension" not in shared, "its plan would be drawn for nobody"
-    assert with_messaging == [*shared[:3], "SessionMessagingExtension", *shared[3:]]
+    assert with_messaging == [*shared[:4], "SessionMessagingExtension", *shared[4:]]
 
 
 def test_every_switch_adds_its_extension_at_its_place(tmp_path):
@@ -383,6 +384,7 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
     names_ = [extension.name for extension in agent_extensions(config, **{names.MESSENGER: messenger})]
 
     assert names_ == [
+        "SkillExtension",
         "CodingBundle",
         "ToolOutputExtension",
         "LongOutputExtension",
@@ -400,7 +402,6 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
         "ToolGuidelinesExtension",
         "AskUserExtension",
         "AgentsMdExtension",
-        "SkillExtension",
         "OnDemandCompaction",
     ]
 

@@ -15,7 +15,7 @@ from zett_agent.extensions.skill import SkillExtension
 
 from plugin_helpers import agent_extensions
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
-from zettcode.sdk.extensions.mcp import build_scoped_mcp_extension
+from zettcode.mcp.extension import build_scoped_mcp_extension
 
 
 def _config(tmp_path: Path, home: Path, **changes) -> ZettCodeConfig:
@@ -236,12 +236,12 @@ def test_each_scope_finds_its_own_skills_and_a_project_wins_a_clash(tmp_path: Pa
 
 def test_the_mention_list_sees_the_same_skills_as_the_model(tmp_path: Path, home: Path):
     """`@` completion builds its list from the same roots the extension scans."""
-    from zettcode.mentions import SkillMentions
+    from zettcode.skills.mentions import SkillMentions
 
     _skill(tmp_path / "project" / ".zettcode" / "skills", "local", "from the checkout")
     config = _config(tmp_path, home, skills_scope="workspace")
 
-    names = {item.name for item in SkillMentions(config).candidates("")}
+    names = {item.name for item in SkillMentions(config.skill_search_roots()).candidates("")}
 
     assert names == {"local"}
 

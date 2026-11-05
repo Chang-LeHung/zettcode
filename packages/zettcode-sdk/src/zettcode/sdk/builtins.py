@@ -58,7 +58,7 @@ from zettcode.engine.plugins.services import (
     USAGE,
 )
 from zettcode.engine.storage import SessionStore
-from zettcode.mentions import FileMentions, SkillMentions
+from zettcode.mentions import FileMentions
 
 from .messenger import Messenger
 
@@ -75,29 +75,12 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 _P = TypeVar("_P", bound="Plugins")
 
 
-class SkillResources(Plugin):
-    """The builtin ``@`` resource provider: the skills on this machine.
-
-    Registering it here rather than inside the shell keeps the shell generic: it
-    merges whatever providers the bundle holds, and the skills are simply the
-    one the repository ships.
-    """
-
-    name = "skills"
-    setting = PluginSetting("skills_enabled", "skills")
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Offer the discovered skills as ``@`` resources, when skills are on."""
-        if ctx.config.skills_enabled:
-            ctx.agent.register_mention(SkillMentions(ctx.config))
-
-
 class FileResources(Plugin):
     """The ``@`` resource provider for the workspace's own files.
 
-    Registered after the skills, so a name both could offer is the skill: a
-    repository holds a file called ``test`` and a skill is the more specific
-    thing to mean. Nothing turns this off, because a workspace always has files.
+    A name a skill (``zettcode-skills``) also offers is the skill: a repository holds a file called ``test`` and a
+    skill is the more specific thing to mean, which the skills provider says with its ``precedence``. Nothing turns
+    this off, because a workspace always has files.
     """
 
     name = "files"
@@ -469,47 +452,6 @@ class ProjectInstructions(Plugin):
         ctx.agent.register_extension_factory("AgentsMdExtension", build)
 
 
-class SkillTool(Plugin):
-    """The skills the model can load: their list in the prompt and the tool that reads one."""
-
-    name = "skill-tool"
-    description = "Skills the model can load"
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Hand the agent the skills found under the configured roots, when skills are on."""
-        config = ctx.config
-        if not config.skills_enabled:
-            return
-
-        def build(_: AgentBuild) -> AgentExtension:
-            from zett_agent.extensions.skill import SkillExtension
-
-            return SkillExtension(config.skill_search_roots())
-
-        ctx.agent.register_extension_factory("SkillExtension", build)
-
-
-class McpTools(Plugin):
-    """The tools MCP servers offer. A server that is down is skipped, never fatal."""
-
-    name = "mcp"
-    description = "MCP servers"
-    setting = PluginSetting("mcp_enabled", "mcp")
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Register the extension when MCP is on; a run with no server file gets none at all."""
-        config = ctx.config
-        if not config.mcp_enabled:
-            return
-
-        def build(_: AgentBuild) -> AgentExtension | None:
-            from .extensions.mcp import build_scoped_mcp_extension
-
-            return build_scoped_mcp_extension(config.mcp_files())
-
-        ctx.agent.register_extension_factory("ReportingMcpExtension", build)
-
-
 class TodoPlan(Plugin):
     """The ``todo_write`` tool, and the plan it keeps, shown in the shell's panel.
 
@@ -580,7 +522,6 @@ class Compaction(Plugin):
 #: is what gives each its rank, and what a caller that loads without discovering (a test, a checkout with no installed
 #: distribution) passes as ``builtins=``. ``test_agent_parts.py`` holds the two lists together.
 AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
-    SkillResources(),
     FileResources(),
     CodingTools(),
     ToolOutput(),
@@ -598,8 +539,6 @@ AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     ToolGuidance(),
     AskUser(),
     ProjectInstructions(),
-    SkillTool(),
-    McpTools(),
     SelfCompaction(),
     Compaction(),
 )
