@@ -71,7 +71,7 @@ async def test_instructions_come_after_the_references_in_one_hint(tmp_path, monk
     """One message, both texts, in the order they are read: references first, then the caller's."""
     from test_mentions import _TextMentions
 
-    from zettcode.mentions import MentionRegistry
+    from zettcode.mention import MentionRegistry
 
     model = wire(monkeypatch, ScriptedModel("ok"))
     async with make(tmp_path) as client:

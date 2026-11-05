@@ -38,7 +38,6 @@ AGENT_PARTS = tuple(
     sorted(
         (name, f"zettcode.sdk.builtins:{cls}")
         for name, cls in (
-            ("files", "FileResources"),
             ("coding", "CodingTools"),
             ("tool-output", "ToolOutput"),
             ("long-output", "LongOutput"),
@@ -46,7 +45,6 @@ AGENT_PARTS = tuple(
             ("subagents", "Subagents"),
             ("messaging", "Messaging"),
             ("shell-permission", "ShellPermission"),
-            ("harness", "Harness"),
             ("session-log", "SessionLog"),
             ("todos", "TodoPlan"),
             ("usage-tracking", "UsageTracking"),
@@ -65,6 +63,8 @@ AGENT_PARTS = tuple(
 #: The parts of the agent that live in distributions of their own (`zettcode-skills`, `zettcode-mcp`), published under the
 #: same `zettcode.agent` group, sorted by name. `test_structure.py` compares this with their `pyproject.toml` files.
 EXTERNAL_AGENT_PARTS = (
+    ("files", "zettcode.files.plugin:FileResources"),
+    ("harness", "zettcode.harness.plugin:Harness"),
     ("mcp", "zettcode.mcp.plugin:McpTools"),
     ("skill-tool", "zettcode.skills.plugin:SkillTool"),
     ("skills", "zettcode.skills.plugin:SkillResources"),

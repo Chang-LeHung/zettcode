@@ -334,12 +334,12 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_the_ru
 
     assert [extension.name for extension in extensions] == [
         "CodingBundle",
+        "SwitchedHarness",
         "ToolOutputExtension",
         "LongOutputExtension",
         "ModelCapabilities",
         "ShellDenyExtension",
         "ShellApprovalExtension",
-        "SwitchedHarness",
         "SessionStore",
         "UsageExtension",
         "ContextExtension",
@@ -364,8 +364,8 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
 
     # The skills are a part of their own, activated ahead of the SDK's; where they stand at run time is their priority.
     assert shared == [
-        "SkillExtension",
         "CodingBundle",
+        "SkillExtension",
         "ToolOutputExtension",
         "LongOutputExtension",
         "ShellDenyExtension",
@@ -384,8 +384,9 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
     names_ = [extension.name for extension in agent_extensions(config, **{names.MESSENGER: messenger})]
 
     assert names_ == [
-        "SkillExtension",
         "CodingBundle",
+        "SwitchedHarness",
+        "SkillExtension",
         "ToolOutputExtension",
         "LongOutputExtension",
         "ModelCapabilities",
@@ -393,7 +394,6 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
         "SessionMessagingExtension",
         "ShellDenyExtension",
         "ShellApprovalExtension",
-        "SwitchedHarness",
         "SessionStore",
         "TodoWriteExtension",
         "UsageExtension",

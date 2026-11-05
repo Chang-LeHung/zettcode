@@ -15,11 +15,9 @@ from zettcode.app.ui.widgets import Composer
 from zettcode.app.ui.widgets.completer import CommandCompleter
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.storage import SessionStore
+from zettcode.files.mentions import LISTING_SECONDS, MAX_CANDIDATES, FileMentions
 from zettcode.mention import MENTION
 from zettcode.mentions import (
-    LISTING_SECONDS,
-    MAX_CANDIDATES,
-    FileMentions,
     Mention,
     MentionProvider,
     MentionRegistry,
@@ -368,7 +366,7 @@ def test_a_file_reference_reaches_the_model_as_the_sentence(workspace: Path):
 def test_the_workspace_offers_files_through_the_builtin_bundle(tmp_path: Path):
     """The shell merges whatever the bundle holds, so the provider has to be in it."""
     from zettcode.engine.plugins import load_plugins
-    from zettcode.sdk.builtins import AGENT_PLUGINS
+    from zettcode.files.plugin import FileResources
 
     config = ZettCodeConfig(
         workspace=tmp_path,
@@ -379,7 +377,7 @@ def test_the_workspace_offers_files_through_the_builtin_bundle(tmp_path: Path):
     )
     (tmp_path / "solo.py").write_text("x = 1\n")
 
-    plugins = load_plugins(config, builtins=AGENT_PLUGINS, entry_points=())
+    plugins = load_plugins(config, builtins=[FileResources()], entry_points=())
     registry = MentionRegistry(plugins.mentions)
 
     assert "solo.py" in [mention.name for mention in registry.candidates("solo")]

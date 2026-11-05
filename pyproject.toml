@@ -59,6 +59,8 @@ zettcode-pets = { workspace = true }
 zettcode-commands = { workspace = true }
 zettcode-skills = { workspace = true }
 zettcode-mcp = { workspace = true }
+zettcode-files = { workspace = true }
+zettcode-harness = { workspace = true }
 zettcode-monitor = { workspace = true }
 zettcode-recap = { workspace = true }
 
@@ -81,6 +83,8 @@ mypy_path = [
   "packages/zettcode-commands/src",
   "packages/zettcode-skills/src",
   "packages/zettcode-mcp/src",
+  "packages/zettcode-files/src",
+  "packages/zettcode-harness/src",
   "packages/zettcode/src",
   "packages/zettcode",
   ".github/scripts",
@@ -99,6 +103,8 @@ files = [
   "packages/zettcode-commands/src",
   "packages/zettcode-skills/src",
   "packages/zettcode-mcp/src",
+  "packages/zettcode-files/src",
+  "packages/zettcode-harness/src",
   "packages/zettcode/src",
   "packages/zettcode/perf",
   "packages/zettcode-monitor/src",

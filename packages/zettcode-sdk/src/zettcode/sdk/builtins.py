@@ -33,7 +33,6 @@ from zettcode.engine.dialogue.side import SideQuestions
 from zettcode.engine.extensions.capabilities import ModelCapabilities
 from zettcode.engine.extensions.compaction import CompactionCounter, OnDemandCompaction
 from zettcode.engine.extensions.context import ContextExtension
-from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.tool_output import ToolOutputExtension
 from zettcode.engine.extensions.truncation import LongOutputExtension
 from zettcode.engine.extensions.usage import UsageExtension
@@ -47,7 +46,6 @@ from zettcode.engine.plugins.services import (
     COMPACTION,
     COMPACTION_COUNTER,
     CONTEXT,
-    HARNESS,
     MESSENGER,
     MODELS,
     PERSISTENCE,
@@ -58,7 +56,6 @@ from zettcode.engine.plugins.services import (
     USAGE,
 )
 from zettcode.engine.storage import SessionStore
-from zettcode.mentions import FileMentions
 
 from .messenger import Messenger
 
@@ -66,28 +63,12 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Mapping
 
     from zett_agent.extensions.base import AgentExtension
-    from zett_agent.jit_harness import JITToolHost
 
     from zettcode.config import ZettCodeConfig
     from zettcode.engine.plugins import Plugins
     from zettcode.engine.plugins.state import AgentBuild
 
 _P = TypeVar("_P", bound="Plugins")
-
-
-class FileResources(Plugin):
-    """The ``@`` resource provider for the workspace's own files.
-
-    A name a skill (``zettcode-skills``) also offers is the skill: a repository holds a file called ``test`` and a
-    skill is the more specific thing to mean, which the skills provider says with its ``precedence``. Nothing turns
-    this off, because a workspace always has files.
-    """
-
-    name = "files"
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Offer the workspace's files as ``@`` resources."""
-        ctx.agent.register_mention(FileMentions(ctx.config.workspace))
 
 
 class CodingTools(Plugin):
@@ -216,8 +197,8 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
     from zett_agent.extensions.subagent import SubAgentExtension
     from zett_agent.extensions.todo import TodoWriteExtension
     from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
+    from zett_agent.jit_harness import JITHarnessExtension
 
-    from zettcode.engine.extensions.harness import SwitchedHarness
     from zettcode.engine.plugins.extension import PluginExtension
 
     from .extensions.messaging import SessionMessagingExtension
@@ -226,7 +207,7 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
         InternalMessageExtension,
         SteeringExtension,
         SubAgentExtension,
-        SwitchedHarness,
+        JITHarnessExtension,  # the switchable one of ``zettcode-harness`` is a subclass
         AskUserExtension,
         TodoWriteExtension,
         SideQuestions,
@@ -283,62 +264,6 @@ class ShellPermission(Plugin):
         ctx.agent.provide(APPROVAL, approval)
         ctx.agent.register_extension(ShellDenyExtension(policy))
         ctx.agent.register_extension(approval)
-
-
-class Harness(Plugin):
-    """The just-in-time harness: the model keeps small Python tools of its own, when the reader has it on.
-
-    The extension is always registered and inert until the switch is on, so ``/harness on`` reaches the next
-    request of a client that was already built. Each session keeps its tools in its own folder under
-    ``config.harness_dir``, which is ``~/.zettcode/harness`` unless the configuration object says otherwise.
-    """
-
-    name = "harness"
-    description = "The just-in-time tool harness, off by default"
-    setting = PluginSetting("jit_harness", "harness", "jit")
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Register the switchable extension; the framework's harness is imported when the agent is built."""
-        from zettcode.engine.harness_paths import harness_root
-
-        switch = ctx.service(HARNESS, HarnessSwitch)
-        root = harness_root(ctx.config)
-        policy = ctx.service(POLICY, ShellPolicy)
-
-        def host() -> JITToolHost:
-            """Where one session's repository code runs.
-
-            A child process either way, so a crash, a hang or a runaway allocation in code the model wrote stays
-            out of this window. The boundary comes from the policy — none at `full`, the boundary `safe` uses below it — and `None` on a machine
-            that has no sandbox.
-            """
-            from zett_agent.jit_harness import SubprocessToolHost
-
-            return SubprocessToolHost(sandbox=policy.jit_sandbox())
-
-        def boundary() -> str:
-            """What a session's child was built around: the sandbox itself, or none.
-
-            The *level* is not the key. `ask` and `safe` hand the harness the same sandbox, and restarting a child for
-            nothing costs the model its loaded repository — the next tool call fails until it is loaded again — so this
-            changes only when the boundary does.
-            """
-            sandbox = policy.jit_sandbox()
-            return "none" if sandbox is None else type(sandbox).__name__ + str(id(sandbox))
-
-        def build(_: AgentBuild) -> AgentExtension:
-            from zettcode.engine.extensions.harness import SwitchedHarness
-
-            return SwitchedHarness(
-                root,
-                switch,
-                host_factory=host,
-                boundary=boundary,
-                unbounded=policy.sandbox_missing,
-                legacy_root=ctx.config.harness_dir,
-            )
-
-        ctx.agent.register_extension_factory("SwitchedHarness", build)
 
 
 class SessionLog(Plugin):
@@ -522,7 +447,6 @@ class Compaction(Plugin):
 #: is what gives each its rank, and what a caller that loads without discovering (a test, a checkout with no installed
 #: distribution) passes as ``builtins=``. ``test_agent_parts.py`` holds the two lists together.
 AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
-    FileResources(),
     CodingTools(),
     ToolOutput(),
     LongOutput(),
@@ -530,7 +454,6 @@ AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     Subagents(),
     Messaging(),
     ShellPermission(),
-    Harness(),
     SessionLog(),
     TodoPlan(),
     UsageTracking(),
@@ -553,7 +476,7 @@ assert len({type(plugin) for plugin in AGENT_PLUGINS}) == len(AGENT_PLUGINS), "A
 AGENT_PLUGIN_NAMES: tuple[str, ...] = tuple(plugin.name for plugin in AGENT_PLUGINS)
 
 #: Those and the parts that live in distributions of their own (skills, MCP): what an installation must hold.
-REQUIRED_AGENT_NAMES: tuple[str, ...] = (*AGENT_PLUGIN_NAMES, "skills", "skill-tool", "mcp")
+REQUIRED_AGENT_NAMES: tuple[str, ...] = (*AGENT_PLUGIN_NAMES, "files", "harness", "skills", "skill-tool", "mcp")
 
 
 def require_agent_parts(plugins: _P) -> _P:
