@@ -343,7 +343,8 @@ class ZettCodeEngine:
         Raises:
             ValueError: No model is configured. Everything built here is built from one, and a build that failed
                 is never retried (the task is kept), so a machine that has not been set up is refused before a
-                task that could not finish is left behind. ``/config`` is what changes it.
+                build task that could not finish is left behind. The plugins' triggers need no model and have already
+                started by then; they keep running until :meth:`aclose`. ``/config`` is what changes it.
         """
         if self._triggers is None and self.plugins.triggers:
             # With the runtime, once: a trigger watches for as long as this process is open, and its scope (one per

@@ -149,7 +149,9 @@ def check_name(trigger: Trigger) -> str:
     """Return the trigger's name, or raise ``ValueError`` when it cannot be one (it is a file name too)."""
     name = trigger.name
     if not _NAME.fullmatch(name):
-        raise ValueError(f"A trigger needs a name of lowercase letters, digits, '.', '_' or '-'; got {name!r}")
+        raise ValueError(
+            f"A trigger needs a name of lowercase letters, digits, '.', '_' or '-', at most 64 characters; got {name!r}"
+        )
     return name
 
 
