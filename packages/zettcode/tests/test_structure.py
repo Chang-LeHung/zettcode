@@ -1553,8 +1553,11 @@ def test_every_shipped_plugin_names_its_context():
             return base.id == "Plugin"
         if isinstance(base, ast.Subscript) and isinstance(base.value, ast.Name) and base.value.id == "Plugin":
             inner = base.slice
-            return (isinstance(inner, ast.Name) and inner.id == "Any") or (
-                isinstance(inner, ast.Attribute) and inner.attr == "Any"
+            # `Any`, `typing.Any`, and the quoted `"Any"` mypy reads the same way.
+            return (
+                (isinstance(inner, ast.Name) and inner.id == "Any")
+                or (isinstance(inner, ast.Attribute) and inner.attr == "Any")
+                or (isinstance(inner, ast.Constant) and inner.value == "Any")
             )
         return False
 
