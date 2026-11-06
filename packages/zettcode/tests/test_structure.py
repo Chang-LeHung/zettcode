@@ -713,7 +713,7 @@ def test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it():
     checked = 0
     for project in sorted((ROOT / "packages").glob("*/pyproject.toml")):
         settings = tomllib.loads(project.read_text(encoding="utf-8"))
-        if not settings.get("project", {}).get("entry-points", {}).get("zettcode.plugins"):
+        if not settings.get("tool", {}).get("zettcode", {}).get("plugin"):
             continue
         checked += 1
         name = settings["project"]["name"]
@@ -727,7 +727,7 @@ def test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it():
         # The plugin's own module is inside the namespace too, so a subpackage two levels down has to be able to
         # import it absolutely: the climb rule forbids `from ...x`, and `from zettcode.monitor.x` is the spelling it
         # prescribes. Everything else of ours has to come through the API package.
-        own = {value.split(":", 1)[0] for value in settings["project"]["entry-points"]["zettcode.plugins"].values()}
+        own = {value.split(":", 1)[0] for value in settings["project"]["entry-points"]["zettcode.plugin"].values()}
         imports = sorted(
             target
             for path in (project.parent / "src").rglob("*.py")
@@ -773,7 +773,7 @@ def test_the_release_order_lists_every_distribution_once_with_its_dependencies_f
     for project in sorted(package.glob("*/pyproject.toml")):
         settings = tomllib.loads(project.read_text(encoding="utf-8"))
         name = settings["project"]["name"]
-        if settings["project"].get("entry-points", {}).get("zettcode.plugins"):
+        if settings.get("tool", {}).get("zettcode", {}).get("plugin"):
             plugins.add(name)
         else:
             distributions[name] = project
@@ -1479,14 +1479,18 @@ def test_the_distributions_that_may_publish_the_programs_groups_are_the_ones_tha
     """
     from zettcode.engine.plugins.loader import AGENT_ROLE, PROGRAM_DISTRIBUTIONS, TERMINAL_ROLE
 
+    listed = [
+        tomllib.loads(path.read_text(encoding="utf-8")) for path in sorted((ROOT / "packages").glob("*/pyproject.toml"))
+    ]
     publishing = {
-        tomllib.loads(path.read_text(encoding="utf-8"))["project"]["name"]
-        for path in sorted((ROOT / "packages").glob("*/pyproject.toml"))
-        if "zettcode.plugin" in tomllib.loads(path.read_text(encoding="utf-8"))["project"].get("entry-points", {})
+        settings["project"]["name"]
+        for settings in listed
+        if "zettcode.plugin" in settings["project"].get("entry-points", {})
+        and not settings.get("tool", {}).get("zettcode", {}).get("plugin")
     }
     declared = set().union(*PROGRAM_DISTRIBUTIONS.values())
 
-    assert declared == publishing, "the table names every distribution with a point, and only those"
+    assert declared == publishing, "the table names every distribution with a part, and only those"
     assert {"zettcode-monitor", "zettcode-recap"} & publishing == set(), "a plugin is not a part of the program"
     agent, terminal = PROGRAM_DISTRIBUTIONS[AGENT_ROLE], PROGRAM_DISTRIBUTIONS[TERMINAL_ROLE]
     assert agent and terminal and not (agent & terminal), "a distribution has one role"

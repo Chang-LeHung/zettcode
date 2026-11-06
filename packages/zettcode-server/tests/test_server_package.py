@@ -51,7 +51,7 @@ def test_every_distribution_reads_the_one_version_file():
     for name in sorted(
         project.parent.name
         for project in (ROOT / "packages").glob("*/pyproject.toml")
-        if "zettcode.plugins" not in project.read_text(encoding="utf-8")
+        if "plugin = true" not in project.read_text(encoding="utf-8")
     ):
         text = (ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8")
         expected = (

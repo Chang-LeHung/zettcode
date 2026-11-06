@@ -26,7 +26,7 @@ dependencies = [
 # The wording reads `Usage` figures the SDK defines; it is imported for the annotation only.
 types = ["zettcode-sdk"]
 
-# A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for.
+# A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for.
 [project.entry-points."zettcode.plugin"]
 presenters = "zettcode.presenters.plugin:PresentersPlugin"
 

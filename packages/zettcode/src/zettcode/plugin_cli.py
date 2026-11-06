@@ -1,6 +1,6 @@
 """``zettcode plugin``: install, remove, enable and disable plugins in the environment ZettCode runs in.
 
-A plugin is either a Python distribution that publishes a class under ``zettcode.plugins``, or a single ``.py`` file
+A plugin is either a Python distribution that publishes a class under ``zettcode.plugin``, or a single ``.py`` file
 in :attr:`ZettCodeConfig.plugins_dir` (``~/.zettcode/plugins`` by default); installing it is the opt-in (see
 :mod:`zettcode.engine.plugins.loader`). This command is the shell side of that:
 
@@ -165,7 +165,10 @@ def plugin_rows() -> list[PluginRow]:
     state = plugin_state()
 
     from zettcode.config import read_disabled_plugins
-    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, installed_files
+    from zettcode.engine.plugins.loader import (
+        PLUGIN_ENTRY_POINT_GROUP,
+        installed_files,
+    )
     from zettcode.sdk.builtins import AGENT_PLUGINS
 
     off_switch = set(read_disabled_plugins(state.plugins_file))
@@ -204,14 +207,25 @@ def plugin_rows() -> list[PluginRow]:
 
 
 def _installed_plugins(group: str) -> list[tuple[str, str, str]]:
-    """Return ``(entry point, distribution, location)`` for every distribution that publishes a plugin."""
+    """Return ``(entry point, distribution, location)`` for every distribution that publishes a plugin a reader owns.
+
+    The program's own parts publish in the same group now, and they are not a reader's to install, switch or remove:
+    their distribution is in `PROGRAM_DISTRIBUTIONS`, and this leaves them to `/plugins`, which shows them read-only.
+    """
     from importlib import metadata
 
+    from zettcode.engine.plugins.loader import (
+        LEGACY_ENTRY_POINT_GROUP,
+        PROGRAM_DISTRIBUTIONS,
+        _distribution,
+    )
+
+    parts = set().union(*PROGRAM_DISTRIBUTIONS.values())
     found: list[tuple[str, str, str]] = []
     for distribution in metadata.distributions():
         origin = distribution.metadata["Name"] or distribution.name
         for point in distribution.entry_points:
-            if point.group != group:
+            if point.group not in (group, LEGACY_ENTRY_POINT_GROUP) or _distribution(point) in parts:
                 continue
             try:
                 location = str(distribution.locate_file(""))
@@ -507,7 +521,9 @@ def _resolve_switch_name(config: SwitchState, name: str) -> str | None:
     canonical = plugins_dir() / f"{module_name(name)}.py"
     if canonical.is_file():
         return canonical.stem
-    if any(point.name == name for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)):
+    from zettcode.engine.plugins.loader import part_group
+
+    if any(point.name == name and part_group(point) is None for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)):
         return name
     names = _entry_names_for_distribution(name)
     if len(names) == 1:
@@ -664,9 +680,11 @@ def distribution_for(name: str) -> str | None:
         found = None
     if found is not None:
         return found.metadata["Name"] or found.name
+    from zettcode.engine.plugins.loader import part_group
+
     for candidate in metadata.distributions():
         for point in candidate.entry_points:
-            if point.group == PLUGIN_ENTRY_POINT_GROUP and point.name == name:
+            if point.group == PLUGIN_ENTRY_POINT_GROUP and point.name == name and part_group(point) is None:
                 return candidate.metadata["Name"] or candidate.name
     return None
 

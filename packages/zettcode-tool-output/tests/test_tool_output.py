@@ -457,7 +457,7 @@ class FakeEntryPoint:
 
     def __init__(self, name: str, target: object) -> None:
         self.name = name
-        self.group = AGENT_PART_GROUP
+        self.group = "zettcode.agent"
         self._target = target
 
     def load(self) -> object:

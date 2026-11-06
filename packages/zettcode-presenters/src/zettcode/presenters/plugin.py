@@ -1,6 +1,6 @@
 """The plugin that offers the program's own row drawing to the terminal.
 
-It is an ordinary plugin, found through the ``zettcode.plugins`` entry point like any other, and the terminal lists it
+It is an ordinary plugin, found through the ``zettcode.plugin`` entry point like any other, and the terminal lists it
 as required: the program does not start without it, and ``[plugins] disable`` does not reach it. It needs nothing
 else, and the plugins that draw more kinds of row depend on it (``deps = ("presenters",)``) so theirs register after.
 """
