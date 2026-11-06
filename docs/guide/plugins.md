@@ -451,7 +451,7 @@ from zettcode.plugin_api import Plugin, PluginContext
 from zettcode.plugin_api import Provider
 
 
-class Acme(Plugin):
+class Acme(Plugin[PluginContext]):
     name = "acme"
 
     def activate(self, ctx: PluginContext) -> None:
@@ -583,7 +583,7 @@ already *is* an extension, or wraps one from `zett-agent`, can hand it over whol
 from zettcode.plugin_api import Plugin, PluginContext
 
 
-class Audit(Plugin):
+class Audit(Plugin[PluginContext]):
     name = "audit"
 
     def activate(self, ctx: PluginContext) -> None:
@@ -605,7 +605,7 @@ plugins, so the switches under `[harness]` and the others simply decide whether 
 A plugin names the plugins it needs, and ZettCode activates them first:
 
 ```python
-class Statistics(Plugin):
+class Statistics(Plugin[PluginContext]):
     name = "statistics"
     deps = ("usage-ledger",)
 
@@ -644,7 +644,7 @@ class EveryMinute(Trigger):
             await fire({"reason": "tick"})
 
 
-class Heartbeat(Plugin):
+class Heartbeat(Plugin[PluginContext]):
     name = "heartbeat"
 
     def activate(self, ctx: PluginContext) -> None:

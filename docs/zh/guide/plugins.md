@@ -393,7 +393,7 @@ from zettcode.plugin_api import Plugin, PluginContext
 from zettcode.plugin_api import Provider
 
 
-class Acme(Plugin):
+class Acme(Plugin[PluginContext]):
     name = "acme"
 
     def activate(self, ctx: PluginContext) -> None:
@@ -512,7 +512,7 @@ presenter 指定一个 `kind`（`EntryKind` 的一项）；如果只画某一种
 from zettcode.plugin_api import Plugin, PluginContext
 
 
-class Audit(Plugin):
+class Audit(Plugin[PluginContext]):
     name = "audit"
 
     def activate(self, ctx: PluginContext) -> None:
@@ -531,7 +531,7 @@ shell 审批、压缩、`ask_user` 工具、项目指令、skills、MCP 和待�
 插件用 `deps` 写出它需要的插件，ZettCode 会先激活被依赖的：
 
 ```python
-class Statistics(Plugin):
+class Statistics(Plugin[PluginContext]):
     name = "statistics"
     deps = ("usage-ledger",)
 
@@ -566,7 +566,7 @@ class EveryMinute(Trigger):
             await fire({"reason": "tick"})
 
 
-class Heartbeat(Plugin):
+class Heartbeat(Plugin[PluginContext]):
     name = "heartbeat"
 
     def activate(self, ctx: PluginContext) -> None:

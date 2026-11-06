@@ -65,6 +65,10 @@ class PluginSetting:
 class Plugin(PluginAgentMixin, Generic[_C], ABC):
     """Base class for one ZettCode plugin.
 
+    It is generic over the container its hooks are handed — ``Plugin[PluginContext]`` for a plugin the runtime activates,
+    which is every one this repository ships — so a subclass that names it gets its ``activate`` checked and an override
+    that changes the signature is an error.
+
     The hooks are grouped into mixins, and :class:`Plugin` composes the agent flow group
     (:class:`PluginAgentMixin`). A subclass overrides only the stages it takes part in, and each default does
     nothing; the finer agent groups (setup, run, turn, model, tool, maintenance, events, middleware) mirror
