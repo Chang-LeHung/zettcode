@@ -4,7 +4,7 @@ A plugin needs only this package::
 
     from zettcode.engine.plugins import Plugin, PluginContext
 
-    class Audit(Plugin):
+    class Audit(Plugin[PluginContext]):
         name = "audit"
 
         def activate(self, ctx: PluginContext) -> None:

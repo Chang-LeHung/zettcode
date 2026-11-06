@@ -1532,3 +1532,24 @@ def test_the_parts_are_offered_before_a_readers_plugins():
     assert any(not is_plugin for is_plugin in wanted), "the parts are in this environment"
     assert any(is_plugin for is_plugin in wanted), "and so is at least one ordinary plugin, or this proves nothing"
     assert "coding" in [point.name for point in points]
+
+
+def test_every_shipped_plugin_names_its_context():
+    """A bare `class X(Plugin)` is `Plugin[Any]`: mypy checks nothing about what it is activated with.
+
+    A test may do it (a stand-in activated with nothing), but the code this repository ships must say which container
+    its hooks receive, or the convention rots back one class at a time.
+    """
+    import ast
+
+    bare: list[str] = []
+    for path in sorted((ROOT / "packages").glob("*/src/**/*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for base in node.bases:
+                if isinstance(base, ast.Name) and base.id == "Plugin":
+                    bare.append(f"{path.relative_to(ROOT)}:{node.lineno} {node.name}")
+
+    assert bare == [], f"these name no context: {bare}"
