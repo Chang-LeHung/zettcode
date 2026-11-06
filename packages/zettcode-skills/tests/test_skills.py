@@ -9,7 +9,6 @@ from zettcode.config import ZettCodeConfig
 from zettcode.engine.plugins.loader import AGENT_PART_GROUP, part_group
 from zettcode.mention import Mention, MentionProvider, MentionRegistry
 from zettcode.skills import SkillMentions, SkillResources, SkillTool
-from zettcode.skills.plugin import PLUGINS
 
 
 def _skill(root: Path, name: str) -> None:
@@ -56,15 +55,11 @@ def test_the_skills_are_offered_by_name_and_an_unknown_one_expands_to_nothing(tm
 
 
 def test_both_plugins_are_parts_of_the_agent_found_through_its_entry_point_group():
-    found = {
-        point.name: point
-        for point in entry_points(group=AGENT_PART_GROUP)
-        if point.value.startswith("zettcode.skills.")
-    }
+    found = {point.name: point for point in entry_points(group=AGENT_PART_GROUP)}
 
-    assert found["parts"].value == "zettcode.skills.plugin:PLUGINS", "one point for both parts"
-    assert part_group(found["parts"]) == AGENT_PART_GROUP, "the program's own, so no `[plugins] disable` reaches it"
-    assert [plugin.name for plugin in PLUGINS] == ["skills", "skill-tool"]
+    assert found["skills"].value == "zettcode.skills.plugin:SkillResources"
+    assert found["skill-tool"].value == "zettcode.skills.plugin:SkillTool"
+    assert part_group(found["skills"]) == AGENT_PART_GROUP, "the program's own, so no `[plugins] disable` reaches it"
 
 
 def test_the_switch_is_the_skills_setting_and_off_registers_nothing(tmp_path: Path):

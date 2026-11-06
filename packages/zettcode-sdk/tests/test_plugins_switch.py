@@ -200,10 +200,9 @@ def test_the_harness_and_self_compaction_are_plugin_switches(config):
 
     settings = {}
     for point in entry_points(group=AGENT_PART_GROUP):
-        published = point.load()
-        for plugin in published if isinstance(published, (list, tuple)) else (published,):
-            if plugin.setting is not None:
-                settings[plugin.name] = plugin.setting.path
+        plugin = point.load()
+        if plugin.setting is not None:
+            settings[plugin.name] = plugin.setting.path
 
     assert settings["harness"] == "harness.jit"
     assert settings["self-compaction"] == "compaction.self"
