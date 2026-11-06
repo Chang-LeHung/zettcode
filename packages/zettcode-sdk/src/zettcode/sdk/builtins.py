@@ -316,7 +316,7 @@ class Compaction(Plugin):
 
 
 #: The agent-side plugins in the order the agent receives their extensions. The distribution publishes the same list as
-#: entry points (``zettcode.agent`` in this package's ``pyproject.toml``) and the loader reads it from there; this tuple
+#: entry points (``zettcode.plugin`` in this package's ``pyproject.toml``) and the loader reads it from there; this tuple
 #: is what gives each its rank, and what a caller that loads without discovering (a test, a checkout with no installed
 #: distribution) passes as ``builtins=``. ``test_agent_parts.py`` holds the two lists together.
 AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (

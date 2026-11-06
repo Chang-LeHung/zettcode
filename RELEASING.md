@@ -130,8 +130,8 @@ from `__init__.py` — and asks PyPI. **A version PyPI already has is skipped**:
 of failing on a duplicate upload, so re-running a release or re-pushing a tag is a no-op. Two ways to start it:
 
 1. Push a tag named `<name>-v<version>`, where `<name>` is the directory or the plugin name the package's
-   `zetcode.plugin` entry point declares (or its `[tool.zettcode] plugin = true` names): `monitor-v0.3.0` and `zettcode-monitor-v0.3.0` both name the monitor. The
-   tag's version must be the version in the commit it points at, and one tag releases one package.
+   `zettcode.plugin` entry point declares: `monitor-v0.3.0` and `zettcode-monitor-v0.3.0` both name the monitor.
+   The tag's version must be the version in the commit it points at, and one tag releases one package.
 
    ```bash
    git tag monitor-v0.3.0
