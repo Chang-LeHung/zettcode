@@ -28,34 +28,26 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from zettcode.broker.client import Receipt
-from zettcode.modes import MODE_STEER
-from zettcode.relay import Relayed, batch_size, merge
+from zettcode.messaging.relay import PREVIEW, Relay
+from zettcode.relay import Relayed
 
 from .shell import ShellState
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ..agent.agent import SessionLink
 
-#: Messages from other sessions that may wait for a request to end. Past this the session says its inbox is full and
-#: the broker keeps the message and offers it again when there is room, so this shell does not hold an unbounded
-#: list. The ones that wait are run together as one turn when the request ends.
-MAX_INBOX = 64
-
 #: Characters of a waiting message that the notice repeats, so the reader can tell which one it is.
-_PREVIEW = 60
+_PREVIEW = PREVIEW
 
 
 class MessagingMixin(ShellState):
-    """Hold the line to the other sessions and turn what arrives into turns."""
+    """Hold the line to the other sessions and show what arrives, leaving the queue and the receipts to the relay."""
 
     #: The line to the broker, or ``None`` when sessions are switched off.
     messenger: SessionLink | None
-    #: Messages from other sessions waiting for the request in flight to end, oldest first.
-    _inbox: list[Relayed]
-    #: Messages handed to the request in flight, in the order they were handed over, each with the text the run
-    #: will report it by. Two messages that say the same thing are two entries; the run's report takes the first.
-    #: They leave as the run adopts them, and go to the inbox in this order when it does not.
-    _relayed_steering: list[tuple[str, Relayed]]
+    #: What arrives from another session and what this one does about it: the queue, the receipts and the cap are the
+    #: messaging package's; this shell supplies the three answers and the way to draw a waiting message.
+    _relay: Relay
     #: What the last turn that ran to its end answered, or ``None`` when it did not end that way.
     _turn_answer: str | None
     #: Whether the connection has been started; before that there is no loop to tell it anything on.
@@ -71,6 +63,7 @@ class MessagingMixin(ShellState):
     def _start_messaging(self) -> None:
         """Take over the messenger's callbacks and begin connecting. Returns at once."""
         messenger = self.messenger
+        self._start_inbox()
         if messenger is None:
             return
         messenger.receiver = self._relay_received
@@ -108,8 +101,8 @@ class MessagingMixin(ShellState):
             messenger.retire()
             self._messaging_session = session
             return
-        if self._messaging_session not in (None, session) and self._inbox:
-            count = len(self._inbox)
+        if self._messaging_session not in (None, session) and self._relay.waiting:
+            count = len(self._relay.waiting)
             self.transcript.notice(
                 f"{count} message{'s' if count != 1 else ''} from other sessions "
                 f"{'were' if count != 1 else 'was'} waiting and will arrive in this session"
@@ -150,68 +143,83 @@ class MessagingMixin(ShellState):
             return Receipt(False, "this window is installing an update; try again when it is done")
         if self.client.session.locked:
             return Receipt(False, "this session is open in another ZettCode process, so it is read-only here")
-        if not self._busy:
-            self._start_relayed(relayed)
-            return Receipt(True, disposition="started")
-        if relayed.mode == MODE_STEER and self._steer_relayed(relayed):
-            return Receipt(True, disposition="steered")
-        if len(self._inbox) >= MAX_INBOX:
-            return Receipt(
-                False,
-                f"this session already has {len(self._inbox)} messages waiting; try again when it is less busy",
-                busy=True,
-            )
-        self._inbox.append(relayed)
+        return self._relay.receive(relayed)
+
+    def _relayed_waits(self, relayed: Relayed) -> None:
+        """Draw one message that now waits for the request in flight to end."""
         preview = relayed.text.replace("\n", " ")
         if len(preview) > _PREVIEW:
             preview = preview[: _PREVIEW - 1] + "\u2026"
         self.transcript.notice(f"message from {relayed.sender} waits for this request to end: {preview}")
         self.app.invalidate()
-        return Receipt(True, disposition="queued")
 
-    def _steer_relayed(self, relayed: Relayed) -> bool:
+    def _steer_relayed(self, relayed: Relayed) -> str | None:
         """Hand a message to the request in flight, if it is a turn that can take one.
 
         A direct chat window's message is never steered: the window is answered by the turn that message starts,
         and a turn somebody else started cannot answer it, so it waits like a follow-up. An accepted steer counts
         against the same limit the reader's own steering does — the run has one inbox, whoever filled it.
+
+        Returns:
+            The text the run will report the message by, or ``None`` when it was not handed over.
         """
         if relayed.direct or self._steer_blocked() is not None:
-            return False
+            return None
         key = self.client.session._steer_message(relayed.message())
         if key is None:
-            return False
-        self._relayed_steering.append((key, relayed))
+            return None
         self._steering_sent += 1
-        return True
+        return key
 
     def _adopted_relayed(self, text: str) -> Relayed | None:
         """Take the message the running request just adopted, if it was relayed, so its row can be drawn as one."""
-        for index, (key, relayed) in enumerate(self._relayed_steering):
-            if key == text:
-                del self._relayed_steering[index]
-                return relayed
-        return None
+        return self._relay.adopted(text)
 
     def _settle_relayed_steering(self) -> None:
         """After a request: messages it never adopted wait for the next turn rather than being lost.
 
-        A message that was interrupted after the run adopted it is not here — it left when the run reported the
-        adoption — so nothing that the model has already read is ever run again. Recovery may take the inbox past
-        its cap, which only limits what new senders may add; the reader is told in the same words a queued message
-        uses, in the order the messages were handed over.
+        The relay keeps them, so this only lets it say so: a message that was interrupted after the run adopted it
+        left when the run reported the adoption, and nothing the model has already read is ever run again.
         """
-        if not self._relayed_steering:
-            return
-        waiting = [relayed for _key, relayed in self._relayed_steering]
-        self._relayed_steering.clear()
-        self._inbox.extend(waiting)
-        for relayed in waiting:
-            preview = relayed.text.replace("\n", " ")
-            if len(preview) > _PREVIEW:
-                preview = preview[: _PREVIEW - 1] + "\u2026"
-            self.transcript.notice(f"message from {relayed.sender} waits for this request to end: {preview}")
-        self.app.invalidate()
+        self._relay.settle()
+
+    def _start_inbox(self) -> None:
+        """Give the runtime's inbox this shell's own way of starting a turn.
+
+        One queue, one starter: an event from outside — a trigger, a plugin asking for itself, a program driving this
+        client — and a message another session sent both wait in the runtime's inbox, and this is where they become
+        turns. A message from another session keeps its richer path once it is started (the row in the transcript and
+        the recovery of a steer the request never adopted), because the inbox hands the ``Relayed`` back in the item's
+        payload and :meth:`_start_waiting` passes it to :meth:`_start_relayed`.
+        """
+        inbox = self._runtime_inbox()
+        start = getattr(inbox, "start_with", None)
+        if start is not None:
+            start(self._start_waiting)
+
+    def _start_waiting(self, item: object) -> bool:
+        """Start one turn from a message the inbox held, and say whether it is under way.
+
+        A message another session sent comes back with the ``Relayed`` in its payload, and runs the way it always has:
+        drawn as that session's, answering a window when it is one. Anything else is a turn of the reader's own.
+        """
+        if self._busy:
+            return False
+        payload = getattr(item, "payload", None)
+        if isinstance(payload, Relayed):
+            self._start_relayed(payload)
+            return True
+        message = getattr(item, "message", "")
+        text = message if isinstance(message, str) else getattr(message, "text", "")
+        if not text.strip():
+            return False
+        self._set_busy(True)
+        self._task = asyncio.create_task(self._run_prompt(text, (text,)))
+        return True
+
+    def _runtime_inbox(self):  # noqa: ANN201 - the Inbox class, imported lazily by the SDK client
+        """Return the runtime's inbox, or ``None`` when the messaging part did not load."""
+        return getattr(self.client, "inbox", None)
 
     def _start_relayed(self, relayed: Relayed) -> None:
         """Run one received message as a turn of its own."""
@@ -244,11 +252,9 @@ class MessagingMixin(ShellState):
         """Start the oldest waiting messages, if there are any and nothing is running.
 
         The ones that waited start as a single turn (see :func:`~zettcode.relay.batch_size`): a window that was busy
-        answers them together instead of one turn each, and a chat window's message is always a turn of its own.
+        answers them together instead of one turn each, and a chat window's message is always a turn of its own. The
+        queue is the relay's; this only refuses while the window is installing an update.
         """
-        if self._busy or self._updating or not self._inbox:
+        if self._updating:
             return False
-        count = batch_size(self._inbox)
-        taken = [self._inbox.pop(0) for _ in range(count)]
-        self._start_relayed(merge(taken))
-        return True
+        return self._relay.start_next()

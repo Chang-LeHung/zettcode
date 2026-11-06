@@ -145,6 +145,7 @@ class Client:
 | `harness` | `bool` | just-in-time harness 是否开启。 |
 | `usage` | `Usage` | 当前会话已花的用量。 |
 | `plugins` | `PluginReport` | 已加载的插件、开关能碰到的每一个（`entries`），以及失败的。 |
+| `deliver(prompt, *, mode="steer", images=(), mentions=False, instructions=None, origin="event")` | `str` | 把一个不是来自读者的消息交给这个会话——别的会话、定时器、webhook。`"steer"` 直接进入正在运行的请求；`"followup"`（或空闲时到达的消息）成为下一轮。返回 `"steered"`、`"queued"` 或 `"started"`。 |
 | `self_compaction` | `bool` | 模型是否可以自己压缩这个会话。 |
 | `self_compaction_choice` | `bool \| None` | 这个会话自己的选择，`None` 表示跟随配置。 |
 

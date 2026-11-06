@@ -147,6 +147,7 @@ The agent for one workspace. An async context manager. Every configuration field
 | `harness` | `bool` | Whether the just-in-time harness is on. |
 | `usage` | `Usage` | What the current session has spent. |
 | `plugins` | `PluginReport` | The plugins that loaded, every one a switch can reach (`entries`), and the failures. |
+| `deliver(prompt, *, mode="steer", images=(), mentions=False, instructions=None, origin="event")` | `str` | Hands this session a message from something that is not the reader — another session, a timer, a webhook. `"steer"` goes into the request that is running; `"followup"` (or a message that arrives while nothing runs) becomes the next turn. Returns `"steered"`, `"queued"` or `"started"`. |
 | `self_compaction` | `bool` | Whether the model may compact this session itself. |
 | `self_compaction_choice` | `bool \| None` | This session's own choice, or `None` when it follows the configuration. |
 

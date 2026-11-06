@@ -23,10 +23,11 @@ a plugin builds on (the session store, the permission policy) is handed over by 
 :mod:`zettcode.engine.plugins.services`.
 
 A part that lives in a distribution of its own (the skills, the MCP client, the files, the harness, the ``ask_user``
-tool, the project instructions, the plan, the shell's kept output, an over-long result and the per-tool guidance)
-states no rank, so it is activated ahead of this list and registers its extension first; each of those still runs where
-its own priority puts it. ``ask-user``, ``todos``, ``tool-output``, ``long-output`` and ``tool-guidelines`` share the
-100 nearly everything else here has, so they run before what this module contributes in that band.
+tool, the project instructions, the plan, the shell's kept output, an over-long result, the per-tool guidance and the
+session messaging) states no rank, so it is activated ahead of this list and registers its extension first; each of
+those still runs where its own priority puts it. ``ask-user``, ``todos``, ``tool-output``, ``long-output``,
+``tool-guidelines`` and the session messaging share the 100 nearly everything else here has, so they run before what
+this module contributes in that band.
 """
 
 from __future__ import annotations
@@ -50,7 +51,6 @@ from zettcode.engine.plugins.services import (
     COMPACTION,
     COMPACTION_COUNTER,
     CONTEXT,
-    MESSENGER,
     MODELS,
     PERSISTENCE,
     POLICY,
@@ -59,8 +59,6 @@ from zettcode.engine.plugins.services import (
     USAGE,
 )
 from zettcode.engine.storage import SessionStore
-
-from .messenger import Messenger
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Mapping
@@ -176,8 +174,7 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
     from zett_agent.jit_harness import JITHarnessExtension
 
     from zettcode.engine.plugins.extension import PluginExtension
-
-    from .extensions.messaging import SessionMessagingExtension
+    from zettcode.messaging.extension import SessionMessagingExtension
 
     private: tuple[type, ...] = (
         InternalMessageExtension,
@@ -198,26 +195,6 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
     if not messaging:
         private = (*private, SessionMessagingExtension)
     return lambda extension: not isinstance(extension, private)
-
-
-class Messaging(Plugin):
-    """The tools that talk to the other sessions open on this machine."""
-
-    name = "messaging"
-    description = "The session messaging tools"
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Register the tools when the configuration gave the runtime a line to the other sessions."""
-        messenger = ctx.find(MESSENGER, Messenger)
-        if messenger is None:
-            return
-
-        def build(_: AgentBuild) -> AgentExtension:
-            from .extensions.messaging import SessionMessagingExtension
-
-            return SessionMessagingExtension(messenger)
-
-        ctx.agent.register_extension_factory("SessionMessagingExtension", build)
 
 
 class ShellPermission(Plugin):
@@ -346,7 +323,6 @@ AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     CodingTools(),
     Capabilities(),
     Subagents(),
-    Messaging(),
     ShellPermission(),
     SessionLog(),
     UsageTracking(),
@@ -366,8 +342,8 @@ assert len({type(plugin) for plugin in AGENT_PLUGINS}) == len(AGENT_PLUGINS), "A
 AGENT_PLUGIN_NAMES: tuple[str, ...] = tuple(plugin.name for plugin in AGENT_PLUGINS)
 
 #: Those and the parts that live in distributions of their own (skills, MCP, files, harness, ask-user, the project
-#: instructions, the plan, the shell's kept output, an over-long result and the per-tool guidance): what an
-#: installation must hold.
+#: instructions, the plan, the shell's kept output, an over-long result, the per-tool guidance and the session
+#: messaging): what an installation must hold.
 REQUIRED_AGENT_NAMES: tuple[str, ...] = (
     *AGENT_PLUGIN_NAMES,
     "files",
@@ -381,6 +357,7 @@ REQUIRED_AGENT_NAMES: tuple[str, ...] = (
     "tool-output",
     "long-output",
     "tool-guidelines",
+    "messaging",
 )
 
 

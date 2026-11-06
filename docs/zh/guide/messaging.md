@@ -104,6 +104,14 @@ curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
 
 想出现在名单里、也想被回复的程序，要像会话一样注册：用同一个令牌打开 `/inbox` 的 WebSocket，发送 `{"op": "session", "session_id": "...", "title": "...", "kind": "external"}`，之后大家就能给它写消息了。发给它的消息从这条连接上到达，它用拿到的 `key` 发消息。完整的交互写在 `packages/zettcode-broker/src/zettcode/broker/protocol.py` 开头。
 
+自己驱动一个 agent 的 Python 程序不必经过 broker：`client.deliver(...)` 用同样的两种模式把消息交给会话。`steer` 进入正在运行的请求，`followup`——或任何在空闲时到达的消息——成为下一轮，启动方式和在那里手敲一条提示完全相同：
+
+```python
+client.deliver("the build went red", mode="followup")  # "steered"、"queued" 或 "started"
+```
+
+终端里的插件或定时器也是这么触达 agent 的：运行时给每个会话维护一条队列，来自别的会话、来自程序、来自事件的消息都在同一条队列里按同一个顺序等待。
+
 ## 管理 broker
 
 平时不需要手动启动：第一个需要它的会话会把它拉起来，最后一个会话离开后约半分钟它自己退出。想自己启动、停止或重启

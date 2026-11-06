@@ -606,8 +606,8 @@ def test_what_the_model_reads_says_not_to_answer_thanks_or_goodbyes_in_a_convers
 
 
 def test_the_send_tool_tells_the_model_to_reply_only_when_needed_and_never_to_close_with_courtesies():
-    from zettcode.sdk.extensions.messaging import SessionMessagingExtension
-    from zettcode.sdk.messenger import Messenger
+    from zettcode.messaging.extension import SessionMessagingExtension
+    from zettcode.messaging.messenger import Messenger
 
     tool = SessionMessagingExtension(Messenger.__new__(Messenger))._send_tool()
     rules = " ".join(tool.guidelines)

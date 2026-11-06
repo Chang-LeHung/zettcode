@@ -138,6 +138,17 @@ the same token, says `{"op": "session", "session_id": "...", "title": "...", "ki
 list for everyone to write to. The messages it is sent arrive on that connection, and it sends back with the `key` it
 was given. The whole exchange is described at the top of `packages/zettcode-broker/src/zettcode/broker/protocol.py`.
 
+A Python program driving an agent itself does not need the broker for this: `client.deliver(...)` hands the session a
+message the same way, with the same two modes. A `steer` goes into the request that is running, and a `followup` — or
+anything that arrives while nothing runs — becomes the next turn, started exactly as a prompt typed there would be:
+
+```python
+client.deliver("the build went red", mode="followup")  # "steered", "queued" or "started"
+```
+
+That is also how a plugin or a timer inside the terminal reaches the agent: the runtime keeps one queue per session, and
+what arrives from another session, from a program, or from an event waits in it in one order.
+
 ## Managing the broker
 
 Nothing has to be started by hand: the first session that needs the broker starts it, and the last one to leave lets

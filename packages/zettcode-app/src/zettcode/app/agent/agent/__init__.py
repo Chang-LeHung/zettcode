@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, cast
 from zettcode.engine.agent import ZettCodeAgent
 from zettcode.engine.agent.sessions import StoredSession
 from zettcode.engine.core import PluginLoader, ZettCodeEngine
-from zettcode.sdk.messenger import Messenger as SessionLink
+from zettcode.messaging.messenger import Messenger as SessionLink
 
 from .commands import CommandsMixin
 

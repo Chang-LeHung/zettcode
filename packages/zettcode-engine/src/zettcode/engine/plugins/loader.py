@@ -82,6 +82,7 @@ PROGRAM_DISTRIBUTIONS: dict[str, frozenset[str]] = {
             "zettcode-sdk",
             "zettcode-skills",
             "zettcode-mcp",
+            "zettcode-messaging",
             "zettcode-files",
             "zettcode-jit-harness",
             "zettcode-ask-user",

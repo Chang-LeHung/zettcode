@@ -23,6 +23,7 @@ dependencies = [
   # the ones published here. An SDK client offers skills and MCP servers and runs the same agent, so it installs them
   # all; `require_agent_parts` refuses a start that lacks one.
   "zettcode-skills",
+  "zettcode-messaging",
   "zettcode-mcp",
   "zettcode-files",
   "zettcode-jit-harness",
@@ -42,7 +43,6 @@ dependencies = [
 coding = "zettcode.sdk.builtins:CodingTools"
 capabilities = "zettcode.sdk.builtins:Capabilities"
 subagents = "zettcode.sdk.builtins:Subagents"
-messaging = "zettcode.sdk.builtins:Messaging"
 shell-permission = "zettcode.sdk.builtins:ShellPermission"
 session-log = "zettcode.sdk.builtins:SessionLog"
 usage-tracking = "zettcode.sdk.builtins:UsageTracking"

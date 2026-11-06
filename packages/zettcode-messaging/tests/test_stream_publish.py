@@ -6,9 +6,9 @@ import asyncio
 from types import SimpleNamespace
 from typing import Any
 
+from zettcode.messaging.messenger import STREAM_BATCH, Messenger
 from zettcode.sdk.client import Client
 from zettcode.sdk.events import ReasoningDelta, TextDelta, ToolFinished, ToolStarted
-from zettcode.sdk.messenger import STREAM_BATCH, Messenger
 from zettcode.sdk.types import brief_of
 
 
@@ -89,7 +89,7 @@ def test_the_sdk_says_text_reasoning_and_tool_events_and_nothing_else():
 
 
 async def test_a_long_burst_of_text_is_cut_into_lines_the_broker_will_pass_and_nothing_is_lost():
-    from zettcode.sdk.messenger import STREAM_CHUNK
+    from zettcode.messaging.messenger import STREAM_CHUNK
 
     wire = Wire()
     messenger = Messenger(wire)  # type: ignore[arg-type]

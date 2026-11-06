@@ -54,6 +54,12 @@ class FakeRuntime:
         """Mirror the real runtime's provider accessor."""
         return self.model
 
+    def run_started(self) -> None:
+        """Mirror the real runtime: the agent's stream counts a request as running."""
+
+    def run_finished(self) -> None:
+        """Mirror the real runtime: the request is over."""
+
 
 @pytest.mark.parametrize(
     ("reply", "expected"),

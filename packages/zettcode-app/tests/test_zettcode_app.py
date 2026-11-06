@@ -76,6 +76,7 @@ from zettcode.commands.handlers import CodeReview
 from zettcode.commands.plugin import CommandsPlugin
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
+from zettcode.engine.delivery import Delivery
 from zettcode.engine.dialogue.side import SideQuestions
 from zettcode.engine.extensions.context import IMAGE_TOKENS, SOURCES, ContextExtension, Tokenizer
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
@@ -84,6 +85,7 @@ from zettcode.engine.permission import Permission, parse_permission
 from zettcode.engine.storage import STORE_FILE, SessionInfo, SessionStore
 from zettcode.jit_harness.command import HarnessCommand
 from zettcode.mentions import Mention, MentionProvider, MentionRegistry
+from zettcode.messaging.inbox import INBOX, Inbox
 from zettcode.pets.plugin import PetsPlugin
 from zettcode.plugin_api.commands import Command, CommandContext, CommandResult
 from zettcode.plugin_api.entries import EntryStatus
@@ -405,6 +407,12 @@ class FakeRuntime:
         """Mirror the real runtime's client accessor."""
         return self.client
 
+    def run_started(self) -> None:
+        """Mirror the real runtime: count the request the agent's stream is running."""
+
+    def run_finished(self) -> None:
+        """Mirror the real runtime: the request is over, so a follow-up may start."""
+
     @property
     def provider(self) -> object:
         """Mirror the real runtime's provider accessor."""
@@ -465,6 +473,24 @@ class FakeRuntime:
         return self.effort
 
 
+class IdleDelivery(Delivery):
+    """A runtime that never reports a request: these tests gate on the shell's own ``_busy``."""
+
+    @property
+    def busy(self) -> bool:
+        """Nothing here is running as far as the delivery knows; the shell asks the inbox again each turn end."""
+        return False
+
+    def steer(self, message):
+        """Never reached: the relay steers only while the shell is busy, and this never is."""
+        return None
+
+    def when_idle(self, callback):
+        """Nothing runs, so what waits is free now."""
+        callback()
+        return lambda: None
+
+
 def rows_and_commands(
     *,
     extra: tuple[tuple[str, str, UiBuilder], ...] = (),
@@ -473,6 +499,7 @@ def rows_and_commands(
     failures: tuple[str, ...] = (),
     presenters: tuple[object, ...] = (),
     config: object | None = None,
+    inbox_cap: int = 64,
 ) -> TuiPlugins:
     """The shell's builtin rows plus the segments and commands one test adds.
 
@@ -511,7 +538,7 @@ def rows_and_commands(
         pets=ctx.tui.pets,
         presenters=ctx.tui.presenters,
         turn_segments=ctx.tui.turn_segments,
-        services={HOST_LINK: link},
+        services={HOST_LINK: link, INBOX: Inbox(IdleDelivery(), cap=inbox_cap)},
         builtins=("presenters", "commands"),
     )
 
@@ -4256,6 +4283,7 @@ async def test_a_message_that_arrives_while_a_plugin_asks_the_model_waits_its_tu
     """
     app = build_app(hold=True)
     app._messaging_live = True
+    app._start_inbox()  # the runtime's inbox starts its turn through this shell, as in a running shell
 
     holder = asyncio.create_task(_hold_the_client(app))
     for _ in range(50):
