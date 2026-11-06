@@ -1,4 +1,4 @@
-"""The plugins that compose the agent are found through the ``zettcode.agent`` entry-point group, in the order they were
+"""The plugins that compose the agent are found through the ``zettcode.plugin`` entry-point group, in the order they were
 listed when the runtime did the listing, and their one real service dependency is a ``deps``."""
 
 from __future__ import annotations
