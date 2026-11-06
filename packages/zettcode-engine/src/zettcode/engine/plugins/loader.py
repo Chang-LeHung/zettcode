@@ -259,7 +259,7 @@ class _Candidate:
     error: BaseException | None = None
     #: Whether it came from the program's own entry-point group, which is ahead of every installed plugin.
     part: bool = False
-    #: Whether it is one of the plugins that compose the agent (``zettcode.agent``): a part that is also built in.
+    #: Whether it is one of the plugins that compose the agent (the ``agent`` role): a part that is also built in.
     agent: bool = False
 
     @property
@@ -294,7 +294,7 @@ def run(
             plugins it needs — is ignored and logged, and one that still did not load makes the call raise. A name is
             matched against the entry-point name (the origin) as well as ``Plugin.name``, so a required plugin keeps
             the two equal; one whose ``name`` differs cannot be pulled back in once disabled.
-        terminal: Whether the loader has a screen, which is what the parts in the ``zettcode.terminal`` group wait for.
+        terminal: Whether the loader has a screen, which is what the parts with the ``terminal`` role wait for.
 
     Raises:
         RequiredPluginError: A plugin in ``required`` is not loaded.
@@ -306,7 +306,7 @@ def run(
             loader.builtins.append(candidates[-1].origin)
     # Offered by origin, so the ones a ``disable`` line holds back can still be pulled in when the program needs them.
     sources: dict[str, Callable[[], list[_Candidate]]] = {}
-    # With `[plugins] enabled = false` nothing is loaded but the parts of the program (the `zettcode.terminal` group,
+    # With `[plugins] enabled = false` nothing is loaded but the parts of the program (the `terminal` role,
     # which that switch is not about) and the plugins the program requires.
     points = tuple(entry_points) if entry_points is not None else installed_entry_points()
     # The parts of the program that need a screen are for a loader that has one.

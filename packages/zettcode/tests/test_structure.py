@@ -1504,16 +1504,17 @@ def test_the_distributions_that_may_publish_the_programs_groups_are_the_ones_tha
 
 
 def test_a_part_is_named_as_its_entry_point_is():
-    """The loader pulls a required part back in by entry-point name and checks it by `Plugin.name`; they must agree."""
+    """The loader pulls a required part back in by entry-point name and checks it by `Plugin.name`; they must agree.
+
+    Every point is a plugin class now, whichever part of the program it is, so this reads the one group and holds each
+    class's `Plugin.name` to the name its `deps`, `REQUIRED_AGENT_NAMES` and the required pull are written with.
+    """
     import importlib
 
     for settings_path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
         settings = tomllib.loads(settings_path.read_text(encoding="utf-8"))
         entry_points = settings["project"].get("entry-points", {})
-        for name, target in {
-            **entry_points.get("zettcode.terminal", {}),
-            **entry_points.get("zettcode.agent", {}),
-        }.items():
+        for name, target in entry_points.get("zettcode.plugin", {}).items():
             module, _, attribute = target.partition(":")
             assert getattr(importlib.import_module(module), attribute).name == name, target
 

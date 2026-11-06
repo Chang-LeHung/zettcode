@@ -1,7 +1,7 @@
 """The plugin that offers the slash commands that act on the application.
 
 One plugin, not one per command group, so the order ``/help`` lists them in is the order they are registered here and
-does not depend on how the loader happens to sort entry-point names. It is found through the ``zettcode.terminal``
+does not depend on how the loader happens to sort entry-point names. It is found through the ``zettcode.plugin``
 entry point and is one the terminal requires: with no ``/help``, no ``/plugins`` and no ``/model`` there would be no
 way back to a working setup from inside the program.
 """

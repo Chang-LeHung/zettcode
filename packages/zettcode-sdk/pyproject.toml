@@ -19,7 +19,7 @@ classifiers = [
 dependencies = [
   "zettcode-engine",
   "zettcode-broker",
-  # Parts of the agent that live in distributions of their own, found through the same `zettcode.agent` entry point as
+  # Parts of the agent that live in distributions of their own, found through the same `zettcode.plugin` group as
   # the ones published here. An SDK client offers skills and MCP servers and runs the same agent, so it installs them
   # all; `require_agent_parts` refuses a start that lacks one.
   "zettcode-skills",
