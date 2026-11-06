@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
+from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.plugin import Plugin
 
 from .mentions import FileMentions
 
-if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zettcode.engine.plugins.context import PluginContext
 
-
-class FileResources(Plugin):
+class FileResources(Plugin[PluginContext]):
     """The ``@`` resource provider for the workspace's own files.
 
     A name a skill (``zettcode-skills``) also offers is the skill: a repository holds a file called ``test`` and a

@@ -72,7 +72,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 _P = TypeVar("_P", bound="Plugins")
 
 
-class CodingTools(Plugin):
+class CodingTools(Plugin[PluginContext]):
     """The coding bundle: the file tools, search and the shell tool."""
 
     name = "coding"
@@ -91,7 +91,7 @@ class CodingTools(Plugin):
         ctx.agent.register_extension_factory("CodingBundle", build)
 
 
-class Capabilities(Plugin):
+class Capabilities(Plugin[PluginContext]):
     """What the configured models can do, so a tool is not offered to one that cannot use it."""
 
     name = "capabilities"
@@ -104,7 +104,7 @@ class Capabilities(Plugin):
         ctx.agent.register_extension(capabilities)
 
 
-class Subagents(Plugin):
+class Subagents(Plugin[PluginContext]):
     """The ``task`` tool: children that work on a delegated piece of the job in their own sessions."""
 
     name = "subagents"
@@ -197,7 +197,7 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
     return lambda extension: not isinstance(extension, private)
 
 
-class ShellPermission(Plugin):
+class ShellPermission(Plugin[PluginContext]):
     """Decides which shell commands run: ``deny`` refuses them, anything else is asked about or let through.
 
     The deny extension runs before the approval one (its priority is lower), because the approval can ask
@@ -219,7 +219,7 @@ class ShellPermission(Plugin):
         ctx.agent.register_extension(approval)
 
 
-class SessionLog(Plugin):
+class SessionLog(Plugin[PluginContext]):
     """Writes the conversation to the session's log as it happens, and restores it on resume."""
 
     name = "session-log"
@@ -230,7 +230,7 @@ class SessionLog(Plugin):
         ctx.agent.register_extension(ctx.service(PERSISTENCE, SessionStore))
 
 
-class UsageTracking(Plugin):
+class UsageTracking(Plugin[PluginContext]):
     """Counts the tokens each session has spent, for the status line and ``/usage``."""
 
     name = "usage-tracking"
@@ -246,7 +246,7 @@ class UsageTracking(Plugin):
         ctx.agent.register_extension(usage)
 
 
-class ContextTracking(Plugin):
+class ContextTracking(Plugin[PluginContext]):
     """Remembers the last assembled request of each session, for ``/context``."""
 
     name = "context-tracking"
@@ -259,7 +259,7 @@ class ContextTracking(Plugin):
         ctx.agent.register_extension(context)
 
 
-class SideQuestionBoundary(Plugin):
+class SideQuestionBoundary(Plugin[PluginContext]):
     """``/btw``: questions answered on a read-only run beside the conversation."""
 
     name = "side-questions"
@@ -272,7 +272,7 @@ class SideQuestionBoundary(Plugin):
         ctx.agent.register_extension(sides)
 
 
-class SelfCompaction(Plugin):
+class SelfCompaction(Plugin[PluginContext]):
     """The switch for letting the model compact its own context.
 
     The work is the runtime's: ``[compaction] self`` is the default, and a session that chose otherwise keeps its
@@ -287,7 +287,7 @@ class SelfCompaction(Plugin):
         """Nothing to register: the setting decides the runtime's policy, not an object here."""
 
 
-class Compaction(Plugin):
+class Compaction(Plugin[PluginContext]):
     """Shortens the conversation when it nears the model's window, or when the reader asks."""
 
     name = "compaction"

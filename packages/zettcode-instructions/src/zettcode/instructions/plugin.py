@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.plugin import Plugin, PluginSetting
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.extensions.base import AgentExtension
 
-    from zettcode.engine.plugins.context import PluginContext
     from zettcode.engine.plugins.state import AgentBuild
 
 
-class ProjectInstructions(Plugin):
+class ProjectInstructions(Plugin[PluginContext]):
     """The workspace's ``AGENTS.md`` files, read again for every request so an edit applies at once."""
 
     name = "project-instructions"

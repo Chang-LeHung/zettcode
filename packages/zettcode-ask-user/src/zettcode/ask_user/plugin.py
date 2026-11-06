@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.plugin import Plugin, PluginSetting
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.extensions.base import AgentExtension
 
-    from zettcode.engine.plugins.context import PluginContext
     from zettcode.engine.plugins.state import AgentBuild
 
 
-class AskUser(Plugin):
+class AskUser(Plugin[PluginContext]):
     """The ``ask_user`` tool: how the model puts a question to the reader instead of guessing."""
 
     name = "ask-user"

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from zettcode.engine.delivery import DELIVERY, Delivery
+from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.plugin import Plugin
 from zettcode.engine.plugins.services import MESSENGER
 
@@ -14,11 +15,10 @@ from .messenger import Messenger
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.extensions.base import AgentExtension
 
-    from zettcode.engine.plugins.context import PluginContext
     from zettcode.engine.plugins.state import AgentBuild
 
 
-class Messaging(Plugin):
+class Messaging(Plugin[PluginContext]):
     """The tools that talk to the other sessions open on this machine."""
 
     name = "messaging"
