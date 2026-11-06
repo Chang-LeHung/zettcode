@@ -1538,18 +1538,33 @@ def test_every_shipped_plugin_names_its_context():
     """A bare `class X(Plugin)` is `Plugin[Any]`: mypy checks nothing about what it is activated with.
 
     A test may do it (a stand-in activated with nothing), but the code this repository ships must say which container
-    its hooks receive, or the convention rots back one class at a time.
+    its hooks receive, or the convention rots back one class at a time. `Plugin[Any]` is refused too: it is the same
+    "checked against nothing", and the subscript hides it from mypy exactly as the bare name does.
+
+    A spelling no scan can name — `class X(module.Plugin)`, or a bare `Plugin` imported under another name — is the
+    honest limit of a syntactic guard; the convention is what holds those.
     """
     import ast
 
     bare: list[str] = []
+
+    def names_nothing(base: ast.expr) -> bool:
+        if isinstance(base, ast.Name):
+            return base.id == "Plugin"
+        if isinstance(base, ast.Subscript) and isinstance(base.value, ast.Name) and base.value.id == "Plugin":
+            inner = base.slice
+            return (isinstance(inner, ast.Name) and inner.id == "Any") or (
+                isinstance(inner, ast.Attribute) and inner.attr == "Any"
+            )
+        return False
+
     for path in sorted((ROOT / "packages").glob("*/src/**/*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
             for base in node.bases:
-                if isinstance(base, ast.Name) and base.id == "Plugin":
+                if names_nothing(base):
                     bare.append(f"{path.relative_to(ROOT)}:{node.lineno} {node.name}")
 
     assert bare == [], f"these name no context: {bare}"
