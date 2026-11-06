@@ -214,18 +214,13 @@ def _installed_plugins(group: str) -> list[tuple[str, str, str]]:
     """
     from importlib import metadata
 
-    from zettcode.engine.plugins.loader import (
-        LEGACY_ENTRY_POINT_GROUP,
-        PROGRAM_DISTRIBUTIONS,
-        _distribution,
-    )
+    from zettcode.engine.plugins.loader import LEGACY_ENTRY_POINT_GROUP, part_group
 
-    parts = set().union(*PROGRAM_DISTRIBUTIONS.values())
     found: list[tuple[str, str, str]] = []
     for distribution in metadata.distributions():
         origin = distribution.metadata["Name"] or distribution.name
         for point in distribution.entry_points:
-            if point.group not in (group, LEGACY_ENTRY_POINT_GROUP) or _distribution(point) in parts:
+            if point.group not in (group, LEGACY_ENTRY_POINT_GROUP) or part_group(point) is not None:
                 continue
             try:
                 location = str(distribution.locate_file(""))
@@ -512,7 +507,7 @@ def _resolve_switch_name(config: SwitchState, name: str) -> str | None:
     from importlib.metadata import entry_points
 
     from zettcode.config import read_disabled_plugins
-    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP
+    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, part_group
 
     name = _safe_name(name)
     exact = plugins_dir() / f"{name}.py"
@@ -521,7 +516,6 @@ def _resolve_switch_name(config: SwitchState, name: str) -> str | None:
     canonical = plugins_dir() / f"{module_name(name)}.py"
     if canonical.is_file():
         return canonical.stem
-    from zettcode.engine.plugins.loader import part_group
 
     if any(point.name == name and part_group(point) is None for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)):
         return name
@@ -539,14 +533,18 @@ def _entry_names_for_distribution(distribution: str) -> list[str]:
     """Return the plugin entry-point names a distribution carries, by distribution name (case and '-'/'_' ignored)."""
     from importlib import metadata
 
-    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP
+    from zettcode.engine.plugins.loader import LEGACY_ENTRY_POINT_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
 
     wanted = distribution.strip().lower().replace("_", "-")
     for found in metadata.distributions():
         origin = found.metadata["Name"] or found.name
         if origin.lower().replace("_", "-") != wanted:
             continue
-        return sorted(point.name for point in found.entry_points if point.group == PLUGIN_ENTRY_POINT_GROUP)
+        return sorted(
+            point.name
+            for point in found.entry_points
+            if point.group in (PLUGIN_ENTRY_POINT_GROUP, LEGACY_ENTRY_POINT_GROUP) and part_group(point) is None
+        )
     return []
 
 
@@ -672,7 +670,7 @@ def distribution_for(name: str) -> str | None:
     """Return the installed distribution's name for a distribution or plugin entry-point name, if there is one."""
     from importlib import metadata
 
-    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP
+    from zettcode.engine.plugins.loader import LEGACY_ENTRY_POINT_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
 
     try:
         found = metadata.distribution(name)
@@ -680,11 +678,14 @@ def distribution_for(name: str) -> str | None:
         found = None
     if found is not None:
         return found.metadata["Name"] or found.name
-    from zettcode.engine.plugins.loader import part_group
 
     for candidate in metadata.distributions():
         for point in candidate.entry_points:
-            if point.group == PLUGIN_ENTRY_POINT_GROUP and point.name == name and part_group(point) is None:
+            if (
+                point.group in (PLUGIN_ENTRY_POINT_GROUP, LEGACY_ENTRY_POINT_GROUP)
+                and point.name == name
+                and part_group(point) is None
+            ):
                 return candidate.metadata["Name"] or candidate.name
     return None
 

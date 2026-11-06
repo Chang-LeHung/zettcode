@@ -1,7 +1,7 @@
 """The skills of ZettCode: the ``@`` provider that offers them to the composer, and the extension that lists them for
 the model and lets it read one.
 
-A part of the program that lives in a distribution of its own, found through the ``zettcode.agent`` entry point and
+A part of the program that lives in a distribution of its own, found through the ``zettcode.plugin`` entry point and
 activated with the agent's other parts. ``[skills] enabled`` in the configuration is what turns it off.
 """
 

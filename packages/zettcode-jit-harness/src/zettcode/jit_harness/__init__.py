@@ -1,6 +1,6 @@
 """The just-in-time harness of ZettCode: the plugin, the switchable extension, and the screen the reader opens.
 
-A part of the program that lives in a distribution of its own, found through the ``zettcode.agent`` entry point.
+A part of the program that lives in a distribution of its own, found through the ``zettcode.plugin`` entry point.
 ``[harness] jit`` in the configuration is what turns it on. The extension (:mod:`zettcode.jit_harness.extension`)
 imports the framework's harness, so nothing here imports it until the agent is built. The part also owns the read-only
 page ``/harness`` opens (:mod:`zettcode.jit_harness.page`) and the command that opens it

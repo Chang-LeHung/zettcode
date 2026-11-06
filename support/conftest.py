@@ -22,7 +22,8 @@ os.environ["HOME"] = _HOME
 os.environ["USERPROFILE"] = _HOME  # what `Path.home()` reads on Windows
 atexit.register(shutil.rmtree, _HOME, ignore_errors=True)
 
-#: The plugins the program is made of, as their distributions publish them under `zettcode.terminal`, sorted by name
+#: The plugins the program is made of that only a screen loads, as their distributions publish them in the one
+#: `zettcode.plugin` group, sorted by name
 #: the way the loader sorts them. Each distribution's `pyproject.toml` says the same; `test_structure.py` compares.
 PROGRAM_PARTS = (
     ("commands", "zettcode.commands.plugin:CommandsPlugin"),
@@ -31,7 +32,7 @@ PROGRAM_PARTS = (
     ("themes", "zettcode.app.plugins.builtins:BuiltinThemes"),
 )
 
-#: The plugins that compose the agent, as the SDK publishes them under `zettcode.agent`, sorted by name. The loader
+#: The plugins that compose the agent, as the SDK publishes them under `zettcode.plugin`, sorted by name. The loader
 #: activates them by the rank `zettcode.sdk.builtins` gives them; `test_structure.py` compares this with the
 #: distribution's `pyproject.toml`.
 AGENT_PARTS = tuple(
@@ -54,7 +55,7 @@ AGENT_PARTS = tuple(
 
 
 #: The parts of the agent that live in distributions of their own (`zettcode-skills`, `zettcode-mcp`, ...), published
-#: under the same `zettcode.agent` group, sorted by name. `test_structure.py` compares this with their `pyproject.toml`
+#: under the same `zettcode.plugin` group, sorted by name. `test_structure.py` compares this with their `pyproject.toml`
 #: files.
 EXTERNAL_AGENT_PARTS = (
     ("ask-user", "zettcode.ask_user.plugin:AskUser"),
@@ -90,7 +91,7 @@ def _no_broker_process(monkeypatch: pytest.MonkeyPatch) -> None:
 def _no_installed_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the suite hermetic: an installed plugin must not join a test run.
 
-    ``ZettCodeEngine.preview`` loads every ``zettcode.plugins`` entry point the
+    ``ZettCodeEngine.preview`` loads every ``zettcode.plugin`` entry point the
     environment advertises, which would make tests depend on whatever the
     developer happens to have installed. The plugin tests inject their own entry
     points, so discovery is only stubbed here, never removed. The plugins the program itself is made of

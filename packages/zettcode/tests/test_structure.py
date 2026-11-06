@@ -24,6 +24,11 @@ from zettcode._compat import tomllib
 #: The repository root, two levels above the tests (``tests`` here).
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 
+#: Discovery as this environment has it, taken before the suite's fixture replaces the module attribute with a literal.
+from zettcode.engine.plugins import loader  # noqa: E402  (it needs ROOT nothing, but the constant below is read early)
+
+_REAL_DISCOVERY = loader.installed_entry_points
+
 #: The program's project directory, where its command line, probes and ``pyproject.toml`` live.
 PROJECT = ROOT / "packages" / "zettcode"
 
@@ -1491,7 +1496,10 @@ def test_the_distributions_that_may_publish_the_programs_groups_are_the_ones_tha
     declared = set().union(*PROGRAM_DISTRIBUTIONS.values())
 
     assert declared == publishing, "the table names every distribution with a part, and only those"
-    assert {"zettcode-monitor", "zettcode-recap"} & publishing == set(), "a plugin is not a part of the program"
+    marked = {
+        settings["project"]["name"] for settings in listed if settings.get("tool", {}).get("zettcode", {}).get("plugin")
+    }
+    assert marked == {"zettcode-monitor", "zettcode-recap"}, "the plugin line covers the two plugins"
     agent, terminal = PROGRAM_DISTRIBUTIONS[AGENT_ROLE], PROGRAM_DISTRIBUTIONS[TERMINAL_ROLE]
     assert agent and terminal and not (agent & terminal), "a distribution has one role"
 
@@ -1509,3 +1517,17 @@ def test_a_part_is_named_as_its_entry_point_is():
         }.items():
             module, _, attribute = target.partition(":")
             assert getattr(importlib.import_module(module), attribute).name == name, target
+
+
+def test_the_parts_are_offered_before_a_readers_plugins():
+    """A reader's plugin must not take a part's name: the parts come first, whatever the names sort like.
+
+    The suite replaces discovery with a literal list, so this calls the function as it is installed in this environment
+    (`_REAL_DISCOVERY` is the one captured before the fixture replaced the module attribute).
+    """
+    points = _REAL_DISCOVERY()
+    wanted = [loader.part_group(point) is None for point in points]
+
+    assert wanted == sorted(wanted), "every part before every ordinary plugin"
+    assert any(not is_plugin for is_plugin in wanted), "the parts are in this environment"
+    assert "coding" in [point.name for point in points]

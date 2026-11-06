@@ -1,6 +1,6 @@
 """The plugin that offers the pets that ship to ``/pet``.
 
-An ordinary plugin found through the ``zettcode.terminal`` entry point. The terminal does not require it: without it
+An ordinary plugin found through the ``zettcode.plugin`` entry point. The terminal does not require it: without it
 ``/pet`` lists nothing and the companion is not drawn, and ``[plugins] disable = ["pets"]`` is how a reader gets there.
 """
 
