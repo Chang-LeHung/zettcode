@@ -29,7 +29,7 @@ dependencies = [
 # A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for. It is
 # activated with the agent's other parts and `[harness] jit` is what turns it on. Its page and its command live here
 # with it, so the part owns the whole screen and the command no longer ships with the shell's own commands.
-[project.entry-points."zettcode.agent"]
+[project.entry-points."zettcode.plugin"]
 harness = "zettcode.jit_harness.plugin:Harness"
 
 [project.urls]

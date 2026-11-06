@@ -57,27 +57,27 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 logger = logging.getLogger("zettcode.plugins")
 
-#: Entry-point group a distribution publishes its plugin under.
-PLUGIN_ENTRY_POINT_GROUP = "zettcode.plugins"
+#: The one entry-point group: a plugin class per line, whichever part of the program it is (see
+#: :data:`PROGRAM_DISTRIBUTIONS` for the ones the program itself publishes).
+PLUGIN_ENTRY_POINT_GROUP = "zettcode.plugin"
 
-#: Entry-point group the distributions of the program itself publish the plugins only a screen has any use for under
-#: (the presenters, the pets, the palettes). They are loaded the same way, ahead of the installed plugins, but they are
-#: released with the program (one version, one tag) and are not something a reader installs or removes, so the plugin
-#: tooling and the release line for plugins never see them. A process with no terminal (the SDK, the server) does not
-#: load them: they would import the whole terminal to offer it nothing.
-TERMINAL_PART_GROUP = "zettcode.terminal"
+#: The group this used to be, still read so a plugin published before the rename keeps loading. One release.
+LEGACY_ENTRY_POINT_GROUP = "zettcode.plugins"
 
-#: Entry-point group the program publishes the plugins that compose the agent under (the tools, the session log, the
-#: permission, the compaction, ...). Every loader reads it, and none of it can be switched off: these are the program as
-#: much as a compiled-in plugin is, and a configuration key such as ``[skills] enabled`` is what turns a feature off.
-#: They are activated by ``(rank, name)`` and then by ``deps``.
-AGENT_PART_GROUP = "zettcode.agent"
+#: The roles a distribution of the program may publish its plugins in. Being unswitchable, ahead of everything, or
+#: loaded only by a screen is a privilege of the program, not of whoever declares an entry point: the role is decided by
+#: the **distribution** a point came from, which `importlib.metadata` knows before the plugin's module is imported (so a
+#: process with no screen never imports the terminal's parts). A point that says nothing of its distribution (a test's
+#: stand-in) is an ordinary plugin unless the table names it.
+AGENT_ROLE = "agent"
+TERMINAL_ROLE = "terminal"
 
-#: Who may publish into the program's own groups. Being unswitchable and ahead of everything is a privilege of the
-#: program, not of whoever declares the group in a `pyproject.toml`: a point from any other distribution is an
-#: ordinary plugin whatever group it is in. A point that says nothing of its distribution (a test's stand-in) passes.
+#: The roles, by the distributions that publish them: the agent's parts (the tools, the session log, the permission, the
+#: compaction, ...) are loaded by every front end and cannot be switched off — a configuration key such as
+#: ``[skills] enabled`` is what turns a feature off; the terminal's (presenters, pets, palettes, commands) only a screen
+#: loads, because they would import the whole terminal into the SDK and the server to offer them nothing.
 PROGRAM_DISTRIBUTIONS: dict[str, frozenset[str]] = {
-    AGENT_PART_GROUP: frozenset(
+    AGENT_ROLE: frozenset(
         {
             "zettcode-sdk",
             "zettcode-skills",
@@ -93,32 +93,53 @@ PROGRAM_DISTRIBUTIONS: dict[str, frozenset[str]] = {
             "zettcode-guidance",
         }
     ),
-    TERMINAL_PART_GROUP: frozenset({"zettcode-app", "zettcode-commands", "zettcode-pets", "zettcode-presenters"}),
+    TERMINAL_ROLE: frozenset({"zettcode-app", "zettcode-commands", "zettcode-pets", "zettcode-presenters"}),
 }
+
+#: What the two old group names were called, for code that asks for a role by name.
+AGENT_PART_GROUP = AGENT_ROLE
+TERMINAL_PART_GROUP = TERMINAL_ROLE
 
 
 def part_group(point: EntryPoint) -> str | None:
-    """Return the program group ``point`` is a part of, or ``None`` when it is an ordinary plugin."""
-    group = getattr(point, "group", None)
-    allowed = PROGRAM_DISTRIBUTIONS.get(group) if group else None
-    if allowed is None:
-        return None
+    """Return the role ``point`` is a part of, or ``None`` when it is an ordinary plugin of a reader's.
+
+    The distribution says it, which is what a point published before the groups were merged cannot be trusted to: an
+    old wheel still declares ``zettcode.agent`` or ``zettcode.terminal``, and the role is the same. A stand-in that
+    names no distribution (a test's) is read from those old group names, which is all it has to say what it is.
+    """
     dist = _distribution(point)
-    return group if dist is None or dist in allowed else None
+    if dist is not None:
+        for role, allowed in PROGRAM_DISTRIBUTIONS.items():
+            if dist in allowed:
+                return role
+        return None
+    return _legacy_role(getattr(point, "group", "") or "")
+
+
+def _legacy_role(group: str) -> str | None:
+    """Return the role an old group name stands for, or ``None``."""
+    return {"zettcode.agent": AGENT_ROLE, "zettcode.terminal": TERMINAL_ROLE}.get(group)
 
 
 def installed_entry_points() -> tuple[EntryPoint, ...]:
-    """Return every plugin entry point installed in this environment.
+    """Return every plugin entry point installed in this environment, the program's parts first.
 
-    The import is deferred to the call so the plugin package itself stays cheap
-    to import, and results are sorted by entry-point name so the load order is the same on every run.
+    The import is deferred to the call so the plugin package itself stays cheap to import, and results are sorted by
+    entry-point name so the load order is the same on every run. The group this used to be called is read beside the
+    current one, so a plugin published before the rename keeps loading.
     """
     from importlib.metadata import entry_points
 
-    agent = sorted(entry_points(group=AGENT_PART_GROUP), key=lambda point: point.name)
-    parts = sorted(entry_points(group=TERMINAL_PART_GROUP), key=lambda point: point.name)
-    plugins = sorted(entry_points(group=PLUGIN_ENTRY_POINT_GROUP), key=lambda point: point.name)
-    return (*agent, *parts, *plugins)
+    current = entry_points(group=PLUGIN_ENTRY_POINT_GROUP)
+    # What the group was called before, the two the parts used, and the plugin line: a wheel published then is still
+    # read, so nothing on PyPI stops loading when the program that reads it is upgraded.
+    older = [
+        *entry_points(group=LEGACY_ENTRY_POINT_GROUP),
+        *entry_points(group="zettcode.agent"),
+        *entry_points(group="zettcode.terminal"),
+    ]
+    return tuple(sorted((*current, *older), key=lambda point: point.name))
 
 
 def installed_files(directory: Path) -> tuple[Path, ...]:

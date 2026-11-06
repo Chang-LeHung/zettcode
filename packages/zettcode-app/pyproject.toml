@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 # Parts of the program that need a screen, loaded as plugins by the terminal only; see the engine's plugin loader.
-[project.entry-points."zettcode.terminal"]
+[project.entry-points."zettcode.plugin"]
 themes = "zettcode.app.plugins.builtins:BuiltinThemes"
 
 [project.urls]

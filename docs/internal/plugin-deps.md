@@ -14,20 +14,24 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
 - Names are unique. Dependencies are resolved by name, so the name is the identity. An entry point or file that takes
   the name of another plugin loses it and is logged (`plugins.name_taken`).
 - Services: `ctx.inject(name, obj)` (same as `provide`) publishes, `ctx.service(name, kind)` / `ctx.find(...)` reads.
-- Three entry-point groups, one meaning each:
-  - `zettcode.plugins`: what a reader installs. Own version, own release line.
-  - `zettcode.terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`). The SDK and
-    the server do not load it. `REQUIRED_PLUGINS = (shell, presenters, commands)` in `app/plugins/loader.py`.
-  - `zettcode.agent`: the plugins that compose the agent. 10 are published by `zettcode-sdk`; `zettcode-skills`
+- One entry-point group, `zettcode.plugin`: one line per plugin class, whichever part of the program it is. The role
+  of a point is decided by the **distribution** it came from (`PROGRAM_DISTRIBUTIONS` in the engine's loader), which
+  `importlib.metadata` knows before the plugin's module is imported:
+  - `agent`: the parts that compose the agent. 10 are published by `zettcode-sdk`; `zettcode-skills`
     (`skills`, `skill-tool`), `zettcode-messaging` (`messaging`), `zettcode-mcp` (`mcp`), `zettcode-files` (`files`),
-    `zettcode-jit-harness` (`harness`),
-    `zettcode-ask-user` (`ask-user`), `zettcode-instructions` (`project-instructions`), `zettcode-todos` (`todos`),
-    `zettcode-tool-output` (`tool-output`), `zettcode-truncation` (`long-output`) and `zettcode-guidance`
-    (`tool-guidelines`) are distributions of their own, allowed into the group by
-    `PROGRAM_DISTRIBUTIONS`. Every loader reads it (the engine's own default does not: `agent=False`). None can be
-    switched off — they are protected like a compiled-in plugin, `[skills] enabled` and the other configuration keys
-    being what turns a feature off — but a failure to activate one is recorded in `failed`, not raised, as it was when
-    they were compiled in. `zettcode-sdk` and `zettcode` depend on them all, so installing the program installs them.
+    `zettcode-jit-harness` (`harness`), `zettcode-ask-user` (`ask-user`), `zettcode-instructions`
+    (`project-instructions`), `zettcode-todos` (`todos`), `zettcode-tool-output` (`tool-output`),
+    `zettcode-truncation` (`long-output`) and `zettcode-guidance` (`tool-guidelines`) are distributions of their own.
+    Every loader reads them (the engine's own default does not: `agent=False`). None can be switched off — they are
+    protected like a compiled-in plugin, `[skills] enabled` and the other configuration keys being what turns a feature
+    off — but a failure to activate one is recorded in `failed`, not raised, as it was when they were compiled in.
+  - `terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`). The SDK and the server
+    do not load them, so the terminal's packages are never imported there. `REQUIRED_PLUGINS = (shell, presenters,
+    commands)` in `app/plugins/loader.py`.
+  - anything else: what a reader installs, published on its own line with its own version (`[tool.zettcode] plugin =
+    true` in its `pyproject.toml` is what the release order looks for). The two old group names (`zettcode.plugins`,
+    the parts' `zettcode.agent`/`zettcode.terminal`) are still read, so a wheel published before the merge keeps
+    loading.
 - Order inside a group is `(Plugin.rank, name)`, then `deps`. `AGENT_PLUGINS` in `sdk/builtins.py` is the one list that
   says the order of the SDK's own (and gives each class its rank); the entry points in the SDK's `pyproject.toml`
   repeat it, and `test_agent_parts.py` and `test_structure.py` hold the two, and the suite's literal copies in

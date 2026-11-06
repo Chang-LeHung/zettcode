@@ -41,14 +41,14 @@ claim — is reported as a failure where the reader can see it.
 
 ## Installing one
 
-A plugin publishes a class under the `zettcode.plugins` entry-point group:
+A plugin publishes a class under the `zettcode.plugin` entry-point group:
 
 ```toml
 [project]
 name = "my-package"
 dependencies = ["zettcode-plugin-api>=0.3,<0.4"]
 
-[project.entry-points."zettcode.plugins"]
+[project.entry-points."zettcode.plugin"]
 greeter = "my_package:Greeter"
 ```
 

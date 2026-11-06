@@ -25,7 +25,7 @@ dependencies = [
 
 # A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for. It is
 # activated with the agent's other parts and `[agents_md] enabled` is what turns it off.
-[project.entry-points."zettcode.agent"]
+[project.entry-points."zettcode.plugin"]
 project-instructions = "zettcode.instructions.plugin:ProjectInstructions"
 
 [project.urls]

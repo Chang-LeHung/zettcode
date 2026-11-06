@@ -37,14 +37,14 @@ class Greeter(TuiPlugin):  # 这个 mixin 提供行相关的钩子；基类仍�
 
 ## 安装一个插件
 
-插件在 `zettcode.plugins` 这个 entry point 组下发布一个类：
+插件在 `zettcode.plugin` 这个 entry point 组下发布一个类：
 
 ```toml
 [project]
 name = "my-package"
 dependencies = ["zettcode-plugin-api>=0.3,<0.4"]
 
-[project.entry-points."zettcode.plugins"]
+[project.entry-points."zettcode.plugin"]
 greeter = "my_package:Greeter"
 ```
 

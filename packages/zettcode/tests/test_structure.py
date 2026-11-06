@@ -1378,24 +1378,19 @@ def test_the_plugin_contract_sits_below_what_implements_it_and_below_the_applica
 
 
 def test_a_part_the_program_is_made_of_is_never_discoverable_as_a_plugin():
-    """A part of the program offers its plugin under `zettcode.terminal`, never `zettcode.plugins`.
+    """A part is released with the program, so it never says `[tool.zettcode] plugin = true`.
 
-    `zettcode.plugins` is what the plugin tooling lists and what the plugin release line (its own version, its own
-    tag) looks for. A part is released with the program and loaded as a plugin through one of the other groups:
-    `zettcode.terminal` for the ones only a screen has a use for, which the SDK and the server never load.
-    `zettcode-presenters` is one the terminal names as required, so no `disable` line reaches it.
+    That marker is what the plugin line — its own version, its own tag — reads now that every distribution publishes
+    its plugins in the one `zettcode.plugin` group; a part that said it would be released twice.
     """
     parts = [name for name in _release_order() if name != "zettcode-plugin-api"]
     assert "zettcode-presenters" in parts
     for name in parts:
         settings = tomllib.loads((ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8"))
-        assert not settings["project"].get("entry-points", {}).get("zettcode.plugins"), name
-    presenters = tomllib.loads((ROOT / "packages/zettcode-presenters/pyproject.toml").read_text(encoding="utf-8"))
-    pets = tomllib.loads((ROOT / "packages/zettcode-pets/pyproject.toml").read_text(encoding="utf-8"))
-    assert presenters["project"]["entry-points"]["zettcode.terminal"] == {
-        "presenters": "zettcode.presenters.plugin:PresentersPlugin"
-    }
-    assert pets["project"]["entry-points"]["zettcode.terminal"] == {"pets": "zettcode.pets.plugin:PetsPlugin"}
+        assert not settings.get("tool", {}).get("zettcode", {}).get("plugin"), name
+    for name in ("zettcode-monitor", "zettcode-recap"):
+        settings = tomllib.loads((ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8"))
+        assert settings["tool"]["zettcode"]["plugin"] is True, name
 
 
 def test_the_suites_list_of_the_programs_parts_is_what_the_distributions_publish():
@@ -1408,10 +1403,13 @@ def test_the_suites_list_of_the_programs_parts_is_what_the_distributions_publish
         for node in tree.body
         if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "PROGRAM_PARTS" for t in node.targets)
     )
+    from zettcode.engine.plugins.loader import PROGRAM_DISTRIBUTIONS, TERMINAL_ROLE
+
     published: dict[str, str] = {}
     for settings_path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
         settings = tomllib.loads(settings_path.read_text(encoding="utf-8"))
-        published.update(settings["project"].get("entry-points", {}).get("zettcode.terminal", {}))
+        if settings["project"]["name"] in PROGRAM_DISTRIBUTIONS[TERMINAL_ROLE]:
+            published.update(settings["project"].get("entry-points", {}).get("zettcode.plugin", {}))
 
     assert dict(listed) == published
     assert [name for name, _ in listed] == sorted(published), "listed in the order the loader sorts them"
@@ -1436,7 +1434,7 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
     listed = {ast.literal_eval(e)[0]: f"zettcode.sdk.builtins:{ast.literal_eval(e)[1]}" for e in pairs.elts}
     settings = tomllib.loads((ROOT / "packages/zettcode-sdk/pyproject.toml").read_text(encoding="utf-8"))
 
-    assert listed == settings["project"]["entry-points"]["zettcode.agent"]
+    assert listed == settings["project"]["entry-points"]["zettcode.plugin"]
 
     # The parts that live in distributions of their own are listed beside it, in a literal of their own.
     external = next(
@@ -1444,11 +1442,13 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
         for node in tree.body
         if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "EXTERNAL_AGENT_PARTS" for t in node.targets)
     )
+    from zettcode.engine.plugins.loader import AGENT_ROLE, PROGRAM_DISTRIBUTIONS
+
     owners: dict[str, dict[str, str]] = {}
     for path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
         project = tomllib.loads(path.read_text(encoding="utf-8"))["project"]
-        if "zettcode.agent" in project.get("entry-points", {}):
-            owners[path.parent.name] = project["entry-points"]["zettcode.agent"]
+        if project["name"] in PROGRAM_DISTRIBUTIONS[AGENT_ROLE]:
+            owners[path.parent.name] = project["entry-points"]["zettcode.plugin"]
     outside = {
         name: value for owner, points in owners.items() if owner != "zettcode-sdk" for name, value in points.items()
     }
@@ -1472,17 +1472,24 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
 
 
 def test_the_distributions_that_may_publish_the_programs_groups_are_the_ones_that_do():
-    """`PROGRAM_DISTRIBUTIONS` is a literal in the loader; a rename would quietly make a part an ordinary, switchable plugin."""
-    from zettcode.engine.plugins.loader import PROGRAM_DISTRIBUTIONS
+    """`PROGRAM_DISTRIBUTIONS` is a literal in the loader: a rename would quietly make a part an ordinary plugin.
 
-    declared: dict[str, set[str]] = {group: set() for group in PROGRAM_DISTRIBUTIONS}
-    for path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
-        project = tomllib.loads(path.read_text(encoding="utf-8"))["project"]
-        for group in PROGRAM_DISTRIBUTIONS:
-            if group in project.get("entry-points", {}):
-                declared[group].add(project["name"])
+    The roles are decided by the distribution a point came from, since the group they are published in no longer says
+    which is which; every distribution in the table must publish a point, and the plugins must not be in it.
+    """
+    from zettcode.engine.plugins.loader import AGENT_ROLE, PROGRAM_DISTRIBUTIONS, TERMINAL_ROLE
 
-    assert declared == {group: set(names) for group, names in PROGRAM_DISTRIBUTIONS.items()}
+    publishing = {
+        tomllib.loads(path.read_text(encoding="utf-8"))["project"]["name"]
+        for path in sorted((ROOT / "packages").glob("*/pyproject.toml"))
+        if "zettcode.plugin" in tomllib.loads(path.read_text(encoding="utf-8"))["project"].get("entry-points", {})
+    }
+    declared = set().union(*PROGRAM_DISTRIBUTIONS.values())
+
+    assert declared == publishing, "the table names every distribution with a point, and only those"
+    assert {"zettcode-monitor", "zettcode-recap"} & publishing == set(), "a plugin is not a part of the program"
+    agent, terminal = PROGRAM_DISTRIBUTIONS[AGENT_ROLE], PROGRAM_DISTRIBUTIONS[TERMINAL_ROLE]
+    assert agent and terminal and not (agent & terminal), "a distribution has one role"
 
 
 def test_a_part_is_named_as_its_entry_point_is():

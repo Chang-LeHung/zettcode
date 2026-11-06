@@ -18,7 +18,7 @@ from plugin_helpers import runtime_state
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.extensions.files import CodingBundle
 from zettcode.engine.plugins import AgentBuild, load_plugins
-from zettcode.engine.plugins.loader import AGENT_PART_GROUP, part_group
+from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
 from zettcode.engine.storage import SessionStore
 from zettcode.engine.tools.shell import OUTPUT_ROOT as SHELL_OUTPUT_ROOT
 from zettcode.engine.tools.shell import shell_tool
@@ -466,7 +466,7 @@ class FakeEntryPoint:
 
 def test_the_plugin_is_a_part_of_the_agent_found_through_its_entry_point_group():
     """The distribution publishes it, so the runtime discovers it like any other part and no list names it."""
-    found = {point.name: point for point in entry_points(group=AGENT_PART_GROUP)}
+    found = {point.name: point for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)}
 
     assert found["tool-output"].value == "zettcode.tool_output.plugin:ToolOutput"
     assert part_group(found["tool-output"]) == AGENT_PART_GROUP

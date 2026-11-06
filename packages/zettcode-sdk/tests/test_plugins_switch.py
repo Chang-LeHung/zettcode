@@ -196,10 +196,10 @@ def test_a_legacy_switch_file_name_is_dropped_when_the_switch_is_written(config)
 def test_the_harness_and_self_compaction_are_plugin_switches(config):
     from importlib.metadata import entry_points
 
-    from zettcode.engine.plugins.loader import AGENT_PART_GROUP
+    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP
 
     settings = {}
-    for point in entry_points(group=AGENT_PART_GROUP):
+    for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP):
         plugin = point.load()
         if plugin.setting is not None:
             settings[plugin.name] = plugin.setting.path

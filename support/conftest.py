@@ -97,16 +97,79 @@ def _no_installed_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
     (``PROGRAM_PARTS``) are still found, as a literal list and not as whatever this environment advertises: without
     them there is nothing to draw with, and which of them are installed must not change what a test sees.
     """
-    from importlib.metadata import EntryPoint
-
     from zettcode.engine.plugins import loader
 
-    agent = tuple(
-        EntryPoint(name, value, loader.AGENT_PART_GROUP)
-        for name, value in sorted((*AGENT_PARTS, *EXTERNAL_AGENT_PARTS))
-    )
-    points = (*agent, *tuple(EntryPoint(name, value, loader.TERMINAL_PART_GROUP) for name, value in PROGRAM_PARTS))
+    points = tuple(_point(name, value, dist) for name, value, dist in _part_points())
     monkeypatch.setattr(loader, "installed_entry_points", lambda: points)
+
+
+class _Point:
+    """An entry point as the loader reads one: a name, the target it loads, and the distribution it came from.
+
+    The distribution is what says which role a plugin has (``loader.program_distributions``), so a stand-in that
+    names one is the part it claims to be.
+    """
+
+    group = "zettcode.plugin"
+
+    class dist:  # noqa: N801 - the slice of importlib.metadata.Distribution the loader reads
+        name = ""
+
+    def __init__(self, name: str, value: str, distribution: str) -> None:
+        self.name = name
+        self.value = value
+
+        self.dist = type("Dist", (), {"name": distribution})()
+
+    def load(self) -> object:
+        module, _, attribute = self.value.partition(":")
+        from importlib import import_module
+
+        return getattr(import_module(module), attribute)
+
+
+def _point(name: str, value: str, distribution: str) -> _Point:
+    """Return the stand-in an entry point of ``distribution`` is, in a test."""
+    return _Point(name, value, distribution)
+
+
+def _part_points() -> list[tuple[str, str, str]]:
+    """Every part the program publishes, as (entry-point name, target, distribution), in load order."""
+    agent = [(name, value, _OWNER[name]) for name, value in sorted((*AGENT_PARTS, *EXTERNAL_AGENT_PARTS))]
+    terminal = [(name, value, _OWNER[name]) for name, value in sorted(PROGRAM_PARTS)]
+    return [*agent, *terminal]
+
+
+#: The distribution that publishes each part, as the suite's literals name them (`test_structure.py` checks this
+#: against the `pyproject.toml` files).
+_OWNER = {
+    "coding": "zettcode-sdk",
+    "capabilities": "zettcode-sdk",
+    "subagents": "zettcode-sdk",
+    "shell-permission": "zettcode-sdk",
+    "session-log": "zettcode-sdk",
+    "usage-tracking": "zettcode-sdk",
+    "context-tracking": "zettcode-sdk",
+    "side-questions": "zettcode-sdk",
+    "self-compaction": "zettcode-sdk",
+    "compaction": "zettcode-sdk",
+    "skills": "zettcode-skills",
+    "skill-tool": "zettcode-skills",
+    "ask-user": "zettcode-ask-user",
+    "files": "zettcode-files",
+    "harness": "zettcode-jit-harness",
+    "long-output": "zettcode-truncation",
+    "mcp": "zettcode-mcp",
+    "messaging": "zettcode-messaging",
+    "project-instructions": "zettcode-instructions",
+    "todos": "zettcode-todos",
+    "tool-guidelines": "zettcode-guidance",
+    "tool-output": "zettcode-tool-output",
+    "commands": "zettcode-commands",
+    "pets": "zettcode-pets",
+    "presenters": "zettcode-presenters",
+    "themes": "zettcode-app",
+}
 
 
 @pytest.fixture(autouse=True)
