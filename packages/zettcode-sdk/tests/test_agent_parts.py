@@ -226,3 +226,55 @@ def test_the_skills_and_the_mcp_client_are_parts_of_the_agent_published_by_distr
     assert (
         run_order.index("ReportingMcpExtension") < run_order.index("SkillExtension") < run_order.index("CodingBundle")
     )
+
+
+def test_a_tuple_point_keeps_each_plugin_name_and_not_its_own(tmp_path: Path):
+    """What `deps`, the required list, a disable line and `builtins` use is the plugin's name, never the point's."""
+    config = _config(tmp_path)
+    plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=_sdk_points())
+
+    assert "parts" not in plugins.builtins
+    assert set(AGENT_PLUGIN_NAMES) <= set(plugins.builtins), "each part is known by its own name"
+    assert plugins.failed == ()
+
+
+def _nothing() -> tuple[object, ...]:
+    """A point that publishes nothing at all."""
+    return ()
+
+
+def _twice() -> tuple[object, ...]:
+    """A point that publishes one name twice."""
+    from zettcode.sdk.builtins import Capabilities
+
+    return (Capabilities(), Capabilities())
+
+
+class _FromPackage:
+    """An agent point of a named distribution, as discovery hands one over."""
+
+    group = AGENT_PART_GROUP
+
+    class dist:  # noqa: N801 - the slice of importlib.metadata.Distribution the loader reads
+        name = "zettcode-skills"
+
+    def __init__(self, name: str, value: str) -> None:
+        self.name = name
+        self.value = value
+
+    def load(self) -> object:
+        raise ImportError("this package is broken")
+
+
+def test_a_point_that_publishes_nothing_or_two_of_one_name_is_a_failure(tmp_path: Path):
+    config = _config(tmp_path)
+    for factory, reason in ((_nothing, "publishes no plugins"), (_twice, "more than once")):
+        point = EntryPoint("parts", f"{__name__}:{factory.__name__}", AGENT_PART_GROUP)
+        plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=[point])
+        assert any(reason in why for _origin, why in plugins.failed), plugins.failed
+        # A point built here names no distribution, so it is named by itself; a discovered one by its package.
+        assert all(origin == "parts" for origin, _why in plugins.failed), plugins.failed
+
+    from_package = _FromPackage("parts", "broken:module")
+    plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=[from_package])
+    assert plugins.failed == (("zettcode-skills", "this package is broken"),), "the package to reinstall"

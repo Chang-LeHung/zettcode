@@ -62,8 +62,8 @@ def test_both_plugins_are_parts_of_the_agent_found_through_its_entry_point_group
         if point.value.startswith("zettcode.skills.")
     }
 
-    assert found["parts"].value == "zettcode.skills.plugin:PLUGINS", "one point for both parts"
-    assert part_group(found["parts"]) == AGENT_PART_GROUP, "the program's own, so no `[plugins] disable` reaches it"
+    assert found["skills"].value == "zettcode.skills.plugin:PLUGINS", "one point for both parts"
+    assert part_group(found["skills"]) == AGENT_PART_GROUP, "the program's own, so no `[plugins] disable` reaches it"
     assert [plugin.name for plugin in PLUGINS] == ["skills", "skill-tool"]
 
 

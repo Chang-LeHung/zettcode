@@ -283,3 +283,89 @@ def test_an_impostor_is_still_reported_when_the_part_it_imitates_was_disabled_an
     assert [p.origin for p in bundle.plugins] == ["presenters"]
     assert bundle.failed == (), "the part loaded; the impostor is not a failure of it"
     assert [r.plugin for r in caplog.records if r.getMessage() == "plugins.name_taken"] == ["presenters"]
+
+
+class LazyPoint:
+    """A point of the terminal group that blows up if anything resolves it."""
+
+    group = "zettcode.terminal"
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.value = f"{__name__}:missing"
+
+    def load(self) -> object:
+        raise ImportError("this module is gone")
+
+    @property
+    def dist(self) -> object:
+        class Dist:
+            name = "zettcode-presenters"
+
+        return Dist()
+
+
+def test_a_terminal_part_the_reader_switched_off_is_never_resolved(tmp_path: Path):
+    """A disable line keeps its module out of the process, and its row says off rather than failed."""
+    point = LazyPoint("themes")
+
+    bundle = run(
+        Loader(config(tmp_path, disabled_plugins=("themes",))),
+        config(tmp_path, disabled_plugins=("themes",)),
+        builtins=(),
+        entry_points=[point],
+        terminal=True,
+    )
+
+    assert bundle.failed == ()
+    assert "themes" not in [plugin.name for plugin in bundle.plugins]
+
+
+class TuplePoint(Point):
+    """A point of the agent group that publishes several plugins."""
+
+    group = "zettcode.agent"
+
+    def __init__(self, name: str, *published: Plugin[PluginContext]) -> None:
+        super().__init__(name, published[0])
+        self._published = published
+        self.value = f"{__name__}:tuple"
+
+    def load(self) -> object:
+        return self._published
+
+
+def test_a_tuple_point_is_known_by_the_names_of_its_plugins(tmp_path: Path):
+    point = TuplePoint("parts", plugin("first"), plugin("second"))
+
+    bundle = load_plugins(config(tmp_path), builtins=(), entry_points=[point])
+
+    assert [p.name for p in bundle.plugins] == ["first", "second"]
+    assert bundle.builtins == ("first", "second"), "not the point's name"
+    assert bundle.failed == ()
+
+
+def test_a_tuple_of_one_is_still_named_by_its_plugin(tmp_path: Path):
+    """A package whose tuple shrank to one part keeps that part's name: the point's is not an identity."""
+    point = TuplePoint("parts", plugin("only"))
+
+    bundle = load_plugins(config(tmp_path), builtins=(), entry_points=[point])
+
+    assert [p.name for p in bundle.plugins] == ["only"]
+    assert bundle.builtins == ("only",), "what the required list and a switch are keyed on"
+
+
+def test_a_required_terminal_part_that_cannot_load_says_why(tmp_path: Path):
+    """The failure keeps the point's name, which is what the required list and the message look it up by."""
+    settings = config(tmp_path)
+    with pytest.raises(RequiredPluginError) as raised:
+        run(
+            Loader(settings),
+            settings,
+            builtins=(),
+            entry_points=[LazyPoint("themes")],
+            terminal=True,
+            required=("themes",),
+        )
+
+    assert raised.value.missing == {"themes": "this module is gone"}

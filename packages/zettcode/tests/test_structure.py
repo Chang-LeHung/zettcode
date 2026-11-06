@@ -1500,7 +1500,11 @@ def test_the_distributions_that_may_publish_the_programs_groups_are_the_ones_tha
 
 
 def test_a_part_is_named_as_its_entry_point_is():
-    """The loader pulls a required part back in by entry-point name and checks it by `Plugin.name`; they must agree."""
+    """A point that names one plugin is that plugin (its name is the origin); a tuple is its parts' own names.
+
+    The loader keys `deps`, the required list, a disable line and `Plugins.builtins` on the plugin's name, so a point
+    that publishes several must not lend its name to any of them.
+    """
     import importlib
 
     for settings_path in sorted((ROOT / "packages").glob("*/pyproject.toml")):

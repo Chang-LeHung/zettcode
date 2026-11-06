@@ -27,7 +27,7 @@ dependencies = [
 # activated with the agent's other parts and `[skills] enabled` is what turns them off.
 [project.entry-points."zettcode.agent"]
 # The two parts this package publishes, as one point: the `@` provider and the tool the model reads a skill with.
-parts = "zettcode.skills.plugin:PLUGINS"
+skills = "zettcode.skills.plugin:PLUGINS"
 
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"
