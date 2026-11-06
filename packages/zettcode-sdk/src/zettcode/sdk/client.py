@@ -600,6 +600,13 @@ class Client:
         if self._closed:
             return
         self._closed = True
+        # The turns the inbox started are this client's too: one still running would be closed inside its own generator
+        # when the runtime lets go (`aclose(): asynchronous generator is already running`), so they are stopped first.
+        delivering, self._delivering = self._delivering, set()
+        for task in delivering:
+            task.cancel()
+        if delivering:
+            await asyncio.gather(*delivering, return_exceptions=True)
         messenger, self._messenger = self._messenger, None
         stream = self._stream
         try:

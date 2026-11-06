@@ -51,11 +51,12 @@ async def test_a_followup_delivered_while_idle_starts_a_turn_as_well(tmp_path, m
         assert client.deliver("later", mode="followup") == "started"
 
         for _ in range(500):
-            if await _history(client):
+            if await _history(client) and not client.busy:
                 break
             await asyncio.sleep(0.01)
 
         assert await _history(client) == ["later"]
+        assert not client.busy, "the turn the inbox started has ended"
 
 
 async def test_a_message_with_a_picture_a_model_cannot_see_is_refused(tmp_path, monkeypatch):
