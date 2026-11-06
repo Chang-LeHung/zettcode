@@ -1,7 +1,7 @@
 name: Release packages
 
-# The plugins under `packages/`, one at a time: a **plugin** here is a distribution that declares a
-# `zettcode.plugins` entry point, and the distributions the program is made of are released together by
+# The plugins under `packages/`, one at a time: a **plugin** here is a distribution that says
+# `[tool.zettcode] plugin = true`, and the distributions the program is made of are released together by
 # `release.yml` under its own tag. A tag names one plugin, and a manual run can publish every plugin whose version
 # PyPI does not have yet. What a run does is decided from the plugins' own versions and from PyPI, not from a list
 # in here, so a version that is already published is skipped rather than failing the run, and a new plugin needs no
