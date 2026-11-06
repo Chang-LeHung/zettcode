@@ -1427,16 +1427,17 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
         for node in tree.body
         if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "AGENT_PARTS" for t in node.targets)
     )
-    # The list is built by sorting a literal of (name, class) pairs; read the pairs back out of it.
+    # The list is a literal of (entry-point name, "module:attribute") pairs; read the pairs back out of it.
     pairs = next(
         node
         for node in ast.walk(assigned)
         if isinstance(node, ast.Tuple) and node.elts and all(isinstance(e, ast.Tuple) for e in node.elts)
     )
-    listed = {ast.literal_eval(e)[0]: f"zettcode.sdk.builtins:{ast.literal_eval(e)[1]}" for e in pairs.elts}
+    listed = {ast.literal_eval(e)[0]: ast.literal_eval(e)[1] for e in pairs.elts}
     settings = tomllib.loads((ROOT / "packages/zettcode-sdk/pyproject.toml").read_text(encoding="utf-8"))
 
     assert listed == settings["project"]["entry-points"]["zettcode.agent"]
+    assert listed == {"parts": "zettcode.sdk.builtins:AGENT_PLUGINS"}, "one point per package, naming its tuple"
 
     # The parts that live in distributions of their own are listed beside it, in a literal of their own.
     external = next(
@@ -1468,7 +1469,20 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
         "zettcode-truncation",
         "zettcode-guidance",
     }, "the agent is composed in these places"
-    assert not set(listed) & set(outside), "a part has one owner"
+    # A package may publish several parts under one point, so ownership is per plugin and not per point name.
+    import importlib
+
+    published: list[str] = []
+    for path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
+        project = tomllib.loads(path.read_text(encoding="utf-8"))["project"]
+        for name, target in project.get("entry-points", {}).get("zettcode.agent", {}).items():
+            module, _, attribute = target.partition(":")
+            found = getattr(importlib.import_module(module), attribute)
+            names = [plugin.name for plugin in found] if isinstance(found, (list, tuple)) else [found.name]
+            if not isinstance(found, (list, tuple)):
+                assert names == [name], target
+            published += names
+    assert len(published) == len(set(published)), f"a part has one owner: {sorted(published)}"
 
 
 def test_the_distributions_that_may_publish_the_programs_groups_are_the_ones_that_do():
@@ -1497,4 +1511,10 @@ def test_a_part_is_named_as_its_entry_point_is():
             **entry_points.get("zettcode.agent", {}),
         }.items():
             module, _, attribute = target.partition(":")
-            assert getattr(importlib.import_module(module), attribute).name == name, target
+            published = getattr(importlib.import_module(module), attribute)
+            if not isinstance(published, (list, tuple)):
+                assert published.name == name, target
+                continue
+            # A point that publishes several: the plugins keep their own names, and no two share one.
+            names = [plugin.name for plugin in published]
+            assert all(names) and len(set(names)) == len(names), (target, names)

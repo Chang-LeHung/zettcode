@@ -4,7 +4,7 @@ listed when the runtime did the listing, and their one real service dependency i
 from __future__ import annotations
 
 import dataclasses
-from importlib.metadata import entry_points
+from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
 
 from plugin_helpers import runtime_state  # noqa: E402  (support/ is on the path)
@@ -22,6 +22,13 @@ def _sdk_points() -> list:
     return [point for point in entry_points(group=AGENT_PART_GROUP) if point.dist and point.dist.name == "zettcode-sdk"]
 
 
+def _pair():
+    """The two parts whose dependency this file checks, as one point publishes them."""
+    from zettcode.sdk.builtins import Capabilities, Subagents
+
+    return (Subagents(), Capabilities())
+
+
 def _config(tmp_path: Path, **changes: object) -> ZettCodeConfig:
     return ZettCodeConfig(
         workspace=tmp_path,
@@ -34,23 +41,24 @@ def _config(tmp_path: Path, **changes: object) -> ZettCodeConfig:
     )
 
 
-def test_the_distribution_publishes_exactly_the_plugins_the_list_names_in_that_order():
+def test_the_distribution_publishes_its_parts_as_one_point_naming_the_list():
+    """One entry point per package, holding the tuple: the order is the list's and is not written a second time."""
     published = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["entry-points"][AGENT_PART_GROUP]
 
-    assert list(published) == [plugin.name for plugin in AGENT_PLUGINS]
-    assert list(published.values()) == [f"zettcode.sdk.builtins:{type(plugin).__name__}" for plugin in AGENT_PLUGINS]
+    assert published == {"parts": "zettcode.sdk.builtins:AGENT_PLUGINS"}
+    assert [plugin.name for plugin in AGENT_PLUGINS] == list(AGENT_PLUGIN_NAMES)
+    assert len(set(AGENT_PLUGIN_NAMES)) == len(AGENT_PLUGINS), "each part has a name of its own"
 
 
 def test_the_installed_environment_advertises_the_same():
     found = {point.name: point.value for point in _sdk_points()}
 
-    assert found == {plugin.name: f"zettcode.sdk.builtins:{type(plugin).__name__}" for plugin in AGENT_PLUGINS}
+    assert found == {"parts": "zettcode.sdk.builtins:AGENT_PLUGINS"}
 
 
-def test_discovery_activates_them_in_the_order_of_the_list_and_not_in_the_order_the_names_sort(tmp_path: Path):
-    """Extensions that share a priority keep the order they registered in, so this order is behaviour."""
-    points = sorted(_sdk_points(), key=lambda point: point.name)
-    assert [point.name for point in points] != list(AGENT_PLUGIN_NAMES), "sorted by name, they are in another order"
+def test_discovery_activates_them_in_the_order_the_list_holds(tmp_path: Path):
+    """One point hands over the tuple in order, so the agent receives its extensions in the order the list writes."""
+    points = _sdk_points()
 
     plugins = run(
         loader.Loader(_config(tmp_path), runtime_state(_config(tmp_path))),
@@ -70,9 +78,8 @@ def test_a_plugin_is_activated_after_the_one_whose_service_it_reads_whatever_the
     ranks = (type(subagents).rank, type(capabilities).rank)
     try:
         type(subagents).rank, type(capabilities).rank = 0, 99  # the wrong way round
-        points = [
-            point for point in entry_points(group=AGENT_PART_GROUP) if point.name in {"subagents", "capabilities"}
-        ]
+        # One point that publishes just these two: the runtime's own point holds the whole list, in its own order.
+        points = [EntryPoint("parts", f"{__name__}:_pair", AGENT_PART_GROUP)]
         config = _config(tmp_path)
         plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=points)
     finally:

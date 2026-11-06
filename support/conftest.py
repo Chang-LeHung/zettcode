@@ -31,31 +31,15 @@ PROGRAM_PARTS = (
     ("themes", "zettcode.app.plugins.builtins:BuiltinThemes"),
 )
 
-#: The plugins that compose the agent, as the SDK publishes them under `zettcode.agent`, sorted by name. The loader
-#: activates them by the rank `zettcode.sdk.builtins` gives them; `test_structure.py` compares this with the
-#: distribution's `pyproject.toml`.
-AGENT_PARTS = tuple(
-    sorted(
-        (name, f"zettcode.sdk.builtins:{cls}")
-        for name, cls in (
-            ("coding", "CodingTools"),
-            ("capabilities", "Capabilities"),
-            ("subagents", "Subagents"),
-            ("shell-permission", "ShellPermission"),
-            ("session-log", "SessionLog"),
-            ("usage-tracking", "UsageTracking"),
-            ("context-tracking", "ContextTracking"),
-            ("side-questions", "SideQuestionBoundary"),
-            ("self-compaction", "SelfCompaction"),
-            ("compaction", "Compaction"),
-        )
-    )
-)
+#: The plugins that compose the agent, as the SDK publishes them under `zettcode.agent`: one entry point naming the
+#: tuple, which is the order they are activated in. `test_structure.py` compares this with the distribution's
+#: `pyproject.toml`.
+AGENT_PARTS = (("parts", "zettcode.sdk.builtins:AGENT_PLUGINS"),)
 
 
 #: The parts of the agent that live in distributions of their own (`zettcode-skills`, `zettcode-mcp`, ...), published
-#: under the same `zettcode.agent` group, sorted by name. `test_structure.py` compares this with their `pyproject.toml`
-#: files.
+#: under the same `zettcode.agent` group, sorted by entry-point name. `test_structure.py` compares this with their
+#: `pyproject.toml` files.
 EXTERNAL_AGENT_PARTS = (
     ("ask-user", "zettcode.ask_user.plugin:AskUser"),
     ("files", "zettcode.files.plugin:FileResources"),
@@ -63,9 +47,8 @@ EXTERNAL_AGENT_PARTS = (
     ("long-output", "zettcode.truncation.plugin:LongOutput"),
     ("mcp", "zettcode.mcp.plugin:McpTools"),
     ("messaging", "zettcode.messaging.plugin:Messaging"),
+    ("parts", "zettcode.skills.plugin:PLUGINS"),
     ("project-instructions", "zettcode.instructions.plugin:ProjectInstructions"),
-    ("skill-tool", "zettcode.skills.plugin:SkillTool"),
-    ("skills", "zettcode.skills.plugin:SkillResources"),
     ("todos", "zettcode.todos.plugin:TodoPlan"),
     ("tool-guidelines", "zettcode.guidance.plugin:ToolGuidance"),
     ("tool-output", "zettcode.tool_output.plugin:ToolOutput"),

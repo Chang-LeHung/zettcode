@@ -289,8 +289,10 @@ def run(
     # The parts of the program that need a screen are for a loader that has one.
     points = tuple(point for point in points if terminal or part_group(point) != TERMINAL_PART_GROUP)
     points = tuple(point for point in points if agent or part_group(point) != AGENT_PART_GROUP)
-    parts = {point.name for point in points if part_group(point) is not None}
-    agent_names = {point.name for point in points if part_group(point) == AGENT_PART_GROUP}
+    #: The plugins the program publishes itself: a part loads even when `[plugins] enabled` is false.
+    parts: set[str] = set()
+    #: The agent's parts, which are required like the ones the program compiles in: a disable line does not reach them.
+    agent_names: set[str] = set()
     # The configuration file's own list and the switch file's, merged for the one caller that loads. The switch
     # module cannot be imported here (it imports this one), so the union is written out; `off_names` is the same
     # rule for the front ends.
@@ -301,10 +303,34 @@ def run(
     taken: dict[str, list[str]] = {}
     for point in points:
         who = _described(point)
+        group = part_group(point)
+        if group is not None:
+            # A part's point names one plugin or the tuple a package owns. It is expanded here, so everything below is
+            # keyed on the plugin's own name — which is what `deps`, the required list and a disable line use — and a
+            # package with several parts still offers one entry point.
+            for candidate in _from_point(loader, point):
+                name = candidate.origin
+                if name in sources:
+                    # The program's parts come first, so a later plugin under the same name is the one that loses; it
+                    # must not take the place of a part, a required one least of all. The same distribution listed
+                    # twice (a stale `dist-info` beside an editable copy) is an environment quirk, not a clash.
+                    if _distribution(point) is None or _distribution(point) != owners_dist.get(name):
+                        taken.setdefault(name, []).append(who)
+                    continue
+                owners[name] = who
+                owners_dist[name] = _distribution(point)
+                parts.add(name)
+                if group == AGENT_PART_GROUP:
+                    agent_names.add(name)
+                if candidate.plugin is None:
+                    # A point that could not be resolved at all: the failure is a candidate of its own, and there is
+                    # nothing to pull back in later.
+                    candidates.append(candidate)
+                    sources[name] = partial(_once, candidate)
+                    continue
+                sources[name] = partial(_once, candidate)
+            continue
         if point.name in sources:
-            # The program's parts come first, so a later plugin under the same name is the one that loses; it must
-            # not take the place of a part, a required one least of all. The same distribution listed twice (a stale
-            # `dist-info` beside an editable copy) is an environment quirk, not a clash.
             if _distribution(point) is None or _distribution(point) != owners_dist.get(point.name):
                 taken.setdefault(point.name, []).append(who)
             continue
@@ -440,17 +466,31 @@ def _rank(candidate: _Candidate) -> tuple[int, str]:
     return (candidate.plugin.rank if candidate.plugin is not None else -1, candidate.origin)
 
 
+def _once(candidate: _Candidate) -> list[_Candidate]:
+    """Offer one candidate already resolved, for a source that has nothing left to import."""
+    return [candidate]
+
+
 def _from_point(loader: Loader, point: EntryPoint) -> list[_Candidate]:
-    """Resolve one entry point into a candidate; a failure is a candidate that carries it."""
+    """Resolve one entry point into the candidates it publishes; a failure is one candidate that carries it.
+
+    A point may name one plugin, or a sequence of them (see :func:`_plugins`): a package with several parts
+    publishes them together, so its entry points are one per package and not one per plugin. Each plugin keeps its
+    own name, which is what ``deps``, the required list and the switch catalog are keyed on; the point's name is the
+    origin only when it publishes a single plugin, so a package of several is told apart by its plugins' names.
+    """
     group = part_group(point)
     part = group is not None
     agent = group == AGENT_PART_GROUP
     try:
-        return [_Candidate(_instantiate(point), point.name, builtin=agent, part=part, agent=agent)]
+        found = _plugins(point)
     except KeyboardInterrupt:
         raise
     except BaseException as error:
         return [_Candidate(None, point.name, builtin=agent, error=error, part=part, agent=agent)]
+    if len(found) == 1:
+        return [_Candidate(found[0], point.name, builtin=agent, part=part, agent=agent)]
+    return [_Candidate(plugin, plugin.name, builtin=agent, part=part, agent=agent) for plugin in found]
 
 
 def _from_file(loader: Loader, path: Path) -> list[_Candidate]:
@@ -641,9 +681,27 @@ def _is_bool_setting(config: ZettCodeConfig, setting: PluginSetting) -> bool:
     return isinstance(getattr(config, setting.field, None), bool)
 
 
-def _instantiate(point: EntryPoint) -> Plugin[Any]:
-    """Resolve one entry point to a plugin: a class, a factory, or an instance."""
+def _plugins(point: EntryPoint) -> list[Plugin[Any]]:
+    """Resolve one entry point to the plugins it publishes: one, or a sequence of them.
+
+    A point's value is a plugin, a plugin subclass, a factory returning one of those, or a list or tuple of any of
+    those — which is how a distribution with several parts advertises one entry point instead of one per part.
+    """
     target = point.load()
+    if callable(target) and not isinstance(target, (Plugin, type)):
+        target = target()  # a factory, which may itself return the parts a package publishes
+    if isinstance(target, (list, tuple)):
+        found = [_one(item, point) for item in target]
+        names = [plugin.name for plugin in found]
+        repeated = sorted({name for name in names if names.count(name) > 1})
+        if repeated:
+            raise ValueError(f"{point.name} publishes {repeated} more than once")
+        return found
+    return [_one(target, point)]
+
+
+def _one(target: object, point: EntryPoint) -> Plugin[Any]:
+    """Resolve one value a point names to a plugin: an instance, a subclass, or a factory returning one."""
     if isinstance(target, Plugin):
         return target
     if isinstance(target, type) and issubclass(target, Plugin):
