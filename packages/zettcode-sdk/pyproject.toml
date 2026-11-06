@@ -39,7 +39,7 @@ dependencies = [
 
 # The plugins that compose the agent. A part of the program, not a plugin: the `zettcode.plugins` group is what the
 # plugin release line looks for. They are activated by the rank `builtins.py` gives them, then by their `deps`.
-[project.entry-points."zettcode.agent"]
+[project.entry-points."zettcode.plugin"]
 coding = "zettcode.sdk.builtins:CodingTools"
 capabilities = "zettcode.sdk.builtins:Capabilities"
 subagents = "zettcode.sdk.builtins:Subagents"

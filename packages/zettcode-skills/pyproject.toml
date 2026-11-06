@@ -25,7 +25,7 @@ dependencies = [
 
 # Parts of the program, not plugins: the `zettcode.plugins` group is what the plugin release line looks for. They are
 # activated with the agent's other parts and `[skills] enabled` is what turns them off.
-[project.entry-points."zettcode.agent"]
+[project.entry-points."zettcode.plugin"]
 skills = "zettcode.skills.plugin:SkillResources"
 skill-tool = "zettcode.skills.plugin:SkillTool"
 

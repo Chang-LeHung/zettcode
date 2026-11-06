@@ -18,7 +18,7 @@ from zett_agent.tools.base import tool
 from plugin_helpers import runtime_state
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import AgentBuild, load_plugins
-from zettcode.engine.plugins.loader import AGENT_PART_GROUP, part_group
+from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
 from zettcode.engine.storage import SessionStore
 from zettcode.engine.tools.files import read
 from zettcode.truncation import LongOutput
@@ -366,7 +366,7 @@ class FakeEntryPoint:
 
 def test_the_plugin_is_a_part_of_the_agent_found_through_its_entry_point_group():
     """The distribution publishes it, so the runtime discovers it like any other part and no list names it."""
-    found = {point.name: point for point in entry_points(group=AGENT_PART_GROUP)}
+    found = {point.name: point for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)}
 
     assert found["long-output"].value == "zettcode.truncation.plugin:LongOutput"
     assert part_group(found["long-output"]) == AGENT_PART_GROUP

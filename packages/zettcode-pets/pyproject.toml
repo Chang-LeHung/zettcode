@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 # A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for.
-[project.entry-points."zettcode.terminal"]
+[project.entry-points."zettcode.plugin"]
 pets = "zettcode.pets.plugin:PetsPlugin"
 
 [project.urls]

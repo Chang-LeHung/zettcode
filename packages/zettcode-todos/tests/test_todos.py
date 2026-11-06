@@ -11,7 +11,7 @@ from zett_agent.extensions.todo import TodoWriteExtension
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import AgentBuild, load_plugins
 from zettcode.engine.plugins import services as names
-from zettcode.engine.plugins.loader import AGENT_PART_GROUP, part_group
+from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
 from zettcode.todos import TodoPlan
 
 
@@ -49,7 +49,7 @@ def loaded(tmp_path: Path, **changes: object):
 
 
 def test_the_plugin_is_a_part_of_the_agent_found_through_its_entry_point_group():
-    found = {point.name: point for point in entry_points(group=AGENT_PART_GROUP)}
+    found = {point.name: point for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)}
 
     assert found["todos"].value == "zettcode.todos.plugin:TodoPlan"
     assert part_group(found["todos"]) == AGENT_PART_GROUP

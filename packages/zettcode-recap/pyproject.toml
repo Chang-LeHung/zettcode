@@ -34,6 +34,10 @@ Issues = "https://github.com/Chang-LeHung/zettcode/issues"
 [project.entry-points."zettcode.plugins"]
 recap = "zettcode.recap:RecapPlugin"
 
+[tool.zettcode]
+# Published on its own line and installed by a reader: the group name no longer says which packages are plugins.
+plugin = true
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

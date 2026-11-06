@@ -6,7 +6,7 @@ from importlib.metadata import entry_points
 from pathlib import Path
 
 from zettcode.config import ZettCodeConfig
-from zettcode.engine.plugins.loader import AGENT_PART_GROUP, part_group
+from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
 from zettcode.mention import Mention, MentionProvider, MentionRegistry
 from zettcode.skills import SkillMentions, SkillResources, SkillTool
 
@@ -55,7 +55,7 @@ def test_the_skills_are_offered_by_name_and_an_unknown_one_expands_to_nothing(tm
 
 
 def test_both_plugins_are_parts_of_the_agent_found_through_its_entry_point_group():
-    found = {point.name: point for point in entry_points(group=AGENT_PART_GROUP)}
+    found = {point.name: point for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)}
 
     assert found["skills"].value == "zettcode.skills.plugin:SkillResources"
     assert found["skill-tool"].value == "zettcode.skills.plugin:SkillTool"

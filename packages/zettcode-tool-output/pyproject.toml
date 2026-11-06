@@ -26,7 +26,7 @@ dependencies = [
 # A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for. It is
 # activated with the agent's other parts and nothing turns it off: without it a command's output would be left in the
 # reader's project.
-[project.entry-points."zettcode.agent"]
+[project.entry-points."zettcode.plugin"]
 tool-output = "zettcode.tool_output.plugin:ToolOutput"
 
 [project.urls]

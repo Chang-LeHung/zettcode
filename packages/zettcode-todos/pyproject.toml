@@ -25,7 +25,7 @@ dependencies = [
 
 # A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for. It is
 # activated with the agent's other parts and `[harness] todowrite` is what gives the model the tool.
-[project.entry-points."zettcode.agent"]
+[project.entry-points."zettcode.plugin"]
 todos = "zettcode.todos.plugin:TodoPlan"
 
 [project.urls]

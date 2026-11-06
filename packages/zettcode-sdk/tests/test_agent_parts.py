@@ -11,7 +11,7 @@ from plugin_helpers import runtime_state  # noqa: E402  (support/ is on the path
 from zettcode._compat import tomllib
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import AgentBuild, loader
-from zettcode.engine.plugins.loader import AGENT_PART_GROUP, run
+from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, run
 from zettcode.sdk.builtins import AGENT_PLUGIN_NAMES, AGENT_PLUGINS, REQUIRED_AGENT_NAMES, require_agent_parts
 
 PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
@@ -19,7 +19,11 @@ PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 
 def _sdk_points() -> list:
     """The entry points this distribution publishes: the group also holds the parts of the skills and the MCP client."""
-    return [point for point in entry_points(group=AGENT_PART_GROUP) if point.dist and point.dist.name == "zettcode-sdk"]
+    return [
+        point
+        for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)
+        if point.dist and point.dist.name == "zettcode-sdk"
+    ]
 
 
 def _config(tmp_path: Path, **changes: object) -> ZettCodeConfig:
@@ -35,7 +39,9 @@ def _config(tmp_path: Path, **changes: object) -> ZettCodeConfig:
 
 
 def test_the_distribution_publishes_exactly_the_plugins_the_list_names_in_that_order():
-    published = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["entry-points"][AGENT_PART_GROUP]
+    published = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["entry-points"][
+        PLUGIN_ENTRY_POINT_GROUP
+    ]
 
     assert list(published) == [plugin.name for plugin in AGENT_PLUGINS]
     assert list(published.values()) == [f"zettcode.sdk.builtins:{type(plugin).__name__}" for plugin in AGENT_PLUGINS]
@@ -71,7 +77,9 @@ def test_a_plugin_is_activated_after_the_one_whose_service_it_reads_whatever_the
     try:
         type(subagents).rank, type(capabilities).rank = 0, 99  # the wrong way round
         points = [
-            point for point in entry_points(group=AGENT_PART_GROUP) if point.name in {"subagents", "capabilities"}
+            point
+            for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)
+            if point.name in {"subagents", "capabilities"}
         ]
         config = _config(tmp_path)
         plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=points)
@@ -84,7 +92,7 @@ def test_a_plugin_is_activated_after_the_one_whose_service_it_reads_whatever_the
 
 def test_a_disable_line_does_not_reach_the_plugins_that_compose_the_agent(tmp_path: Path, caplog):
     config = _config(tmp_path, disabled_plugins=("coding", "session-log"))
-    points = list(entry_points(group=AGENT_PART_GROUP))
+    points = list(entry_points(group=PLUGIN_ENTRY_POINT_GROUP))
 
     with caplog.at_level("WARNING", logger="zettcode.plugins"):
         plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=points)
@@ -198,7 +206,7 @@ def test_the_skills_and_the_mcp_client_are_parts_of_the_agent_published_by_distr
         mcp_enabled=True,
         mcp_config=tmp_path / "mcp.json",
     )
-    points = list(entry_points(group=AGENT_PART_GROUP))
+    points = list(entry_points(group=PLUGIN_ENTRY_POINT_GROUP))
 
     plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=points)
 

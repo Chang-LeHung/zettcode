@@ -1,7 +1,7 @@
 """Print the distributions the program is made of, in the order a release has to publish them.
 
 The order is not a list anyone keeps: it is read from the `pyproject.toml` of every distribution under `packages/` that
-is not a plugin (a plugin declares a `zettcode.plugins` entry point and is released on its own line), from the
+is not a plugin (a plugin says `[tool.zettcode] plugin = true` and is released on its own line), from the
 `zettcode-*` dependencies each one declares. A topological sort with alphabetical tie-breaks gives the same output on
 every run, so `make build`, `release.yml` and the test that holds the rule all agree.
 
@@ -41,7 +41,7 @@ def _described(directory: pathlib.Path) -> tuple[str, set[str], bool]:
         for match in [re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", line)]
         if match
     }
-    plugin = bool(project.get("entry-points", {}).get("zettcode.plugins"))
+    plugin = bool(settings.get("tool", {}).get("zettcode", {}).get("plugin"))
     return project["name"], needed, plugin
 
 
