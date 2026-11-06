@@ -12,6 +12,7 @@ stay out of the import graph until they are needed.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import platform
 import sys
@@ -53,6 +54,8 @@ from zettcode.engine.plugins.services import (
     USAGE,
 )
 
+from .delivery import DELIVERY
+from .delivery_runtime import RuntimeDelivery
 from .dialogue.side import SideQuestions
 from .extensions.compaction import COUNTER_WAIT, CompactionCounter, OnDemandCompaction
 from .extensions.context import ContextExtension, Tokenizer
@@ -240,6 +243,10 @@ class ZettCodeEngine:
     _counter: asyncio.Task[None] | None = field(default=None, repr=False)
     #: The sweep for empty session folders a killed process left behind, run once at the start on a thread.
     _tidying: asyncio.Task[int] | None = field(default=None, repr=False)
+    #: Requests running now, counted by the agent's ``stream``; an external event steers only while this is above zero.
+    _runs: int = field(default=0, repr=False)
+    #: What waits for the last request to end: a follow-up queue draining itself, see :meth:`on_idle`.
+    _idle: list[Callable[[], None]] = field(default_factory=list, repr=False)
     #: The plugins' triggers, started with the runtime (see :meth:`start`) and stopped by :meth:`aclose`.
     _triggers: TriggerHost | None = field(default=None, repr=False)
     _models: dict[ModelConfig, Adapter] = field(default_factory=dict)
@@ -271,7 +278,7 @@ class ZettCodeEngine:
                 end that has plugins of its own passes its loader; the default loads the installed distributions
                 and no built-in plugin.
             messenger: The line to the other sessions, which the caller builds
-                (:meth:`zettcode.sdk.messenger.Messenger.create`); the runtime hands it to the plugins by name and
+                (``zettcode.messaging.messenger.Messenger.create``); the runtime hands it to the plugins by name and
                 keeps it for whoever asks. ``None`` switches messaging off for this runtime.
         """
         os.chdir(config.workspace)
@@ -291,12 +298,16 @@ class ZettCodeEngine:
         harness = HarnessSwitch(on=config.jit_harness)
         # What the built-in agent plugins build on, handed over by name: they own the extensions, the
         # runtime owns this state and goes on using it. See `zettcode.engine.plugins.services`.
+        # The runtime's own delivery of external events: made empty here because a plugin activates before the runtime
+        # exists, bound the moment it does, so what a plugin keeps is the live one.
+        delivery = RuntimeDelivery()
         shared: dict[str, object] = {
             POLICY: policy,
             HARNESS: harness,
             PERSISTENCE: persistence,
             MODELS: models,
             COMPACTION_COUNTER: counter,
+            DELIVERY: delivery,
         }
         if selected is not None:
             # A plugin that sizes something for the model asks for this one; a machine with no model provides
@@ -322,6 +333,8 @@ class ZettCodeEngine:
         # The session a launch starts in is a new one, so this always succeeds; a launch that resumes
         # another moves the lock when it installs it.
         runtime.session_locks.claim(runtime.session_id)
+        # The plugins kept the delivery by name; from here it reaches this runtime.
+        delivery.bind(runtime)
         # Asked for every request, so a choice made in the middle of a conversation applies to its next one.
         runtime.compaction.self_compact = runtime.self_compacting
         return runtime
@@ -492,6 +505,50 @@ class ZettCodeEngine:
         if self.model is None:
             raise RuntimeError("Runtime has not started; await start() first")
         return self.model
+
+    @property
+    def running(self) -> bool:
+        """Return whether a request of this session is running now (a side question is not one)."""
+        return self._runs > 0
+
+    def run_started(self) -> None:
+        """Count a request as running; the agent's ``stream`` calls it and its end calls :meth:`run_finished`."""
+        self._runs += 1
+
+    def run_finished(self) -> None:
+        """Count a request as done, and tell whoever waits for the conversation to be free.
+
+        A waiter runs inside the run's own ``finally``, so one that raises must not replace what the run was ending
+        with (a cancellation included) or keep the waiters behind it from hearing that the conversation is free.
+        """
+        self._runs = max(0, self._runs - 1)
+        if self._runs:
+            return
+        waiters, self._idle = self._idle, []
+        for callback in waiters:
+            try:
+                callback()
+            except Exception as error:  # noqa: BLE001 - one waiter's defect is not the run's ending
+                logging.getLogger("zettcode.engine").warning(
+                    "delivery.idle_failed", exc_info=error, extra={"callback": repr(callback)}
+                )
+
+    def on_idle(self, callback: Callable[[], None]) -> Callable[[], None]:
+        """Call ``callback`` when the last request ends; it is called at once when nothing runs.
+
+        Returns:
+            What forgets the callback again, for a caller that stops waiting before the request ends.
+        """
+        if not self.running:
+            callback()
+            return lambda: None
+        self._idle.append(callback)
+
+        def forget() -> None:
+            if callback in self._idle:
+                self._idle.remove(callback)
+
+        return forget
 
     @property
     def required_model(self) -> ModelConfig:
@@ -809,6 +866,8 @@ class ZettCodeEngine:
         A build that is past them is awaited, because it is already creating the
         client this method has to close.
         """
+        # Nobody is left to start a turn: a waiter woken while this closes would try to start one on a closing runtime.
+        self._idle.clear()
         triggers, self._triggers = self._triggers, None
         if triggers is not None:
             # First, so a machine-wide lock is let go before anything slow below: another process is waiting for it.

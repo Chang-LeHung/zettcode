@@ -14,16 +14,16 @@ from zettcode.broker.client import BrokerClient, Receipt, SendError
 from zettcode.broker.protocol import MAX_HOPS, MAX_TEXT
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.engine.dialogue.side import SideQuestions, question
-from zettcode.relay import Relayed
-from zettcode.sdk.builtins import load_agent_plugins
-from zettcode.sdk.extensions.messaging import (
+from zettcode.messaging.extension import (
     LIST_SESSIONS_TOOL_NAME,
     MANAGE_GROUP_TOOL_NAME,
     MESSAGE_HISTORY_TOOL_NAME,
     SEND_MESSAGE_TOOL_NAME,
     SessionMessagingExtension,
 )
-from zettcode.sdk.messenger import Messenger
+from zettcode.messaging.messenger import Messenger
+from zettcode.relay import Relayed
+from zettcode.sdk.builtins import load_agent_plugins
 
 ME = "01a10b75-aaaa-7000-8000-000000000001"
 BOB = "02b20c86-bbbb-7000-8000-000000000002"

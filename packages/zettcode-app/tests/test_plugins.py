@@ -85,6 +85,7 @@ def agent_parts() -> list[FakeEntryPoint]:
     from zettcode.instructions.plugin import ProjectInstructions
     from zettcode.jit_harness.plugin import Harness
     from zettcode.mcp.plugin import McpTools
+    from zettcode.messaging.plugin import Messaging
     from zettcode.skills.plugin import SkillResources, SkillTool
     from zettcode.todos.plugin import TodoPlan
     from zettcode.tool_output.plugin import ToolOutput
@@ -100,6 +101,7 @@ def agent_parts() -> list[FakeEntryPoint]:
         SkillResources,
         SkillTool,
         McpTools,
+        Messaging,
         TodoPlan,
         ToolGuidance,
         ToolOutput,
@@ -940,6 +942,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "harness",
         "long-output",
         "mcp",
+        "messaging",
         "project-instructions",
         "skill-tool",
         "skills",

@@ -54,6 +54,8 @@ PYTHON_ONLY: dict[str, dict[str, str]] = {
         "self_compaction_default": "the server's configuration file is not an HTTP client's to read or write",
         "use_self_compaction_default": "the same: it writes the server's configuration file",
         "join_sessions": "a callback cannot cross HTTP: `messages()` lists what waits and `relay(id)` answers one",
+        "deliver": "a message from outside is `POST /messages` here, which the server delivers through the same inbox",
+        "inbox": "the queue a front end starts turns from; a server client cannot start a turn in this process",
         "run": "`prompt(...).result` is the same thing, a promise",
         "stream": "an alias of `prompt` in Python",
         "reachable": "the broker is the gateway's concern (`zettcode.gateway`), not the server's: it is a Python process's own line to other sessions",

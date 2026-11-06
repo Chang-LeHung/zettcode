@@ -54,6 +54,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 from zettcode.app.errors import COMMAND_ERRORS
 from zettcode.error_text import describe_error
 from zettcode.mentions import MentionRegistry, SessionMentions
+from zettcode.messaging.relay import Relay
 from zettcode.plugin_api.commands import (
     Command,
     CommandContext,
@@ -302,8 +303,15 @@ class ZettCodeApp(
         self._editing_slot: int | None = None
         self._follow_ups_held = False
         self._turn_running = False
-        self._inbox: list[Relayed] = []
-        self._relayed_steering: list[tuple[str, Relayed]] = []
+        # What arrives from another session: the queue is the runtime's inbox, and the two answers it needs from this
+        # shell are whether a request is running and how to hand a message to it.
+        self._relay = Relay(
+            busy=lambda: self._busy,
+            steer=self._steer_relayed,
+            inbox=self._runtime_inbox,
+            start=self._start_relayed,
+            on_waiting=self._relayed_waits,
+        )
         self._turn_answer: str | None = None
         self._lock_watch: asyncio.Task[None] | None = None
         self._lock_said: str | None = None
@@ -978,6 +986,11 @@ class ZettCodeApp(
         order. Follow-ups then go out one at a time: each is a turn of its own, and the next
         waits for that turn to end. They go out only while the list is not held: after a
         request that was stopped or failed it is, and it stays so until a reply completes.
+
+        The queues go in that order, and the relay's batch is the third: a message another session sent waits behind
+        what the reader queued. The inbox is last because its own wake-up lands while this shell is still marked busy
+        — the runtime counts a request as ended before the shell does — so it is asked again here, where nothing runs
+        and :meth:`~zettcode.messaging.inbox.Inbox.start_with` drains what waited.
         """
         if self._busy:
             return
@@ -987,6 +1000,8 @@ class ZettCodeApp(
             self._start_follow_up()
         else:
             self._start_next_relayed()
+            if not self._busy:
+                self._start_inbox()
 
     def submit(self, value: str, *, command: bool | None = None) -> bool | None:
         """Start a turn or a slash command, or take a message typed while one runs.

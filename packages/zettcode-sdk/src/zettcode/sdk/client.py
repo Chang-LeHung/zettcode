@@ -73,8 +73,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.engine.agent import ZettCodeAgent
     from zettcode.engine.plugins.commands import PlainCommand
     from zettcode.mentions import MentionRegistry
-
-    from .messenger import Messenger
+    from zettcode.messaging.messenger import Messenger
 
 __all__ = ["Client", "PluginReport", "SETTINGS", "Sessions", "TriggerInfo", "prompt", "prompt_sync"]
 
@@ -201,6 +200,21 @@ def _coerced(settings: Mapping[str, object]) -> dict[str, object]:
             value = _choice(name, value, choices[name])
         values[name] = value
     return values
+
+
+def _incoming(relayed: object) -> IncomingMessage:
+    """Return one message another session sent as the value this SDK hands a program (see :meth:`Client.join_sessions`)."""
+    return IncomingMessage(
+        sender_id=relayed.sender_id,  # type: ignore[attr-defined]
+        sender=relayed.sender,  # type: ignore[attr-defined]
+        text=relayed.text,  # type: ignore[attr-defined]
+        via=relayed.via,  # type: ignore[attr-defined]
+        hops=relayed.hops,  # type: ignore[attr-defined]
+        direct=relayed.direct,  # type: ignore[attr-defined]
+        mode=relayed.mode,  # type: ignore[attr-defined]
+        group=relayed.group,  # type: ignore[attr-defined]
+        images=tuple(Image(item.data, item.media_type) for item in relayed.images),  # type: ignore[attr-defined]
+    )
 
 
 def _choice(name: str, value: object, kind: type) -> object:
@@ -461,9 +475,9 @@ class Client:
         # Imported here, not at the top of the module: importing the SDK costs nothing until a client is made.
         from zettcode.engine.agent import ZettCodeAgent
         from zettcode.engine.core import ZettCodeEngine
+        from zettcode.messaging.messenger import Messenger
 
         from .builtins import load_agent_plugins
-        from .messenger import Messenger
         from .translation import AgentBridge
 
         try:
@@ -473,6 +487,9 @@ class Client:
             raise
         self._agent = ZettCodeAgent(runtime)
         self._bridge = AgentBridge(self._agent)
+        #: The turns this client started from the inbox, kept so a task is not collected while it runs.
+        self._delivering: set[asyncio.Task[object]] = set()
+        self._inbox_start()
         self._fresh = {runtime.session_id}
         try:
             if model is not None:
@@ -671,21 +688,7 @@ class Client:
             return False
         self._messenger = messenger
         messenger.direct = direct
-        messenger.receiver = lambda relayed: self._receipt(
-            on_message(
-                IncomingMessage(
-                    sender_id=relayed.sender_id,
-                    sender=relayed.sender,
-                    text=relayed.text,
-                    via=relayed.via,
-                    hops=relayed.hops,
-                    direct=relayed.direct,
-                    mode=relayed.mode,
-                    group=relayed.group,
-                    images=tuple(Image(item.data, item.media_type) for item in relayed.images),
-                )
-            )
-        )
+        messenger.receiver = lambda relayed: self._receipt(on_message(_incoming(relayed)))
         self._describe(busy=self._stream is not None)
         await messenger.start()
         return True
@@ -1303,6 +1306,112 @@ class Client:
         return self._agent.use_harness(on)
 
     # -- what is loaded --
+    def deliver(
+        self,
+        prompt: Prompt,
+        *,
+        mode: str = MODE_STEER,
+        images: Sequence[Image] = (),
+        mentions: bool = False,
+        instructions: str | None = None,
+        origin: str = "event",
+    ) -> str:
+        """Hand a message to this session from something that is not the reader.
+
+        The same two ways a reader's message has: a steer goes into the request that is running, and a follow-up (or a
+        message that arrives while nothing runs) becomes the next turn. What arrives from another session, a timer or a
+        webhook all come through here, so a program that watches for events starts no turns of its own.
+
+        Args:
+            prompt: What to say, as a prompt is: text and pictures in order.
+            mode: ``"steer"`` (the default) or ``"followup"``, as for a message between sessions.
+            images: Pictures to send with the text.
+            mentions: Resolve ``@`` references in the text, as a reader's draft does.
+            instructions: Text appended after a follow-up turn, as for :meth:`prompt`.
+            origin: Where the message came from, for the transcript and the stored message.
+
+        Returns:
+            ``"steered"``, ``"queued"`` or ``"started"``.
+
+        Raises:
+            ConfigurationError: No model is configured, or a picture is sent to a model that cannot see.
+            ClientClosedError: The client was closed.
+            ValueError: The message is empty, or ``mode`` is neither ``"steer"`` nor ``"followup"``.
+        """
+        from zettcode.messaging.inbox import INBOX, Inbox
+
+        from .session import _prompt_parts
+
+        self._check_open()
+        inbox = self._agent.runtime.plugins.find(INBOX, Inbox)
+        if inbox is None:
+            raise ConfigurationError("This client has no inbox: the messaging plugin did not load")
+        entry = self._agent.active_model
+        if entry is None:
+            raise ConfigurationError("No model is configured; add one with /config before delivering a message")
+        registry = self._mention_registry() if mentions else None
+        parts, hint = _prompt_parts(
+            prompt, images, mentions=registry, multimodal=entry.multimodal, model_name=entry.shown_name
+        )
+        message = self._agent.turn(parts, hint=hint)
+        return inbox.deliver(message, mode=mode, hint=instructions, origin=origin)
+
+    def _inbox_start(self) -> None:
+        """Give the inbox this client's starter, so a waiting message becomes a turn the way a prompt does."""
+        from zettcode.messaging.inbox import INBOX, Inbox
+
+        inbox = self._agent.runtime.plugins.find(INBOX, Inbox)
+        if inbox is not None:
+            inbox.start_with(self._start_waiting)
+
+    def _start_waiting(self, item: object) -> bool:
+        """Start a turn from one message the inbox held, and say whether it is under way."""
+        from zettcode.messaging.inbox import Waiting
+
+        if self._closed or not isinstance(item, Waiting):
+            return False
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return False  # no loop to run it on: the message waits for one
+        text = item.message if isinstance(item.message, str) else item.message.text
+        relayed = item.payload
+
+        async def drive() -> None:
+            """Run the waiting message as a turn, once this client lets go of the run it just finished.
+
+            A message another session sent runs through :meth:`Session.relay`, which frames it with who sent it; one
+            from anywhere else is an ordinary prompt. The inbox says the runtime has no request left at the moment the
+            agent's stream ends, and this client clears the run it holds a moment later, so a turn started in that
+            window is refused as busy and is tried again.
+            """
+            for _ in range(500):
+                try:
+                    if relayed is not None:
+                        await self.session.relay(_incoming(relayed))
+                    else:
+                        await self.prompt(text, instructions=item.hint)
+                    return
+                except SessionBusyError:
+                    await asyncio.sleep(0.01)
+            # It never became free: put the message back rather than lose it, so the next end of a request starts it.
+            inbox = self.inbox
+            deliver = getattr(inbox, "deliver", None)
+            if deliver is not None:
+                deliver(item.message, mode="followup", hint=item.hint, origin=item.origin, payload=relayed)
+
+        task = loop.create_task(drive())
+        self._delivering.add(task)
+        task.add_done_callback(self._delivering.discard)
+        return True
+
+    @property
+    def inbox(self) -> object | None:
+        """Return the inbox a front end registers its starter with, or ``None`` when the messaging part did not load."""
+        from zettcode.messaging.inbox import INBOX, Inbox
+
+        return self._agent.runtime.plugins.find(INBOX, Inbox)
+
     @property
     def usage(self) -> Usage:
         """Return what the current session has spent."""

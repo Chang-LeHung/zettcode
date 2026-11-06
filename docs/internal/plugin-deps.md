@@ -18,8 +18,9 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
   - `zettcode.plugins`: what a reader installs. Own version, own release line.
   - `zettcode.terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`). The SDK and
     the server do not load it. `REQUIRED_PLUGINS = (shell, presenters, commands)` in `app/plugins/loader.py`.
-  - `zettcode.agent`: the plugins that compose the agent. 11 are published by `zettcode-sdk`; `zettcode-skills`
-    (`skills`, `skill-tool`), `zettcode-mcp` (`mcp`), `zettcode-files` (`files`), `zettcode-jit-harness` (`harness`),
+  - `zettcode.agent`: the plugins that compose the agent. 10 are published by `zettcode-sdk`; `zettcode-skills`
+    (`skills`, `skill-tool`), `zettcode-messaging` (`messaging`), `zettcode-mcp` (`mcp`), `zettcode-files` (`files`),
+    `zettcode-jit-harness` (`harness`),
     `zettcode-ask-user` (`ask-user`), `zettcode-instructions` (`project-instructions`), `zettcode-todos` (`todos`),
     `zettcode-tool-output` (`tool-output`), `zettcode-truncation` (`long-output`) and `zettcode-guidance`
     (`tool-guidelines`) are distributions of their own, allowed into the group by
@@ -63,6 +64,28 @@ machine, a `SingletonLock` on `<store parent>/triggers/<name>.lock`; the losers 
 when the holder exits or dies). `ZettCodeEngine.start()` starts a `TriggerHost` for `Plugins.triggers` and `aclose()`
 stops it before anything else, so the machine lock is let go first. Triggers start before the model check, so a machine with no model still runs them. Not done: a trigger
 that fails is not restarted, and its status is read through `ZettCodeEngine.trigger_statuses()`, `Client.plugins.triggers`, and the server's `/plugins` answer (no `/plugins` row in the terminal yet). Invariant P12.
+
+## Delivering into the agent
+
+An event that is not the reader's — another session's message, a trigger, a webhook — has the same two ways in as one
+typed during a request. The engine owns the machinery (`zettcode.engine.delivery.Delivery`, provided as `DELIVERY`:
+`busy` counts the requests a runtime has open, `steer` hands a message to the one running, `when_idle` calls back after
+the last one ends, at once when nothing runs). `zettcode-messaging` owns the queue (`Inbox`, provided as `INBOX`):
+`deliver(message, mode=..., payload=...)` steers while a request runs and queues otherwise, draining one turn at a time
+when the runtime is idle and a front end has registered a starter (`start_with`), which is the front end's own way of
+starting a prompt. Two messages from another session that waited next to each other start as one turn
+(`batch_size`/`merge`); a plain event is always a turn of its own. The queue has a cap; the overflow is refused as
+`FULL`, which the broker turns into "busy, try again".
+
+`Relay` (same package) is what a message from another session adds on top of the queue: the `Receipt` its sender's agent
+reads, the record of what the running request was handed (`steered`/`adopted`) and the return of a steer the run never
+read (`settle`), and the drawing hook a front end uses while one waits. A front end supplies `busy`, `steer`, `start`
+and its inbox; the terminal's `ui` package now holds none of the queue, the cap or the receipts.
+
+`Client.deliver` is the SDK's way in, and it also registers the SDK's starter, so a program's follow-ups run through
+`prompt` exactly as its own turns do; a message another session sent runs through `Session.relay`. The terminal
+registers its starter from `_start_messaging` and asks the inbox again after every turn (`_start_next_command`), because
+the runtime's idle notice lands before the shell clears its own busy flag.
 
 ## Left
 

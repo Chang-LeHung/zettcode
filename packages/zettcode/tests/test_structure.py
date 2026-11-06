@@ -1458,6 +1458,7 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
         "zettcode-sdk",
         "zettcode-skills",
         "zettcode-mcp",
+        "zettcode-messaging",
         "zettcode-files",
         "zettcode-jit-harness",
         "zettcode-ask-user",

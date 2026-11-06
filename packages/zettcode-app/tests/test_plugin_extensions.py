@@ -36,8 +36,8 @@ from zettcode.engine.plugins import (
 )
 from zettcode.engine.plugins import services as names
 from zettcode.instructions import ProjectInstructions
+from zettcode.messaging.messenger import Messenger
 from zettcode.sdk.builtins import AGENT_PLUGINS, load_agent_plugins
-from zettcode.sdk.messenger import Messenger
 from zettcode.todos import TodoPlan
 
 
@@ -397,9 +397,9 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     shared = [e.name for e in parent if _shared_with_children(messaging=False)(e)]
     with_messaging = [e.name for e in parent if _shared_with_children(messaging=True)(e)]
 
-    # The skills are a part of their own, activated ahead of the SDK's; where they stand at run time is their priority.
-    # The per-tool guidance is read fresh by every child and so is not shared; the two extensions that keep output in
-    # the session's folder are, and the shell's kept-output one is now handed over with the rank-0 parts.
+    # The skills and the session messaging are parts of their own, activated ahead of the SDK's; where they stand at
+    # run time is their priority. The messaging extension sits between the coding bundle and the skills because the
+    # `messaging` part sorts there among the rank-0 activations.
     assert shared == [
         "CodingBundle",
         "LongOutputExtension",
@@ -412,7 +412,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     assert "ParentModelSubAgents" not in shared and "SwitchedHarness" not in shared, "no task, no harness"
     assert "AskUserExtension" not in shared, "a child works through its task; it does not ask the person"
     assert "TodoWriteExtension" not in shared, "its plan would be drawn for nobody"
-    assert with_messaging == [*shared[:4], "SessionMessagingExtension", *shared[4:]]
+    assert with_messaging == [*shared[:2], "SessionMessagingExtension", *shared[2:]]
 
 
 def test_every_switch_adds_its_extension_at_its_place(tmp_path):
@@ -422,12 +422,14 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
 
     assert names_ == [
         # The parts of other distributions that used to be listed here (`ask-user`, `project-instructions`, `todos`)
-        # and the three that left the SDK's list for their own (`long-output`, `tool-guidelines`, `tool-output`) are
-        # activated at rank 0, sorted by name, so their extensions register ahead of the SDK's `capabilities`.
+        # and the ones that left the SDK's list for their own (`long-output`, `tool-guidelines`, `tool-output`, and
+        # now `messaging`) are activated at rank 0, sorted by name, so their extensions register ahead of the SDK's
+        # `capabilities`.
         "AskUserExtension",
         "CodingBundle",
         "SwitchedHarness",
         "LongOutputExtension",
+        "SessionMessagingExtension",
         "AgentsMdExtension",
         "SkillExtension",
         "TodoWriteExtension",
@@ -435,7 +437,6 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
         "ToolOutputExtension",
         "ModelCapabilities",
         "ParentModelSubAgents",
-        "SessionMessagingExtension",
         "ShellDenyExtension",
         "ShellApprovalExtension",
         "SessionStore",

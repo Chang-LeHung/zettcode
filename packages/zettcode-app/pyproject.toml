@@ -21,6 +21,8 @@ dependencies = [
   "zettcode-tui",
   "zettcode-sdk",
   "zettcode-broker",
+  # The line to the other sessions, which the shell's agent carries and matches messages against.
+  "zettcode-messaging",
   "zettcode-plugin-api",
   "zettcode-presenters",
   "zett-agent>=0.2.7,<0.3",

@@ -60,6 +60,40 @@ class TurnsMixin(AgentBase):
         relayed: Relayed | None = None,
         cache: CacheMode | str | None = None,
     ) -> AsyncIterator[AgentEvent]:
+        """Run one turn, counting it as a running request for as long as its events are read.
+
+        The count is what tells an external event whether it can steer this request or has to wait for the next turn
+        (see :mod:`zettcode.engine.delivery`). A side question is not a request of the conversation: nothing steers
+        into it, and it does not keep a follow-up waiting.
+        """
+        if side:
+            async with aclosing(
+                self._stream(parts, hint=hint, side=True, origin=origin, watched=watched, relayed=relayed, cache=cache)
+            ) as events:
+                async for event in events:
+                    yield event
+            return
+        self.runtime.run_started()
+        try:
+            async with aclosing(
+                self._stream(parts, hint=hint, side=False, origin=origin, watched=watched, relayed=relayed, cache=cache)
+            ) as events:
+                async for event in events:
+                    yield event
+        finally:
+            self.runtime.run_finished()
+
+    async def _stream(
+        self,
+        parts: Sequence[PromptPart],
+        *,
+        hint: str | None = None,
+        side: bool = False,
+        origin: str = READER,
+        watched: bool | None = None,
+        relayed: Relayed | None = None,
+        cache: CacheMode | str | None = None,
+    ) -> AsyncGenerator[AgentEvent, None]:
         """Run one turn with the selected session, model, and reasoning effort.
 
         Args:
@@ -297,12 +331,21 @@ class TurnsMixin(AgentBase):
             if not message.text.strip() and not message.parts:
                 return False
             payload = {"message": message}
-        try:
-            agent = self.runtime.started.agent
-        except RuntimeError:
-            return False
-        accepted = agent.emit_external_event(
-            ExternalEvent(name=STEERING_MESSAGE_EVENT_NAME, payload=payload),
-            config=AgentRunConfig(session_id=self.session_id),
-        )
-        return bool(accepted)
+        return steer_in_flight(self.runtime, self.session_id, payload)
+
+
+def steer_in_flight(runtime: object, session_id: str, payload: dict[str, object]) -> bool:
+    """Emit the steering event for one message, and say whether the running request took it.
+
+    The engine's own delivery (:class:`zettcode.engine.delivery.Delivery`) and the agent's ``steer`` both come through
+    here, so the one rule for what a request accepts has one home.
+    """
+    try:
+        agent = runtime.started.agent  # type: ignore[attr-defined]
+    except RuntimeError:
+        return False
+    accepted = agent.emit_external_event(
+        ExternalEvent(name=STEERING_MESSAGE_EVENT_NAME, payload=payload),
+        config=AgentRunConfig(session_id=session_id),
+    )
+    return bool(accepted)

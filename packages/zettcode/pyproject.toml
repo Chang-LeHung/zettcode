@@ -39,6 +39,7 @@ dependencies = [
   "zettcode-pets",
   "zettcode-commands",
   "zettcode-skills",
+  "zettcode-messaging",
   "zettcode-mcp",
   "zettcode-files",
   "zettcode-jit-harness",
