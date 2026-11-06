@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.plugin import Plugin, PluginSetting
 
 from .mentions import SkillMentions
@@ -11,11 +12,10 @@ from .mentions import SkillMentions
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.extensions.base import AgentExtension
 
-    from zettcode.engine.plugins.context import PluginContext
     from zettcode.engine.plugins.state import AgentBuild
 
 
-class SkillResources(Plugin):
+class SkillResources(Plugin[PluginContext]):
     """The ``@`` resource provider for the skills on this machine.
 
     Registering it from a plugin rather than inside the shell keeps the shell generic: it merges whatever providers
@@ -31,7 +31,7 @@ class SkillResources(Plugin):
             ctx.agent.register_mention(SkillMentions(ctx.config.skill_search_roots()))
 
 
-class SkillTool(Plugin):
+class SkillTool(Plugin[PluginContext]):
     """The skills the model can load: their list in the prompt and the tool that reads one."""
 
     name = "skill-tool"

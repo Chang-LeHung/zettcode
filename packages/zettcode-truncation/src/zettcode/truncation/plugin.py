@@ -2,19 +2,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
+from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.plugin import Plugin
 from zettcode.engine.plugins.services import PERSISTENCE
 from zettcode.engine.storage import SessionStore
 
 from .extension import LongOutputExtension
 
-if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zettcode.engine.plugins.context import PluginContext
 
-
-class LongOutput(Plugin):
+class LongOutput(Plugin[PluginContext]):
     """Keeps a result over a tool's budget in a file, and sends its start and its end instead.
 
     The tools in this repository bound what they return themselves; this is the backstop for the ones that come

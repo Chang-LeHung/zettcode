@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.permission import ShellPolicy
+from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.plugin import Plugin, PluginSetting
 from zettcode.engine.plugins.services import HARNESS, POLICY
 from zettcode.plugin_api.host import HOST_LINK, HostLink
@@ -14,11 +15,10 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.extensions.base import AgentExtension
     from zett_agent.jit_harness import JITToolHost
 
-    from zettcode.engine.plugins.context import PluginContext
     from zettcode.engine.plugins.state import AgentBuild
 
 
-class Harness(Plugin):
+class Harness(Plugin[PluginContext]):
     """The just-in-time harness: the model keeps small Python tools of its own, when the reader has it on.
 
     The extension is always registered and inert until the switch is on, so a switch written by ``/plugins`` reaches the

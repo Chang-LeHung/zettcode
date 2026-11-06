@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.plugin import Plugin
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.extensions.base import AgentExtension
 
-    from zettcode.engine.plugins.context import PluginContext
     from zettcode.engine.plugins.state import AgentBuild
 
 
-class ToolGuidance(Plugin):
+class ToolGuidance(Plugin[PluginContext]):
     """The guidance each tool carries: its call shapes, guidelines and return type, in the tool's own description."""
 
     name = "tool-guidelines"
