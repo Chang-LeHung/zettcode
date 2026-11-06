@@ -535,7 +535,7 @@ opened offline; the page names the counter it used rather than passing an
 estimate off as exact.
 
 Plugins are the extension point, independent of `zett-agent`, and there are two layers of them: a distribution
-publishes a plugin class under the `zettcode.plugins` entry-point group. `engine/plugins/` is what the agent
+publishes a plugin class under the `zettcode.plugin` entry-point group. `engine/plugins/` is what the agent
 uses: `state.py` (`AgentBuild`, `Contribution`), `mixins.py` (the hook groups), `groups.py` (what activation
 receives and registers extensions, services, `@` providers and model providers through), `plugin.py` (`Plugin`,
 `PluginSetting` and the loaded `Plugins` bundle), `loader.py` (entry-point discovery and the `Loader` that merges
