@@ -16,7 +16,7 @@ Two rules decide how one registers:
   as a service by name, and the runtime reads it from there instead of keeping a field for it.
 
 The order of :data:`AGENT_PLUGINS` is the order the agent receives the extensions in; extensions that share a
-priority keep it. The loader finds the plugins through the ``zettcode.agent`` entry-point group this package
+priority keep it. The loader finds the plugins through the ``zettcode.plugin`` entry-point group this package
 publishes and activates them by the rank that list gives them (``Plugin.rank``), then by their ``deps``: what one
 reads from another, such as the capabilities the subagents are sized by, is a ``deps`` entry and not a position. What
 a plugin builds on (the session store, the permission policy) is handed over by the runtime by name, see

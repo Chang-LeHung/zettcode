@@ -507,7 +507,7 @@ def _resolve_switch_name(config: SwitchState, name: str) -> str | None:
     from importlib.metadata import entry_points
 
     from zettcode.config import read_disabled_plugins
-    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, part_group
+    from zettcode.engine.plugins.loader import LEGACY_ENTRY_POINT_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
 
     name = _safe_name(name)
     exact = plugins_dir() / f"{name}.py"
@@ -517,7 +517,11 @@ def _resolve_switch_name(config: SwitchState, name: str) -> str | None:
     if canonical.is_file():
         return canonical.stem
 
-    if any(point.name == name and part_group(point) is None for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)):
+    if any(
+        point.name == name and part_group(point) is None
+        for group in (PLUGIN_ENTRY_POINT_GROUP, LEGACY_ENTRY_POINT_GROUP)
+        for point in entry_points(group=group)
+    ):
         return name
     names = _entry_names_for_distribution(name)
     if len(names) == 1:

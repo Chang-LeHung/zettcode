@@ -218,7 +218,7 @@ def load_plugins(
             Tests pass their own, so discovery can be exercised without
             installing a distribution.
         builtins: Plugins compiled into the repository, which the engine does not ship; ``()`` for none. The program's
-            agent is not passed here: it is found through the ``zettcode.agent`` entry-point group, unless ``agent`` is
+            agent is not passed here: it is found through the ``zettcode.plugin`` group with the agent role, unless ``agent`` is
             false. A caller that cannot discover (a test) may pass :data:`zettcode.sdk.builtins.AGENT_PLUGINS`.
         shared: Objects the runtime hands over by name before any plugin activates (see
             :mod:`zettcode.engine.plugins.services`); a plugin reads them with ``container.service``, and they

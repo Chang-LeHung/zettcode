@@ -20,13 +20,12 @@ import pytest
 from packaging.requirements import Requirement
 
 from zettcode._compat import tomllib
+from zettcode.engine.plugins import loader
 
 #: The repository root, two levels above the tests (``tests`` here).
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 #: Discovery as this environment has it, taken before the suite's fixture replaces the module attribute with a literal.
-from zettcode.engine.plugins import loader  # noqa: E402  (it needs ROOT nothing, but the constant below is read early)
-
 _REAL_DISCOVERY = loader.installed_entry_points
 
 #: The program's project directory, where its command line, probes and ``pyproject.toml`` live.
@@ -1530,4 +1529,5 @@ def test_the_parts_are_offered_before_a_readers_plugins():
 
     assert wanted == sorted(wanted), "every part before every ordinary plugin"
     assert any(not is_plugin for is_plugin in wanted), "the parts are in this environment"
+    assert any(is_plugin for is_plugin in wanted), "and so is at least one ordinary plugin, or this proves nothing"
     assert "coding" in [point.name for point in points]
