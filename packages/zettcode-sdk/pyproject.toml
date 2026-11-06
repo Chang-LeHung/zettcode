@@ -40,16 +40,9 @@ dependencies = [
 # The plugins that compose the agent. A part of the program, not a plugin: the `zettcode.plugins` group is what the
 # plugin release line looks for. They are activated by the rank `builtins.py` gives them, then by their `deps`.
 [project.entry-points."zettcode.agent"]
-coding = "zettcode.sdk.builtins:CodingTools"
-capabilities = "zettcode.sdk.builtins:Capabilities"
-subagents = "zettcode.sdk.builtins:Subagents"
-shell-permission = "zettcode.sdk.builtins:ShellPermission"
-session-log = "zettcode.sdk.builtins:SessionLog"
-usage-tracking = "zettcode.sdk.builtins:UsageTracking"
-context-tracking = "zettcode.sdk.builtins:ContextTracking"
-side-questions = "zettcode.sdk.builtins:SideQuestionBoundary"
-self-compaction = "zettcode.sdk.builtins:SelfCompaction"
-compaction = "zettcode.sdk.builtins:Compaction"
+# One point for the whole package: it publishes the tuple `AGENT_PLUGINS`, in the order the agent receives them, so
+# the entry-point list is not a second copy of that order and a new part here needs no line in this file.
+parts = "zettcode.sdk.builtins:AGENT_PLUGINS"
 
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"
