@@ -49,7 +49,3 @@ class SkillTool(Plugin):
             return SkillExtension(config.skill_search_roots())
 
         ctx.agent.register_extension_factory("SkillExtension", build)
-
-
-#: The parts this package publishes, as one entry point: the ``@`` provider and the tool that reads a skill.
-PLUGINS: tuple[Plugin[PluginContext], ...] = (SkillResources(), SkillTool())

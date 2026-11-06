@@ -29,12 +29,9 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
     being what turns a feature off — but a failure to activate one is recorded in `failed`, not raised, as it was when
     they were compiled in. `zettcode-sdk` and `zettcode` depend on them all, so installing the program installs them.
 - Order inside a group is `(Plugin.rank, name)`, then `deps`. `AGENT_PLUGINS` in `sdk/builtins.py` is the one list that
-  says the order of the SDK's own (and gives each class its rank). A package publishes **one** entry point per group,
-  naming a plugin or a tuple of them (`parts = "zettcode.sdk.builtins:AGENT_PLUGINS"`), so the entry points are not a
-  second copy of that order and a new part in a package needs no line in its `pyproject.toml`; the loader expands a
-  tuple into one candidate per plugin, each keeping its own name (what `deps`, the required list and a disable line
-  use). `test_agent_parts.py`, `test_structure.py` and the suite's literals in `support/conftest.py` hold the two
-  together. The only service one reads from another is `subagents` ← `capabilities`, written
+  says the order of the SDK's own (and gives each class its rank); the entry points in the SDK's `pyproject.toml`
+  repeat it, and `test_agent_parts.py` and `test_structure.py` hold the two, and the suite's literal copies in
+  `support/conftest.py`, together. The only service one reads from another is `subagents` ← `capabilities`, written
   as a `deps`. A part in another distribution states no rank: its extension has a `priority` of its own (the
   skills 80, MCP 70, project instructions 10, against the 100 nearly everything else shares), and the agent sorts by
   that. Registration order still decides, though, wherever a priority is shared: a part with no rank is activated at
