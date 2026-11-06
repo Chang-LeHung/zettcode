@@ -23,7 +23,7 @@ dependencies = [
   "zett-agent>=0.2.7,<0.3",
 ]
 
-# A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for. It is
+# A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for. It is
 # activated with the agent's other parts and nothing turns it off: every agent this program builds describes its
 # tools the same way.
 [project.entry-points."zettcode.plugin"]

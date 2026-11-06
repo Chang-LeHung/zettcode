@@ -1,9 +1,9 @@
 """Discover installed plugins through Python entry points and prepare them.
 
 A distribution advertises a plugin by publishing a class (or a zero-argument
-factory returning one) under the ``zettcode.plugins`` group::
+factory returning one) under the ``zettcode.plugin`` group::
 
-    [project.entry-points."zettcode.plugins"]
+    [project.entry-points."zettcode.plugin"]
     my-plugin = "my_package:MyPlugin"
 
 A single ``.py`` file in :attr:`ZettCodeConfig.plugins_dir` (``~/.zettcode/plugins`` by default) is the other way in:
@@ -139,7 +139,9 @@ def installed_entry_points() -> tuple[EntryPoint, ...]:
         *entry_points(group="zettcode.agent"),
         *entry_points(group="zettcode.terminal"),
     ]
-    return tuple(sorted((*current, *older), key=lambda point: point.name))
+    # The program's parts first: a reader's plugin that took one of their names would lose it to the part, so the part
+    # must be the one offered first (see `run`'s clash check).
+    return tuple(sorted((*current, *older), key=lambda point: (part_group(point) is None, point.name)))
 
 
 def installed_files(directory: Path) -> tuple[Path, ...]:
@@ -611,7 +613,7 @@ class Loader:
             plugin: The plugin to activate.
             origin: The name of the distribution (or of the compiled-in plugin) it came from.
             builtin: Whether it is compiled into the program, which is what makes it impossible to switch off.
-            part: Whether it is one of the program's own parts (the ``zettcode.terminal`` group). Unlike a builtin it
+            part: Whether it is one of the program's own parts (a role in ``PROGRAM_DISTRIBUTIONS``). Unlike a builtin it
                 can be switched off, unless the loader's caller requires it; what it registers is the program's own,
                 which is what :attr:`program` tells :meth:`merge` while it runs.
             label: The class name, when this plugin came from a file that can hold several; a failure says which.

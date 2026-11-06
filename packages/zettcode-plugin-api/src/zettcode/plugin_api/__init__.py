@@ -1,6 +1,6 @@
 """What a plugin imports: the contract, and the one dependency it needs.
 
-A ZettCode plugin is a class published under the ``zettcode.plugins`` entry point, and everything it may touch is
+A ZettCode plugin is a class published under the ``zettcode.plugin`` entry point, and everything it may touch is
 re-exported here: the base classes and hooks of the agent side and of the terminal's rows, the command a handler returns,
 the row model and the presenter it implements, the pet format, the link to the shell, and the few widgets a panel is
 drawn with.

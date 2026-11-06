@@ -34,7 +34,7 @@ dependencies = [
 Repository = "https://github.com/Chang-LeHung/zettcode/tree/main/packages/zettcode-monitor"
 Issues = "https://github.com/Chang-LeHung/zettcode/issues"
 
-[project.entry-points."zettcode.plugins"]
+[project.entry-points."zettcode.plugin"]
 monitor = "zettcode.monitor:MonitorPlugin"
 
 [tool.zettcode]

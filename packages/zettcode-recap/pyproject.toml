@@ -31,7 +31,7 @@ dependencies = [
 Repository = "https://github.com/Chang-LeHung/zettcode/tree/main/packages/zettcode-recap"
 Issues = "https://github.com/Chang-LeHung/zettcode/issues"
 
-[project.entry-points."zettcode.plugins"]
+[project.entry-points."zettcode.plugin"]
 recap = "zettcode.recap:RecapPlugin"
 
 [tool.zettcode]

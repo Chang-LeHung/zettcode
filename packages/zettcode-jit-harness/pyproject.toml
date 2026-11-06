@@ -26,7 +26,7 @@ dependencies = [
   "zett-agent>=0.2.7,<0.3",
 ]
 
-# A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for. It is
+# A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for. It is
 # activated with the agent's other parts and `[harness] jit` is what turns it on. Its page and its command live here
 # with it, so the part owns the whole screen and the command no longer ships with the shell's own commands.
 [project.entry-points."zettcode.plugin"]

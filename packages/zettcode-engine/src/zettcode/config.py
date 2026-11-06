@@ -451,7 +451,7 @@ class ZettCodeConfig:
             ``[statusline]`` table (``ctx = false``); see :mod:`zettcode.statusline`. Every part not named
             is shown.
         plugins_enabled: Load third-party plugins published under the
-            ``zettcode.plugins`` entry-point group. The builtin rows always
+            ``zettcode.plugin`` entry-point group. The builtin rows always
             load, so switching this off leaves the shell looking the same.
         disabled_plugins: Entry-point names not to load when
             :attr:`plugins_enabled` is true; a way to switch off one plugin
