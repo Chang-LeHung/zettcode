@@ -96,7 +96,7 @@ def describe(directory: pathlib.Path) -> Package:
         # `make test` skips a package with no tests, and the release job would fail inside pytest with code 4 instead:
         # say so here, where the message names the package.
         raise Release(f"{directory}: no tests/ directory; the release runs them before publishing")
-    plugins = tuple(project.get("entry-points", {}).get("zettcode.plugins", {}))
+    plugins = tuple(project.get("entry-points", {}).get("zettcode.plugin", {}))
     return Package(directory, name, version, (directory.name, *plugins))
 
 
