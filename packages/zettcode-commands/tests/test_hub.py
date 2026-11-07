@@ -83,13 +83,16 @@ def test_stop_and_start_act_on_the_daemon_under_the_mark():
     assert started == ["d-2"], "enter starts a stopped one"
 
 
-def test_a_note_survives_the_refresh_that_follows_an_action():
+def test_a_reading_replaces_the_note_and_an_action_says_its_own_after_it():
     opened = page()
-
     opened.note("stopped d-1")
+
     opened.set_data(data())
 
-    assert opened.subtitle == "stopped d-1"
+    assert opened.subtitle is None, "a plain reading clears what an action said"
+
+    opened.set_data(data(note="the broker cannot be read: offline"))
+    assert opened.subtitle == "the broker cannot be read: offline"
 
 
 def test_a_refresh_is_asked_for_and_a_note_is_shown():
@@ -108,3 +111,50 @@ def _key(name: str) -> object:
     from zettcode.tui import KeyEvent
 
     return KeyEvent(key=name)
+
+
+def test_a_scheduled_action_is_kept_and_its_failure_reaches_the_page():
+    """`r`, `s` and Enter schedule a task; a failure must say so on the page, not at the interpreter."""
+    import asyncio
+
+    from zettcode.commands.hub import HubCommand
+
+    async def failing() -> None:
+        raise RuntimeError("the daemon refused")
+
+    async def scenario() -> HubPage:
+        command = HubCommand()
+        opened = page()
+        command._page = opened
+        command._start(failing())
+        for _ in range(10):
+            await asyncio.sleep(0)
+        assert not command._actions, "a finished action is forgotten"
+        return opened
+
+    assert asyncio.run(scenario()).subtitle == "the daemon refused"
+
+
+def test_a_cancelled_action_is_forgotten_without_complaint():
+    import asyncio
+
+    from zettcode.commands.hub import HubCommand
+
+    async def forever() -> None:
+        await asyncio.sleep(3600)
+
+    async def scenario() -> HubPage:
+        command = HubCommand()
+        opened = page()
+        command._page = opened
+        command._start(forever())
+        for _ in range(5):
+            await asyncio.sleep(0)
+        for task in list(command._actions):
+            task.cancel()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert not command._actions
+        return opened
+
+    assert asyncio.run(scenario()).subtitle is None

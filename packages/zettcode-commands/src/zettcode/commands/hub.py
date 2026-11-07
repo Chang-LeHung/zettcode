@@ -45,6 +45,7 @@ class Peer:
     status: str
     workspace: str
     kind: str = "session"
+    session_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,7 +173,7 @@ class HubPage(ListPage):
     def set_data(self, data: HubData) -> None:
         """Take a fresh reading, and keep the mark where it was on the tab in front."""
         self.marks[self.tab] = max(0, self.list.selected)
-        self.data = data if data.note else dataclasses.replace(data, note=self.data.note)
+        self.data = data
         self.subtitle = self.data.note or None
         self._show(self.tab)
 
@@ -226,7 +227,7 @@ class HubPage(ListPage):
         return next((daemon for daemon in self.data.daemons if daemon.session_id == chosen), None)
 
     def _chosen(self) -> None:
-        """Enter on the daemons tab starts the daemon under the mark when it is not running."""
+        """Enter on the daemons tab starts the daemon under the mark when its process is gone."""
         if self.tab != 1 or self.on_start is None:
             return None
         chosen = self._daemon()
@@ -245,6 +246,11 @@ class HubCommand(TuiPlugin):
     _page: HubPage | None = None
     #: The actions started from the page, kept so their failures are read rather than logged at the interpreter.
     _actions: set[asyncio.Future[None]]
+
+    def __init__(self) -> None:
+        """Start with no page and no action running."""
+        self._page = None
+        self._actions = set()
 
     def activate(self, ctx: PluginContext) -> None:
         """Register ``/hub``; it only reads, so it opens over a running request rather than turning the reader away."""
@@ -272,6 +278,10 @@ class HubCommand(TuiPlugin):
         self._page = page
         return CommandResult(widget=bottom_panel(page, rows=HUB_ROWS))
 
+    def _closed(self) -> None:
+        """Forget the page: a late failure has nothing left to say it on."""
+        self._page = None
+
     def _start(self, task: Awaitable[None]) -> None:
         """Run one action on the loop the page was opened on, and keep it so a failure is not lost."""
         running = asyncio.ensure_future(task)
@@ -281,6 +291,8 @@ class HubCommand(TuiPlugin):
     def _done(self, finished: asyncio.Future[None]) -> None:
         """Forget an action, and say what it failed with, on the page."""
         self._actions.discard(finished)
+        if finished.cancelled():
+            return
         error = finished.exception()
         if error is not None and self._page is not None:
             self._page.note(str(error))
@@ -294,8 +306,8 @@ class HubCommand(TuiPlugin):
         from zettcode.sdk.daemons import stop_daemon
 
         said = await stop_daemon(session_id, keep=True)
-        page.note(said)
         await self._refresh(page, client)
+        page.note(said)
 
     async def _resume(self, page: HubPage, client: object, session_id: str) -> None:
         """Start a daemon whose record is still there, on the workspace and model it had."""
@@ -307,10 +319,11 @@ class HubCommand(TuiPlugin):
         try:
             started = await spawn_daemon(chosen.workspace or ".", model=chosen.model or None, resume=session_id)
         except Exception as error:  # noqa: BLE001 - the page says what happened, whatever it was
-            page.note(str(error))
+            note = str(error)
         else:
-            page.note(f"started {started.session_id[:8]}")
+            note = f"started {started.session_id[:8]}"
         await self._refresh(page, client)
+        page.note(note)
 
     async def _read(self, client: object) -> HubData:
         """Read the three tabs: the broker's roster and graph, and the daemons' records."""
@@ -318,7 +331,14 @@ class HubCommand(TuiPlugin):
         from zettcode.sdk.errors import ConfigurationError, SendError
 
         peers = tuple(
-            Peer(handle=peer.handle, title=peer.title, status=peer.status, workspace=peer.workspace, kind=peer.kind)
+            Peer(
+                handle=peer.handle,
+                title=peer.title,
+                status=peer.status,
+                workspace=peer.workspace,
+                kind=peer.kind,
+                session_id=peer.session_id,
+            )
             for peer in client.peers()  # type: ignore[attr-defined]
         )
         daemons = tuple(
