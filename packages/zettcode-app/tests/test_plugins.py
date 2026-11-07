@@ -979,6 +979,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "/quit",
         "/exit",
         "/usage",
+        "/hub",
     ]
     assert [command.name for command in runtime.plugins.installed_commands] == ["/greet"]
     assert runtime.plugins.commands == (*runtime.plugins.builtin_commands, *runtime.plugins.installed_commands)

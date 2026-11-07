@@ -22,6 +22,7 @@ from .handlers import (
     ShellControl,
     SideQuestion,
 )
+from .hub import HubCommand
 from .usage import UsageCommand
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -46,6 +47,7 @@ class CommandsPlugin(TuiPlugin):
             BashCommand(),
             ShellControl(),
             UsageCommand(),
+            HubCommand(),
         )
 
     def activate(self, ctx: PluginContext) -> None:
