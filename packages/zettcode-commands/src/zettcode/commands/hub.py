@@ -19,7 +19,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from zettcode.plugin_api.commands import CommandContext, CommandResult
+from zettcode.plugin_api.commands import CommandContext, CommandHost, CommandResult
 from zettcode.plugin_api.panels import bottom_panel
 from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.tui import SEPARATOR, ListItem, ListPage, event_key
@@ -270,7 +270,7 @@ class HubCommand(TuiPlugin):
         data = await self._read(client)
         page = HubPage(
             data,
-            on_close=host.close_page,
+            on_close=self._closer(host),
             on_refresh=lambda: self._start(self._refresh(page, client)),
             on_stop=lambda session_id: self._start(self._stop(page, client, session_id)),
             on_start=lambda session_id: self._start(self._resume(page, client, session_id)),
@@ -278,9 +278,17 @@ class HubCommand(TuiPlugin):
         self._page = page
         return CommandResult(widget=bottom_panel(page, rows=HUB_ROWS))
 
-    def _closed(self) -> None:
-        """Forget the page: a late failure has nothing left to say it on."""
-        self._page = None
+    def _closer(self, host: CommandHost) -> Callable[[], None]:
+        """Return what closing the page runs: forget it here, then let the shell close it.
+
+        A late failure then has nothing to write on, and the page it would have written on is gone.
+        """
+
+        def close() -> None:
+            self._page = None
+            host.close_page()
+
+        return close
 
     def _start(self, task: Awaitable[None]) -> None:
         """Run one action on the loop the page was opened on, and keep it so a failure is not lost."""
@@ -371,14 +379,12 @@ class HubCommand(TuiPlugin):
             )
         offline: tuple[str, ...] = ()
         try:
-            listed = await client.sessions.list()  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001 - a store that cannot be read costs only the offline list
+            # The fifty newest of this workspace; a longer store is cut there rather than paged.
+            listed = await client.sessions.list(limit=50)  # type: ignore[attr-defined]
+        except Exception as error:  # noqa: BLE001 - a store that cannot be read costs only the offline list
+            note = note or f"the stored sessions cannot be read: {error}"
             listed = ()
-        known = {peer.handle for peer in peers} | {peer.title for peer in peers}
-        offline = tuple(
-            info.title or info.id[:8]
-            for info in listed
-            if (info.title or info.id[:8]) not in known
-            and info.id not in {getattr(peer, "session_id", "") for peer in peers}
-        )
+        # Registered by id, and never the reader's own: `peers()` leaves self out and the store keeps it.
+        registered = {peer.session_id for peer in peers} | {client.session.id}  # type: ignore[attr-defined]
+        offline = tuple(info.title or info.id[:8] for info in listed if info.id not in registered)
         return HubData(peers=peers, daemons=daemons, offline=offline, edges=edges, recent=recent, note=note)
