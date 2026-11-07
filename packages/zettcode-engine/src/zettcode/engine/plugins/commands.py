@@ -9,6 +9,7 @@ that has no terminal: the handler cannot reach for a shell it will not have.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TypeAlias
@@ -24,6 +25,32 @@ __all__ = [
 ]
 
 
+class PlainCommandHost(ABC):
+    """What a front end offers a plain command that needs the session, and not a screen.
+
+    A command that only answers text needs nothing but its argument; one that acts on the conversation — compact it,
+    name it, write it out, carry on where it stopped — says so here, and the front end that runs it supplies the four.
+    A front end with no host runs the command and the command answers that it cannot (see
+    :class:`PlainCommandContext`).
+    """
+
+    @abstractmethod
+    async def compact(self) -> str:
+        """Compact the conversation now, and say in one line what happened."""
+
+    @abstractmethod
+    async def title(self, name: str | None) -> str:
+        """Read the session's title, or set it when ``name`` is given, and say what it is now."""
+
+    @abstractmethod
+    async def export(self, path: str | None) -> str:
+        """Write the session to a file, and say where it went."""
+
+    @abstractmethod
+    async def carry_on(self) -> str:
+        """Carry on a request that was cut short, and say what happened."""
+
+
 @dataclass(frozen=True, slots=True)
 class PlainCommandContext:
     """What a plain command's handler is handed.
@@ -37,6 +64,9 @@ class PlainCommandContext:
 
     argument: str = ""
     level: str = "ask"
+    #: The session, for a command that acts on it; ``None`` when the front end running it has no such reach, and the
+    #: command then says so rather than failing.
+    host: PlainCommandHost | None = None
 
 
 @dataclass(frozen=True, slots=True)
