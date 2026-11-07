@@ -33,6 +33,7 @@ from collections.abc import Callable
 from time import monotonic
 
 from zettcode.config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
+from zettcode.plugin_api.commands import CommandTranscript
 from zettcode.presenters.presenters import DEFAULT_PRESENTERS, Presenters
 
 from ..rendering import DEFAULT_RENDERERS, Renderers
@@ -45,7 +46,8 @@ from .stream import StreamMixin
 __all__ = ["EntryLog", "Transcript"]
 
 
-class Transcript(OneOffMixin, FoldMixin, StreamMixin, EntryLog):
+# The contract is last on purpose: the mixins above implement its methods and must be found first.
+class Transcript(OneOffMixin, FoldMixin, StreamMixin, EntryLog, CommandTranscript):
     """The conversation: entries in order, and the verbs the agent's events map onto."""
 
     def __init__(

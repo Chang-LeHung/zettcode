@@ -166,7 +166,7 @@ Each stage is one branch and one commit, and ends with `make check` green plus b
 
    | Moved to `plugin-api` | Why it is the contract |
    | --- | --- |
-   | `commands`, `state`, `mixins`, `plugin`, `rows` | The command a handler returns, the context a row hook receives, the hooks themselves and the `Row` a segment may hand over: the types in a plugin's signatures. `CommandHost` describes the shell it is handed (`CommandAgent`, `CommandTranscript`) as protocols, so it names nothing of the terminal. |
+   | `commands`, `state`, `mixins`, `plugin`, `rows` | The command a handler returns, the context a row hook receives, the hooks themselves and the `Row` a segment may hand over: the types in a plugin's signatures. `CommandHost` describes the shell it is handed (`CommandAgent`, `CommandTranscript`) as abstract base classes the terminal's classes inherit, so it names nothing of the terminal. |
    | `entries`, `presenters` | The row model and `Presenter`/`Presenters`: a plugin subclasses the one and registers into the other. `CONTENT_INDENT`, `Indented` and `LeadingGap` go with them because `Presenter.block` is written in terms of them. |
    | `pets` | `Pet` and `PetSource` are what a pet plugin builds, and `pixel_lines` is the format they are written in; the bundled pets stay in the app. |
    | `host`, `panels`, `switch` | `HostLink`, `bottom_panel`/`pressed` and `draw_switch` are what a plugin's panel imports. They depend on the widget framework only, so the plugin does not need the application to draw one. |

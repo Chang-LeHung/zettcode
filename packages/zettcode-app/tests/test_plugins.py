@@ -1362,3 +1362,14 @@ def test_the_headless_commands_do_not_reach_a_terminal(tmp_path: Path):
     CommandLine().activate(ctx)
 
     assert ctx.commands.commands == (), "a screen keeps the terminal's own versions"
+
+
+def test_the_terminal_s_contract_bases_are_concrete():
+    """The contract is last in each MRO; a reordering that puts an abstract property first must fail here."""
+    from zettcode.app.agent.agent import TerminalAgent
+    from zettcode.app.agent.conversation.transcript import Transcript
+    from zettcode.app.ui.app import ZettCodeApp
+
+    assert not TerminalAgent.__abstractmethods__
+    assert not Transcript.__abstractmethods__
+    assert not ZettCodeApp.__abstractmethods__
