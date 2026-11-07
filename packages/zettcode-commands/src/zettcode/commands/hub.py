@@ -1,8 +1,8 @@
 """``/hub``: who is here, what the daemons are doing, and who talked to whom, on one page with three tabs.
 
 The gateway's page shows this in a browser; this is the same picture where the work happens. What it reads is the
-broker's own view — the roster, the message graph — through the SDK, and the daemons' records through
-:mod:`zettcode.sdk.daemons`, so nothing new is listened to and nothing is stored here.
+broker's roster through the SDK, and the daemons' records through :mod:`zettcode.sdk.daemons`, so nothing new is
+listened to and nothing is stored here.
 
 The page is a list per tab, :class:`~zettcode.tui.ListPage` underneath: ``Tab`` and ``Shift-Tab`` (or the arrows alone)
 move between the three, ``Up``/``Down`` through the rows, ``s`` stops the daemon under the mark, ``Enter`` starts one
@@ -33,7 +33,7 @@ __all__ = ["HUB_ROWS", "HubCommand", "HubData", "HubPage"]
 HUB_ROWS = 18
 
 #: The three tabs, in the order Tab walks them.
-TABS = ("Sessions", "Daemons", "Graph")
+TABS = ("Sessions", "Daemons")
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,23 +60,12 @@ class Daemon:
 
 
 @dataclass(frozen=True, slots=True)
-class Edge:
-    """One pair that exchanged messages."""
-
-    source: str
-    target: str
-    count: int
-
-
-@dataclass(frozen=True, slots=True)
 class HubData:
     """Everything the three tabs show, read once per refresh."""
 
     peers: tuple[Peer, ...] = ()
     daemons: tuple[Daemon, ...] = ()
     offline: tuple[str, ...] = ()
-    edges: tuple[Edge, ...] = ()
-    recent: tuple[str, ...] = ()
     note: str = ""
 
 
@@ -105,28 +94,8 @@ def _daemon_rows(data: HubData) -> list[ListItem]:
     ]
 
 
-def _graph_rows(data: HubData) -> list[ListItem]:
-    rows = [
-        ListItem(
-            f"{edge.source}->{edge.target}",
-            f"{edge.source} \u2500\u2500{edge.count}\u2500\u2500\u25b6 {edge.target}",
-            "",
-        )
-        for edge in data.edges
-    ]
-    rows += [ListItem(f"recent-{index}", line, "") for index, line in enumerate(data.recent)]
-    return rows
-
-
 #: What each tab shows, in the order :data:`TABS` names them.
-_ROWS: tuple[Callable[[HubData], list[ListItem]], ...] = (_session_rows, _daemon_rows, _graph_rows)
-
-
-def _handle(side: object) -> str:
-    """Return how a broker message names one end: a session's handle, or a group's name."""
-    if not isinstance(side, dict):
-        return "?"
-    return str(side.get("handle") or side.get("name") or "?")
+_ROWS: tuple[Callable[[HubData], list[ListItem]], ...] = (_session_rows, _daemon_rows)
 
 
 class HubPage(ListPage):
@@ -144,7 +113,7 @@ class HubPage(ListPage):
         """Start on the sessions tab, with the first row marked."""
         self.data = data
         self.tab = 0
-        self.marks = [0, 0, 0]
+        self.marks = [0, 0]
         self.on_stop = on_stop
         self.on_start = on_start
         self.on_refresh = on_refresh
@@ -362,7 +331,6 @@ class HubCommand(TuiPlugin):
     async def _read(self, client: object) -> HubData:
         """Read the three tabs: the broker's roster and graph, and the daemons' records."""
         from zettcode.sdk.daemons import list_daemons
-        from zettcode.sdk.errors import ConfigurationError, SendError
 
         peers = tuple(
             Peer(
@@ -386,33 +354,6 @@ class HubCommand(TuiPlugin):
             for info in await asyncio.to_thread(list_daemons)
         )
         note = ""
-        edges: tuple[Edge, ...] = ()
-        recent: tuple[str, ...] = ()
-        try:
-            graph = await client.traffic_graph()  # type: ignore[attr-defined]
-        except (ConfigurationError, SendError) as error:
-            note = f"the broker cannot be read: {error}"
-        else:
-            names = {
-                str(session.get("session_id", "")): str(session.get("handle") or session.get("title") or "")
-                for session in graph.get("sessions", ())
-            }
-
-            def named(session_id: object) -> str:
-                """Return the handle of a session the broker named, or enough of its id to tell it apart."""
-                key = str(session_id)
-                return names.get(key) or key[:8]
-
-            edges = tuple(
-                Edge(source=named(edge.get("a", "")), target=named(edge.get("b", "")), count=int(edge.get("count", 0)))
-                for edge in graph.get("edges", ())
-            )
-            edges = tuple(sorted(edges, key=lambda edge: -edge.count))[:12]
-            recent = tuple(
-                f"{_handle(message.get('from'))} \u2192 {_handle(message.get('to'))}: "
-                f"{str(message.get('text', ''))[:60]}"
-                for message in graph.get("recent", ())[:5]
-            )
         offline: tuple[str, ...] = ()
         try:
             # The fifty newest of this workspace; a longer store is cut there rather than paged.
@@ -423,4 +364,4 @@ class HubCommand(TuiPlugin):
         # Registered by id, and never the reader's own: `peers()` leaves self out and the store keeps it.
         registered = {peer.session_id for peer in peers} | {client.session.id}  # type: ignore[attr-defined]
         offline = tuple(info.title or info.id[:8] for info in listed if info.id not in registered)
-        return HubData(peers=peers, daemons=daemons, offline=offline, edges=edges, recent=recent, note=note)
+        return HubData(peers=peers, daemons=daemons, offline=offline, note=note)
