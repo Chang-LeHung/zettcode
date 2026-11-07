@@ -19,7 +19,7 @@ from zettcode.modes import MODE_STEER
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.messages import UserMessage
 
-__all__ = ["FULL", "INBOX", "QUEUED", "STARTED", "STEERED", "Inbox", "Waiting"]
+__all__ = ["FULL", "INBOX", "QUEUED", "STARTED", "STEERED", "Inbox", "Waiting", "WaitingLike"]
 
 #: The service name the queue is provided under, for a front end that delivers into the agent.
 INBOX = "inbox"
@@ -29,6 +29,28 @@ STEERED = "steered"
 QUEUED = "queued"
 STARTED = "started"
 FULL = "full"
+
+
+class WaitingLike(ABC):
+    """What batching reads of a message that waits: whether it stands alone, and what it says.
+
+    The relayed message and the SDK's incoming message are the two that wait together; both inherit this, so the
+    batching policy can name one type without either side importing the other. A class-level attribute, a property
+    or a slotted dataclass field satisfies the abstract properties; an instance attribute set in ``__init__`` does
+    not, because it is not visible to the abstract class.
+    """
+
+    __slots__ = ()
+
+    @property
+    @abstractmethod
+    def direct(self) -> bool:
+        """Whether it is a chat window's message, which has to be answered on its own."""
+
+    @property
+    @abstractmethod
+    def text(self) -> str:
+        """What it says."""
 
 
 @dataclass(frozen=True, slots=True)

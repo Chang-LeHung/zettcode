@@ -11,10 +11,10 @@ later restores the original text instead of the injected resource.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import Protocol
 
 from zettcode.broker.text import folder_name
 from zettcode.mention import Mention, MentionProvider, MentionRegistry
+from zettcode.wire import RosterPeer
 
 __all__ = [
     "Mention",
@@ -23,30 +23,6 @@ __all__ = [
     "RosterPeer",
     "SessionMentions",
 ]
-
-
-class RosterPeer(Protocol):
-    """Another active session, as far as completion and addressing need to know it."""
-
-    @property
-    def session_id(self) -> str:
-        """The session's id."""
-
-    @property
-    def handle(self) -> str:
-        """The word that follows an ``@`` to address it."""
-
-    @property
-    def workspace(self) -> str:
-        """The directory it works in."""
-
-    @property
-    def title(self) -> str:
-        """What the session is about, as its reader would call it."""
-
-    @property
-    def status(self) -> str:
-        """``idle`` or ``working``."""
 
 
 class SessionMentions(MentionProvider):

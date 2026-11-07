@@ -46,7 +46,7 @@ from .stops import stop_text
 from .transcript import Transcript
 
 
-class _NobodyAnswers:
+class _NobodyAnswers(Bridge):
     """The bridge of a projector that was given nobody to answer for: an answer sent through it goes nowhere."""
 
     def approve(self, session_id: str, call_id: str, approve: bool, remember: bool) -> None:
