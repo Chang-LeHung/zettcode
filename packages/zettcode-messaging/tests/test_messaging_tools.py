@@ -22,7 +22,7 @@ from zettcode.messaging.extension import (
     SessionMessagingExtension,
 )
 from zettcode.messaging.messenger import SESSION_LINK, Messenger
-from zettcode.relay import Relayed
+from zettcode.messaging.relayed import Relayed
 from zettcode.sdk.builtins import load_agent_plugins
 
 ME = "01a10b75-aaaa-7000-8000-000000000001"

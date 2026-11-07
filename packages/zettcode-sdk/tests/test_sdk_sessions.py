@@ -16,7 +16,7 @@ from zettcode.sdk.errors import (
     SessionLockedError,
     SessionNotFoundError,
 )
-from zettcode.sdk.types import Compaction, ContextReport, Message, ResumeInfo, SessionInfo
+from zettcode.sdk.types import Compaction, ContextReport, IncomingMessage, Message, ResumeInfo, SessionInfo
 
 
 def make(tmp_path: Path, **changes) -> zc.Client:
@@ -567,6 +567,90 @@ async def test_a_message_that_says_where_it_came_from_can_be_steered_as_it_is(tm
     assert taken == message.text
     assert "from another session" in str(model.requests[1].messages), "the model reads who sent it"
     assert model.requests[1].messages[-1].attributes.get("prompt") == "stop that"
+
+
+async def test_the_sdk_frames_a_message_from_another_session_when_it_steers(tmp_path, monkeypatch):
+    gate = asyncio.Event()
+    started = asyncio.Event()
+
+    async def first(request):
+        started.set()
+        await gate.wait()
+        return asks_for(call("read_file", {"file_path": "x"}, call_id="r"))
+
+    model = wire(monkeypatch, ScriptedModel(first, "adjusted"))
+    async with make(tmp_path) as client:
+        task = asyncio.create_task(client.run("start"))
+        await asyncio.wait_for(started.wait(), 2.0)
+
+        taken = client.session._steer_incoming(IncomingMessage(sender_id="peer-1", sender="bob", text="stop that"))
+        gate.set()
+        await task
+
+    assert taken is not None and taken.endswith("stop that"), "the run reports the message it read"
+    read = str(model.requests[1].messages)
+    assert "Another ZettCode session" in read, "the model reads where the message came from"
+    assert 'send_message(to="peer-1"' in read, "and how to answer its sender"
+
+
+async def test_messages_that_wait_are_one_turn_when_the_sdk_starts_it(tmp_path, monkeypatch):
+    gate = asyncio.Event()
+    started = asyncio.Event()
+
+    async def first(request):
+        started.set()
+        await gate.wait()
+        return asks_for(call("read_file", {"file_path": "x"}, call_id="r"))
+
+    model = wire(monkeypatch, ScriptedModel(first, "adjusted", "merged"))
+    async with make(tmp_path) as client:
+        task = asyncio.create_task(client.run("start"))
+        await asyncio.wait_for(started.wait(), 2.0)
+
+        from zettcode.engine.inbox import Inbox
+        from zettcode.messaging.relayed import Relayed
+
+        inbox = client.inbox
+        assert isinstance(inbox, Inbox)
+        alice = Relayed(sender_id="id-alice", sender="alice", text="check the parser")
+        bob = Relayed(sender_id="id-bob", sender="bob", text="and the lexer")
+        inbox.deliver(alice.text, mode="followup", payload=alice)
+        inbox.deliver(bob.text, mode="followup", payload=bob)
+
+        gate.set()
+        await task
+        found = False
+        for _ in range(500):
+            if any("2 messages from other sessions" in str(request.messages) for request in model.requests):
+                found = True
+                break
+            await asyncio.sleep(0.01)
+        assert found, "the merged turn never started"
+
+    read = str(model.requests[-1].messages)
+    assert "2 messages from other sessions" in read
+    assert 'send_message(to="id-alice"' in read and 'send_message(to="id-bob"' in read
+    assert "check the parser" in read and "and the lexer" in read
+
+
+async def test_a_waiting_message_with_a_payload_of_its_own_is_an_ordinary_prompt(tmp_path, monkeypatch):
+    model = wire(monkeypatch, ScriptedModel("answered"))
+    async with make(tmp_path) as client:
+        from zettcode.engine.inbox import Inbox
+
+        inbox = client.inbox
+        assert isinstance(inbox, Inbox)
+        inbox.deliver("just text", payload=object())
+
+        for _ in range(500):
+            if model.requests:
+                break
+            await asyncio.sleep(0.01)
+
+    assert model.requests, "the prompt never started"
+    read = str(model.requests[0].messages)
+    assert "just text" in read
+    assert "Another ZettCode session" not in read, "a payload of a plugin's own is not a relayed message"
 
 
 async def test_a_message_with_nothing_running_is_not_steered(tmp_path, monkeypatch):

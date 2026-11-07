@@ -24,7 +24,8 @@ from zettcode.engine.delivery import Delivery
 from zettcode.engine.inbox import FULL, INBOX, QUEUED, STARTED, STEERED, Waiting
 from zettcode.engine.inbox import Inbox as InboxContract
 from zettcode.modes import MODE_STEER, MODES
-from zettcode.relay import Relayed, batch_size, merge
+
+from .relayed import Relayed, batch_size, merge
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.messages import UserMessage
@@ -93,7 +94,7 @@ class Inbox(InboxContract):
             hint: Text appended after a follow-up turn, as for a normal prompt.
             origin: Where it came from, for the transcript and the stored message.
             payload: What a front end needs to run it its own way; a message from another session passes the
-                :class:`~zettcode.relay.Relayed`, which the starter hands back to the code that frames it.
+                :class:`~zettcode.messaging.relayed.Relayed`, which the starter hands back to the code that frames it.
 
         Returns:
             :data:`STEERED`, :data:`QUEUED`, :data:`STARTED` or :data:`FULL`.
@@ -152,7 +153,7 @@ class Inbox(InboxContract):
         the next start waits for the next request to end, as the queue's ``waiting`` order promises.
 
         Two messages another session sent, waiting one after the other, start as one turn: a window that was busy
-        answers them together instead of once per message (see :func:`~zettcode.relay.batch_size`). A plain event is
+        answers them together instead of once per message (see :func:`~zettcode.messaging.relayed.batch_size`). A plain event is
         always a turn of its own.
         """
         while self._waiting and self._starter is not None and not self._delivery.busy:

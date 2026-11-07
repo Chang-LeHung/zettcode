@@ -470,13 +470,14 @@ operating-system file lock the broker is made a singleton with, shared with the 
   the way, and the command-line reader it shares with the gateway is `zettcode/processes.py`, a leaf of its own. The
   package imports
   nothing of the shell, the agent or the terminal (`packages/zettcode/tests/test_structure.py` holds it).
-- `messaging/messenger.py` (the engine only carries it, so it does not import the broker) is the line the rest of the
-  application holds: it describes
+- `messaging/messenger.py` is the line the rest of the application holds, built and owned by the `messaging` plugin
+  from the configuration (the engine does not import the broker): it describes
   this session to the broker, lists the others from memory, sends, and remembers which received
   message the running turn answers (so an agent's answer carries the hop count on).
   `messaging/extension.py` is the two tools over it, imported when the runtime builds its client.
-- `relay.py` (at the top, shared by the engine and the views) is the one type (`Relayed`) the transcript, the agent and the shell
-  share: what the model reads, and what is stored beside the message (`attributes["relay"]`).
+- `messaging/relayed.py` is the one type (`Relayed`) the transcript, the shell and the SDK share: what the model
+  reads, and how it is stored beside the message (`attributes["relay"]`). The engine keeps only that attribute's name
+  and a reader for an export (`zettcode.relay`).
 - `app/ui/messaging.py` is the shell's part: a received message starting a turn, steering the request that is running,
   or waiting in `_inbox`.
   A message the reader names with `@` is resolved by `mentions` like any other reference and sent by the

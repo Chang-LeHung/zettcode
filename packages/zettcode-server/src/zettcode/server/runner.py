@@ -27,7 +27,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, cast
 
 from zettcode.modes import MODE_STEER
-from zettcode.relay import Relayed
 from zettcode.sdk.commands import PlainCommandHost
 from zettcode.sdk.errors import SessionBusyError
 from zettcode.sdk.events import AnyEvent, ApprovalRequested, QuestionAsked, Steered
@@ -740,17 +739,7 @@ class Runner:
     @staticmethod
     def _steer(slot: Slot, message: IncomingMessage) -> str | None:
         """Hand a message to the run in progress, framed for the model; the text it will report it by, or ``None``."""
-        relayed = Relayed(
-            sender_id=message.sender_id,
-            sender=message.sender,
-            text=message.text,
-            via=message.via,
-            hops=message.hops,
-            direct=message.direct,
-            mode=message.mode,
-            group=message.group,
-        )
-        return slot.client.session._steer_message(relayed.message())
+        return slot.client.session._steer_incoming(message)
 
     def _hold_message(self, slot: Slot, message: IncomingMessage) -> None:
         """Put a message in the chat's inbox, with the id its client answers it by."""

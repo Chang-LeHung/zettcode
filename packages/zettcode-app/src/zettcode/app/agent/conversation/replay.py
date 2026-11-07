@@ -24,9 +24,9 @@ from zettcode.engine.dialogue.side import is_side_line, is_watched_side_line
 from zettcode.engine.extensions.usage import UsageSnapshot, session_usage
 from zettcode.engine.server_tools import ServerToolRun, answer_after_tools, describe_output, runs_in_blocks
 from zettcode.engine.storage import MessageLine, Session
+from zettcode.messaging.relayed import relay_of
 from zettcode.plugin_api.entries import EntryStatus
 from zettcode.presenters.presenters import DEFAULT_PRESENTERS, Presenters
-from zettcode.relay import relay_of
 
 from .rendering import DEFAULT_RENDERERS, Renderers
 from .stops import stop_text

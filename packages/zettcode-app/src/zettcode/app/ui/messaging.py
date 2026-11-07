@@ -29,8 +29,8 @@ from typing import TYPE_CHECKING
 
 from zettcode.broker.client import Receipt
 from zettcode.messaging.relay import PREVIEW, Relay
+from zettcode.messaging.relayed import Relayed
 from zettcode.plugin_api import Inbox, Waiting
-from zettcode.relay import Relayed
 
 from .shell import ShellState
 
@@ -251,7 +251,7 @@ class MessagingMixin(ShellState):
     def _start_next_relayed(self) -> bool:
         """Start the oldest waiting messages, if there are any and nothing is running.
 
-        The ones that waited start as a single turn (see :func:`~zettcode.relay.batch_size`): a window that was busy
+        The ones that waited start as a single turn (see :func:`~zettcode.messaging.relayed.batch_size`): a window that was busy
         answers them together instead of one turn each, and a chat window's message is always a turn of its own. The
         queue is the relay's; this only refuses while the window is installing an update.
         """

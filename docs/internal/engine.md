@@ -51,7 +51,8 @@ other packages.
 Shared by the engine, the SDK and the views, and so at the top and not under the engine: `budget.py` (the names of the
 context's sources), `wording.py` (the word for an unnamed session), `error_text.py` (`describe_error`), `registry.py`
 (the ordered registry the commands and the `@` resources are both built on), `mentions.py` (the `@` resources),
-`prompt.py` (the parts of a user turn) and `relay.py` (a message from another session, and how it is stored).
+`prompt.py` (the parts of a user turn) and `relay.py` (the attribute a message from another session is stored under,
+and the reader an export uses; the message itself is the messaging part's).
 
 Reading a stored session builds no terminal rows: the engine's `load_session` returns `StoredSession`, and the
 terminal replays it into its own `Transcript`.

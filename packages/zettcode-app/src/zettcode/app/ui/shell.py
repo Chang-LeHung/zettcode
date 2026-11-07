@@ -72,11 +72,11 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from collections.abc import Sequence
 
     from zettcode.mentions import MentionRegistry
+    from zettcode.messaging.relayed import Relayed
     from zettcode.plugin_api.commands import Command
     from zettcode.plugin_api.pets import Pet
     from zettcode.plugin_api.state import Activity, UiRow
     from zettcode.prompt import PromptPart
-    from zettcode.relay import Relayed
     from zettcode.sdk.client import Client
     from zettcode.sdk.events import QuestionAsked
     from zettcode.sdk.types import ModelInfo, Usage

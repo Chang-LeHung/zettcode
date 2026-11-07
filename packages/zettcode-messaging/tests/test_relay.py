@@ -7,8 +7,8 @@ from collections.abc import Callable
 from zettcode.engine.delivery import Delivery
 from zettcode.messaging.inbox import Inbox, Waiting
 from zettcode.messaging.relay import Relay
+from zettcode.messaging.relayed import Relayed
 from zettcode.modes import MODE_FOLLOWUP, MODE_STEER
-from zettcode.relay import Relayed
 
 
 def relayed(name: str = "peer", *, text: str | None = None, mode: str = MODE_STEER, direct: bool = False) -> Relayed:

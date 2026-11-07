@@ -11,17 +11,42 @@ later restores the original text instead of the injected resource.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from typing import Protocol
 
 from zettcode.broker.text import folder_name
 from zettcode.mention import Mention, MentionProvider, MentionRegistry
-from zettcode.relay import Peer
 
 __all__ = [
     "Mention",
     "MentionProvider",
     "MentionRegistry",
+    "RosterPeer",
     "SessionMentions",
 ]
+
+
+class RosterPeer(Protocol):
+    """Another active session, as far as completion and addressing need to know it."""
+
+    @property
+    def session_id(self) -> str:
+        """The session's id."""
+
+    @property
+    def handle(self) -> str:
+        """The word that follows an ``@`` to address it."""
+
+    @property
+    def workspace(self) -> str:
+        """The directory it works in."""
+
+    @property
+    def title(self) -> str:
+        """What the session is about, as its reader would call it."""
+
+    @property
+    def status(self) -> str:
+        """``idle`` or ``working``."""
 
 
 class SessionMentions(MentionProvider):
@@ -39,7 +64,7 @@ class SessionMentions(MentionProvider):
     #: A session is the most specific thing a name can mean, ahead of a skill and a file.
     precedence = -20
 
-    def __init__(self, peers: Callable[[], Sequence[Peer]]) -> None:
+    def __init__(self, peers: Callable[[], Sequence[RosterPeer]]) -> None:
         """Offer whichever sessions ``peers`` returns when asked.
 
         Args:
@@ -56,7 +81,7 @@ class SessionMentions(MentionProvider):
         always the name, because that is what can be sent to.
         """
         lowered = query.lower()
-        ranked: list[tuple[int, int, Peer]] = []
+        ranked: list[tuple[int, int, RosterPeer]] = []
         for order, peer in enumerate(self._peers()):
             if peer.handle.lower().startswith(lowered):
                 ranked.append((0, order, peer))
@@ -72,12 +97,12 @@ class SessionMentions(MentionProvider):
         )
 
     @staticmethod
-    def _folder(peer: Peer) -> str:
+    def _folder(peer: RosterPeer) -> str:
         """Return the last part of the directory the session works in."""
         return folder_name(peer.workspace)
 
     @classmethod
-    def _describe(cls, peer: Peer) -> str:
+    def _describe(cls, peer: RosterPeer) -> str:
         """Return the menu's line for a session: what it is about, whether it is working, where it is."""
         parts = [peer.title or "untitled"]
         if peer.status != "idle":
@@ -91,7 +116,7 @@ class SessionMentions(MentionProvider):
         """Put ``session "work"`` where the reader typed ``@work``: the model has no use for the ``@``."""
         return f'session "{name}"' if self._find(name) is not None else None
 
-    def _find(self, name: str) -> Peer | None:
+    def _find(self, name: str) -> RosterPeer | None:
         """Return the session called ``name`` among those running now."""
         return next((peer for peer in self._peers() if peer.handle == name), None)
 

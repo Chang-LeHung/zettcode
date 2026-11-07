@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from zettcode.error_text import may_pass
-from zettcode.relay import batch_size
+from zettcode.messaging.relayed import batch_size
 from zettcode.sdk.types import DIRECT_EMPTY, DIRECT_FAILED, IncomingMessage, Receipt
 
 from .state import Record, Registry, State
@@ -98,7 +98,7 @@ class Inbox:
     def done(self) -> IncomingMessage | None:
         """Close the turn that ended: return the next message to run, or ``None`` when the daemon is idle again.
 
-        The messages that waited come back as one, in order (see :func:`~zettcode.relay.batch_size`), so a daemon that
+        The messages that waited come back as one, in order (see :func:`~zettcode.messaging.relayed.batch_size`), so a daemon that
         was busy answers them in a single turn instead of one turn each; a chat window's message is always its own.
         """
         if self._waiting:

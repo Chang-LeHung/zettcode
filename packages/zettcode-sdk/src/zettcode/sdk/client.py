@@ -75,6 +75,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.engine.plugins.commands import PlainCommand
     from zettcode.mentions import MentionRegistry
     from zettcode.messaging.messenger import Messenger
+    from zettcode.messaging.relayed import Relayed
 
 __all__ = ["Client", "PluginReport", "SETTINGS", "Sessions", "TriggerInfo", "prompt", "prompt_sync"]
 
@@ -203,19 +204,11 @@ def _coerced(settings: Mapping[str, object]) -> dict[str, object]:
     return values
 
 
-def _incoming(relayed: object) -> IncomingMessage:
+def _incoming(relayed: Relayed) -> IncomingMessage:
     """Return one message another session sent as the value this SDK hands a program (see :meth:`Client.join_sessions`)."""
-    return IncomingMessage(
-        sender_id=relayed.sender_id,  # type: ignore[attr-defined]
-        sender=relayed.sender,  # type: ignore[attr-defined]
-        text=relayed.text,  # type: ignore[attr-defined]
-        via=relayed.via,  # type: ignore[attr-defined]
-        hops=relayed.hops,  # type: ignore[attr-defined]
-        direct=relayed.direct,  # type: ignore[attr-defined]
-        mode=relayed.mode,  # type: ignore[attr-defined]
-        group=relayed.group,  # type: ignore[attr-defined]
-        images=tuple(Image(item.data, item.media_type) for item in relayed.images),  # type: ignore[attr-defined]
-    )
+    from .relay import incoming_of
+
+    return incoming_of(relayed)
 
 
 def _choice(name: str, value: object, kind: type) -> object:
@@ -1392,6 +1385,7 @@ class Client:
     def _start_waiting(self, item: object) -> bool:
         """Start a turn from one message the inbox held, and say whether it is under way."""
         from zettcode.engine.inbox import Waiting
+        from zettcode.messaging.relayed import Relayed
 
         if self._closed or not isinstance(item, Waiting):
             return False
@@ -1400,7 +1394,7 @@ class Client:
         except RuntimeError:
             return False  # no loop to run it on: the message waits for one
         text = item.message if isinstance(item.message, str) else item.message.text
-        relayed = item.payload
+        relayed = item.payload if isinstance(item.payload, Relayed) else None
 
         async def drive() -> None:
             """Run the waiting message as a turn, once this client lets go of the run it just finished.

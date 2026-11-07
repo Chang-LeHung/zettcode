@@ -23,6 +23,7 @@ from zettcode.sdk.types import (
     ContextReport,
     ContextShare,
     DayTotals,
+    IncomingMessage,
     MentionInfo,
     Message,
     ModelCheck,
@@ -172,6 +173,12 @@ class FakeSession:
         text = getattr(message, "text", "")
         self.steered.append(text)
         return text if self.steering else None
+
+    def _steer_incoming(self, message: IncomingMessage) -> str | None:
+        """Take a message another session sent, as the server does: record the framed text the model would read."""
+        from zettcode.sdk.relay import relayed_of
+
+        return self._steer_message(relayed_of(message).message())
 
     async def resumable(self) -> object | None:
         return self.resume_info
