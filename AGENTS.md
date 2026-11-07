@@ -93,7 +93,9 @@ from the root.
   ref) and runs only what the change touches — Ruff, mypy and the Python suites for `packages/`, the
   TypeScript client for `clients/typescript/`, the extension for either JavaScript client, and nothing for a
   guide-only edit.
-  `make test` runs each distribution's suite on its own, with that package's pytest configuration; a bare `pytest`
+  `make test` runs every distribution's suite at once, each in its own process with that package's pytest
+  configuration; the largest suites also split their tests across xdist workers, and `TEST_JOBS=1` restores the
+  one-at-a-time run. A bare `pytest`
   at the root is refused (its conftest says why). Each package also has its own `Makefile` (`test`, `lint`,
   `typecheck`) for the days one distribution is all that changed: `make -C packages/zettcode-tui test`.
   Run `make check-all` before handing work over; CI runs only the suites a pull request's diff needs — `packages/`,

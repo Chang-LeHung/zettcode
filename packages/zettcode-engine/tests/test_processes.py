@@ -39,6 +39,6 @@ def test_a_running_process_is_still_there_and_a_reaped_one_is_not(running):
     assert processes.still_there(child.pid) is False
 
 
-@pytest.mark.parametrize("pid", [0, -1, os.getpid()])
+@pytest.mark.parametrize("pid", [0, -1, "self"])
 def test_still_there_never_probes_this_process_or_a_negative_id(pid):
-    assert processes.still_there(pid) is False
+    assert processes.still_there(os.getpid() if pid == "self" else pid) is False
