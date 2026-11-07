@@ -123,7 +123,10 @@ async def test_a_daemon_call_answers_and_can_be_left_behind():
     slow.start()
     assert await slow.wait(0.01) is None, "the deadline is what a panel cannot wait past"
     assert slow.peek() is None, "it has not answered yet"
-    await asyncio.sleep(0.6)
+    for _ in range(200):
+        if slow.peek() is not None:
+            break
+        await asyncio.sleep(0.01)
     assert slow.peek() == "late", "and the answer is adopted rather than thrown away"
 
     failing = DaemonCall(lambda: 1 / 0)
