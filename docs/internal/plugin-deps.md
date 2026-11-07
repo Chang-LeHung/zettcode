@@ -99,6 +99,4 @@ the runtime's idle notice lands before the shell clears its own busy flag.
 
 - Shrink `app` further: `shell` and `turn-line` are still compiled in (`BUILTIN_PLUGINS`) and `labels`/`UsagePage` live
   in `app` because the commands open them.
-- `AGENT_PLUGINS` is still a list of instances, for callers that load without discovery (most tests). If those move to
-  discovery too, it can shrink to the class names.
 - A plugin that loses a name is visible only in the log; a `note` on `PluginEntry` would put it on the page.

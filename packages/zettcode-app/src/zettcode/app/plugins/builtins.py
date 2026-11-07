@@ -108,8 +108,9 @@ class BuiltinThemes(TuiPlugin):
             tui.register_theme(source.name, source.load, description=source.description)
 
 
-#: Plugins loaded from the repository itself, never from a distribution. The agent-side ones, which build on
-#: state the runtime hands over, are :data:`~zettcode.sdk.builtins.AGENT_PLUGINS`.
+#: Plugins loaded from the repository itself, never from a distribution. They are instances because a ``TuiPlugin``
+#: needs nothing to build one; the agent-side ones, which build on state the runtime hands over, are the classes in
+#: :data:`~zettcode.sdk.builtins.AGENT_PLUGINS`, instantiated once per load by the loader.
 BUILTIN_PLUGINS: tuple[TuiPlugin, ...] = (
     ShellRows(),
     TurnLine(),

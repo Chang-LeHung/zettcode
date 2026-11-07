@@ -317,29 +317,31 @@ class Compaction(Plugin[PluginContext]):
         ctx.agent.register_extension(compaction)
 
 
-#: The agent-side plugins in the order the agent receives their extensions. The distribution publishes the same list as
-#: entry points (``zettcode.plugin`` in this package's ``pyproject.toml``) and the loader reads it from there; this tuple
-#: is what gives each its rank, and what a caller that loads without discovering (a test, a checkout with no installed
-#: distribution) passes as ``builtins=``. ``test_agent_parts.py`` holds the two lists together.
-AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
-    CodingTools(),
-    CommandLine(),
-    Capabilities(),
-    Subagents(),
-    ShellPermission(),
-    SessionLog(),
-    UsageTracking(),
-    ContextTracking(),
-    SideQuestionBoundary(),
-    SelfCompaction(),
-    Compaction(),
+#: The agent-side plugin classes in the order the agent receives their extensions. The distribution publishes the same
+#: list as entry points (``zettcode.plugin`` in this package's ``pyproject.toml``) and the loader reads it from there;
+#: this tuple is what gives each its rank, and what a caller that loads without discovering (a test, a checkout with no
+#: installed distribution) passes as ``builtins=`` — the loader instantiates a class as it does one from an entry point.
+#: ``test_agent_parts.py`` holds the two lists together.
+AGENT_PLUGINS: tuple[type[Plugin[PluginContext]], ...] = (
+    CodingTools,
+    CommandLine,
+    Capabilities,
+    Subagents,
+    ShellPermission,
+    SessionLog,
+    UsageTracking,
+    ContextTracking,
+    SideQuestionBoundary,
+    SelfCompaction,
+    Compaction,
 )
 
 for _rank, _plugin in enumerate(AGENT_PLUGINS):
     # One list is the order; the rank is read from it, so there is no second number to keep in step by hand.
-    type(_plugin).rank = _rank
+    _plugin.rank = _rank
 # The rank lives on the class, so a class listed twice would take the last index for both.
-assert len({type(plugin) for plugin in AGENT_PLUGINS}) == len(AGENT_PLUGINS), "AGENT_PLUGINS lists a class twice"
+assert len(set(AGENT_PLUGINS)) == len(AGENT_PLUGINS), "AGENT_PLUGINS lists a class twice"
+
 
 #: The names of those plugins, which the program cannot run without.
 AGENT_PLUGIN_NAMES: tuple[str, ...] = tuple(plugin.name for plugin in AGENT_PLUGINS)

@@ -31,6 +31,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
     from zettcode.config import ZettCodeConfig
     from zettcode.engine.plugins.commands import PlainCommand
+    from zettcode.engine.plugins.loader import OfferedPlugin
     from zettcode.engine.plugins.plugin import Plugin
     from zettcode.plugin_api.commands import Command
     from zettcode.plugin_api.pets import PetSource
@@ -42,7 +43,7 @@ def load_terminal_plugins(
     config: ZettCodeConfig,
     *,
     entry_points: Iterable[EntryPoint] | None = None,
-    builtins: Sequence[Plugin[Any]] = BUILTIN_PLUGINS,
+    builtins: Sequence[OfferedPlugin] = BUILTIN_PLUGINS,
     shared: Mapping[str, object] | None = None,
     required: Sequence[str] = (),
     agent: bool = True,

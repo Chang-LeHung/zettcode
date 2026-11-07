@@ -44,13 +44,13 @@ def test_the_distribution_publishes_exactly_the_plugins_the_list_names_in_that_o
     ]
 
     assert list(published) == [plugin.name for plugin in AGENT_PLUGINS]
-    assert list(published.values()) == [f"zettcode.sdk.builtins:{type(plugin).__name__}" for plugin in AGENT_PLUGINS]
+    assert list(published.values()) == [f"zettcode.sdk.builtins:{plugin.__name__}" for plugin in AGENT_PLUGINS]
 
 
 def test_the_installed_environment_advertises_the_same():
     found = {point.name: point.value for point in _sdk_points()}
 
-    assert found == {plugin.name: f"zettcode.sdk.builtins:{type(plugin).__name__}" for plugin in AGENT_PLUGINS}
+    assert found == {plugin.name: f"zettcode.sdk.builtins:{plugin.__name__}" for plugin in AGENT_PLUGINS}
 
 
 def test_discovery_activates_them_in_the_order_of_the_list_and_not_in_the_order_the_names_sort(tmp_path: Path):
@@ -73,9 +73,9 @@ def test_a_plugin_is_activated_after_the_one_whose_service_it_reads_whatever_the
     subagents = next(plugin for plugin in AGENT_PLUGINS if plugin.name == "subagents")
     capabilities = next(plugin for plugin in AGENT_PLUGINS if plugin.name == "capabilities")
     assert subagents.deps == ("capabilities",)
-    ranks = (type(subagents).rank, type(capabilities).rank)
+    ranks = (subagents.rank, capabilities.rank)
     try:
-        type(subagents).rank, type(capabilities).rank = 0, 99  # the wrong way round
+        subagents.rank, capabilities.rank = 0, 99  # the wrong way round
         points = [
             point
             for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)
@@ -84,7 +84,7 @@ def test_a_plugin_is_activated_after_the_one_whose_service_it_reads_whatever_the
         config = _config(tmp_path)
         plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=points)
     finally:
-        type(subagents).rank, type(capabilities).rank = ranks
+        subagents.rank, capabilities.rank = ranks
 
     assert [plugin.name for plugin in plugins.plugins] == ["capabilities", "subagents"]
     assert plugins.failed == ()
