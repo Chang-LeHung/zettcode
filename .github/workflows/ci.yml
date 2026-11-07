@@ -166,11 +166,21 @@ jobs:
       # suite runs there too: the platform seam, the reader thread, and the
       # resize poll are exercised on the platform that needs them.
       #
-      # This is the loop `make test` runs on Linux; `make` is not on a Windows runner, so it is spelled out here.
-      # Each distribution's suite is its own run, with the pytest configuration its own `pyproject.toml` holds.
+      # This is the serial loop `TEST_JOBS=1 make test` takes, spelled out because `make` is not on a Windows
+      # runner; the six suites `make test` gives xdist workers get `-n 2` here too, so the worker path is exercised
+      # on the platform whose process spawn is its own implementation.
       - name: Run the tests
         shell: bash
-        run: for suite in packages/*/tests; do echo "--- $suite"; uv run --no-sync pytest "$suite" -q || exit 1; done
+        run: |
+          for suite in packages/*/tests; do
+            name=${suite#packages/}; name=${name%%/*}
+            workers=""
+            case "$name" in
+              zettcode|zettcode-app|zettcode-broker|zettcode-messaging|zettcode-sdk|zettcode-server) workers="-n 2" ;;
+            esac
+            echo "--- $suite"
+            uv run --no-sync pytest "$suite" -q $workers || exit 1
+          done
 
   typescript:
     name: TypeScript client

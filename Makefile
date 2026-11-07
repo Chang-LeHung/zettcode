@@ -20,12 +20,17 @@ LINT_PATHS := conftest.py support docs/scripts .github/scripts $(PACKAGES)
 ORDER := .github/scripts/release_order.py
 # Recursive (`=`), so the script runs when a target needs the list, not on every `make help`.
 SPLIT = $(shell $(UV) run --no-sync python $(ORDER))
+#: How many jobs run at once: 80% of the machine's logical cores, rounded down, so the editor and the tests can share
+#: it. `JOBS=4 make check` caps it by hand, `TEST_JOBS=1 make test` restores one suite at a time, and `CHECK_JOBS`
+#: is what the clients use after the Python side. CI runs the suites one at a time, where a shared runner's timings
+#: are part of what is checked.
+JOBS ?= $(shell n=$$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4); j=$$((n * 8 / 10)); if [ "$$j" -lt 1 ]; then j=1; fi; echo $$j)
+TEST_JOBS ?= $(if $(CI),1,$(JOBS))
+CHECK_JOBS ?= $(JOBS)
 # Each distribution's suite runs on its own, in that distribution's directory: its `pyproject.toml` is the pytest
 # configuration it is written against (`testpaths`, `asyncio_mode`), and one run over several would take the
-# root's instead of theirs. Each package has a `Makefile` with the same targets for its own work.
-PACKAGE_TESTS := $(wildcard $(PACKAGES)/*/tests)
-PACKAGE_DIRS := $(patsubst %/tests,%,$(PACKAGE_TESTS))
-
+# root's instead of theirs. `support/test_all.py` finds them; each package also has a `Makefile` with the same
+# targets for its own work.
 # `make check` runs only what the tree has changed, so a change to the VS Code webview does not spend three minutes
 # on the Python suite. CI reads the same split from the pull request's own diff and runs the suites a change needs,
 # with the Makefile and the workflows counting as every file. The files are read against BASE, where this branch left
@@ -44,6 +49,13 @@ RUFFED := $(if $(PYTHON),1,$(filter docs/scripts/%,$(CHANGED)))
 CLIENT := $(if $(EVERYTHING),1,$(filter clients/typescript/%,$(CHANGED)))
 GATEWAY := $(if $(EVERYTHING),1,$(filter clients/gateway/%,$(CHANGED)))
 EXTENSION := $(if $(EVERYTHING),1,$(filter clients/vscode/% clients/typescript/%,$(CHANGED)))
+#: What `make check` runs: the Python side first (lint, typecheck and the suites together), then the clients the
+#: change touches at once. The editor's jsdom suite is timing-sensitive, so it does not run beside the whole Python
+#: suite; the clients are only a few seconds of the total.
+PYTHON_TARGET = $(if $(PYTHON),python,$(if $(RUFFED),lint))
+CLIENT_TARGETS = $(strip $(if $(CLIENT),client) $(if $(EXTENSION),vscode) $(if $(GATEWAY),gateway-ui))
+#: A sub-make inherits a jobserver when the caller started one; forcing -j then only replaces it with a warning.
+CLIENT_JOBS = $(if $(findstring j,$(MAKEFLAGS)),,$(CHECK_JOBS))
 
 .PHONY: help install lint typecheck test order python client gateway-page gateway-ui vscode vscode-package install-vscode build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
@@ -54,7 +66,8 @@ help:
 	@echo "  make install  Sync the workspace from uv.lock"
 	@echo "  make lint     Check formatting and linting with Ruff"
 	@echo "  make typecheck Check the shipped code with mypy"
-	@echo "  make test     Run every distribution's suite, one at a time (each package has its own Makefile)"
+	@echo "  make test     Run every distribution's suite, $(TEST_JOBS) at a time (TEST_JOBS=1 for one at a time)"
+	@echo "  JOBS=$(JOBS) TEST_JOBS=$(TEST_JOBS) CHECK_JOBS=$(CHECK_JOBS)  how many run at once (80% of the cores)"
 	@echo "  make order    Write the release order to packages/order.txt (generated, not in git)"
 	@echo "  make python   Lint, type-check and test the Python side"
 	@echo "  make client   Build and test the TypeScript client"
@@ -94,9 +107,7 @@ typecheck:
 	$(UV) run --no-sync mypy
 
 test:
-	@for directory in $(PACKAGE_DIRS); do \
-		echo "--- $$directory"; $(MAKE) --no-print-directory -C "$$directory" test || exit 1; \
-	done
+	@$(UV) run --no-sync python support/test_all.py $(TEST_JOBS)
 
 # The dependency order a release publishes in, written out for a reader (`packages/order.txt`).
 order:
@@ -173,14 +184,18 @@ check:
 	@echo "--- changed since $(BASE) ---"
 	@printf '%s\n' $(CHANGED) | head -20 | sed 's/^/  /'
 	@test -n "$(CHANGED)" || echo "  (nothing yet; make check-all runs every suite)"
-	@$(if $(PYTHON),$(MAKE) --no-print-directory python,$(if $(RUFFED),$(MAKE) --no-print-directory lint,echo "  python: untouched, skipped"))
-	@$(if $(CLIENT),$(MAKE) --no-print-directory client,echo "  typescript client: untouched, skipped")
-	@$(if $(EXTENSION),$(MAKE) --no-print-directory vscode,echo "  vscode extension: untouched, skipped")
-	@$(if $(GATEWAY),$(MAKE) --no-print-directory gateway-ui,echo "  gateway page: untouched, skipped")
+	@$(if $(PYTHON),:,$(if $(RUFFED),:,echo "  python: untouched, skipped"))
+	@$(if $(CLIENT),:,echo "  typescript client: untouched, skipped")
+	@$(if $(EXTENSION),:,echo "  vscode extension: untouched, skipped")
+	@$(if $(GATEWAY),:,echo "  gateway page: untouched, skipped")
+	@$(if $(PYTHON_TARGET),$(MAKE) --no-print-directory $(PYTHON_TARGET),:)
+	@$(if $(CLIENT_TARGETS),$(MAKE) --no-print-directory $(if $(CLIENT_JOBS),-j$(CLIENT_JOBS)) $(CLIENT_TARGETS),:)
 
 # Every suite, whatever the change: what CI runs when a change can reach all of them, and what to run before handing
 # work over.
-check-all: python client vscode gateway-ui
+check-all:
+	@$(MAKE) --no-print-directory python
+	@$(MAKE) --no-print-directory $(if $(CLIENT_JOBS),-j$(CLIENT_JOBS)) client vscode gateway-ui
 
 # The guide is a VitePress site in docs/; its own package.json pins it.
 docs:

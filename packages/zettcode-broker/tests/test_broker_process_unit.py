@@ -44,9 +44,9 @@ def test_the_command_line_of_a_running_process_is_read_and_a_gone_one_has_none(r
     assert processes.command_line(child.pid) is None
 
 
-@pytest.mark.parametrize("pid", [0, -1, os.getpid()])
+@pytest.mark.parametrize("pid", [0, -1, "self"])
 def test_this_process_and_nonsense_are_never_looked_up(pid):
-    assert processes.command_line(pid) is None
+    assert processes.command_line(os.getpid() if pid == "self" else pid) is None
 
 
 def test_a_process_is_recognised_by_the_module_it_runs_as(runs, tmp_path: Path):

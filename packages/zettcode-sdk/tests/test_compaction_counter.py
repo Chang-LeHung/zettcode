@@ -112,7 +112,7 @@ async def test_before_the_load_finishes_a_count_is_an_estimate_and_nothing_is_lo
 
     assert exact == [], "zett-agent's counter, which would load the vocabulary here, was not called"
     assert tokens == 1 + 1000 + 1000, "five characters of rules, then two messages of four thousand"
-    assert elapsed < 0.05
+    assert elapsed < 0.5, "a count is an estimate while the load is held, even on a busy machine"
     gate.release.set()
 
 
@@ -134,7 +134,7 @@ async def test_starting_returns_at_once_whatever_the_load_costs():
     counter.start()
     elapsed = time.perf_counter() - started
 
-    assert elapsed < 0.05, "start does not wait for the load"
+    assert elapsed < 0.5, "start does not wait for the load, even on a busy machine"
     gate.release.set()
 
 
