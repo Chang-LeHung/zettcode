@@ -15,9 +15,9 @@ One process holds at most one session lock: the active one. Starting a new sessi
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol
 
 from zettcode.filelock import SingletonLock, is_held
 
@@ -41,23 +41,23 @@ class SessionLocked(ValueError):
         super().__init__(message)
 
 
-class SessionGuard(Protocol):
+class SessionGuard(ABC):
     """What the runtime asks of a session lock: take it for a session, ask whether it is held, give it up."""
 
+    @abstractmethod
     def claim(self, session_id: str) -> bool:
         """Take the lock for ``session_id``, letting go of any other, and say whether it is held now."""
-        ...
 
+    @abstractmethod
     def holds(self, session_id: str) -> bool:
         """Return whether this process holds the lock for ``session_id``."""
-        ...
 
+    @abstractmethod
     def release(self) -> None:
         """Let go of the lock this process holds, if it holds one."""
-        ...
 
 
-class NoLocks:
+class NoLocks(SessionGuard):
     """The guard of a runtime with no store on disk: every claim succeeds, because nothing is shared."""
 
     def claim(self, session_id: str) -> bool:
@@ -72,7 +72,7 @@ class NoLocks:
         """Hold nothing, so there is nothing to let go of."""
 
 
-class SessionLocks:
+class SessionLocks(SessionGuard):
     """The lock of the one session a process has open.
 
     Args:

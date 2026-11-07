@@ -14,7 +14,9 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
+from zettcode.engine.inbox import WaitingLike
 from zettcode.modes import MODE_STEER
+from zettcode.wire import RosterPeer
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from .events import Event
@@ -357,7 +359,7 @@ class Relay:
 
 
 @dataclass(frozen=True, slots=True)
-class Peer:
+class Peer(RosterPeer):
     """Another session that is registered with the broker right now.
 
     Attributes:
@@ -546,7 +548,7 @@ class PluginEntry:
 
 
 @dataclass(frozen=True, slots=True)
-class IncomingMessage:
+class IncomingMessage(WaitingLike):
     """A message another ZettCode session sent, as the broker delivered it.
 
     Attributes:

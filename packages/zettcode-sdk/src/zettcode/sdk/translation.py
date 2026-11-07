@@ -10,8 +10,9 @@ there is one translation: :func:`translate` for the events, :class:`AgentBridge`
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
@@ -62,17 +63,19 @@ from .types import (
 __all__ = ["AgentBridge", "Bridge", "checks_from", "ledger_from", "stats_from", "translate", "usage_from"]
 
 
-class Bridge(Protocol):
+class Bridge(ABC):
     """How an answer reaches the suspended agent; the client supplies it."""
 
+    @abstractmethod
     def approve(self, session_id: str, call_id: str, approve: bool, remember: bool) -> None:
         """Send a shell approval decision."""
 
+    @abstractmethod
     def answer(self, question: AskUserQuestion, text: str | None) -> None:
         """Send the answer to a question, or decline it when ``text`` is ``None``."""
 
 
-class AgentBridge:
+class AgentBridge(Bridge):
     """Carry the program's answers to the suspended agent, through the application's own agent."""
 
     def __init__(self, agent: ZettCodeAgent) -> None:

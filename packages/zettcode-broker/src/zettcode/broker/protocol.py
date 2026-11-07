@@ -78,7 +78,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from zettcode.modes import MODE_STEER, MODES
-from zettcode.wire import VIA_AGENT, VIA_EXTERNAL, VIA_USER, ImageData
+from zettcode.wire import VIA_AGENT, VIA_EXTERNAL, VIA_USER, ImageData, RosterPeer
 
 from .text import clean_text, clean_title
 
@@ -262,7 +262,7 @@ def field(raw: Mapping[str, Any], name: str, kind: type, default: Any = None) ->
 
 
 @dataclass(frozen=True, slots=True)
-class PeerInfo:
+class PeerInfo(RosterPeer):
     """A registered session, as the broker lists it."""
 
     session_id: str

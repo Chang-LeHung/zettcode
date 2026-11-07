@@ -19,10 +19,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol
 
 from zett_agent.messages import UserMessage
 
+from zettcode.engine.inbox import WaitingLike
 from zettcode.modes import MODE_STEER
 from zettcode.relay import RELAY
 from zettcode.wire import VIA_AGENT, VIA_EXTERNAL, VIA_USER, ImageData
@@ -42,7 +42,7 @@ REPLY_TOOL = "send_message"
 
 
 @dataclass(frozen=True, slots=True)
-class Relayed:
+class Relayed(WaitingLike):
     """One message another session sent.
 
     Attributes:
@@ -186,25 +186,13 @@ def merge(items: Sequence[Relayed]) -> Relayed:
     )
 
 
-class _Waiting(Protocol):
-    """What :func:`batch_size` reads of a message that waits."""
-
-    @property
-    def direct(self) -> bool:
-        """Whether it is a chat window's message, which has to be answered on its own."""
-
-    @property
-    def text(self) -> str:
-        """What it says."""
-
-
 #: The most messages one merged turn takes, and the most text: what is left waits for the turn after. A session that
 #: was busy for long may have a long inbox, and the model should not be handed all of it in one prompt.
 MERGE_MESSAGES = 16
 MERGE_CHARS = 48_000
 
 
-def batch_size(waiting: Sequence[_Waiting]) -> int:
+def batch_size(waiting: Sequence[WaitingLike]) -> int:
     """Return how many messages at the front of an inbox go into the next turn together.
 
     A chat window's message is answered by the turn it starts, so it is always a turn of its own, and nothing is
