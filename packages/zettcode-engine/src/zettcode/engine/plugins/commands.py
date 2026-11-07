@@ -17,6 +17,7 @@ from typing import TypeAlias
 __all__ = [
     "CommandGroups",
     "PlainCommand",
+    "PlainCommandHost",
     "PlainCommandContext",
     "PlainCommandResult",
     "PlainHandler",
@@ -26,12 +27,13 @@ __all__ = [
 
 
 class PlainCommandHost(ABC):
-    """What a front end offers a plain command that needs the session, and not a screen.
+    """What a front end offers a plain command that acts on the session rather than answering text.
 
     A command that only answers text needs nothing but its argument; one that acts on the conversation — compact it,
-    name it, write it out, carry on where it stopped — says so here, and the front end that runs it supplies the four.
-    A front end with no host runs the command and the command answers that it cannot (see
-    :class:`PlainCommandContext`).
+    name it, write it out — says so here, and the front end that runs it supplies the three. A front end with no host
+    runs the command and the command answers that it cannot (see :class:`PlainCommandContext`). What a handler raises
+    is the front end's to report: a busy or locked session and a refused argument keep the meaning the rest of the API
+    gives them, so a host must not turn a failure into an answer.
     """
 
     @abstractmethod
@@ -45,10 +47,6 @@ class PlainCommandHost(ABC):
     @abstractmethod
     async def export(self, path: str | None) -> str:
         """Write the session to a file, and say where it went."""
-
-    @abstractmethod
-    async def carry_on(self) -> str:
-        """Carry on a request that was cut short, and say what happened."""
 
 
 @dataclass(frozen=True, slots=True)

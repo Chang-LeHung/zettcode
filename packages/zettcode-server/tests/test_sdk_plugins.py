@@ -332,14 +332,13 @@ async def test_the_commands_a_front_end_without_a_screen_can_run(tmp_path: Path)
             self.done.append(f"export:{path}")
             return "Wrote this session."
 
-        async def carry_on(self) -> str:
-            self.done.append("continue")
-            return "Carried on."
-
     async with zc.Client(config=config_for(tmp_path)) as client:
         listed = {command.name: command for command in client.plugins.plain_commands}
 
-        assert {"/compact", "/title", "/export", "/continue"} <= set(listed)
+        assert {"/compact", "/title", "/export"} <= set(listed)
+        assert "/continue" not in listed, (
+            "carrying a request on belongs to the front end that owns the run, not a command"
+        )
         host = Host()
         answered = await listed["/title"].handler(PlainCommandContext(argument="x", host=host))
         assert host.done == ["title:x"] and "called" in answered.notification
