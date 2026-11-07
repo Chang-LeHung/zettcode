@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from zettcode.commands.hub import TABS, Daemon, Edge, HubData, HubPage, Peer
+from zettcode.commands.hub import TABS, Daemon, HubData, HubPage, Peer
 
 
 def data(**changes: object) -> HubData:
@@ -13,8 +13,6 @@ def data(**changes: object) -> HubData:
         peers=(Peer("main", "the parser", "working", "/work"),),
         daemons=(Daemon("d-1", "watcher", "idle", model="m", workspace="/work"),),
         offline=("old",),
-        edges=(Edge("main", "bob", 7),),
-        recent=("main \u2192 bob: hello",),
     )
     return dataclasses.replace(base, **changes)  # type: ignore[arg-type]
 
@@ -33,7 +31,7 @@ def test_the_page_opens_on_the_sessions_tab_with_the_roster_and_the_offline_ones
     assert "on disk" in opened.list.items[1].description
 
 
-def test_tab_walks_the_three_and_keeps_a_mark_per_tab():
+def test_tab_walks_the_two_and_keeps_a_mark_per_tab():
     opened = page()
     opened.list.selected = 1
 
@@ -41,10 +39,6 @@ def test_tab_walks_the_three_and_keeps_a_mark_per_tab():
     assert keys == [True]
     assert opened.tab == 1 and "Daemons" in opened.title
     assert [item.label for item in opened.list.items] == ["watcher"]
-
-    opened.capture_event(_key("tab"), None)
-    assert opened.tab == 2 and "Graph" in opened.title
-    assert opened.list.items[0].label == "main \u2500\u25007\u2500\u2500\u25b6 bob"
 
     opened.capture_event(_key("tab"), None)
     assert opened.tab == 0 and opened.list.selected == 1, "the sessions mark came back"
@@ -201,8 +195,6 @@ class _FakeClient:
             )()
         ]
 
-    async def traffic_graph(self) -> dict[str, object]:
-        raise __import__("zettcode.sdk.errors", fromlist=["SendError"]).SendError("offline", "offline")
 
 
 def test_the_reading_lists_only_the_stored_sessions_that_are_not_registered_and_not_self():
@@ -215,42 +207,4 @@ def test_the_reading_lists_only_the_stored_sessions_that_are_not_registered_and_
 
     assert data.offline == ("old-9",)
     assert data.peers[0].session_id == "p-1"
-    assert data.note.startswith("the broker cannot be read:")
     assert isinstance(data, HubData)
-
-
-def test_the_graph_names_the_sessions_it_connects_instead_of_printing_ids():
-    """The broker's edges are ids; the page shows the handles its sessions list carries."""
-    import asyncio
-    import dataclasses
-
-    from zettcode.commands.hub import HubCommand
-
-    class Client:
-        session = type("Session", (), {"id": "self-1"})()
-
-        class sessions:
-            @staticmethod
-            async def list(*, limit: int | None = None) -> list[object]:
-                return []
-
-        @staticmethod
-        def peers() -> list[object]:
-            return []
-
-        @staticmethod
-        async def traffic_graph() -> dict[str, object]:
-            return {
-                "sessions": [
-                    {"session_id": "s-1", "handle": "zettcode-trigger"},
-                    {"session_id": "s-2", "handle": "review"},
-                ],
-                "edges": [{"a": "s-1", "b": "s-2", "count": 7}],
-                "recent": [{"from": {"handle": "zettcode-trigger"}, "to": {"handle": "review"}, "text": "hi"}],
-            }
-
-    assert hasattr(dataclasses, "replace")
-    data = asyncio.run(HubCommand()._read(Client()))
-
-    assert data.edges[0] == type(data.edges[0])("zettcode-trigger", "review", 7)
-    assert data.recent == ("zettcode-trigger \u2192 review: hi",)
