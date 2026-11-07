@@ -255,6 +255,7 @@ class TerminalLoader(Loader):
             failed=plain.failed,
             builtins=plain.builtins,
             triggers=plain.triggers,
+            taken=plain.taken,
             commands=(*program, *(command for command in self.commands if id(command) not in own)),
             builtin_commands=tuple(program),
             themes=tuple(self.themes),

@@ -161,6 +161,8 @@ class Plugins:
             cannot leave one out, and a list can say which rows are the program's own.
         triggers: The triggers the plugins registered, in load and registration order; the runtime starts them with
             itself (see :class:`~zettcode.engine.plugins.triggers.TriggerHost`).
+        taken: The plugins that lost a name to one loaded before them, each as ``(name, why)``; they are not failures
+            of the plugin that kept it, and a list shows them without a switch.
     """
 
     host: PluginExtension | None = None
@@ -172,6 +174,7 @@ class Plugins:
     failed: tuple[tuple[str, str], ...] = ()
     builtins: tuple[str, ...] = ()
     triggers: tuple[TriggerRegistration, ...] = ()
+    taken: tuple[tuple[str, str], ...] = ()
 
     @property
     def failures(self) -> tuple[str, ...]:

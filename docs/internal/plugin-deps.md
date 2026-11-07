@@ -99,4 +99,3 @@ the runtime's idle notice lands before the shell clears its own busy flag.
 
 - Shrink `app` further: `shell` and `turn-line` are still compiled in (`BUILTIN_PLUGINS`) and `labels`/`UsagePage` live
   in `app` because the commands open them.
-- A plugin that loses a name is visible only in the log; a `note` on `PluginEntry` would put it on the page.

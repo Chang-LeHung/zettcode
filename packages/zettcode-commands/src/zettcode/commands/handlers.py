@@ -641,6 +641,7 @@ class PluginCommand(TuiPlugin):
                     entry.setting,
                     entry.switchable,
                     entry.why,
+                    entry.note,
                 )
                 for entry in entries
             ],

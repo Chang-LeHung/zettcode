@@ -55,6 +55,8 @@ class PluginEntry:
             switch, and neither has one whose switch belongs to a line the reader wrote; a list draws those rows
             without one, and says why in ``why``.
         why: Why it cannot be switched, when it cannot; empty otherwise.
+        note: What else a list should say about the row — a plugin that lost its name to one loaded before it has no
+            switch and is not a failure, and this says so.
     """
 
     name: str
@@ -65,6 +67,7 @@ class PluginEntry:
     setting: str = ""
     switchable: bool = True
     why: str = ""
+    note: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +93,8 @@ def catalog(
     """Return every plugin a list can show, in the order it shows them.
 
     That is: the compiled-in plugins the reader can switch, each with the setting that decides it; the installed
-    distributions, in load order, with the ones the next start leaves out; then the ones that could not load, each
+    distributions, in load order, with the ones the next start leaves out; then a plugin that lost its name to one
+    loaded before it, with a note and no switch, under the installed group; then the ones that could not load, each
     with the reason. A compiled-in plugin with no setting is not here at all: there is nothing a reader could do about
     it.
 
@@ -159,12 +163,14 @@ def catalog(
         _failed(origin, "; ".join(whys), config, builtin=origin in builtins, off=off)
         for origin, whys in failures.items()
     ]
+    lost = [PluginEntry(name, name, enabled=False, switchable=False, note=note) for name, note in bundle.taken]
     # The group a row belongs to decides where it stands, so a group is one run of rows and gets one heading.
     return tuple(
         [
             *compiled,
             *(entry for entry in failed if entry.builtin),
             *installed,
+            *lost,
             *(entry for entry in failed if not entry.builtin),
         ]
     )

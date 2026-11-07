@@ -216,6 +216,8 @@ def test_a_plugin_cannot_take_the_entry_point_name_of_a_part_and_so_cannot_stand
 
     assert [p.__class__ for p in bundle.plugins] == [type(part._target)]
     assert bundle.failed == ()
+    assert [name for name, _note in bundle.taken] == ["presenters"]
+    assert "already has the name 'presenters'" in bundle.taken[0][1]
     assert [r.plugin for r in caplog.records if r.getMessage() == "plugins.name_taken"] == ["presenters"]
 
 
@@ -256,9 +258,23 @@ def test_a_file_that_shares_a_name_with_an_entry_point_is_reported_like_one(tmp_
     assert [p.name for p in bundle.plugins] == ["same"]
     assert bundle.failed == (), "the plugin that has the name loaded; the file is not a failure of it"
     rows = catalog(config(tmp_path), bundle, entry_points=points)
-    assert [(row.origin, row.failure) for row in rows] == [("same", "")], (
-        "one row, and it does not read 'could not load'"
+    assert [(row.origin, row.failure) for row in rows] == [("same", ""), ("same", "")], (
+        "the winner's row, and the file's note, neither reading 'could not load'"
     )
+    assert "already has the name" in rows[1].note and not rows[1].switchable
+
+
+def test_a_lost_name_is_a_note_a_list_can_show_not_a_failure(tmp_path: Path):
+    from zettcode.engine.plugins import Plugins
+    from zettcode.engine.plugins.switches import catalog
+
+    bundle = Plugins(taken=(("presenters", "the file fake.py: presenters already has the name 'presenters'"),))
+
+    rows = catalog(config(tmp_path), bundle, entry_points=())
+
+    row = next(row for row in rows if row.name == "presenters")
+    assert row.failure == "" and row.note and not row.switchable
+    assert "already has the name" in row.note
 
 
 def test_an_impostor_is_still_reported_when_the_part_it_imitates_was_disabled_and_pulled_back_in(
@@ -282,4 +298,5 @@ def test_an_impostor_is_still_reported_when_the_part_it_imitates_was_disabled_an
 
     assert [p.origin for p in bundle.plugins] == ["presenters"]
     assert bundle.failed == (), "the part loaded; the impostor is not a failure of it"
+    assert [name for name, _note in bundle.taken] == ["presenters"]
     assert [r.plugin for r in caplog.records if r.getMessage() == "plugins.name_taken"] == ["presenters"]

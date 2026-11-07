@@ -311,8 +311,9 @@ function row(entry: PluginEntry): string {
   const failed = entry.failure !== "";
   const dot = failed ? "failed" : entry.enabled ? "on" : "off";
   const origin = entry.origin === entry.name ? "" : `<span class="plugin-origin">${escapeHtml(entry.origin)}</span>`;
+  const note = entry.note ? `<span class="plugin-note">${escapeHtml(entry.note)}</span>` : "";
   const failure = failed ? `<span class="plugin-failure" data-why="load">${escapeHtml(entry.failure)}</span>` : "";
-  const why = entry.switchable ? "" : `<span class="plugin-fixed">${escapeHtml(entry.why)}</span>`;
+  const why = entry.switchable || entry.why === "" ? "" : `<span class="plugin-fixed">${escapeHtml(entry.why)}</span>`;
   const hint = entry.setting === "" ? "the plugin switch file" : escapeHtml(entry.setting);
   const control = entry.switchable
     ? `<button class="switch" role="switch" data-name="${escapeHtml(entry.origin)}" data-enabled="${entry.enabled}"
@@ -320,7 +321,7 @@ function row(entry: PluginEntry): string {
     : `<span class="chip">no switch</span>`;
   return `<li class="plugin ${dot}" data-name="${escapeHtml(entry.origin)}"><i class="dot"></i><span class="plugin-name">${escapeHtml(
     entry.name,
-  )}</span>${origin}${failure}${why}${control}</li>`;
+  )}</span>${origin}${note}${failure}${why}${control}</li>`;
 }
 
 /** A report from a server too old to send entries: the names alone, and no switch, since it could not serve one. */
@@ -334,7 +335,17 @@ function legacyEntries(plugins: PluginReport): PluginEntry[] {
 
 /** One entry for a server that sends names only. */
 function legacy(name: string, why: string): PluginEntry {
-  return { name, origin: name, builtin: false, enabled: true, failure: "", setting: "", switchable: false, why };
+  return {
+    name,
+    origin: name,
+    builtin: false,
+    enabled: true,
+    failure: "",
+    setting: "",
+    switchable: false,
+    why,
+    note: "",
+  };
 }
 
 /** The page's styles, using the editor's colours so it follows the theme. */
@@ -461,6 +472,7 @@ h1 { margin: 0 0 6px; font-size: 22px; font-weight: 650; letter-spacing: -.02em;
 .plugin-origin { color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .plugin-failure { color: var(--red); font-size: 11px; flex: 1 1 auto; }
 .plugin-fixed { color: var(--muted); font-size: 11px; flex: 1 1 auto; }
+.plugin-note { color: var(--muted); font-size: 11px; flex: 1 1 auto; }
 .chip { border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; margin-left: auto; flex-shrink: 0; }
 .plugin .switch { margin-left: auto; flex-shrink: 0; }
 .switch { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 11px; color: var(--muted);

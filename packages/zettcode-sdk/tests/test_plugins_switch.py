@@ -32,10 +32,12 @@ class _Bundle:
         *,
         builtins: tuple[str, ...] = (),
         failed: tuple[tuple[str, str], ...] = (),
+        taken: tuple[tuple[str, str], ...] = (),
     ) -> None:
         self.plugins = plugins or []
         self.builtins = builtins
         self.failed = failed
+        self.taken = taken
         self.failures = tuple(f"{origin}: {why}" for origin, why in failed)
 
 

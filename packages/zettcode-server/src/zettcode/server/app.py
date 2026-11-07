@@ -635,6 +635,7 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
                     setting=entry.setting,
                     switchable=entry.switchable,
                     why=entry.why,
+                    note=entry.note,
                 )
                 for entry in report.entries
             ],

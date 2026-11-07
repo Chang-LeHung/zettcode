@@ -698,6 +698,9 @@ back on by itself; the next switch written for a name removes it from that file.
   be nothing to press. (One that failed to load is still listed, for its reason — that is worth knowing even with
   nothing to press.)
 
+A plugin that wanted a name another plugin already had is listed with a note and no switch: the one that loaded keeps
+the name, and the page says which one lost it rather than leaving the loss in a log.
+
 A name in `[plugins] disable` can be switched back on from the page: it is an ordinary switch now, not a line held back
 for the reader. The question has one answer wherever it is asked: the terminal's `/plugins` page, the editor's
 **ZettCode: Show Plugins** panel and `PUT /plugins/{name}` on the server go through the same rules and write the same

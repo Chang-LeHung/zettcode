@@ -233,6 +233,8 @@ export interface PluginEntry {
   switchable: boolean;
   /** Why it cannot be switched, when it cannot; empty otherwise. */
   why: string;
+  /** What else a list should say — a plugin that lost its name to one loaded before it, with no switch and no failure. */
+  note: string;
 }
 
 /** Where one trigger a plugin registered is. */
