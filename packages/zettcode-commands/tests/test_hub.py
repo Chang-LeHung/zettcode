@@ -158,3 +158,62 @@ def test_a_cancelled_action_is_forgotten_without_complaint():
         return opened
 
     assert asyncio.run(scenario()).subtitle is None
+
+
+class _FakeSessions:
+    """The store as the page reads it: a few records, the reader's own among them."""
+
+    def __init__(self, ids: list[str]) -> None:
+        self._ids = ids
+        self.limit: int | None = None
+
+    async def list(self, *, limit: int | None = None) -> list[object]:
+        self.limit = limit
+
+        class Info:
+            def __init__(self, name: str) -> None:
+                self.id = name
+                self.title = "" if name.startswith("old") else name
+
+        return [Info(name) for name in self._ids]
+
+
+class _FakeClient:
+    """The slice of the SDK the reading uses."""
+
+    def __init__(self) -> None:
+        self.session = type("Session", (), {"id": "self-1"})()
+        self.sessions = _FakeSessions(["self-1", "p-1", "old-9"])
+
+    def peers(self) -> list[object]:
+        return [
+            type(
+                "Peer",
+                (),
+                {
+                    "handle": "p-1",
+                    "title": "the parser",
+                    "status": "idle",
+                    "workspace": "/work",
+                    "kind": "session",
+                    "session_id": "p-1",
+                },
+            )()
+        ]
+
+    async def traffic_graph(self) -> dict[str, object]:
+        raise __import__("zettcode.sdk.errors", fromlist=["SendError"]).SendError("offline", "offline")
+
+
+def test_the_reading_lists_only_the_stored_sessions_that_are_not_registered_and_not_self():
+    """The reader's own session is stored and never registered, so it must never be called offline."""
+    import asyncio
+
+    from zettcode.commands.hub import HubCommand, HubData
+
+    data = asyncio.run(HubCommand()._read(_FakeClient()))
+
+    assert data.offline == ("old-9",)
+    assert data.peers[0].session_id == "p-1"
+    assert data.note.startswith("the broker cannot be read:")
+    assert isinstance(data, HubData)
