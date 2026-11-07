@@ -17,8 +17,8 @@ from typing import TypeAlias
 __all__ = [
     "CommandGroups",
     "PlainCommand",
-    "PlainCommandHost",
     "PlainCommandContext",
+    "PlainCommandHost",
     "PlainCommandResult",
     "PlainHandler",
     "TextCommandResult",

@@ -151,7 +151,12 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         TriggerEvent,
         TriggerScope,
     )
-    from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult, TurnCommandResult
+    from zettcode.engine.plugins.commands import (
+        PlainCommandContext,
+        PlainCommandHost,
+        TextCommandResult,
+        TurnCommandResult,
+    )
     from zettcode.mention import Mention, MentionProvider
     from zettcode.plugin_tui import TuiGroup
     from zettcode.providers import Provider

@@ -307,10 +307,10 @@ async def test_the_server_sends_where_each_trigger_is_once_the_runtime_has_start
 
 
 async def test_the_commands_a_front_end_without_a_screen_can_run(tmp_path: Path):
-    """`/compact`, `/title`, `/export` and `/continue` are listed for any front end, and ask its host for the work.
+    """`/compact`, `/title` and `/export` are listed for any front end, and ask its host for the work.
 
     The terminal has richer versions of the same names and loads those instead, so a headless client — the server, and
-    the editor behind it — gets these four and nothing changes for a process with a screen.
+    the editor behind it — gets these three and nothing changes for a process with a screen.
     """
     from zettcode.sdk.commands import PlainCommandContext, PlainCommandHost
 

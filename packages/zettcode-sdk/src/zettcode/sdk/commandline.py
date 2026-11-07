@@ -1,4 +1,4 @@
-"""The commands every front end can run: text and a turn, no page and no screen.
+"""The commands every front end can run: an answer in words, no page and no screen.
 
 The terminal has its own, richer versions — ``/title`` shares a page with the session panel — and they are registered
 only where there is a screen. These are what a front end without one (the server, and the editor behind it) lists through
@@ -33,7 +33,7 @@ class CommandLine(Plugin[PluginContext]):
     description = "The commands every front end can run"
 
     def activate(self, ctx: PluginContext) -> None:
-        """Register the four; a process with a screen keeps the terminal's own, richer versions instead."""
+        """Register the three; a process with a screen keeps the terminal's own, richer versions instead."""
         if ctx.tui is not None:
             return
         ctx.commands.register(
