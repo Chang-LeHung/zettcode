@@ -532,6 +532,8 @@ class PluginOut(BaseModel):
             installed one, which `[plugins] disable` holds.
         switchable: Whether there is a switch to draw; a panel shows the rest without one and says ``why``.
         why: Why it cannot be switched, when it cannot; empty otherwise.
+        note: What else a panel should say — a plugin that lost its name to one loaded before it has no switch and is
+            not a failure, and this says why.
     """
 
     name: str
@@ -542,6 +544,7 @@ class PluginOut(BaseModel):
     setting: str = ""
     switchable: bool = True
     why: str = ""
+    note: str = ""
 
 
 class TriggerOut(BaseModel):

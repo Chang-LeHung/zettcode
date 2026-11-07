@@ -79,11 +79,18 @@ const entries: PluginEntry[] = [
   { ...base("acme", "zettcode-acme"), enabled: false },
   // A row the server says cannot be moved: the panel draws why instead of a switch.
   { ...base("held", "zettcode-held"), enabled: false, switchable: false, why: "switched off in the configuration file" },
+  // A plugin that lost its name to another: no switch, and the note is what the panel draws.
+  {
+    ...base("lost", "zettcode-lost"),
+    enabled: false,
+    switchable: false,
+    note: "the file fake.py: zettcode-lost already has the name 'lost'",
+  },
 ];
 
 /** One entry with the defaults a fixture does not care about. */
 function base(name: string, origin: string, builtin = false): PluginEntry {
-  return { name, origin, builtin, enabled: true, failure: "", setting: "", switchable: true, why: "" };
+  return { name, origin, builtin, enabled: true, failure: "", setting: "", switchable: true, why: "", note: "" };
 }
 
 const plugins: PluginReport = {
@@ -210,11 +217,11 @@ test("the plugins page separates the program's own from the installed ones, and 
   const names = (title: string): (string | null)[] =>
     Array.from(panelOf(title)?.querySelectorAll(".plugin-name") ?? []).map((node) => node.textContent);
   assert.deepEqual(names("Built in"), ["skills", "mcp"]);
-  assert.deepEqual(names("Installed"), ["lint", "search", "acme", "held"]);
+  assert.deepEqual(names("Installed"), ["lint", "search", "acme", "held", "lost"]);
 
   const summary = document.querySelector(".summary")?.textContent?.replace(/\s+/g, " ") ?? "";
   assert.ok(
-    summary.includes("3 of 5 switches on") && summary.includes("1 failed") && summary.includes("1 without a switch"),
+    summary.includes("3 of 5 switches on") && summary.includes("1 failed") && summary.includes("2 without a switch"),
     summary,
   );
   const note = document.querySelector(".scope")?.textContent?.replace(/\s+/g, " ") ?? "";
@@ -235,6 +242,11 @@ test("a row has a switch when the server says it can move, and says why when it 
   assert.equal(held?.querySelector(".switch"), null, "the button would only ever be refused");
   assert.equal(held?.querySelector(".chip")?.textContent, "no switch");
   assert.ok(held?.textContent?.includes("switched off in the configuration file"), "the row says why");
+
+  const lost = document.querySelector('.plugin[data-name="zettcode-lost"]');
+  assert.ok(lost?.querySelector(".plugin-note")?.textContent?.includes("already has the name"), "a lost name is drawn");
+  assert.equal(lost?.querySelector(".switch"), null, "and it has no switch");
+  assert.equal(lost?.querySelector(".plugin-fixed"), null, "and no empty fixed span takes the row's space");
 
   const skills = document.querySelector('.plugin[data-name="skills"]');
   assert.equal(skills?.querySelector(".switch")?.getAttribute("aria-pressed"), "true");
@@ -281,6 +293,43 @@ test("a switch the server refuses comes back as why, on the row it was pressed o
   });
 });
 
+test("an answer finds the row with the switch when a note shares its name", async () => {
+  const lost = {
+    ...base("lost", "zettcode-acme"),
+    enabled: false,
+    switchable: false,
+    note: "the file fake.py: zettcode-acme already has the name 'acme'",
+  };
+  const twin = { ...client, plugins: async () => ({ ...plugins, entries: [lost, ...entries] }) };
+  await showPluginsPanel(async () => twin as never, { toString: () => "file:///extension" } as never, "zettcode");
+
+  const dom = new JSDOM(lastPanel!.webview.html, {
+    runScripts: "dangerously",
+    beforeParse(window) {
+      (window as unknown as { acquireVsCodeApi: () => { postMessage: () => void } }).acquireVsCodeApi = () => ({
+        postMessage: () => {},
+      });
+    },
+  });
+  const winner = dom.window.document.querySelector('.plugin[data-name="zettcode-acme"] .switch');
+  assert.ok(winner !== null);
+
+  dom.window.dispatchEvent(
+    new dom.window.MessageEvent("message", {
+      data: { type: "switched", name: "zettcode-acme", enabled: true, error: "" },
+    }),
+  );
+
+  assert.equal(winner.getAttribute("aria-pressed"), "true");
+  assert.equal(winner.hasAttribute("disabled"), false);
+  assert.ok(
+    dom.window.document
+      .querySelector('.plugin[data-name="zettcode-acme"] .plugin-note')
+      ?.textContent?.includes("already has the name"),
+    "the note row is untouched",
+  );
+});
+
 test("the plugins page's script is one its own policy allows, and it speaks the message the host answers", async () => {
   await showPluginsPanel(async () => client as never, { toString: () => "file:///extension" } as never, "zettcode");
   const html = lastPanel!.webview.html;
@@ -314,7 +363,7 @@ test("the summary counts what the switches say, and the script recounts on an an
   assert.equal(document.getElementById("plugins-on")?.textContent, "3");
   assert.equal(document.getElementById("plugins-switches")?.textContent, "5");
   assert.equal(document.getElementById("plugins-failed")?.textContent, "1");
-  assert.equal(document.getElementById("plugins-noswitch")?.textContent, "1", "the row the file holds is counted");
+  assert.equal(document.getElementById("plugins-noswitch")?.textContent, "2", "both rows without a switch are counted");
 
   // The script keeps them right after a flip, and counts a switch's own state rather than a row's colour.
   const script = document.querySelector("script")?.textContent ?? "";

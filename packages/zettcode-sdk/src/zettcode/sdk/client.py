@@ -281,6 +281,7 @@ def _plugin_entry(entry: Any) -> PluginEntry:
         setting=entry.setting,
         switchable=entry.switchable,
         why=entry.why,
+        note=entry.note,
     )
 
 

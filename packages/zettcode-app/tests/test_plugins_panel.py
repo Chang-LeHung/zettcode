@@ -73,6 +73,25 @@ def _text(page: PluginsPage) -> str:
     return render_block(page, width=84, height=18).split("-- styles --")[0]
 
 
+def test_a_plugin_that_lost_its_name_says_so_without_a_switch():
+    note = "the file fake.py: presenters already has the name 'presenters'"
+    page, _ = _page(
+        (
+            PluginRow("presenters", "presenters"),
+            PluginRow("presenters", "presenters", enabled=False, switchable=False, note=note),
+        )
+    )
+
+    text = _text(page)
+
+    assert "name taken" in text
+    assert page.changes == {}, "the note row does not overwrite the winner's switch"
+    assert page.shown == {"presenters": True}, "only the winner has a switch"
+
+    page.mark = 1
+    assert "already has the name" in _text(page), "the line under the list says who wanted it"
+
+
 def test_the_page_lists_the_programs_own_plugins_apart_from_the_installed_ones():
     page, _ = _page()
 

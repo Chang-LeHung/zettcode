@@ -400,11 +400,13 @@ def run(
             continue
         for who in losers:
             # Not a failure of the plugin that has the name: it loaded, and its row says so. The loser has no row of
-            # its own (it shares the name, or is a file with nothing but the name), so it is written to the log.
+            # its own (it shares the name, or is a file with nothing but the name), so it is a note on the page.
+            reason = f"{owners[name]} already has the name {name!r}"
             logger.warning(
                 "plugins.name_taken",
-                extra={"plugin": name, "who": who, "reason": f"{owners[name]} already has the name {name!r}"},
+                extra={"plugin": name, "who": who, "reason": reason},
             )
+            loader.taken.append((name, f"{who}: {reason}"))
     # A plugin of the program is the program's own whether or not it loads, and whether or not it is ever activated: one
     # refused for a need that failed still goes on the list a switch is refused against.
     loader.builtins.extend(c.origin for c in candidates if c.builtin and c.origin not in loader.builtins)
@@ -512,6 +514,9 @@ class Loader:
         #: One ``(origin, why)`` per plugin that could not be loaded; the messages a front end shows are built from
         #: these, so a list can put a header on its own row.
         self.failed: list[tuple[str, str]] = []
+        #: One ``(name, why)`` per plugin that lost a name to one loaded before it; the winner did nothing wrong,
+        #: so these are notes rather than failures, and a list shows them without a switch.
+        self.taken: list[tuple[str, str]] = []
         #: The origins of the compiled-in plugins, in load order, so a bundle can say which rows are the program's.
         self.builtins: list[str] = []
         #: Whether the plugin being accepted is the program's own (built in, or one of its parts); read by ``merge``.
@@ -594,6 +599,7 @@ class Loader:
             failed=tuple(self.failed),
             builtins=tuple(self.builtins),
             triggers=tuple(self.triggers),
+            taken=tuple(self.taken),
         )
 
     # -- the same for every front end --

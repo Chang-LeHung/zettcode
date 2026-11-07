@@ -58,6 +58,7 @@ class PluginRow:
         setting: The configuration key that decides a compiled-in plugin, such as ``"skills.enabled"``.
         switchable: Whether there is a switch to draw; the catalog decides it, so the editor's panel agrees.
         why: Why there is none, when there is none.
+        note: What else the row has to say — a plugin that lost its name to one loaded before it, for instance.
     """
 
     name: str
@@ -68,6 +69,7 @@ class PluginRow:
     setting: str = ""
     switchable: bool = True
     why: str = ""
+    note: str = ""
 
 
 class PluginsPage(Widget):
@@ -118,7 +120,7 @@ class PluginsPage(Widget):
         """Start with every switch where the file has it, and the marker on the first plugin."""
         super().__init__()
         self.rows: tuple[PluginRow, ...] = tuple(rows)
-        self.start = {row.origin: row.enabled for row in self.rows}
+        self.start = {row.origin: row.enabled for row in self.rows if row.switchable}
         self.switches = {row.origin: Rail(("off", "on"), int(row.enabled)) for row in self.rows if row.switchable}
         self.on_apply = on_apply
         self.on_cancel = on_cancel
@@ -167,7 +169,12 @@ class PluginsPage(Widget):
 
     def set(self, origin: str, on: bool) -> None:
         """Send one plugin's switch to on or off, and say on the line below why when it cannot move."""
-        row = next((row for row in self.rows if row.origin == origin), None)
+        marked = self.rows[self.mark] if self.rows else None
+        row = (
+            marked
+            if marked is not None and marked.origin == origin
+            else next((row for row in self.rows if row.origin == origin), None)
+        )
         if row is None:
             return
         if not self.switchable(row):
@@ -337,6 +344,8 @@ class PluginsPage(Widget):
 
     def _description(self, row: PluginRow) -> str:
         """Return what the marked plugin does at the next start, or why it is not the reader's to switch."""
+        if row.note:
+            return row.note
         if row.failure:
             return f"could not load: {row.failure}"
         if not row.switchable:
@@ -348,6 +357,8 @@ class PluginsPage(Widget):
 
     def _why_fixed(self, row: PluginRow) -> str:
         """Return why the switch of one row cannot move, for the line under the list."""
+        if row.note:
+            return row.note
         return "it could not load, so there is no switch to move" if row.failure else row.why
 
     def _draw_list(self, canvas: Canvas) -> None:
@@ -373,7 +384,7 @@ class PluginsPage(Widget):
                 if start < right:
                     canvas.draw_text(start, y, "\u2500" * (right - start), Style(foreground=groove, background=surface))
                 continue
-            rail = self.switches.get(row.origin)
+            rail = self.switches.get(row.origin) if row.switchable else None
             on = rail.position(now) if rail is not None else float(row.enabled)
             marked = at == self.mark
             if marked:
@@ -389,8 +400,12 @@ class PluginsPage(Widget):
             switch = self._switch_column()
             word_at = switch + SWITCH_WIDTH + 1
             if rail is None:
-                text = "failed" if row.failure else OFF_IN_CONFIG
-                colour = theme.error if row.failure else theme.warning
+                if row.note:
+                    text, colour = "name taken", theme.muted
+                elif row.failure:
+                    text, colour = "failed", theme.error
+                else:
+                    text, colour = OFF_IN_CONFIG, theme.warning
                 canvas.draw_text(
                     switch,
                     y,

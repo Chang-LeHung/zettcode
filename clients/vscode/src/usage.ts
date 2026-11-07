@@ -130,7 +130,10 @@ function count() {
 window.addEventListener("message", (event) => {
   const message = event.data;
   if (message === null || message.type !== "switched") { return; }
-  const row = document.querySelector('.plugin[data-name="' + CSS.escape(message.name) + '"]');
+  const row =
+    Array.from(document.querySelectorAll(".plugin")).find(
+      (candidate) => candidate.getAttribute("data-name") === message.name && candidate.querySelector(".switch") !== null,
+    ) ?? null;
   if (row === null) { return; }
   const button = row.querySelector(".switch");
   const word = row.querySelector(".switch-word");
