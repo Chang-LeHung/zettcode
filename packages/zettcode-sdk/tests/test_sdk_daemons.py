@@ -102,7 +102,7 @@ async def test_peers_are_the_roster_in_the_sdks_words_and_a_change_reaches_the_w
     async with Client(config=config_for(tmp_path, sessions_enabled=True)) as client:
         calls: list[int] = []
         client.watch_peers(lambda: calls.append(1))
-        messenger = client._agent.runtime.messenger
+        messenger = client._link
         assert messenger is not None
         messenger.client._roster = (
             PeerInfo("01a", "api", "Fix the API", "/w/api", "working", "zettcode"),

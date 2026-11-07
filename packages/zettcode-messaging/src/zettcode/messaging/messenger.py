@@ -29,6 +29,11 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from pathlib import Path
 
 
+#: The service name the line to the other sessions is provided under. A front end that wants its own hands it over
+#: through ``ZettCodeEngine.preview(shared=...)``; when it does not, the plugin builds one from the configuration and
+#: provides it here. The engine does not know the name: it only passes the caller's mapping through.
+SESSION_LINK = "session-link"
+
 #: How long pieces of text are gathered before they are sent as one, so a stream is a few lines a second and not one per token.
 STREAM_BATCH = 0.06
 

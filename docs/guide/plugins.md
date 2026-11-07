@@ -631,7 +631,7 @@ with a handler, and ZettCode runs it for as long as the session is open:
 
 ```python
 import asyncio
-from zettcode.plugin_api import Plugin, PluginContext, Trigger, TriggerEvent, TriggerScope
+from zettcode.plugin_api import INBOX, Inbox, Plugin, PluginContext, Trigger, TriggerEvent, TriggerScope
 
 
 class EveryMinute(Trigger):
@@ -648,10 +648,15 @@ class Heartbeat(Plugin[PluginContext]):
     name = "heartbeat"
 
     def activate(self, ctx: PluginContext) -> None:
+        # `find` takes a concrete class; `Inbox` is the contract, so ask for `object` and check.
+        queued = ctx.find(INBOX, object)
+        self._inbox = queued if isinstance(queued, Inbox) else None
         ctx.agent.register_trigger(EveryMinute(), self.on_tick)
 
     async def on_tick(self, event: TriggerEvent) -> None:
-        ...
+        if self._inbox is not None:
+            self._inbox.deliver(f"tick: {event.payload['reason']}",
+                                mode="followup", origin="trigger")
 ```
 
 `scope` says how many copies run:
@@ -664,6 +669,14 @@ class Heartbeat(Plugin[PluginContext]):
 
 A trigger that raises is marked failed and is not restarted; a handler that raises costs only that event. Two plugins
 cannot register the same trigger name.
+
+A trigger only reports that something happened. To make the agent act on it, hand the event to the session's queue:
+the `INBOX` service, whose type `Inbox` and item type `Waiting` both come from `zettcode.plugin_api`, as the handler
+above does. `mode="followup"` is the polite choice for work nobody is waiting on: it never interrupts a request in
+flight.
+
+A plugin that opens something longer-lived than a turn — a connection, a background worker — releases it in
+`async def aclose(self)`. The runtime calls it when the session closes, newest plugin first.
 
 ## Turning one off
 

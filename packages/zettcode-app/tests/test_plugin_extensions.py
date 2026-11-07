@@ -36,7 +36,7 @@ from zettcode.engine.plugins import (
 )
 from zettcode.engine.plugins import services as names
 from zettcode.instructions import ProjectInstructions
-from zettcode.messaging.messenger import Messenger
+from zettcode.messaging.messenger import SESSION_LINK, Messenger
 from zettcode.sdk.builtins import AGENT_PLUGINS, load_agent_plugins
 from zettcode.todos import TodoPlan
 
@@ -61,12 +61,19 @@ class Named(AgentExtension):
 
 
 def make_config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:
-    """Return a minimal validated config for a workspace, optionally changed for one test."""
+    """Return a minimal validated config for a workspace, optionally changed for one test.
+
+    Sessions are off: the messaging plugin builds its line from the configuration when nobody hands one in, and a
+    test that is not about the session tools says so rather than carrying them through every expected list. The tests
+    that are pass a `SESSION_LINK`, and get the extension from that. What a sessions-on default adds is pinned in
+    `packages/zettcode-messaging/tests/test_messaging_tools.py`, which loads the real agent parts.
+    """
     config = ZettCodeConfig(
         workspace=tmp_path,
         models=(ModelConfig(model="gpt", token="t"),),
         store=tmp_path / "sessions",
         mcp_config=tmp_path / "absent-mcp.json",
+        sessions_enabled=False,
     )
     return replace(config, **overrides) if overrides else config
 
@@ -392,7 +399,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
 
     messenger = object.__new__(Messenger)
     config = make_config(tmp_path, todowrite_enabled=True, subagent_enabled=True, skills_enabled=True)
-    parent = agent_extensions(config, **{names.MESSENGER: messenger})
+    parent = agent_extensions(config, **{SESSION_LINK: messenger})
 
     shared = [e.name for e in parent if _shared_with_children(messaging=False)(e)]
     with_messaging = [e.name for e in parent if _shared_with_children(messaging=True)(e)]
@@ -418,7 +425,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
 def test_every_switch_adds_its_extension_at_its_place(tmp_path):
     messenger = object.__new__(Messenger)
     config = make_config(tmp_path, todowrite_enabled=True, subagent_enabled=True, skills_enabled=True)
-    names_ = [extension.name for extension in agent_extensions(config, **{names.MESSENGER: messenger})]
+    names_ = [extension.name for extension in agent_extensions(config, **{SESSION_LINK: messenger})]
 
     assert names_ == [
         # The parts of other distributions that used to be listed here (`ask-user`, `project-instructions`, `todos`)
@@ -538,7 +545,7 @@ def test_every_factory_announces_the_name_it_builds(tmp_path):
         mcp_config=servers,
         todowrite_enabled=True,
     )
-    plugins = agent_plugins(config, **{names.MESSENGER: object.__new__(Messenger)})
+    plugins = agent_plugins(config, **{SESSION_LINK: object.__new__(Messenger)})
 
     built = plugins.agent_extensions(AgentBuild(model=object()))  # type: ignore[arg-type]
 

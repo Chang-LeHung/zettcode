@@ -12,6 +12,7 @@ registers commands, palettes, pets, presenters and rows.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
@@ -20,6 +21,8 @@ from .context import PluginContext
 from .mixins import PluginAgentMixin
 from .services import lookup, require
 from .state import AgentBuild, Contribution
+
+logger = logging.getLogger("zettcode.plugins")
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     from collections.abc import Mapping
@@ -121,6 +124,14 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
             container: The resolved settings and the registration surface.
         """
 
+    async def aclose(self) -> None:
+        """Release what the plugin holds beyond one turn, when the runtime closes.
+
+        Called once per plugin, in reverse load order, after the runtime has stopped the plugins' triggers and before
+        it releases the store. The default does nothing; a plugin that opened a connection, started a watcher or
+        keeps a long-lived client overrides it. What it raises is logged and does not stop the other plugins closing.
+        """
+
 
 @dataclass(frozen=True, slots=True)
 class Plugins:
@@ -200,6 +211,21 @@ class Plugins:
     def plugins(self) -> tuple[Plugin[Any], ...]:
         """Return the loaded plugins, in the order the host will call them."""
         return self.host.plugins if self.host is not None else ()
+
+    async def aclose(self) -> None:
+        """Release what each loaded plugin holds beyond a turn, newest first.
+
+        Newest means the reverse of the order they were activated in, not the reverse of the hook order: priorities
+        decide who sees a hook first, not who borrowed from whom. One that borrows from an earlier plugin closes
+        before it. A plugin that raises is logged and the others still close, which is what keeps an installation
+        with one broken plugin from leaving its other connections open at exit.
+        """
+        order = self.host.activation if self.host is not None else ()
+        for plugin in reversed(order):
+            try:
+                await plugin.aclose()
+            except Exception as error:  # noqa: BLE001 - one plugin must not stop the others closing
+                logger.warning("plugins.close_failed", extra={"plugin": plugin.name, "error": repr(error)})
 
     @property
     def extensions(self) -> tuple[PluginExtension, ...]:

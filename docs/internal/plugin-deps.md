@@ -74,12 +74,16 @@ that fails is not restarted, and its status is read through `ZettCodeEngine.trig
 An event that is not the reader's — another session's message, a trigger, a webhook — has the same two ways in as one
 typed during a request. The engine owns the machinery (`zettcode.engine.delivery.Delivery`, provided as `DELIVERY`:
 `busy` counts the requests a runtime has open, `steer` hands a message to the one running, `when_idle` calls back after
-the last one ends, at once when nothing runs). `zettcode-messaging` owns the queue (`Inbox`, provided as `INBOX`):
-`deliver(message, mode=..., payload=...)` steers while a request runs and queues otherwise, draining one turn at a time
-when the runtime is idle and a front end has registered a starter (`start_with`), which is the front end's own way of
-starting a prompt. Two messages from another session that waited next to each other start as one turn
-(`batch_size`/`merge`); a plain event is always a turn of its own. The queue has a cap; the overflow is refused as
-`FULL`, which the broker turns into "busy, try again".
+the last one ends, at once when nothing runs). `zettcode-engine` also publishes the queue's *contract* — the `INBOX`
+name, `Waiting`, and the abstract `Inbox` in `zettcode.engine.inbox`, re-exported by `zettcode-plugin-api` so a plugin
+types the service without importing the queue's package — while `zettcode-messaging` owns the queue itself
+(`Inbox`, provided as `INBOX`): `deliver(message, mode=..., payload=...)` steers while a request runs and queues
+otherwise, draining one turn at a time when the runtime is idle and a front end has registered a starter
+(`start_with`), which is the front end's own way of starting a prompt. A front end that supplies an `Inbox` under
+`INBOX` through `preview(shared=...)` keeps it; the plugin builds one only when none is there. Two messages from
+another session that waited next to each other start as one turn (`batch_size`/`merge`); a plain event is always a
+turn of its own. The queue has a
+cap; the overflow is refused as `FULL`, which the broker turns into "busy, try again".
 
 `Relay` (same package) is what a message from another session adds on top of the queue: the `Receipt` its sender's agent
 reads, the record of what the running request was handed (`steered`/`adopted`) and the return of a steer the run never

@@ -71,6 +71,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.broker.models import Receipt as BrokerReceipt
     from zettcode.config import ModelConfig, ZettCodeConfig
     from zettcode.engine.agent import ZettCodeAgent
+    from zettcode.engine.inbox import Inbox
     from zettcode.engine.plugins.commands import PlainCommand
     from zettcode.mentions import MentionRegistry
     from zettcode.messaging.messenger import Messenger
@@ -475,16 +476,19 @@ class Client:
         # Imported here, not at the top of the module: importing the SDK costs nothing until a client is made.
         from zettcode.engine.agent import ZettCodeAgent
         from zettcode.engine.core import ZettCodeEngine
-        from zettcode.messaging.messenger import Messenger
+        from zettcode.messaging.messenger import SESSION_LINK, Messenger
 
         from .builtins import load_agent_plugins
         from .translation import AgentBridge
 
         try:
-            runtime = ZettCodeEngine.preview(resolved, load_agent_plugins, messenger=Messenger.create(resolved))
+            runtime = ZettCodeEngine.preview(resolved, load_agent_plugins)
         except BaseException:
             self._unregister()
             raise
+        # The plugin built the line from the configuration; the client is what tells it about this session and what
+        # sends through it. Read after preview, because that is when the plugins activate.
+        self._messenger = runtime.plugins.find(SESSION_LINK, Messenger)
         self._agent = ZettCodeAgent(runtime)
         self._bridge = AgentBridge(self._agent)
         #: The turns this client started from the inbox, kept so a task is not collected while it runs.
@@ -529,7 +533,12 @@ class Client:
         client._stream = None
         client._handles = {}
         client._switching = asyncio.Lock()
-        client._messenger = None
+        # The plugin built the line and provides it by name; a client over an agent the front end built has no
+        # configuration of its own to build one from, so it reads the one the plugins already hold.
+        from zettcode.messaging.messenger import SESSION_LINK, Messenger
+
+        bundle = getattr(agent.runtime, "plugins", None)
+        client._messenger = None if bundle is None else bundle.find(SESSION_LINK, Messenger)
         client.workspace = agent.runtime.config.workspace
         client._agent = agent
         client._bridge = AgentBridge(agent)
@@ -540,12 +549,12 @@ class Client:
 
     @property
     def _link(self) -> Messenger | None:
-        """Return the runtime's line to the other sessions.
+        """Return the line to the other sessions, as the messaging plugin built it.
 
-        The engine carries it as ``object``: it does not import the broker, so whoever builds the runtime owns the
-        type. This is that boundary, in the one place that reads it.
+        The plugin provides it by name once it activates, and the client reads it back after preview; this is the
+        client's handle for telling the session's state and sending through it.
         """
-        return cast("Messenger | None", self._agent.runtime.messenger)
+        return self._messenger
 
     # -- process-wide bookkeeping --
     def _register(self, workspace: Path) -> None:
@@ -607,6 +616,8 @@ class Client:
             task.cancel()
         if delivering:
             await asyncio.gather(*delivering, return_exceptions=True)
+        # The plugin built the line and closes it with the runtime; a client that is leaving also closes it now, so
+        # the broker drops this session before the slower teardown. Closing twice is safe, and the first one counts.
         messenger, self._messenger = self._messenger, None
         stream = self._stream
         try:
@@ -1345,12 +1356,10 @@ class Client:
             ClientClosedError: The client was closed.
             ValueError: The message is empty, or ``mode`` is neither ``"steer"`` nor ``"followup"``.
         """
-        from zettcode.messaging.inbox import INBOX, Inbox
-
         from .session import _prompt_parts
 
         self._check_open()
-        inbox = self._agent.runtime.plugins.find(INBOX, Inbox)
+        inbox = self._inbox()
         if inbox is None:
             raise ConfigurationError("This client has no inbox: the messaging plugin did not load")
         entry = self._agent.active_model
@@ -1363,17 +1372,26 @@ class Client:
         message = self._agent.turn(parts, hint=hint)
         return inbox.deliver(message, mode=mode, hint=instructions, origin=origin)
 
+    def _inbox(self) -> Inbox | None:
+        """Return the runtime's inbox, checked to be the contract the messaging plugin implements.
+
+        ``find`` takes a concrete class, and the contract is an abstract base, so the lookup asks for ``object`` and
+        the check here is what tells a wrong provider from an absent one.
+        """
+        from zettcode.engine.inbox import INBOX, Inbox
+
+        found = self._agent.runtime.plugins.find(INBOX, object)
+        return found if isinstance(found, Inbox) else None
+
     def _inbox_start(self) -> None:
         """Give the inbox this client's starter, so a waiting message becomes a turn the way a prompt does."""
-        from zettcode.messaging.inbox import INBOX, Inbox
-
-        inbox = self._agent.runtime.plugins.find(INBOX, Inbox)
+        inbox = self._inbox()
         if inbox is not None:
             inbox.start_with(self._start_waiting)
 
     def _start_waiting(self, item: object) -> bool:
         """Start a turn from one message the inbox held, and say whether it is under way."""
-        from zettcode.messaging.inbox import Waiting
+        from zettcode.engine.inbox import Waiting
 
         if self._closed or not isinstance(item, Waiting):
             return False
@@ -1414,10 +1432,13 @@ class Client:
 
     @property
     def inbox(self) -> object | None:
-        """Return the inbox a front end registers its starter with, or ``None`` when the messaging part did not load."""
-        from zettcode.messaging.inbox import INBOX, Inbox
+        """Return the inbox a front end registers its starter with, or ``None`` when the messaging part did not load.
 
-        return self._agent.runtime.plugins.find(INBOX, Inbox)
+        The object is the engine's ``INBOX`` contract (``zettcode.engine.inbox.Inbox``); it is handed out untyped so
+        the SDK's public surface never names an engine type. A front end that wants the methods annotated asks the
+        plugin contract for the class, which is where a plugin gets it too.
+        """
+        return self._inbox()
 
     @property
     def usage(self) -> Usage:

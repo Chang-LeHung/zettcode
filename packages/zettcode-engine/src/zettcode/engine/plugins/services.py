@@ -4,7 +4,10 @@ A service is an object found by name. Two kinds travel this way:
 
 * **What the runtime hands the plugins** before any of them activates: the state of the session that
   extensions are built on (``POLICY``, ``PERSISTENCE``, ``MODELS``, ``COMPACTION_COUNTER``,
-  ``MESSENGER``, ``SELECTED_MODEL``). The runtime owns them and keeps using them itself.
+  ``SELECTED_MODEL``). The runtime owns them and keeps using them itself.
+* **What a front end hands the plugins** through ``ZettCodeEngine.preview(shared=...)``: an object the
+  engine cannot build and does not use, such as the line to the other sessions. The name is the
+  front end's and the plugin's to agree on; the engine only passes the mapping through.
 * **What a plugin provides** for the rest of the application, and for the plugins loaded after it
   (``APPROVAL``, ``USAGE``, ``CONTEXT``, ``SIDES``, ``COMPACTION``, ``CAPABILITIES``, ``TODOS``).
 
@@ -25,7 +28,6 @@ HARNESS = "harness"
 PERSISTENCE = "persistence"
 MODELS = "models"
 COMPACTION_COUNTER = "compaction-counter"
-MESSENGER = "messenger"
 SELECTED_MODEL = "selected-model"
 
 #: Provided by the built-in plugins.

@@ -19,10 +19,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from zettcode.broker.client import Receipt
+from zettcode.engine.inbox import FULL, QUEUED, STARTED, Inbox, Waiting
 from zettcode.modes import MODE_STEER
 from zettcode.relay import Relayed
-
-from .inbox import FULL, QUEUED, STARTED, Inbox, Waiting
 
 __all__ = ["PREVIEW", "Relay"]
 

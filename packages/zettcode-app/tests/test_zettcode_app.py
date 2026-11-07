@@ -344,7 +344,6 @@ class FakeRuntime:
     tokenizer: Tokenizer = field(default_factory=lambda: Tokenizer(deadline=0.0, loader=_no_encoder))
     config: FakeConfig = field(default_factory=FakeConfig)
     plugins: TuiPlugins = field(default_factory=TuiPlugins)
-    messenger: object | None = None
     #: The sessions another process has open: the fake's lock. A session in here is shown and not written to.
     held_elsewhere: set[str] = field(default_factory=set)
     #: The sessions this runtime holds the lock of, as the real one does: it changes when a session is
