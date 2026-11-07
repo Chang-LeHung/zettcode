@@ -91,7 +91,7 @@ def agent_parts() -> list[FakeEntryPoint]:
     from zettcode.tool_output.plugin import ToolOutput
     from zettcode.truncation.plugin import LongOutput
 
-    own = [FakeEntryPoint(plugin.name, type(plugin), "zettcode.agent") for plugin in AGENT_PLUGINS]
+    own = [FakeEntryPoint(plugin.name, plugin, "zettcode.agent") for plugin in AGENT_PLUGINS]
     parts = (
         AskUser,
         FileResources,

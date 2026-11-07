@@ -34,7 +34,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from zettcode.config import read_disabled_plugins
 from zettcode.providers import BUILTIN_PROVIDERS
@@ -56,6 +56,10 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from .triggers import TriggerRegistration
 
 logger = logging.getLogger("zettcode.plugins")
+
+#: What a caller may hand as a builtin: the plugin itself, or its class, which the loader builds (the agent's list
+#: names classes; the terminal's names instances). All three loader signatures take this one union.
+OfferedPlugin: TypeAlias = Plugin[Any] | type[Plugin[Any]]
 
 #: The one entry-point group: a plugin class per line, whichever part of the program it is (see
 #: :data:`PROGRAM_DISTRIBUTIONS` for the ones the program itself publishes).
@@ -204,7 +208,7 @@ def load_plugins(
     config: ZettCodeConfig,
     *,
     entry_points: Iterable[EntryPoint] | None = None,
-    builtins: Sequence[Plugin[Any]],
+    builtins: Sequence[OfferedPlugin],
     shared: Mapping[str, object] | None = None,
     required: Sequence[str] = (),
     agent: bool = True,
@@ -217,9 +221,12 @@ def load_plugins(
         entry_points: Entry points to load; ``None`` reads the installed ones.
             Tests pass their own, so discovery can be exercised without
             installing a distribution.
-        builtins: Plugins compiled into the repository, which the engine does not ship; ``()`` for none. The program's
-            agent is not passed here: it is found through the ``zettcode.plugin`` group with the agent role, unless ``agent`` is
-            false. A caller that cannot discover (a test) may pass :data:`zettcode.sdk.builtins.AGENT_PLUGINS`.
+        builtins: Plugins compiled into the repository, which the engine does not ship; ``()`` for none. A class is
+            instantiated, as an entry point's is, so the agent's list of classes is passed as it stands; unlike one
+            from a distribution, a builtin that cannot be built raises, because it is the program's own code. The
+            program's agent is not passed here: it is found through the ``zettcode.plugin`` group with the agent role,
+            unless ``agent`` is false. A caller that cannot discover (a test) may pass
+            :data:`zettcode.sdk.builtins.AGENT_PLUGINS`.
         shared: Objects the runtime hands over by name before any plugin activates (see
             :mod:`zettcode.engine.plugins.services`); a plugin reads them with ``container.service``, and they
             stay findable on the returned bundle. A plugin cannot provide a name that is taken here.
@@ -277,7 +284,7 @@ def run(
     loader: Loader,
     config: ZettCodeConfig,
     *,
-    builtins: Sequence[Plugin[Any]],
+    builtins: Sequence[OfferedPlugin],
     entry_points: Iterable[EntryPoint] | None,
     required: Sequence[str] = (),
     terminal: bool = False,
@@ -300,7 +307,8 @@ def run(
         RequiredPluginError: A plugin in ``required`` is not loaded.
     """
     candidates: list[_Candidate] = []
-    for plugin in builtins:
+    for offered in builtins:
+        plugin = _offered_plugin(offered)
         candidates.append(_Candidate(plugin, plugin.name or type(plugin).__name__, builtin=True))
         if candidates[-1].origin not in loader.builtins:
             loader.builtins.append(candidates[-1].origin)
@@ -662,6 +670,15 @@ class Loader:
 def _is_bool_setting(config: ZettCodeConfig, setting: PluginSetting) -> bool:
     """Return whether the configuration has the field a plugin's setting names, and holds a boolean there."""
     return isinstance(getattr(config, setting.field, None), bool)
+
+
+def _offered_plugin(target: Plugin[Any] | type[Plugin[Any]]) -> Plugin[Any]:
+    """Return a builtin as an instance: the agent's list names classes, an older caller may hand one over whole."""
+    if isinstance(target, Plugin):
+        return target
+    if isinstance(target, type) and issubclass(target, Plugin):
+        return target()
+    raise TypeError(f"a builtin plugin is a Plugin or a Plugin subclass, not {type(target).__name__}")
 
 
 def _instantiate(point: EntryPoint) -> Plugin[Any]:
