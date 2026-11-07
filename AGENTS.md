@@ -57,9 +57,9 @@ from the root.
   import a tool from `zett_agent.tools.coding` or a file-system extension.
 - A new interface between our own parts is an abstract base class, not a
   `typing.Protocol`: a subclass that forgets a method fails when it is built, and
-  the implementation says what it implements. (`CommandHost`, `Peer`, `Bridge`
-  and `SessionGuard` are older structural protocols that have not been
-  converted.)
+  the implementation says what it implements. (`RosterPeer`, `Bridge`,
+  `SessionGuard` and the private `_Waiting` are structural protocols that have
+  not been converted.)
 - The TUI owns the terminal. Raw mode, input decoding, layout, and differential
   cell rendering live in `packages/zettcode-tui/src/zettcode/tui`; do not add prompt-toolkit
   or another TUI framework.

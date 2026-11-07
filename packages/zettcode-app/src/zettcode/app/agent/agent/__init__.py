@@ -18,6 +18,7 @@ from zettcode.engine.agent import ZettCodeAgent
 from zettcode.engine.agent.sessions import StoredSession
 from zettcode.engine.core import PluginLoader, ZettCodeEngine
 from zettcode.messaging.messenger import SESSION_LINK, Messenger
+from zettcode.plugin_api.commands import CommandAgent
 
 from .commands import CommandsMixin
 
@@ -38,7 +39,9 @@ def _terminal_loader() -> PluginLoader:
     return terminal_plugins
 
 
-class TerminalAgent(CommandsMixin, ZettCodeAgent):
+# The contract is last on purpose: `AgentBase`'s concrete `session_id`/`workspace` must win over `CommandAgent`'s
+# abstract properties, or the class becomes uninstantiable.
+class TerminalAgent(CommandsMixin, ZettCodeAgent, CommandAgent):
     """The agent the terminal application drives."""
 
     _client: Client | None = None

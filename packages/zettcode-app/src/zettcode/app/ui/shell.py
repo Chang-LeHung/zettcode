@@ -103,14 +103,24 @@ class ShellState:
     client for a run.
     """
 
-    #: The application agent: the only channel to the conversation.
-    agent: TerminalAgent
+    #: The application agent: the only channel to the conversation. The shell sets it once; a mixin reads it.
+    @property
+    def agent(self) -> TerminalAgent:
+        raise NotImplementedError("the shell sets its agent; a mixin only reads it")
+
     #: The SDK client over that agent: what the shell asks of the agent goes through it as it moves off the agent.
-    client: Client
+    @property
+    def client(self) -> Client:
+        raise NotImplementedError("the shell sets its client; a mixin only reads it")
+
     #: The mounted widget tree and the host services it offers.
     app: TuiApp
+
     #: The conversation model every view reads.
-    transcript: Transcript
+    @property
+    def transcript(self) -> Transcript:
+        raise NotImplementedError("the shell sets its transcript; a mixin only reads it")
+
     #: The scrollable transcript, and the composer with its completion menu.
     view: TranscriptView
     composer: Composer

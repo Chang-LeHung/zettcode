@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
 from zettcode.plugin_api.entries import ThinkingEntry
 from zettcode.registry import Provider
@@ -45,7 +45,7 @@ class CommandUi(ABC):
         """Show a one-off toast, replacing any that is still on screen."""
 
 
-class CommandAgent(Protocol):
+class CommandAgent(ABC):
     """What a command may read of the application agent, without importing the terminal that implements it.
 
     A command needs to know which session it is in and where that session works; the rest of the agent is the
@@ -53,17 +53,21 @@ class CommandAgent(Protocol):
     """
 
     @property
+    @abstractmethod
     def session_id(self) -> str:
         """Return the session this shell is working in."""
 
     @property
+    @abstractmethod
     def workspace(self) -> Path:
         """Return the directory the session works in."""
 
-    @property
-    def runtime(self) -> ZettCodeEngine:
-        """Return the runtime: the agent, its configuration and the session store."""
+    #: Set once when the agent is built. It stays a plain attribute because the engine's `AgentBase` declares it
+    #: that way; a property here would need the agent to expose a backer, which is not this contract's to arrange.
+    #: A command reads it and does not assign it.
+    runtime: ZettCodeEngine
 
+    @abstractmethod
     def require_session(self) -> None:
         """Refuse to go on when the active session is another process's.
 
@@ -72,29 +76,35 @@ class CommandAgent(Protocol):
         """
 
 
-class CommandTranscript(Protocol):
+class CommandTranscript(ABC):
     """What a command may add to the conversation: a note, an error, or a row of Markdown."""
 
+    @abstractmethod
     def notice(self, text: str) -> object:
         """Add a line that says something happened."""
 
+    @abstractmethod
     def error(self, text: str) -> object:
         """Add a line that says something failed."""
 
+    @abstractmethod
     def markdown(self, text: str) -> object:
         """Add a row of Markdown, which a command's own answer is."""
 
+    @abstractmethod
     def start_compaction(self) -> ThinkingEntry:
         """Open the row that shows a compaction working."""
 
+    @abstractmethod
     def complete_compaction(self, text: str = "") -> None:
         """Close the running compaction row and stamp its elapsed time."""
 
+    @abstractmethod
     def clear(self) -> None:
         """Forget every row: the conversation starts over on screen, as a new session's does."""
 
 
-class CommandHost(Protocol):
+class CommandHost(ABC):
     """What a command that acts on the application, and not only on the agent, may ask of the shell.
 
     A command that opens a panel, switches the session or changes the model needs more than a place to write:
@@ -110,23 +120,35 @@ class CommandHost(Protocol):
         commands: Every command the shell knows, in the order ``/help`` lists them.
     """
 
-    client: Client
-    commands: tuple[Command, ...]
+    @property
+    @abstractmethod
+    def client(self) -> Client:
+        """Return the SDK client over the application agent."""
 
     @property
+    @abstractmethod
+    def commands(self) -> tuple[Command, ...]:
+        """Return every command the shell knows, in the order ``/help`` lists them."""
+
+    @property
+    @abstractmethod
     def agent(self) -> CommandAgent:
-        """Return the application agent; read-only, so the terminal's own class satisfies it."""
+        """Return the application agent, read-only."""
 
     @property
+    @abstractmethod
     def transcript(self) -> CommandTranscript:
-        """Return the conversation as drawn; read-only, for the same reason."""
+        """Return the conversation as drawn, read-only."""
 
+    @abstractmethod
     def close_page(self) -> None:
         """Close the page a command presented and return to the composer."""
 
+    @abstractmethod
     def request_layout(self) -> None:
         """Ask for the screen to be laid out again, after a change in what it shows."""
 
+    @abstractmethod
     async def wait_for_frame(self) -> None:
         """Wait until the next frame has reached the terminal.
 
@@ -135,30 +157,39 @@ class CommandHost(Protocol):
         work begins instead of after it.
         """
 
+    @abstractmethod
     def offer(self, command: str) -> None:
         """Put ``command`` and a space in the draft, which opens the menu of the words it takes."""
 
+    @abstractmethod
     def quit(self) -> None:
         """Leave the application."""
 
+    @abstractmethod
     def select_session(self, session_id: str) -> None:
         """Switch to a session picked in a panel: close the panel and resume behind the interface."""
 
+    @abstractmethod
     async def resume_session(self, session_id: str) -> None:
         """Restore a stored session without holding the event loop for the work."""
 
+    @abstractmethod
     async def fork_session(self) -> str:
         """Carry this conversation into a new session and continue there; return the new id."""
 
+    @abstractmethod
     async def rename_session(self, title: str) -> str:
         """Name the active session and return the name as stored."""
 
+    @abstractmethod
     async def run_continue(self) -> None:
         """Carry on the request that was interrupted."""
 
+    @abstractmethod
     async def run_side_question(self, question: str) -> None:
         """Answer a question that is kept out of the conversation."""
 
+    @abstractmethod
     async def prompt(self, text: str, *, shown: str | None = None, cache: str | None = None) -> bool:
         """Run ``text`` as one turn of this conversation, exactly as if the reader had typed it.
 
@@ -189,15 +220,19 @@ class CommandHost(Protocol):
             mid-request says ``when_busy="queue"``, and this then runs when the request in flight has ended.
         """
 
+    @abstractmethod
     def change_model(self, name: ModelInfo | str) -> ModelInfo:
         """Switch models and announce the change in the transcript."""
 
+    @abstractmethod
     def select_model(self, name: ModelInfo) -> None:
         """Apply a model picked in a panel and close the panel."""
 
+    @abstractmethod
     def change_effort(self, name: str) -> str:
         """Switch reasoning effort and announce the change."""
 
+    @abstractmethod
     def change_permission(self, name: str) -> str:
         """Set how much of the shell may run unasked and announce the change."""
 

@@ -50,7 +50,7 @@ from zettcode.tui.render import display_width
 from zettcode.tui.widgets import Rule
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    pass
+    from zettcode.sdk.client import Client
 from zettcode.app.errors import COMMAND_ERRORS
 from zettcode.error_text import describe_error
 from zettcode.mentions import MentionRegistry, SessionMentions
@@ -59,6 +59,7 @@ from zettcode.messaging.relayed import Relayed
 from zettcode.plugin_api.commands import (
     Command,
     CommandContext,
+    CommandHost,
     CommandList,
     CommandResult,
 )
@@ -118,6 +119,7 @@ from .widgets import (
 logger = logging.getLogger("zettcode.terminal")
 
 
+# The contract is last on purpose: the mixins above implement its methods and must be found first.
 class ZettCodeApp(
     BarsMixin,
     KeysMixin,
@@ -128,8 +130,41 @@ class ZettCodeApp(
     SettingsMixin,
     ConfigMixin,
     UpdateMixin,
+    CommandHost,
 ):
     """Own the application agent, widget tree, keymap, and slash commands."""
+
+    #: The concrete types, narrower than the ``CommandHost`` contract: a view of this shell uses the terminal's
+    #: agent and transcript, not the few members a plugin's command is allowed to see.
+    _agent: TerminalAgent
+    _client: Client
+    _transcript: Transcript
+    _commands: tuple[Command, ...]
+
+    @property
+    def agent(self) -> TerminalAgent:
+        """Return the application agent this shell owns."""
+        return self._agent
+
+    @property
+    def client(self) -> Client:
+        """Return the SDK client over that agent."""
+        return self._client
+
+    @property
+    def transcript(self) -> Transcript:
+        """Return the conversation as drawn."""
+        return self._transcript
+
+    @property
+    def commands(self) -> tuple[Command, ...]:
+        """Return every command the shell knows."""
+        return self._commands
+
+    @commands.setter
+    def commands(self, commands: tuple[Command, ...]) -> None:
+        """Replace the command list, as a test that adds one does."""
+        self._commands = commands
 
     def __init__(self, agent: TerminalAgent, *, theme: Theme = DARK, auto_theme: bool = True) -> None:
         """Wire the agent into the transcript, composer, panel, and keymap.
@@ -141,13 +176,13 @@ class ZettCodeApp(
                 light and dark palettes at startup; a configured theme file
                 passes ``False``, because then the palette was a choice.
         """
-        self.agent = agent
-        self.client = agent.client
+        self._agent = agent
+        self._client = agent.client
         self._plugin_rows: tuple[UiRow, ...] = agent.plugin_rows
         # The program's own plugins come first, then the shell's commands, then the agent's, and the installed
         # plugins last: the first to claim a name owns it, so an installed plugin can add a command and can never
         # shadow one the program has.
-        self.commands = Registry(
+        self._commands = Registry(
             [
                 CommandList(agent.builtin_plugin_commands),
                 ShellCommands(self),
@@ -166,12 +201,12 @@ class ZettCodeApp(
             if self.messenger is None
             else (SessionMentions(self.messenger.peers), *agent.plugin_mentions)
         )
-        self.transcript = Transcript(
+        self._transcript = Transcript(
             presenters=agent.presenters, max_entries=agent.runtime.config.transcript_max_entries
         )
         if agent.runtime.config.tips:
-            self.transcript.tip_deck = TipDeck()
-        self.transcript.welcome(WELCOME)
+            self._transcript.tip_deck = TipDeck()
+        self._transcript.welcome(WELCOME)
         if agent.runtime.active_model is None:
             # The first thing the conversation says on a machine that has never been set up, under the banner and
             # above anything the reader does next: the shell runs, and this is the one command it is waiting for.
