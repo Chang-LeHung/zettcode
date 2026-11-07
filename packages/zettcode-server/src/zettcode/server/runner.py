@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from zettcode.modes import MODE_STEER
 from zettcode.relay import Relayed
+from zettcode.sdk.commands import PlainCommandHost
 from zettcode.sdk.errors import SessionBusyError
 from zettcode.sdk.events import AnyEvent, ApprovalRequested, QuestionAsked, Steered
 from zettcode.sdk.handlers import ApprovalHandler, approve_all, approve_commands, deny_all
@@ -192,6 +193,47 @@ class NoModelError(RuntimeError):
     A fresh machine has no ``[[models]]`` entry; the server still starts, lists and edits the configuration, and
     answers this on what needs an agent. ``POST /models`` is what turns it into a working server.
     """
+
+
+class _SessionHost(PlainCommandHost):
+    """What the four session commands do here: the same things the terminal's own versions do, without a screen."""
+
+    def __init__(self, client: Client) -> None:
+        self._client = client
+
+    @property
+    def _session(self) -> object:
+        return self._client.session
+
+    async def compact(self) -> str:
+        try:
+            done = await self._session.compact()  # type: ignore[attr-defined]
+        except Exception as error:  # noqa: BLE001 - the command answers with what happened, whatever it was
+            return str(error)
+        return "Compacted." if done is not None else "Nothing to compact: the conversation is already short."
+
+    async def title(self, name: str | None) -> str:
+        try:
+            if name:
+                return f"Session named {await self._session.rename(name)!r}."  # type: ignore[attr-defined]
+        except Exception as error:  # noqa: BLE001
+            return str(error)
+        current = self._session.title  # type: ignore[attr-defined]
+        return f"This session is called {current!r}." if current else "This session has no name yet: /title <name>."
+
+    async def export(self, path: str | None) -> str:
+        try:
+            written = await self._session.export(path)  # type: ignore[attr-defined]
+        except Exception as error:  # noqa: BLE001
+            return str(error)
+        return f"Wrote this session to {written}."
+
+    async def carry_on(self) -> str:
+        try:
+            await self._session.resume()  # type: ignore[attr-defined]
+        except Exception as error:  # noqa: BLE001
+            return str(error)
+        return "Carried on."
 
 
 class Runner:
@@ -364,7 +406,8 @@ class Runner:
         command = next((item for item in commands if item.name == wanted), None)
         if command is None:
             raise KeyError(wanted)
-        result = command.handler(PlainCommandContext(argument=argument, level=self.client.permission))
+        context = PlainCommandContext(argument=argument, level=self.client.permission, host=_SessionHost(self.client))
+        result = command.handler(context)
         if inspect.isawaitable(result):
             result = await result
         if isinstance(result, TurnCommandResult):

@@ -1433,6 +1433,7 @@ class Client:
         return PluginReport(
             tuple(plugin.name for plugin in bundle.plugins),
             tuple(bundle.failures),
+            plain_commands=cast("tuple[PlainCommand, ...]", tuple(bundle.plain_commands)),
             entries=tuple(_plugin_entry(entry) for entry in self._plugin_catalog()),
             triggers=tuple(
                 TriggerInfo(status.name, status.scope.value, status.state.value, status.detail)

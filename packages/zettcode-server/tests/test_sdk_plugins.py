@@ -304,3 +304,45 @@ async def test_the_server_sends_where_each_trigger_is_once_the_runtime_has_start
                 body = (await http.get("/plugins")).json()
 
     assert body["triggers"] == watching
+
+
+async def test_the_commands_a_front_end_without_a_screen_can_run(tmp_path: Path):
+    """`/compact`, `/title`, `/export` and `/continue` are listed for any front end, and ask its host for the work.
+
+    The terminal has richer versions of the same names and loads those instead, so a headless client — the server, and
+    the editor behind it — gets these four and nothing changes for a process with a screen.
+    """
+    from zettcode.sdk.commands import PlainCommandContext, PlainCommandHost
+
+    class Host(PlainCommandHost):
+        """A front end that remembers what it was asked to do."""
+
+        def __init__(self) -> None:
+            self.done: list[str] = []
+
+        async def compact(self) -> str:
+            self.done.append("compact")
+            return "Compacted."
+
+        async def title(self, name: str | None) -> str:
+            self.done.append(f"title:{name}")
+            return "This session is called 'x'."
+
+        async def export(self, path: str | None) -> str:
+            self.done.append(f"export:{path}")
+            return "Wrote this session."
+
+        async def carry_on(self) -> str:
+            self.done.append("continue")
+            return "Carried on."
+
+    async with zc.Client(config=config_for(tmp_path)) as client:
+        listed = {command.name: command for command in client.plugins.plain_commands}
+
+        assert {"/compact", "/title", "/export", "/continue"} <= set(listed)
+        host = Host()
+        answered = await listed["/title"].handler(PlainCommandContext(argument="x", host=host))
+        assert host.done == ["title:x"] and "called" in answered.notification
+
+        without = await listed["/compact"].handler(PlainCommandContext())
+        assert "cannot do that" in without.notification

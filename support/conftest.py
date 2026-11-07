@@ -40,6 +40,7 @@ AGENT_PARTS = tuple(
         (name, f"zettcode.sdk.builtins:{cls}")
         for name, cls in (
             ("coding", "CodingTools"),
+            ("commandline", "CommandLine"),
             ("capabilities", "Capabilities"),
             ("subagents", "Subagents"),
             ("shell-permission", "ShellPermission"),
@@ -145,6 +146,7 @@ def _part_points() -> list[tuple[str, str, str]]:
 #: against the `pyproject.toml` files).
 _OWNER = {
     "coding": "zettcode-sdk",
+    "commandline": "zettcode-sdk",
     "capabilities": "zettcode-sdk",
     "subagents": "zettcode-sdk",
     "shell-permission": "zettcode-sdk",

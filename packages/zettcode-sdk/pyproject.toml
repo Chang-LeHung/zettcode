@@ -41,6 +41,7 @@ dependencies = [
 # marker is what the plugin release line looks for. They are activated by the rank `builtins.py` gives them, then by their `deps`.
 [project.entry-points."zettcode.plugin"]
 coding = "zettcode.sdk.builtins:CodingTools"
+commandline = "zettcode.sdk.builtins:CommandLine"
 capabilities = "zettcode.sdk.builtins:Capabilities"
 subagents = "zettcode.sdk.builtins:Subagents"
 shell-permission = "zettcode.sdk.builtins:ShellPermission"

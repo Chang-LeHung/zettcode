@@ -60,6 +60,8 @@ from zettcode.engine.plugins.services import (
 )
 from zettcode.engine.storage import SessionStore
 
+from .commandline import CommandLine
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Mapping
 
@@ -321,6 +323,7 @@ class Compaction(Plugin[PluginContext]):
 #: distribution) passes as ``builtins=``. ``test_agent_parts.py`` holds the two lists together.
 AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     CodingTools(),
+    CommandLine(),
     Capabilities(),
     Subagents(),
     ShellPermission(),
