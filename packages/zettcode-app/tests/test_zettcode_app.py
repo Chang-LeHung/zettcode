@@ -86,6 +86,7 @@ from zettcode.engine.storage import STORE_FILE, SessionInfo, SessionStore
 from zettcode.jit_harness.command import HarnessCommand
 from zettcode.mentions import Mention, MentionProvider, MentionRegistry
 from zettcode.messaging.inbox import INBOX, Inbox
+from zettcode.messaging.relayed import Relayed
 from zettcode.pets.plugin import PetsPlugin
 from zettcode.plugin_api.commands import Command, CommandContext, CommandResult
 from zettcode.plugin_api.entries import EntryStatus
@@ -109,7 +110,6 @@ from zettcode.presenters.text import (
     elapsed_text,
     terminal_safe,
 )
-from zettcode.relay import Relayed
 from zettcode.sdk.types import SessionInfo as ListedSession
 from zettcode.statusline import context_text
 from zettcode.tui import (

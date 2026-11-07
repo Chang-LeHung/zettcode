@@ -16,10 +16,12 @@ from zettcode.broker.client import RosterEntry
 from zettcode.engine.export import build_trace
 from zettcode.engine.storage import SessionStore
 from zettcode.mentions import MentionRegistry, SessionMentions
+from zettcode.messaging.relayed import Relayed, relay_of
 from zettcode.plugin_api.entries import EntryKind, RelayEntry, TextEntry
 from zettcode.presenters.presenters import DEFAULT_PRESENTERS, render_entry
-from zettcode.relay import RELAY, VIA_AGENT, VIA_EXTERNAL, VIA_USER, Relayed, relay_of
+from zettcode.relay import RELAY
 from zettcode.tui import DARK, LIGHT
+from zettcode.wire import VIA_AGENT, VIA_EXTERNAL, VIA_USER
 
 BOB = "02b20c86-bbbb-7000-8000-000000000002"
 
@@ -337,6 +339,16 @@ async def test_an_exported_trace_names_the_session_a_message_came_from(tmp_path)
 
     labels = [event.title for section in trace.sections for event in section.events]
     assert "Message from session bob" in labels
+
+
+async def test_an_export_leaves_a_damaged_relay_mark_as_an_ordinary_message(tmp_path):
+    damaged = UserMessage(content="hi", attributes={"prompt": "hi", RELAY: {"name": "bob"}})
+    store = await _stored(tmp_path, damaged, AssistantMessage(content="done"))
+
+    trace = build_trace(store.read("s1"))
+
+    labels = [event.title for section in trace.sections for event in section.events]
+    assert "User message" in labels and "Message from session bob" not in labels
 
 
 # -- the names an @ can complete -------------------------------------------------------------------------

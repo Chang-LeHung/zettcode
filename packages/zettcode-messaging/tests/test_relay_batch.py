@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from zettcode import relay
-from zettcode.relay import Relayed, batch_size, merge
+from zettcode.messaging import relayed
+from zettcode.messaging.relayed import Relayed, batch_size, merge
 
 
 def message(text: str, sender: str = "bob", **more) -> Relayed:
@@ -55,11 +55,11 @@ def test_a_chat_windows_message_is_never_taken_with_others():
 
 def test_a_batch_stops_at_the_message_count_and_at_the_text_size_but_always_takes_one(monkeypatch):
     waiting = [message("x" * 10) for _ in range(10)]
-    monkeypatch.setattr(relay, "MERGE_MESSAGES", 4)
+    monkeypatch.setattr(relayed, "MERGE_MESSAGES", 4)
     assert batch_size(waiting) == 4
 
-    monkeypatch.setattr(relay, "MERGE_MESSAGES", 100)
-    monkeypatch.setattr(relay, "MERGE_CHARS", 35)
+    monkeypatch.setattr(relayed, "MERGE_MESSAGES", 100)
+    monkeypatch.setattr(relayed, "MERGE_CHARS", 35)
     assert batch_size(waiting) == 3
 
     assert batch_size([replace(message("y" * 1000))]) == 1, "the first is taken however long it is"

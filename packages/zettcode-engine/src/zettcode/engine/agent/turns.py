@@ -19,7 +19,6 @@ from zett_agent.resume import ResumePoint
 
 from zettcode.engine.dialogue.side import ORIGIN, READER, SIDE, WATCHED, question, watched_by
 from zettcode.prompt import MentionPart, PromptPart, carries_image, model_text_part, plain_text
-from zettcode.relay import Relayed
 
 from .base import AgentBase
 
@@ -57,7 +56,7 @@ class TurnsMixin(AgentBase):
         side: bool = False,
         origin: str = READER,
         watched: bool | None = None,
-        relayed: Relayed | None = None,
+        incoming: UserMessage | None = None,
         cache: CacheMode | str | None = None,
     ) -> AsyncIterator[AgentEvent]:
         """Run one turn, counting it as a running request for as long as its events are read.
@@ -68,7 +67,9 @@ class TurnsMixin(AgentBase):
         """
         if side:
             async with aclosing(
-                self._stream(parts, hint=hint, side=True, origin=origin, watched=watched, relayed=relayed, cache=cache)
+                self._stream(
+                    parts, hint=hint, side=True, origin=origin, watched=watched, incoming=incoming, cache=cache
+                )
             ) as events:
                 async for event in events:
                     yield event
@@ -76,7 +77,9 @@ class TurnsMixin(AgentBase):
         self.runtime.run_started()
         try:
             async with aclosing(
-                self._stream(parts, hint=hint, side=False, origin=origin, watched=watched, relayed=relayed, cache=cache)
+                self._stream(
+                    parts, hint=hint, side=False, origin=origin, watched=watched, incoming=incoming, cache=cache
+                )
             ) as events:
                 async for event in events:
                     yield event
@@ -91,7 +94,7 @@ class TurnsMixin(AgentBase):
         side: bool = False,
         origin: str = READER,
         watched: bool | None = None,
-        relayed: Relayed | None = None,
+        incoming: UserMessage | None = None,
         cache: CacheMode | str | None = None,
     ) -> AsyncGenerator[AgentEvent, None]:
         """Run one turn with the selected session, model, and reasoning effort.
@@ -107,8 +110,8 @@ class TurnsMixin(AgentBase):
                 was typed and a restored session shows it.
             side: Ask without letting the exchange join the conversation; see
                 :mod:`zettcode.engine.dialogue.side`.
-            relayed: The turn is a message another session sent. It is what the model reads
-                (with where it came from), and ``parts`` and ``hint`` are not used.
+            incoming: The turn is a message another session sent, already framed by the part that owns the
+                conversation with it. It is what the model reads, and ``parts`` and ``hint`` are not used.
             cache: How this request may use the provider's prompt cache: ``"read_write"`` (the default) extends
                 it, ``"read"`` reuses a warm prefix without marking this request's new content for caching, and
                 ``"off"`` sends no cache directive at all. A side question starts at ``"read"`` unless told
@@ -137,8 +140,8 @@ class TurnsMixin(AgentBase):
                     "AsyncGenerator[AgentEvent]",
                     client.stream(
                         self.request(parts, hint=hint, side=side, origin=origin, watched=watched)
-                        if relayed is None
-                        else relayed.message(),
+                        if incoming is None
+                        else incoming,
                         config=AgentRunConfig(
                             session_id=session_id,
                             cache_mode=cache_mode_of(cache, side=side),

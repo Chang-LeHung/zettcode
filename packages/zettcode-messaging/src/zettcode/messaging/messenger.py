@@ -23,7 +23,8 @@ from zettcode.broker.models import GroupDelivered, GroupInfo
 from zettcode.broker.protocol import VIA_AGENT, ImageData
 from zettcode.config import ZettCodeConfig
 from zettcode.modes import MODE_STEER
-from zettcode.relay import Relayed
+
+from .relayed import Relayed
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from pathlib import Path

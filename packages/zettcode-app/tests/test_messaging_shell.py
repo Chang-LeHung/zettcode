@@ -22,8 +22,9 @@ from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.ui import updating as updating_module
 from zettcode.broker.client import BrokerClient, SendError
 from zettcode.messaging.messenger import SESSION_LINK, Messenger
+from zettcode.messaging.relayed import Relayed
 from zettcode.plugin_api.entries import RelayEntry, TextEntry
-from zettcode.relay import RELAY, Relayed
+from zettcode.relay import RELAY
 from zettcode.sdk.events import Steered
 
 ME = "session-0001"

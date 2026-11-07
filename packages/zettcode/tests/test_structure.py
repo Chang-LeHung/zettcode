@@ -538,7 +538,7 @@ def test_nothing_the_sdk_returns_or_accepts_is_a_type_of_the_broker_or_the_engin
     """
     internal = ("zettcode.broker", "zettcode.engine")
     leaks: list[str] = []
-    for module in ("client", "session", "handlers", "events", "types"):
+    for module in ("client", "session", "handlers", "events", "relay", "types"):
         path = SDK / f"{module}.py"
         tree = ast.parse(path.read_text(encoding="utf-8"))
         names: dict[str, str] = {}

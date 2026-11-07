@@ -55,6 +55,7 @@ from zettcode.app.errors import COMMAND_ERRORS
 from zettcode.error_text import describe_error
 from zettcode.mentions import MentionRegistry, SessionMentions
 from zettcode.messaging.relay import Relay
+from zettcode.messaging.relayed import Relayed
 from zettcode.plugin_api.commands import (
     Command,
     CommandContext,
@@ -65,10 +66,10 @@ from zettcode.plugin_api.pets import DEFAULT_PET_NAME, IDLE, Pet
 from zettcode.presenters.text import clock_text, elapsed_text
 from zettcode.prompt import PromptPart, carries_image, mention_parts
 from zettcode.registry import Registry
-from zettcode.relay import Relayed
 from zettcode.sdk.errors import SessionBusyError
 from zettcode.sdk.events import QuestionAsked
-from zettcode.sdk.types import CacheMode, IncomingMessage, Usage
+from zettcode.sdk.relay import incoming_of
+from zettcode.sdk.types import CacheMode, Usage
 
 from ..agent.agent import SessionLink, TerminalAgent
 from ..agent.conversation.effort_gauge import EFFORT_SECONDS, EffortFrame, effort_frame
@@ -115,19 +116,6 @@ from .widgets import (
 )
 
 logger = logging.getLogger("zettcode.terminal")
-
-
-def _incoming(relayed: Relayed) -> IncomingMessage:
-    """Return the SDK's message for one another session sent, with the ones merged into it."""
-    return IncomingMessage(
-        sender_id=relayed.sender_id,
-        sender=relayed.sender,
-        text=relayed.text,
-        via=relayed.via,
-        hops=relayed.hops,
-        group=relayed.group,
-        batch=tuple(_incoming(each) for each in relayed.batch),
-    )
 
 
 class ZettCodeApp(
@@ -1254,7 +1242,7 @@ class ZettCodeApp(
             # A turn is a message the reader wrote (text, pictures, and ``@`` references the SDK resolves with the same
             # registry the composer completes from), or one another session sent.
             if relayed is not None:
-                run = self.client.session.relay(_incoming(relayed), **self._answers())
+                run = self.client.session.relay(incoming_of(relayed), **self._answers())
             else:
                 run = self.client.session.prompt(
                     prompt_pieces(parts or (prompt,)),

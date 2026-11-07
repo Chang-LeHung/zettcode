@@ -25,7 +25,7 @@ from string import Template
 
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage, UserMessage
 
-from zettcode.relay import relay_of
+from zettcode.relay import relay_sender
 
 from ..dialogue.side import is_side_line
 from ..extensions.context import ContextReport
@@ -171,8 +171,8 @@ def write_export(path: str | Path, content: str) -> Path:
 
 def _user_label(message: UserMessage) -> str:
     """Return what a user message is called: a message another session sent says whose it is."""
-    relayed = relay_of(message.attributes, message.text)
-    return "User message" if relayed is None else f"Message from session {relayed.sender}"
+    sender = relay_sender(message.attributes)
+    return "User message" if sender is None else f"Message from session {sender}"
 
 
 def _event(number: int, line: MessageLine) -> Event:

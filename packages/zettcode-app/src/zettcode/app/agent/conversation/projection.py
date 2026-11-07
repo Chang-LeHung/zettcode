@@ -14,8 +14,8 @@ from zett_agent.dispatcher import AgentEventDispatcher
 from zett_agent.events import AgentEvent
 
 from zettcode.engine.dialogue.ask import declined_answer
+from zettcode.messaging.relayed import Relayed
 from zettcode.plugin_api.entries import EntryStatus
-from zettcode.relay import Relayed
 from zettcode.sdk.events import (
     AnyEvent,
     ApprovalRequested,
@@ -95,7 +95,7 @@ class TranscriptProjector(AgentEventDispatcher):
             on_steering_started: Called with the text of a queued steering
                 message the agent just adopted, so the shell can drop it from
                 the pending queue before the row is echoed. What it returns, when
-                it is a :class:`~zettcode.relay.Relayed`, is drawn as that session's
+                it is a :class:`~zettcode.messaging.relayed.Relayed`, is drawn as that session's
                 message — what its sender wrote, not the line the model reads; a
                 string is drawn as the row's text.
             on_steering_interrupted: Called with the text of a steering message

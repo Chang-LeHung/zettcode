@@ -21,7 +21,8 @@ from dataclasses import dataclass
 from zettcode.broker.client import Receipt
 from zettcode.engine.inbox import FULL, QUEUED, STARTED, Inbox, Waiting
 from zettcode.modes import MODE_STEER
-from zettcode.relay import Relayed
+
+from .relayed import Relayed
 
 __all__ = ["PREVIEW", "Relay"]
 

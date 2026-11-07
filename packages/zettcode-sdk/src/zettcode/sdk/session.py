@@ -715,30 +715,17 @@ class Session:
             SessionBusyError: Another run is in progress (checked again when the run starts).
             ValueError: ``timeout`` is not a positive number.
         """
-        from zettcode.relay import Relayed
-
         client = self._client
         client._check_open()
         client._check_free()
         _check_timeout(timeout)
 
-        def relayed_of(item: IncomingMessage) -> Relayed:
-            return Relayed(
-                sender_id=item.sender_id,
-                sender=item.sender,
-                text=item.text,
-                via=item.via,
-                hops=item.hops,
-                direct=item.direct,
-                mode=item.mode,
-                group=item.group,
-                batch=tuple(relayed_of(each) for each in item.batch),
-            )
+        from .relay import relayed_of
 
         relayed = relayed_of(message)
         return RunStream(
             self,
-            lambda: client._agent.stream((), relayed=relayed),
+            lambda: client._agent.stream((), incoming=relayed.message()),
             on_approval=on_approval,
             on_question=on_question,
             on_event=on_event,
@@ -888,6 +875,21 @@ class Session:
         except ValueError:
             return None  # blank: there is nothing to steer with
         return self._hand_to_run(client._agent.turn(parts, hint=hint))
+
+    def _steer_incoming(self, message: IncomingMessage) -> str | None:
+        """Hand a message another session sent to the run in progress, framed for the model.
+
+        A message built from the broker's words is what the model reads, with the line that says where it came from,
+        while the text a reader sees stays the message. A front end that received one and finds a request running in
+        this session uses this instead of building the framing itself.
+
+        Returns:
+            The text the run will report the message by, or ``None`` when nothing is running in this session or the
+            run refused it. Nothing is queued for later.
+        """
+        from .relay import relayed_of
+
+        return self._steer_message(relayed_of(message).message())
 
     def _steer_message(self, message: UserMessage) -> str | None:
         """Send a message already made to the run in progress, and say what it will be reported as.
