@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 
 from zettcode.broker.client import Receipt
 from zettcode.messaging.relay import PREVIEW, Relay
+from zettcode.plugin_api import Inbox, Waiting
 from zettcode.relay import Relayed
 
 from .shell import ShellState
@@ -193,11 +194,10 @@ class MessagingMixin(ShellState):
         payload and :meth:`_start_waiting` passes it to :meth:`_start_relayed`.
         """
         inbox = self._runtime_inbox()
-        start = getattr(inbox, "start_with", None)
-        if start is not None:
-            start(self._start_waiting)
+        if inbox is not None:
+            inbox.start_with(self._start_waiting)
 
-    def _start_waiting(self, item: object) -> bool:
+    def _start_waiting(self, item: Waiting) -> bool:
         """Start one turn from a message the inbox held, and say whether it is under way.
 
         A message another session sent comes back with the ``Relayed`` in its payload, and runs the way it always has:
@@ -205,21 +205,21 @@ class MessagingMixin(ShellState):
         """
         if self._busy:
             return False
-        payload = getattr(item, "payload", None)
-        if isinstance(payload, Relayed):
-            self._start_relayed(payload)
+        if isinstance(item.payload, Relayed):
+            self._start_relayed(item.payload)
             return True
-        message = getattr(item, "message", "")
-        text = message if isinstance(message, str) else getattr(message, "text", "")
+        message = item.message
+        text = message if isinstance(message, str) else message.text
         if not text.strip():
             return False
         self._set_busy(True)
         self._task = asyncio.create_task(self._run_prompt(text, (text,)))
         return True
 
-    def _runtime_inbox(self):  # noqa: ANN201 - the Inbox class, imported lazily by the SDK client
+    def _runtime_inbox(self) -> Inbox | None:
         """Return the runtime's inbox, or ``None`` when the messaging part did not load."""
-        return getattr(self.client, "inbox", None)
+        inbox = getattr(self.client, "inbox", None)
+        return inbox if isinstance(inbox, Inbox) else None
 
     def _start_relayed(self, relayed: Relayed) -> None:
         """Run one received message as a turn of its own."""

@@ -142,6 +142,7 @@ def test_the_plugin_provides_the_inbox_even_with_no_messenger(tmp_path):
         workspace=tmp_path,
         store=tmp_path / "sessions",
         models=(ModelConfig(model="m", token="t"),),
+        sessions_enabled=False,
     )
     delivery = FakeDelivery()
     ctx = PluginContext(config, {DELIVERY_NAME: delivery})
@@ -150,6 +151,54 @@ def test_the_plugin_provides_the_inbox_even_with_no_messenger(tmp_path):
 
     inbox = ctx.services[INBOX]
     assert isinstance(inbox, Inbox) and inbox.waiting == ()
+
+
+def test_a_queue_that_is_not_the_contract_is_refused_rather_than_used(tmp_path):
+    from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine.plugins.context import PluginContext
+    from zettcode.messaging.plugin import Messaging
+
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        store=tmp_path / "sessions",
+        models=(ModelConfig(model="m", token="t"),),
+        sessions_enabled=False,
+    )
+    ctx = PluginContext(config, {DELIVERY_NAME: FakeDelivery(), INBOX: object()})
+
+    with pytest.raises(TypeError, match="not an Inbox"):
+        Messaging().activate(ctx)
+
+
+def test_a_queue_a_front_end_supplied_is_kept_rather_than_replaced(tmp_path):
+    from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine.plugins.context import PluginContext
+    from zettcode.messaging.plugin import Messaging
+
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        store=tmp_path / "sessions",
+        models=(ModelConfig(model="m", token="t"),),
+        sessions_enabled=False,
+    )
+    mine = Inbox(FakeDelivery())
+    ctx = PluginContext(config, {DELIVERY_NAME: FakeDelivery(), INBOX: mine})
+
+    Messaging().activate(ctx)
+
+    assert ctx.find(INBOX, object) is mine
+    assert INBOX not in ctx.services, "the plugin did not put its own queue over the one it was given"
+
+
+def test_the_queue_is_the_contract_the_engine_publishes_for_front_ends_and_plugins():
+    """The name, the item and the base class are the engine's, so neither side imports the other's distribution."""
+    from zettcode.engine.inbox import INBOX as CONTRACT_NAME
+    from zettcode.engine.inbox import Inbox as Contract
+    from zettcode.engine.inbox import Waiting as ContractItem
+
+    assert INBOX == CONTRACT_NAME
+    assert issubclass(Inbox, Contract)
+    assert Waiting is ContractItem
 
 
 #: The engine's service name, imported separately so this module's own FakeDelivery reads clearly.

@@ -54,6 +54,8 @@ _EXPORTS = {
     "HOST_LINK": ".host",
     "Host": "zettcode.tui",
     "HostLink": ".host",
+    "INBOX": "zettcode.engine.inbox",
+    "Inbox": "zettcode.engine.inbox",
     "MarkdownEntry": ".entries",
     "Mention": "zettcode.mention",
     "MentionProvider": "zettcode.mention",
@@ -115,6 +117,7 @@ _EXPORTS = {
     "UiSegment": ".state",
     "UiSide": ".state",
     "WaitEntry": ".entries",
+    "Waiting": "zettcode.engine.inbox",
     "Widget": "zettcode.tui",
     "WriteEntry": ".entries",
     "ZettCodeConfig": "zettcode.config",
@@ -129,6 +132,7 @@ _EXPORTS = {
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine.inbox import INBOX, Inbox, Waiting
     from zettcode.engine.plugins import (
         AgentBuild,
         Contribution,
@@ -273,6 +277,8 @@ __all__ = [
     "HOST_LINK",
     "Host",
     "HostLink",
+    "INBOX",
+    "Inbox",
     "MarkdownEntry",
     "Mention",
     "MentionProvider",
@@ -334,6 +340,7 @@ __all__ = [
     "UiSegment",
     "UiSide",
     "WaitEntry",
+    "Waiting",
     "Widget",
     "WriteEntry",
     "ZettCodeConfig",

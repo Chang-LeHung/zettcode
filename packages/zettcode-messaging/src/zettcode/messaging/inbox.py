@@ -10,16 +10,19 @@ This is the one queue. A message another session sent (see :mod:`zettcode.messag
 waited in a window that was busy are answered together, as one turn, the way the broker has always done it.
 
 The queue is one per runtime, provided as the ``INBOX`` service, so the broker's incoming path, a trigger and a program
-using the SDK all deliver the same way and cannot start two turns at once.
+using the SDK all deliver the same way and cannot start two turns at once. The contract a front end and this class
+share — the name, :class:`Waiting` and the abstract base — is :mod:`zettcode.engine.inbox`, so neither side imports the
+other's distribution.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from zettcode.engine.delivery import Delivery
+from zettcode.engine.inbox import FULL, INBOX, QUEUED, STARTED, STEERED, Waiting
+from zettcode.engine.inbox import Inbox as InboxContract
 from zettcode.modes import MODE_STEER, MODES
 from zettcode.relay import Relayed, batch_size, merge
 
@@ -28,38 +31,11 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 __all__ = ["FULL", "INBOX", "MAX_WAITING", "QUEUED", "STARTED", "STEERED", "Inbox", "Waiting"]
 
-#: The service name the inbox is provided under, for a front end that delivers into the agent.
-INBOX = "inbox"
-
 #: How many messages may wait; the rest are refused (:data:`FULL`) and the broker offers them again later.
 MAX_WAITING = 64
 
-#: What ``deliver`` did: the running request took it, it was queued, a turn was started with it, or there was no room.
-STEERED = "steered"
-QUEUED = "queued"
-STARTED = "started"
-FULL = "full"
 
-
-@dataclass(frozen=True, slots=True)
-class Waiting:
-    """One message the inbox holds for the next turn.
-
-    Attributes:
-        message: What to run: text, or a message when it carries pictures.
-        hint: Text appended after it, as for a prompt.
-        origin: Where it came from, for the transcript and the stored message.
-        payload: What the front end needs to run it its own way — the
-            :class:`~zettcode.relay.Relayed` a message from another session came in as, or ``None`` for a plain event.
-    """
-
-    message: str | UserMessage
-    hint: str | None = None
-    origin: str = "event"
-    payload: object | None = None
-
-
-class Inbox:
+class Inbox(InboxContract):
     """Steer the request in flight, or hold messages until one ends and a front end can start the next turn.
 
     Args:

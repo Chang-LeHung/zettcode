@@ -49,7 +49,12 @@ class PluginExtension(AgentExtension):
     """
 
     def __init__(self, plugins: Sequence[Plugin[Any]]) -> None:
-        """Keep the plugins in hook order and adopt their earliest priority."""
+        """Keep the plugins in hook order and adopt their earliest priority.
+
+        The order they arrived in is kept too (``activation``): hook order is by priority, but closing, like
+        activation, is newest-first, and the two orders differ as soon as two plugins declare different priorities.
+        """
+        self.activation = tuple(plugins)
         self.plugins = tuple(sorted(plugins, key=lambda plugin: plugin.priority))
         self.name = HOST_NAME
         self.priority = min((plugin.priority for plugin in self.plugins), default=DEFAULT_PRIORITY)

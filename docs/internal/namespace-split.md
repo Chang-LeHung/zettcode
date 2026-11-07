@@ -99,7 +99,7 @@ a third-party library the engine must not carry:
 | Today | Moves to | Because |
 | --- | --- | --- |
 | `engine/plugins/builtin_agent.py` (`AGENT_PLUGINS`) | `zettcode/sdk/builtins.py` | It composes the tools, storage, usage, permission, compaction, MCP, messaging and mention plugins. The server needs it too, so the SDK — not the app — is its home. |
-| `engine/messenger.py` | `zettcode/messaging/messenger.py` (distribution `zettcode-messaging`) | It speaks to the broker (httpx/websockets). `ZettCodeEngine.preview` stops creating one; the caller passes it (`messenger=None` by default). |
+| `engine/messenger.py` | `zettcode/messaging/messenger.py` (distribution `zettcode-messaging`) | It speaks to the broker (httpx/websockets). `ZettCodeEngine` no longer creates one, carries one, or names one: the `messaging` plugin builds it from the configuration, provides it under `SESSION_LINK`, and closes it; a front end that wants its own hands one over through `preview(shared=...)`. |
 | `engine/extensions/messaging.py` | `zettcode/messaging/extension.py` (distribution `zettcode-messaging`) | Broker client and modes. |
 | `engine/extensions/context.py` | `zettcode/sdk/extensions/context.py` | `tiktoken`, which the engine must not carry. |
 | `engine/extensions/mcp.py` | `zettcode/mcp/extension.py` (distribution `zettcode-mcp`) | The MCP client and its config. |

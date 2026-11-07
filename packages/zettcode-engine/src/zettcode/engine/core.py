@@ -44,7 +44,6 @@ from zettcode.engine.plugins.services import (
     COMPACTION_COUNTER,
     CONTEXT,
     HARNESS,
-    MESSENGER,
     MODELS,
     PERSISTENCE,
     POLICY,
@@ -233,13 +232,12 @@ class ZettCodeEngine:
     #: The lock on the session this process has open: only the process that holds it writes to the session.
     #: A runtime that was not given one (a test's) shares nothing, so every claim is granted.
     session_locks: SessionGuard = field(default_factory=NoLocks)
-    #: The line to the other sessions, as the SDK builds it; the runtime only carries it, so the engine does not
-    #: depend on the broker. ``None`` registers no tool and joins no broker.
-    messenger: object | None = None
     event_dispatcher: AgentEventDispatcher | None = None
     client: AgentClient | None = None
     model: Adapter | None = None
     _starting: asyncio.Task[ZettCodeEngine] | None = field(default=None, repr=False)
+    #: Whether :meth:`aclose` has begun: a close is not repeated, even one that failed partway through.
+    _closed: bool = field(default=False, repr=False)
     _counter: asyncio.Task[None] | None = field(default=None, repr=False)
     #: The sweep for empty session folders a killed process left behind, run once at the start on a thread.
     _tidying: asyncio.Task[int] | None = field(default=None, repr=False)
@@ -264,7 +262,7 @@ class ZettCodeEngine:
 
     @classmethod
     def preview(
-        cls, config: ZettCodeConfig, load: PluginLoader | None = None, *, messenger: object | None = None
+        cls, config: ZettCodeConfig, load: PluginLoader | None = None, *, shared: Mapping[str, object] | None = None
     ) -> ZettCodeEngine:
         """Build the session side of the runtime, without a provider.
 
@@ -277,10 +275,20 @@ class ZettCodeEngine:
             load: How the plugins are loaded, given the configuration and what the runtime hands them. A front
                 end that has plugins of its own passes its loader; the default loads the installed distributions
                 and no built-in plugin.
-            messenger: The line to the other sessions, which the caller builds
-                (``zettcode.messaging.messenger.Messenger.create``); the runtime hands it to the plugins by name and
-                keeps it for whoever asks. ``None`` switches messaging off for this runtime.
+            shared: Services the caller hands the plugins besides the runtime's own, by name. A name the runtime
+                hands over itself is refused. A name another plugin provides fails that plugin unless the plugin
+                is written to keep what it is given — the messaging plugin keeps a supplied ``INBOX`` or
+                ``SESSION_LINK``, which is how a front end hands over its line or replaces the queue.
+
+        Raises:
+            ValueError: ``shared`` names a service the runtime hands over itself (``DELIVERY``, ``PERSISTENCE``, ...).
         """
+        reserved = {POLICY, HARNESS, PERSISTENCE, MODELS, COMPACTION_COUNTER, DELIVERY, SELECTED_MODEL}
+        taken = sorted(name for name in (shared or {}) if name in reserved)
+        if taken:
+            raise ValueError(
+                "ZettCodeEngine.preview(shared=...) may not replace the runtime's own services: " + ", ".join(taken)
+            )
         os.chdir(config.workspace)
         # A machine that has never been set up has no model to start on; the shell opens anyway and says so (see
         # the invariant S23), and `use_model` sizes this runtime the moment `/config` writes the first entry.
@@ -301,7 +309,7 @@ class ZettCodeEngine:
         # The runtime's own delivery of external events: made empty here because a plugin activates before the runtime
         # exists, bound the moment it does, so what a plugin keeps is the live one.
         delivery = RuntimeDelivery()
-        shared: dict[str, object] = {
+        provided: dict[str, object] = {
             POLICY: policy,
             HARNESS: harness,
             PERSISTENCE: persistence,
@@ -312,9 +320,9 @@ class ZettCodeEngine:
         if selected is not None:
             # A plugin that sizes something for the model asks for this one; a machine with no model provides
             # nothing under the name, so the same plugins build their defaults and are sized on the first switch.
-            shared[SELECTED_MODEL] = selected
-        if messenger is not None:
-            shared[MESSENGER] = messenger
+            provided[SELECTED_MODEL] = selected
+        if shared:
+            provided.update(shared)
         runtime = cls(
             config=config,
             persistence=persistence,
@@ -326,8 +334,7 @@ class ZettCodeEngine:
             session_id=new_uuid7(),
             active_model=selected,
             compaction_counter=counter,
-            plugins=(load or _load_engine_plugins)(config, shared),
-            messenger=messenger,
+            plugins=(load or _load_engine_plugins)(config, provided),
             _models=models,
         )
         # The session a launch starts in is a new one, so this always succeeds; a launch that resumes
@@ -573,10 +580,10 @@ class ZettCodeEngine:
 
     @classmethod
     async def create(
-        cls, config: ZettCodeConfig, load: PluginLoader | None = None, *, messenger: object | None = None
+        cls, config: ZettCodeConfig, load: PluginLoader | None = None, *, shared: Mapping[str, object] | None = None
     ) -> ZettCodeEngine:
         """Build and start a runtime, for callers with nothing to paint."""
-        runtime = cls.preview(config, load, messenger=messenger)
+        runtime = cls.preview(config, load, shared=shared)
         await runtime.start()
         return runtime
 
@@ -866,6 +873,9 @@ class ZettCodeEngine:
         A build that is past them is awaited, because it is already creating the
         client this method has to close.
         """
+        if self._closed:
+            return
+        self._closed = True
         # Nobody is left to start a turn: a waiter woken while this closes would try to start one on a closing runtime.
         self._idle.clear()
         triggers, self._triggers = self._triggers, None
@@ -891,5 +901,8 @@ class ZettCodeEngine:
             await asyncio.gather(tidying, return_exceptions=True)
         for model in self._models.values():
             await model.aclose()
+        # What a plugin holds beyond a turn — a connection, a watcher of its own — is let go now: the build is done,
+        # so nothing is still starting with it, and the store is still open, so one that reads it can finish.
+        await self.plugins.aclose()
         await self.persistence.close()
         self.session_locks.release()

@@ -68,7 +68,7 @@ def test_the_sdk_says_text_reasoning_and_tool_events_and_nothing_else():
     messenger = SimpleNamespace(
         client=SimpleNamespace(watched=True), stream=lambda kind, **fields: said.append((kind, fields))
     )
-    client = SimpleNamespace(_agent=SimpleNamespace(runtime=SimpleNamespace(messenger=messenger)))
+    client = SimpleNamespace()
     client._link = messenger  # the property the client reads, which the fake stands in for
 
     for event in (

@@ -21,7 +21,7 @@ from zettcode.messaging.extension import (
     SEND_MESSAGE_TOOL_NAME,
     SessionMessagingExtension,
 )
-from zettcode.messaging.messenger import Messenger
+from zettcode.messaging.messenger import SESSION_LINK, Messenger
 from zettcode.relay import Relayed
 from zettcode.sdk.builtins import load_agent_plugins
 
@@ -447,16 +447,17 @@ async def test_the_runtime_gives_the_agent_the_tools_only_when_the_configuration
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     config = _config_with(tmp_path, sessions_enabled=enabled)
-    # The runtime carries the line to the other sessions but does not build it: whoever builds the runtime does,
-    # which is how the engine stays free of the broker.
-    runtime = runtime_module.ZettCodeEngine.preview(config, load_agent_plugins, messenger=Messenger.create(config))
-    assert (runtime.messenger is not None) is enabled
+    # The runtime does not build the line to the other sessions: the messaging plugin does, from the configuration,
+    # and provides it by name, which is how the engine stays free of the broker.
+    runtime = runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
     await runtime.start()
     try:
+        link = runtime.plugins.find(SESSION_LINK, Messenger)
+        assert (link is not None) is enabled
         extension = [e for e in given if isinstance(e, SessionMessagingExtension)]
         assert bool(extension) is enabled
         if enabled:
-            assert extension[0].messenger is runtime.messenger
+            assert extension[0].messenger is link
     finally:
         await runtime.aclose()
 
@@ -535,3 +536,42 @@ async def test_send_message_lists_to_then_message_as_it_always_did_and_needs_som
     assert list(ctx.tools[SEND_MESSAGE_TOOL_NAME].parameters["properties"])[:2] == ["to", "message"]
     with pytest.raises(ValueError, match="needs some text"):
         await call(ctx, SEND_MESSAGE_TOOL_NAME, to="bob")
+
+
+async def test_the_plugin_closes_the_line_it_built_and_leaves_one_it_was_given(tmp_path, monkeypatch):
+    from test_runtime_models import _config_with
+
+    from zettcode.engine import core as runtime_module
+
+    class Built:
+        closed = 0
+
+        async def close(self) -> None:
+            self.closed += 1
+
+    config = _config_with(tmp_path, sessions_enabled=True)
+    given = Messenger.create(config)
+    assert given is not None
+
+    built = Built()
+    monkeypatch.setattr(Messenger, "create", classmethod(lambda cls, config: built))
+    runtime = runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
+    assert runtime.plugins.failures == ()
+
+    await runtime.aclose()
+
+    assert built.closed == 1, "the plugin made it, so the plugin closed it"
+
+    closed: list[int] = []
+
+    async def close() -> None:
+        closed.append(1)
+
+    given.close = close  # type: ignore[method-assign]
+    monkeypatch.setattr(Messenger, "create", classmethod(lambda cls, config: None))
+    runtime = runtime_module.ZettCodeEngine.preview(config, load_agent_plugins, shared={SESSION_LINK: given})
+    assert runtime.plugins.failures == ()
+
+    await runtime.aclose()
+
+    assert closed == [], "the front end built it, so the front end closes it"

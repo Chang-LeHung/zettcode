@@ -553,7 +553,7 @@ class Statistics(Plugin[PluginContext]):
 
 ```python
 import asyncio
-from zettcode.plugin_api import Plugin, PluginContext, Trigger, TriggerEvent, TriggerScope
+from zettcode.plugin_api import INBOX, Inbox, Plugin, PluginContext, Trigger, TriggerEvent, TriggerScope
 
 
 class EveryMinute(Trigger):
@@ -570,10 +570,15 @@ class Heartbeat(Plugin[PluginContext]):
     name = "heartbeat"
 
     def activate(self, ctx: PluginContext) -> None:
+        # `find` 需要一个具体类;`Inbox` 是契约,所以先按 `object` 取再判断。
+        queued = ctx.find(INBOX, object)
+        self._inbox = queued if isinstance(queued, Inbox) else None
         ctx.agent.register_trigger(EveryMinute(), self.on_tick)
 
     async def on_tick(self, event: TriggerEvent) -> None:
-        ...
+        if self._inbox is not None:
+            self._inbox.deliver(f"tick: {event.payload['reason']}",
+                                mode="followup", origin="trigger")
 ```
 
 `scope` 决定同时运行几份:
@@ -584,6 +589,13 @@ class Heartbeat(Plugin[PluginContext]):
   释放这把锁,所以崩掉的窗口不会卡住触发器。
 
 触发器抛出异常会被标记为失败,不会自动重启;处理函数抛出异常只影响那一次事件。两个插件不能注册同名的触发器。
+
+触发器只负责“发生了一件事”。要让 agent 真的动手,把事件交给会话的队列:`INBOX` 服务,它的类型 `Inbox` 和队列项
+`Waiting` 都由 `zettcode.plugin_api` 导出,上面的处理函数就是这么做的。没人等着结果的事用 `mode="followup"`
+更稳妥:它不会打断正在进行的请求。
+
+插件如果打开了比一轮更长久的东西(连接、后台任务),在 `async def aclose(self)` 里释放。会话关闭时运行时调用它,
+越晚加载的插件越先关。
 
 ## 关掉一个插件
 

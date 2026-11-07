@@ -8,7 +8,7 @@ what is left on screen, not what a stand-in said it would do.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -21,7 +21,7 @@ from zettcode.app import ZettCodeApp
 from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.ui import updating as updating_module
 from zettcode.broker.client import BrokerClient, SendError
-from zettcode.messaging.messenger import Messenger
+from zettcode.messaging.messenger import SESSION_LINK, Messenger
 from zettcode.plugin_api.entries import RelayEntry, TextEntry
 from zettcode.relay import RELAY, Relayed
 from zettcode.sdk.events import Steered
@@ -97,9 +97,10 @@ async def make(host: Host):
         *, events=None, hold: bool = False, block: bool = False, connect: bool = True, inbox_cap: int = 64
     ) -> Shell:
         client = FakeClient(events if events is not None else DONE, hold=hold, block=block)
-        runtime = FakeRuntime(client, plugins=rows_and_commands(inbox_cap=inbox_cap))
         messenger = Messenger(client_for(host.directory), workspace="/work")
-        runtime.messenger = messenger
+        plugins = rows_and_commands(inbox_cap=inbox_cap)
+        plugins = replace(plugins, services={**plugins.services, SESSION_LINK: messenger})
+        runtime = FakeRuntime(client, plugins=plugins)
         app = ZettCodeApp(TerminalAgent(runtime))
         app.app.resize(80, 24)
         app.app.mount()

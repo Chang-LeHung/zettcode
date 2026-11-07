@@ -449,9 +449,15 @@ async def test_a_real_run_says_begin_its_text_and_end_to_whoever_watches_it(tmp_
         def stream(self, kind, **fields):
             said.append((kind, fields))
 
+        def describe(self, session_id, title, *, busy):
+            """The SDK tells the line what this session is; this one has nothing to tell."""
+
+        async def close(self):
+            """Closing the client closes the line; this one holds nothing."""
+
     wire(monkeypatch, ScriptedModel("hello there", chunk=4))
     client = client_for(tmp_path)
-    client._agent.runtime.messenger = Messenger()  # type: ignore[assignment]
+    client._messenger = Messenger()  # type: ignore[assignment]
 
     result = await client.prompt("hi")
 
