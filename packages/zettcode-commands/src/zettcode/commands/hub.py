@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 from zettcode.plugin_api.commands import CommandContext, CommandHost, CommandResult
 from zettcode.plugin_api.panels import bottom_panel
 from zettcode.plugin_api.plugin import TuiPlugin
-from zettcode.tui import SEPARATOR, ListItem, ListPage, event_key
+from zettcode.tui import SEPARATOR, Canvas, ListItem, ListPage, event_key
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.plugin_api import PluginContext
@@ -169,6 +169,32 @@ class HubPage(ListPage):
         if self.tab == 1:
             return f"enter start a stopped one {SEPARATOR} s stop {SEPARATOR} {common}"
         return common
+
+    def render(self, canvas: Canvas) -> None:
+        """Fill the page, then the tabs (the open one in the accent colour), the list, and the keys."""
+        if self.rect.empty:
+            return
+        from zettcode.tui.render import Style
+
+        theme = self.theme
+        canvas.fill(self.rect.x, self.rect.y, self.rect.width, self.rect.height, Style(background=theme.surface_alt))
+        heading = Style(foreground=theme.text, background=theme.surface_alt, bold=True)
+        open_tab = Style(foreground=theme.surface_alt, background=theme.accent, bold=True)
+        hint = Style(foreground=theme.muted, background=theme.surface_alt)
+        x, y = self.rect.x + 2, self.rect.y + 1
+        room = max(0, self.rect.width - 4)
+        canvas.draw_text(x, y, "Hub  ", heading, max_width=room)
+        x += 5
+        for index, name in enumerate(TABS):
+            drawn = f" {name} " if index == self.tab else f"{name}  "
+            canvas.draw_text(
+                x, y, drawn, open_tab if index == self.tab else heading, max_width=max(0, room - (x - self.rect.x))
+            )
+            x += len(drawn)
+        if self.subtitle is not None:
+            canvas.draw_text(self.rect.x + 2, self.rect.y + 2, self.subtitle, hint, max_width=room)
+        self.list.render(canvas)
+        canvas.draw_text(self.rect.x + 2, self.rect.bottom - 1, self.footer, hint, max_width=room)
 
     def set_data(self, data: HubData) -> None:
         """Take a fresh reading, and keep the mark where it was on the tab in front."""
@@ -367,8 +393,18 @@ class HubCommand(TuiPlugin):
         except (ConfigurationError, SendError) as error:
             note = f"the broker cannot be read: {error}"
         else:
+            names = {
+                str(session.get("session_id", "")): str(session.get("handle") or session.get("title") or "")
+                for session in graph.get("sessions", ())
+            }
+
+            def named(session_id: object) -> str:
+                """Return the handle of a session the broker named, or enough of its id to tell it apart."""
+                key = str(session_id)
+                return names.get(key) or key[:8]
+
             edges = tuple(
-                Edge(source=str(edge.get("a", "")), target=str(edge.get("b", "")), count=int(edge.get("count", 0)))
+                Edge(source=named(edge.get("a", "")), target=named(edge.get("b", "")), count=int(edge.get("count", 0)))
                 for edge in graph.get("edges", ())
             )
             edges = tuple(sorted(edges, key=lambda edge: -edge.count))[:12]

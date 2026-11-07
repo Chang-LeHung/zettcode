@@ -217,3 +217,40 @@ def test_the_reading_lists_only_the_stored_sessions_that_are_not_registered_and_
     assert data.peers[0].session_id == "p-1"
     assert data.note.startswith("the broker cannot be read:")
     assert isinstance(data, HubData)
+
+
+def test_the_graph_names_the_sessions_it_connects_instead_of_printing_ids():
+    """The broker's edges are ids; the page shows the handles its sessions list carries."""
+    import asyncio
+    import dataclasses
+
+    from zettcode.commands.hub import HubCommand
+
+    class Client:
+        session = type("Session", (), {"id": "self-1"})()
+
+        class sessions:
+            @staticmethod
+            async def list(*, limit: int | None = None) -> list[object]:
+                return []
+
+        @staticmethod
+        def peers() -> list[object]:
+            return []
+
+        @staticmethod
+        async def traffic_graph() -> dict[str, object]:
+            return {
+                "sessions": [
+                    {"session_id": "s-1", "handle": "zettcode-trigger"},
+                    {"session_id": "s-2", "handle": "review"},
+                ],
+                "edges": [{"a": "s-1", "b": "s-2", "count": 7}],
+                "recent": [{"from": {"handle": "zettcode-trigger"}, "to": {"handle": "review"}, "text": "hi"}],
+            }
+
+    assert hasattr(dataclasses, "replace")
+    data = asyncio.run(HubCommand()._read(Client()))
+
+    assert data.edges[0] == type(data.edges[0])("zettcode-trigger", "review", 7)
+    assert data.recent == ("zettcode-trigger \u2192 review: hi",)
