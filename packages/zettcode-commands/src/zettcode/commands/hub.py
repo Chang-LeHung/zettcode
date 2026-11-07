@@ -152,14 +152,16 @@ class HubPage(ListPage):
         hint = Style(foreground=theme.muted, background=theme.surface_alt)
         x, y = self.rect.x + 2, self.rect.y + 1
         room = max(0, self.rect.width - 4)
-        canvas.draw_text(x, y, "Hub  ", heading, max_width=room)
-        x += 5
+        # Three columns of air between the name and the tabs, and between the tabs themselves; the open one carries a
+        # column of its own inside the accent band so the band never touches its neighbour.
+        gap = 3
+        canvas.draw_text(x, y, "Hub", heading, max_width=room)
+        x += len("Hub") + gap
         for index, name in enumerate(TABS):
-            drawn = f" {name} " if index == self.tab else f"{name}  "
-            canvas.draw_text(
-                x, y, drawn, open_tab if index == self.tab else heading, max_width=max(0, room - (x - self.rect.x))
-            )
-            x += len(drawn)
+            drawn = f" {name} " if index == self.tab else name
+            style = open_tab if index == self.tab else heading
+            canvas.draw_text(x, y, drawn, style, max_width=max(0, room - (x - self.rect.x)))
+            x += len(drawn) + gap
         if self.subtitle is not None:
             canvas.draw_text(self.rect.x + 2, self.rect.y + 2, self.subtitle, hint, max_width=room)
         self.list.render(canvas)

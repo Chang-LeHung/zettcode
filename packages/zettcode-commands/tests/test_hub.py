@@ -196,7 +196,6 @@ class _FakeClient:
         ]
 
 
-
 def test_the_reading_lists_only_the_stored_sessions_that_are_not_registered_and_not_self():
     """The reader's own session is stored and never registered, so it must never be called offline."""
     import asyncio
