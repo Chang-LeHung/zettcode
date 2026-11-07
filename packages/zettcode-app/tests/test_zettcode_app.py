@@ -8977,6 +8977,7 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
         "/effort",
         "/exit",
         "/help",
+        "/hub",
         "/permission",
         "/pet",
         "/plugins",

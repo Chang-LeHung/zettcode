@@ -11,7 +11,7 @@ def data(**changes: object) -> HubData:
     """A reading with one session, one daemon and one exchange."""
     base = HubData(
         peers=(Peer("main", "the parser", "working", "/work"),),
-        daemons=(Daemon("d-1", "watcher", "running", model="m", workspace="/work"),),
+        daemons=(Daemon("d-1", "watcher", "idle", model="m", workspace="/work"),),
         offline=("old",),
         edges=(Edge("main", "bob", 7),),
         recent=("main \u2192 bob: hello",),
@@ -62,7 +62,7 @@ def test_stop_and_start_act_on_the_daemon_under_the_mark():
     stopped: list[str] = []
     started: list[str] = []
     opened = HubPage(
-        data(daemons=(Daemon("d-1", "watcher", "running", model="m", workspace="/work"),)),
+        data(daemons=(Daemon("d-1", "watcher", "idle", model="m", workspace="/work"),)),
         on_close=lambda: None,
         on_stop=stopped.append,
         on_start=started.append,
@@ -81,6 +81,15 @@ def test_stop_and_start_act_on_the_daemon_under_the_mark():
     dead.capture_event(_key("enter"), None)
 
     assert started == ["d-2"], "enter starts a stopped one"
+
+
+def test_a_note_survives_the_refresh_that_follows_an_action():
+    opened = page()
+
+    opened.note("stopped d-1")
+    opened.set_data(data())
+
+    assert opened.subtitle == "stopped d-1"
 
 
 def test_a_refresh_is_asked_for_and_a_note_is_shown():

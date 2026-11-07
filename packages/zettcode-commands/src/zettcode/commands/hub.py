@@ -5,14 +5,16 @@ broker's own view — the roster, the message graph — through the SDK, and the
 :mod:`zettcode.sdk.daemons`, so nothing new is listened to and nothing is stored here.
 
 The page is a list per tab, :class:`~zettcode.tui.ListPage` underneath: ``Tab`` and ``Shift-Tab`` (or the arrows alone)
-move between the three, ``Up``/``Down`` through the rows, ``s`` stops and ``S`` starts the daemon under the mark, and
-``r`` reads everything again. A daemon whose process is gone is listed as ``dead``; a session on disk that is not
-registered is listed offline, which is what the broker cannot say by itself.
+move between the three, ``Up``/``Down`` through the rows, ``s`` stops the daemon under the mark, ``Enter`` starts one
+whose process is gone, and ``r`` reads everything again. A daemon whose process is gone is listed as ``dead`` or
+``unknown``; a session stored on this machine that is not registered is listed offline, which is what the broker cannot
+say by itself.
 """
 
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -119,6 +121,13 @@ def _graph_rows(data: HubData) -> list[ListItem]:
 _ROWS: tuple[Callable[[HubData], list[ListItem]], ...] = (_session_rows, _daemon_rows, _graph_rows)
 
 
+def _handle(side: object) -> str:
+    """Return how a broker message names one end: a session's handle, or a group's name."""
+    if not isinstance(side, dict):
+        return "?"
+    return str(side.get("handle") or side.get("name") or "?")
+
+
 class HubPage(ListPage):
     """The three tabs, with the mark kept per tab and the daemon keys acting on the row under it."""
 
@@ -163,20 +172,13 @@ class HubPage(ListPage):
     def set_data(self, data: HubData) -> None:
         """Take a fresh reading, and keep the mark where it was on the tab in front."""
         self.marks[self.tab] = max(0, self.list.selected)
-        self.data = data
-        self.subtitle = data.note or None
+        self.data = data if data.note else dataclasses.replace(data, note=self.data.note)
+        self.subtitle = self.data.note or None
         self._show(self.tab)
 
     def note(self, text: str) -> None:
         """Say one line under the tabs — what a key just did, or why it could not."""
-        self.data = HubData(
-            peers=self.data.peers,
-            daemons=self.data.daemons,
-            offline=self.data.offline,
-            edges=self.data.edges,
-            recent=self.data.recent,
-            note=text,
-        )
+        self.data = dataclasses.replace(self.data, note=text)
         self.subtitle = text
         self.request_layout()
 
@@ -216,16 +218,19 @@ class HubPage(ListPage):
         return super().capture_event(event, host)
 
     def _daemon(self) -> Daemon | None:
-        """Return the daemon under the mark."""
-        index = self.list.selected
-        return self.data.daemons[index] if 0 <= index < len(self.data.daemons) else None
+        """Return the daemon under the mark, by the id the row carries: a refresh may have reordered the list."""
+        items = self.list.items
+        if not (0 <= self.list.selected < len(items)):
+            return None
+        chosen = items[self.list.selected].value
+        return next((daemon for daemon in self.data.daemons if daemon.session_id == chosen), None)
 
     def _chosen(self) -> None:
         """Enter on the daemons tab starts the daemon under the mark when it is not running."""
         if self.tab != 1 or self.on_start is None:
             return None
         chosen = self._daemon()
-        if chosen is not None and chosen.status != "running":
+        if chosen is not None and chosen.status in ("dead", "unknown"):
             self.on_start(chosen.session_id)
         return None
 
@@ -236,15 +241,20 @@ class HubCommand(TuiPlugin):
     name = "hub-command"
     description = "who is here, the daemons, and who talked to whom"
 
+    #: The page in front, so a failed action can say so on it; ``None`` when no page is open.
+    _page: HubPage | None = None
+    #: The actions started from the page, kept so their failures are read rather than logged at the interpreter.
+    _actions: set[asyncio.Future[None]]
+
     def activate(self, ctx: PluginContext) -> None:
-        """Register ``/hub``; it reads, so it waits for a request to end rather than opening over one."""
+        """Register ``/hub``; it only reads, so it opens over a running request rather than turning the reader away."""
         if ctx.tui is None:
             return
         ctx.tui.register_command(
             "hub",
             "who is here, the daemons and who talked to whom",
             self.hub,
-            when_busy="refuse",
+            when_busy="now",
         )
 
     async def hub(self, context: CommandContext) -> CommandResult:
@@ -259,12 +269,21 @@ class HubCommand(TuiPlugin):
             on_stop=lambda session_id: self._start(self._stop(page, client, session_id)),
             on_start=lambda session_id: self._start(self._resume(page, client, session_id)),
         )
+        self._page = page
         return CommandResult(widget=bottom_panel(page, rows=HUB_ROWS))
 
-    @staticmethod
-    def _start(task: Awaitable[None]) -> None:
-        """Run one action on the loop the page was opened on."""
-        asyncio.ensure_future(task)
+    def _start(self, task: Awaitable[None]) -> None:
+        """Run one action on the loop the page was opened on, and keep it so a failure is not lost."""
+        running = asyncio.ensure_future(task)
+        self._actions.add(running)
+        running.add_done_callback(self._done)
+
+    def _done(self, finished: asyncio.Future[None]) -> None:
+        """Forget an action, and say what it failed with, on the page."""
+        self._actions.discard(finished)
+        error = finished.exception()
+        if error is not None and self._page is not None:
+            self._page.note(str(error))
 
     async def _refresh(self, page: HubPage, client: object) -> None:
         """Read everything again, and show it."""
@@ -321,12 +340,25 @@ class HubCommand(TuiPlugin):
             note = f"the broker cannot be read: {error}"
         else:
             edges = tuple(
-                Edge(source=str(edge.get("from", "")), target=str(edge.get("to", "")), count=int(edge.get("count", 0)))
+                Edge(source=str(edge.get("a", "")), target=str(edge.get("b", "")), count=int(edge.get("count", 0)))
                 for edge in graph.get("edges", ())
             )
             edges = tuple(sorted(edges, key=lambda edge: -edge.count))[:12]
             recent = tuple(
-                f"{message.get('from', '?')} \u2192 {message.get('to', '?')}: {str(message.get('text', ''))[:60]}"
+                f"{_handle(message.get('from'))} \u2192 {_handle(message.get('to'))}: "
+                f"{str(message.get('text', ''))[:60]}"
                 for message in graph.get("recent", ())[:5]
             )
-        return HubData(peers=peers, daemons=daemons, edges=edges, recent=recent, note=note)
+        offline: tuple[str, ...] = ()
+        try:
+            listed = await client.sessions.list()  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 - a store that cannot be read costs only the offline list
+            listed = ()
+        known = {peer.handle for peer in peers} | {peer.title for peer in peers}
+        offline = tuple(
+            info.title or info.id[:8]
+            for info in listed
+            if (info.title or info.id[:8]) not in known
+            and info.id not in {getattr(peer, "session_id", "") for peer in peers}
+        )
+        return HubData(peers=peers, daemons=daemons, offline=offline, edges=edges, recent=recent, note=note)
