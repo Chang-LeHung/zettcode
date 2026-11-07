@@ -1,9 +1,9 @@
 """The commands every front end can run: text and a turn, no page and no screen.
 
-The terminal has its own, richer versions — ``/compact`` opens nothing but says more, ``/title`` shares a page with the
-session panel — and they are registered only where there is a screen. These are what a front end without one (the
-server, and the editor behind it) lists through ``GET /commands`` and runs through ``POST /commands/{name}``; the
-terminal's are loaded instead when ``ctx.tui`` is there, so the two never both answer to one name.
+The terminal has its own, richer versions — ``/title`` shares a page with the session panel — and they are registered
+only where there is a screen. These are what a front end without one (the server, and the editor behind it) lists through
+``GET /commands`` and runs through ``POST /commands/{name}``; the terminal's are loaded instead when ``ctx.tui`` is there,
+so the two never both answer to one name.
 
 A command that acts on the conversation does it through the front end's host (:class:`PlainCommandHost`); one that is
 only words does not need it.
@@ -22,7 +22,12 @@ _NO_HOST = "This front end cannot do that; run the command in the terminal or th
 
 
 class CommandLine(Plugin[PluginContext]):
-    """``/compact``, ``/title``, ``/export`` and ``/continue``, for a front end with no screen."""
+    """``/compact``, ``/title`` and ``/export``, for a front end with no screen.
+
+    Carrying a request on is not here: a turn belongs to the front end that owns the run loop — its approvals, its
+    stop button, its events — so a front end without a screen has an endpoint for it (``POST /runs/resume``) and no
+    command that would start one behind its back.
+    """
 
     name = "commandline"
     description = "The commands every front end can run"
@@ -49,12 +54,6 @@ class CommandLine(Plugin[PluginContext]):
             self.export,
             when_busy="refuse",
         )
-        ctx.commands.register(
-            "/continue",
-            "carry on a request that was cut short",
-            self.carry_on,
-            when_busy="refuse",
-        )
 
     async def compact(self, context: PlainCommandContext) -> TextCommandResult:
         """Compact the conversation now."""
@@ -73,9 +72,3 @@ class CommandLine(Plugin[PluginContext]):
         if context.host is None:
             return TextCommandResult(notification=_NO_HOST)
         return TextCommandResult(notification=await context.host.export(context.argument.strip() or None))
-
-    async def carry_on(self, context: PlainCommandContext) -> TextCommandResult:
-        """Carry on a request that was cut short."""
-        if context.host is None:
-            return TextCommandResult(notification=_NO_HOST)
-        return TextCommandResult(notification=await context.host.carry_on())

@@ -196,44 +196,31 @@ class NoModelError(RuntimeError):
 
 
 class _SessionHost(PlainCommandHost):
-    """What the four session commands do here: the same things the terminal's own versions do, without a screen."""
+    """What the session commands do here: the same things the terminal's own versions do, without a screen.
+
+    Nothing is caught: a busy or locked session, a blank title and a file that cannot be written keep the status the
+    rest of the API gives them, and a command that could do nothing answers with the line the session gave it.
+    """
 
     def __init__(self, client: Client) -> None:
         self._client = client
 
     @property
-    def _session(self) -> object:
+    def _session(self) -> Session:
         return self._client.session
 
     async def compact(self) -> str:
-        try:
-            done = await self._session.compact()  # type: ignore[attr-defined]
-        except Exception as error:  # noqa: BLE001 - the command answers with what happened, whatever it was
-            return str(error)
+        done = await self._session.compact()
         return "Compacted." if done is not None else "Nothing to compact: the conversation is already short."
 
     async def title(self, name: str | None) -> str:
-        try:
-            if name:
-                return f"Session named {await self._session.rename(name)!r}."  # type: ignore[attr-defined]
-        except Exception as error:  # noqa: BLE001
-            return str(error)
-        current = self._session.title  # type: ignore[attr-defined]
+        if name:
+            return f"Session named {await self._session.rename(name)!r}."
+        current = self._session.title
         return f"This session is called {current!r}." if current else "This session has no name yet: /title <name>."
 
     async def export(self, path: str | None) -> str:
-        try:
-            written = await self._session.export(path)  # type: ignore[attr-defined]
-        except Exception as error:  # noqa: BLE001
-            return str(error)
-        return f"Wrote this session to {written}."
-
-    async def carry_on(self) -> str:
-        try:
-            await self._session.resume()  # type: ignore[attr-defined]
-        except Exception as error:  # noqa: BLE001
-            return str(error)
-        return "Carried on."
+        return f"Wrote this session to {await self._session.export(path)}."
 
 
 class Runner:

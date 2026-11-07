@@ -1346,3 +1346,19 @@ def test_a_clash_in_a_file_plugin_names_the_class(tmp_path: Path):
 
     assert [plugin.name for plugin in plugins.plugins] == ["one"]
     assert any("Two:" in failure for failure in plugins.failures)
+
+
+def test_the_headless_commands_do_not_reach_a_terminal(tmp_path: Path):
+    """The terminal has its own `/compact`, `/title` and `/export`; the plain ones are registered only without a screen.
+
+    A regression would be silent for two of them: `/title` would be refused by the clash check, but `/compact` and
+    `/export` would replace the terminal's versions in the shell's registry before they are noticed.
+    """
+    from zettcode.app.plugins.loader import terminal_context
+    from zettcode.sdk.commandline import CommandLine
+
+    ctx = terminal_context(make_config(tmp_path))
+
+    CommandLine().activate(ctx)
+
+    assert ctx.commands.commands == (), "a screen keeps the terminal's own versions"
