@@ -48,9 +48,11 @@ from zettcode.engine.plugins.services import (
     PERSISTENCE,
     POLICY,
     SELECTED_MODEL,
+    SESSION_STORE,
     SIDES,
     TODOS,
     USAGE,
+    USAGE_LEDGER,
 )
 
 from .delivery import DELIVERY
@@ -283,7 +285,17 @@ class ZettCodeEngine:
         Raises:
             ValueError: ``shared`` names a service the runtime hands over itself (``DELIVERY``, ``PERSISTENCE``, ...).
         """
-        reserved = {POLICY, HARNESS, PERSISTENCE, MODELS, COMPACTION_COUNTER, DELIVERY, SELECTED_MODEL}
+        reserved = {
+            POLICY,
+            HARNESS,
+            PERSISTENCE,
+            MODELS,
+            COMPACTION_COUNTER,
+            DELIVERY,
+            SELECTED_MODEL,
+            SESSION_STORE,
+            USAGE_LEDGER,
+        }
         taken = sorted(name for name in (shared or {}) if name in reserved)
         if taken:
             raise ValueError(
@@ -313,6 +325,8 @@ class ZettCodeEngine:
             POLICY: policy,
             HARNESS: harness,
             PERSISTENCE: persistence,
+            SESSION_STORE: persistence,
+            USAGE_LEDGER: persistence,
             MODELS: models,
             COMPACTION_COUNTER: counter,
             DELIVERY: delivery,
