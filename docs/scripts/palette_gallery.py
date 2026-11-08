@@ -418,7 +418,7 @@ def send_kind_scene(env: Env, theme: Theme) -> Canvas:
 
 
 def context_scene(env: Env, theme: Theme) -> Canvas:
-    from zettcode.app.ui.widgets import ContextPage
+    from zettcode.commands.context_page import ContextPage
     from zettcode.sdk.types import ContextReport, ContextShare
 
     shares = tuple(

@@ -7,13 +7,13 @@ from collections.abc import Callable
 from pathlib import Path
 from time import monotonic
 
+from zettcode.app.ui.widgets.effort_page import heat_colour
 from zettcode.presenters.labels import compact_path
 from zettcode.sdk.types import ContextReport
 from zettcode.tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Widget
 from zettcode.tui.render import blend, display_width
 
 from . import context_charts as charts
-from .effort_page import heat_colour
 
 #: Rows above the body: a blank, the title, and the file the session is stored in.
 HEAD_ROWS = 3

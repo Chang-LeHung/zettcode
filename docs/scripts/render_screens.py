@@ -31,7 +31,7 @@ from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.plugins.loader import load_terminal_plugins, terminal_plugins
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.shell import PAGE_SCREEN
-from zettcode.app.ui.widgets import ContextPage
+from zettcode.commands.context_page import ContextPage
 from zettcode.commands.usage_page import UsagePage
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine

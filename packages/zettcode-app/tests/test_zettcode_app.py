@@ -58,7 +58,6 @@ from zettcode.app.ui.widgets import (
     ApprovalPage,
     AskUserPage,
     CommandCompleter,
-    ContextPage,
     EffortPage,
     FollowUpQueue,
     SendKind,
@@ -72,6 +71,7 @@ from zettcode.app.ui.widgets import (
 )
 from zettcode.app.ui.widgets.follow_up import OPTION
 from zettcode.commands.context import ContextPagePlugin
+from zettcode.commands.context_page import ContextPage
 from zettcode.commands.handlers import CodeReview
 from zettcode.commands.plugin import CommandsPlugin
 from zettcode.commands.usage import UsageCommand
@@ -8923,7 +8923,7 @@ def _with_plugin_command(name: str, handler, *, when_busy="refuse"):
 async def _typed_while_running(app, harness, line: str) -> None:
     harness.write(line)
     harness.press("enter")
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.2)
 
 
 async def _start_a_request(harness) -> None:

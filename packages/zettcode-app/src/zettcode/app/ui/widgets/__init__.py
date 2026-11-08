@@ -21,7 +21,6 @@ _EXPORTS = {
     "Composer": ".composer",
     "LOCK_CAPTIONS": ".composer",
     "UPDATING_CAPTIONS": ".composer",
-    "ContextPage": ".context_page",
     "DocumentPage": ".document_page",
     "EFFORT_ROWS": ".effort_page",
     "EffortPage": ".effort_page",
@@ -71,7 +70,6 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .bash_page import BashPage
     from .completer import CommandCompleter, help_text
     from .composer import LOCK_CAPTIONS, UPDATING_CAPTIONS, Composer
-    from .context_page import ContextPage
     from .document_page import DocumentPage
     from .effort_page import EFFORT_ROWS, EffortPage
     from .follow_up import FollowUpQueue
@@ -120,7 +118,6 @@ __all__ = [
     "BashPage",
     "CommandCompleter",
     "Composer",
-    "ContextPage",
     "DocumentPage",
     "EFFORT_ROWS",
     "EffortPage",

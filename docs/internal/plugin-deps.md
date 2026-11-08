@@ -95,5 +95,5 @@ and its inbox; the terminal's `ui` package now holds none of the queue, the cap 
 registers its starter from `_start_messaging` and asks the inbox again after every turn (`_start_next_command`), because
 the runtime's idle notice lands before the shell clears its own busy flag.
 
-`/usage`'s page now lives in `zettcode-commands`; `usage_charts` stays in `app` because the sessions and context pages
-share its drawing primitives with it.
+`/usage` and `/context` pages live in `zettcode-commands`; `usage_charts` stays in `app` because the sessions page and
+the commands' context page share its drawing primitives.

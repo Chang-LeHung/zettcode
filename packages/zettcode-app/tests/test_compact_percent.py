@@ -10,8 +10,7 @@ from test_context_page import report_of
 
 from zettcode._compat import tomllib
 from zettcode.app.agent.agent import TerminalAgent
-from zettcode.app.ui.widgets import ContextPage
-from zettcode.app.ui.widgets.context_page import KNOB, LIT, SLIDE_SECONDS
+from zettcode.commands.context_page import KNOB, LIT, SLIDE_SECONDS, ContextPage
 from zettcode.config import load_config
 from zettcode.engine import core as runtime_module
 from zettcode.tui.testing import Harness

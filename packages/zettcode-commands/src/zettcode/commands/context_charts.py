@@ -24,12 +24,11 @@ from __future__ import annotations
 import textwrap
 from collections.abc import Sequence
 
+from zettcode.app.ui.widgets.usage_charts import Line, fit, meter
 from zettcode.budget import CHARS_PER_TOKEN, SOURCES
 from zettcode.sdk.types import ContextReport
 from zettcode.tui import BAR_FULL
 from zettcode.tui.render.text import display_width
-
-from .usage_charts import Line, fit, meter
 
 #: The widest the gauge and the stacked bar are drawn: past this a bar stops being read as a
 #: shape, and the page would be a long strip on a wide terminal.
