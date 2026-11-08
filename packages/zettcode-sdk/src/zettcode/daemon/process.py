@@ -186,7 +186,9 @@ class Daemons:
 
         By default the record is removed too (``kill``); with ``keep`` it stays, as a dead one, so the daemon is
         still listed and can be started again or deleted. A dead record is only removed (or, with ``keep``, left):
-        the process it described is gone already. Whether it is ``working`` is read from the state file, which can be a
+        the process it described is gone already. The one record ``keep`` does not keep is a folder with no readable
+        state: it names no session and no workspace, so there is nothing to start again, and it is removed. Whether
+        it is ``working`` is read from the state file, which can be a
         moment old, so a daemon that has just changed turn may be judged by the one before; ``--force`` is the answer to
         that, not a retry. The session is never touched — it is a conversation like any
         other, and ``zettcode resume <id>`` opens it afterwards.
@@ -226,7 +228,13 @@ class Daemons:
                 if not keep:
                     record.remove()
                     return "stopped"
-                return "stopped; its record was removed" if gone else "stopped; its record was kept"
+                if gone:
+                    return "stopped; its record was removed"
+                # The process may have left without reaching its own last act (killed from elsewhere, an error while
+                # the client closed), and then the heartbeat is still fresh: take it away, so the record reads dead by
+                # the rule and not by a pid the system can hand to another process within the beat's thirty seconds.
+                record.end_beat()
+                return "stopped; its record was kept"
             time.sleep(POLL_SECONDS)
         _signal(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
         if keep:

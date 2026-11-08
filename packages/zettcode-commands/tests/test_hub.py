@@ -315,6 +315,28 @@ def test_selection_is_dropped_when_a_new_reading_no_longer_draws_the_node():
     _rendered(opened, 110, 32)
 
     assert opened.selected is None
+    assert "deselect" not in " ".join(_rendered(opened, 110, 32)[-2:]), "the footer stops offering Esc to deselect"
+    assert "esc deselect" not in opened.footer
+
+
+def test_the_footer_stops_offering_deselect_when_a_new_size_drops_the_selected_node():
+    many = tuple(Node(f"n{i}", f"node-{i}", "idle", me=i == 0) for i in range(20))
+    links = tuple(Link("n0", f"n{i}", 100 - i) for i in range(1, 20))
+    opened = HubPage(data(nodes=many, links=links), on_close=lambda: None)
+    _rendered(opened, 140, 40)
+    big = {node.key for node in opened._picture.nodes}
+    _rendered(opened, 76, 17)
+    small = {node.key for node in opened._picture.nodes}
+    assert small < big, "the smaller page draws fewer nodes"
+    _rendered(opened, 140, 40)
+    opened.selected = sorted(big - small)[0]
+    opened.footer = opened._footer()
+    assert "esc deselect" in opened.footer
+
+    _rendered(opened, 76, 17)
+
+    assert opened.selected is None
+    assert "esc deselect" not in opened.footer, "Escape would close the page, so the footer must not say otherwise"
 
 
 def test_the_graph_tab_draws_the_summary_the_legend_and_a_picture():
@@ -416,7 +438,7 @@ class _FakeSessions:
         self._ids = ids
 
     async def list(self, *, limit: int | None = None) -> list[object]:
-        return [_Info(name) for name in self._ids]
+        return [_Info(name) for name in self._ids][:limit]
 
 
 class _FakeClient:
@@ -456,10 +478,20 @@ class _FakeClient:
 
 
 def _daemon_info(session_id: str, status: str, workspace: str, name: str = "") -> object:
+    """A record as `list_daemons` returns it: every field of `DaemonInfo` the page reads."""
     return type(
         "Info",
         (),
-        {"session_id": session_id, "status": status, "workspace": workspace, "name": name, "title": "", "model": "m"},
+        {
+            "session_id": session_id,
+            "status": status,
+            "workspace": workspace,
+            "name": name,
+            "title": "",
+            "model": "m",
+            "effort": None,
+            "permission": "safe",
+        },
     )()
 
 
@@ -510,18 +542,21 @@ def test_the_daemons_tab_lists_running_daemons_then_every_one_with_no_process(tm
 def test_a_peer_that_has_just_left_the_roster_is_offline_even_while_the_client_still_remembers_it(
     tmp_path, daemons_on_disk
 ):
-    """The cached peers lag the broker by a moment; the live graph says who is in the roster."""
+    """The cached peers lag the broker by a moment; the live graph says who is in the roster, and every tab takes it."""
     client = _FakeClient(tmp_path, {"sessions": [], "edges": []})  # the graph no longer has `p-1`; `peers()` does
 
     reading = _read(client)
 
-    assert [peer.session_id for peer in reading.peers] == ["p-1"], "still remembered"
-    assert "p-1" in {daemon.session_id for daemon in reading.daemons if daemon.status == "offline"}
+    assert [peer.session_id for peer in reading.peers] == [], "the Sessions tab does not call it idle"
+    assert "p-1" in {daemon.session_id for daemon in reading.daemons if daemon.status == "offline"}, (
+        "while Daemons says offline"
+    )
 
 
 def test_the_cached_peers_stand_in_for_the_roster_only_when_the_graph_could_not_be_read(tmp_path, daemons_on_disk):
     reading = _read(_FakeClient(tmp_path, RuntimeError("no broker")))
 
+    assert [peer.session_id for peer in reading.peers] == ["p-1"], "the Sessions tab shows what the client remembers"
     assert "p-1" not in {daemon.session_id for daemon in reading.daemons}, "the best word there is says it runs"
     assert "old-9" in {daemon.session_id for daemon in reading.daemons if daemon.status == "offline"}
 
@@ -535,7 +570,7 @@ def test_enter_and_s_act_on_the_row_under_the_mark_by_its_id_not_by_its_position
             daemons=(
                 Daemon("id-one", "alpha", "idle"),
                 Daemon("id-two", "bravo", "idle"),
-                Daemon("id-three", "charlie", "offline", workspace="/w"),
+                Daemon("id-three", "charlie", "dead", workspace="/w"),
             )
         ),
         on_close=lambda: None,
@@ -954,7 +989,7 @@ def test_every_key_that_acts_says_so_on_the_page_at_once():
     assert asked == ["r", "s d-1", "enter d-2"]
 
 
-STEPS = (("peers", 0), ("daemons", 3), ("sessions", 1), ("graph", 19), ("picture", 0))
+STEPS = (("peers", 0), ("daemons", 3), ("sessions", 1), ("graph", 19), ("build", 0))
 
 
 def test_a_refresh_replaces_refreshing_with_the_new_readings_time_and_keeps_a_failure(monkeypatch):
@@ -970,7 +1005,7 @@ def test_a_refresh_replaces_refreshing_with_the_new_readings_time_and_keeps_a_fa
     monkeypatch.setattr(HubCommand, "_read", read_ok)
     asyncio.run(HubCommand()._refresh(opened, object()))
     assert opened.subtitle is None, "refreshing is gone once the read is done"
-    assert "read 12:34:56 \u00b7 23 ms" in _rendered(opened, 110, 32)[1], "and the time is at the top right"
+    assert "read 12:34:56 \u00b7 23 ms" in _rendered(opened, 140, 32)[1], "and the time is at the top right"
 
     monkeypatch.setattr(HubCommand, "_read", read_bad)
     asyncio.run(HubCommand()._refresh(opened, object()))
@@ -984,10 +1019,10 @@ def test_the_stamp_is_the_fullest_account_that_fits_and_an_80_column_page_shows_
         return _rendered(opened, width, 32)[1].rstrip()
 
     full = tab_line(130)
-    assert full.endswith("graph 19, picture 0 ms)") and "peers 0" in full, "with the unit after the steps"
+    assert full.endswith("graph 19, build 0 ms)") and "peers 0" in full, "with the unit after the steps"
     assert "12:34:56" in full and full.index("read") > full.index("Daemons")
-    assert tab_line(86).endswith("read 12:34:56 \u00b7 23 ms (p0 d3 s1 g19 pic0)"), "initials where names do not fit"
-    assert tab_line(80).endswith("read 23 ms (p0 d3 s1 g19 pic0)"), "an 80-column page sees the steps, not the clock"
+    assert tab_line(86).endswith("read 12:34:56 \u00b7 23 ms (p0 d3 s1 g19 b0)"), "initials where names do not fit"
+    assert tab_line(80).endswith("read 23 ms (p0 d3 s1 g19 b0)"), "an 80-column page sees the steps, not the clock"
     assert tab_line(66).endswith("read 12:34:56 \u00b7 23 ms"), "narrower: the clock and the total"
     assert tab_line(55).endswith("read 23 ms"), "narrower still: the total alone"
     assert "read" not in tab_line(44) and "Daemons" in tab_line(44), "too narrow for any: left out, not cut"
@@ -1006,7 +1041,7 @@ def test_a_page_drops_steps_it_has_no_letter_for_to_three_characters_and_a_total
 def test_a_real_reading_says_when_it_began_and_where_the_time_went_and_the_steps_add_up(tmp_path, daemons_on_disk):
     reading = _read(_FakeClient(tmp_path))
 
-    assert [name for name, _ in reading.steps] == ["peers", "daemons", "sessions", "graph", "picture"]
+    assert [name for name, _ in reading.steps] == ["peers", "daemons", "sessions", "graph", "build"]
     assert len(reading.began) == 8 and reading.began.count(":") == 2
     assert abs(sum(ms for _, ms in reading.steps) - reading.took) <= len(reading.steps), "no part of it is untimed"
 
@@ -1502,3 +1537,153 @@ def test_the_steps_of_a_reading_are_named_once_and_each_has_its_letter():
     from zettcode.commands.hub import STEP_LETTERS, STEPS
 
     assert tuple(STEP_LETTERS) == STEPS and len(set(STEP_LETTERS.values())) == len(STEPS)
+
+
+# -- what a start gives back to the daemon it starts again ------------------------------------------------
+
+
+def test_starting_a_stopped_daemon_gives_it_back_the_shell_level_effort_and_label_its_record_says(
+    monkeypatch, tmp_path
+):
+    """The SDK's default is `safe`, `zettcode daemon spawn`'s is `full`, and a record carries whatever it was started
+    with: Enter on a daemon that was denied a shell must not give it one, nor take it from one that had it."""
+    calls: list[tuple[object, dict[str, object]]] = []
+    _fake_spawn(monkeypatch, calls)
+    client = type("Client", (), {"workspace": tmp_path})()
+    denied = Daemon(
+        "d-deny", "reviewer", "dead", model="m", workspace="/w", name="reviewer", effort="high", permission="deny"
+    )
+    trusted = Daemon("d-full", "builder", "dead", model="m", workspace="/w", name="builder", permission="full")
+
+    # a page each: the fake reading that follows a start replaces the page's data with its own
+    asyncio.run(HubCommand()._resume(page(daemons=(denied,)), client, "d-deny"))
+    asyncio.run(HubCommand()._resume(page(daemons=(trusted,)), client, "d-full"))
+
+    assert calls == [
+        ("/w", {"model": "m", "resume": "d-deny", "effort": "high", "name": "reviewer", "permission": "deny"}),
+        ("/w", {"model": "m", "resume": "d-full", "name": "builder", "permission": "full"}),
+    ], "what each record says, and only what it says"
+
+
+def test_a_stored_session_with_no_record_starts_on_the_sdks_defaults(monkeypatch, tmp_path):
+    calls: list[tuple[object, dict[str, object]]] = []
+    _fake_spawn(monkeypatch, calls)
+    client = type("Client", (), {"workspace": tmp_path})()
+    opened = page(daemons=(Daemon("off", "an old conversation", "offline", workspace=str(tmp_path)),))
+
+    asyncio.run(HubCommand()._resume(opened, client, "off"))
+
+    assert calls == [(str(tmp_path), {"model": None, "resume": "off"})], "no shell level, level or label invented"
+
+
+def test_a_session_another_process_has_open_is_not_started_and_the_page_says_why(monkeypatch, tmp_path):
+    calls: list[tuple[object, dict[str, object]]] = []
+    _fake_spawn(monkeypatch, calls)
+    asked: list[tuple[str, object]] = []
+
+    class Sessions:
+        def open_elsewhere(self, session_id: str, *, workspace: object = None) -> bool:
+            asked.append((session_id, workspace))
+            return session_id == "held"
+
+    client = type("Client", (), {"workspace": tmp_path, "sessions": Sessions()})()
+    opened = page(
+        daemons=(
+            Daemon("held", "open in a terminal", "offline", workspace=str(tmp_path)),
+            Daemon("free", "not open anywhere", "offline", workspace=str(tmp_path)),
+        )
+    )
+
+    asyncio.run(HubCommand()._resume(opened, client, "held"))
+    assert calls == [] and "open in another ZettCode process" in (opened.subtitle or ""), (
+        "said, and nothing was spawned"
+    )
+
+    asyncio.run(
+        HubCommand()._resume(
+            page(daemons=(Daemon("free", "not open anywhere", "offline", workspace=str(tmp_path)),)), client, "free"
+        )
+    )
+    assert [call[1]["resume"] for call in calls] == ["free"], "a free one starts as before"
+    assert asked == [("held", str(tmp_path)), ("free", str(tmp_path))], "asked of the workspace the row belongs to"
+
+
+def test_a_daemon_is_found_by_its_title_as_well_as_its_name_and_id():
+    opened = HubPage(
+        data(
+            daemons=(
+                Daemon("id-1", "nightly", "idle", name="nightly", title="Reviewing the broker changes"),
+                Daemon("id-2", "scratch", "idle", name="scratch", title="Untitled"),
+            )
+        ),
+        on_close=lambda: None,
+    )
+    opened._show(DAEMONS)
+    opened.capture_event(_text("/"), None)
+
+    _typed(opened, "broker")
+    assert _labels(opened) == ["nightly"], "the title, though the row is called by its name"
+    for _ in "broker":
+        opened.capture_event(_key("backspace"), None)
+    _typed(opened, "scratch")
+    assert _labels(opened) == ["scratch"], "and the name"
+
+
+# -- stopping -------------------------------------------------------------------------------------------
+
+
+def test_s_on_a_stored_session_no_daemon_ever_had_says_so_and_does_not_ask_the_sdk():
+    asked: list[str] = []
+    opened = HubPage(
+        data(daemons=(Daemon("off", "an old conversation", "offline"),)),
+        on_close=lambda: None,
+        on_stop=asked.append,
+    )
+    opened._show(DAEMONS)
+
+    opened.capture_event(_text("s"), None)
+
+    assert asked == [], "nothing to stop, so the SDK is not asked about a daemon that does not exist"
+    assert opened.subtitle == "no daemon to stop on this one; enter starts one"
+
+
+def test_the_first_s_on_a_working_daemon_says_what_stopping_costs_and_the_second_stops_it_anyway(monkeypatch):
+    from zettcode.sdk import daemons
+    from zettcode.sdk.errors import ConfigurationError
+
+    asked: list[bool] = []
+
+    async def stop(session_id, *, force=False, keep=False):
+        asked.append(force)
+        if not force:
+            raise ConfigurationError("it is working on a turn; stop it anyway with --force, or wait until it is idle")
+        return "stopped; its record was kept"
+
+    async def read(self, client):
+        return data()
+
+    monkeypatch.setattr(daemons, "stop_daemon", stop)
+    monkeypatch.setattr(HubCommand, "_read", read)
+    command = HubCommand()
+    opened = page(daemons=(Daemon("busy", "the builder", "working"),))
+
+    asyncio.run(command._stop(opened, object(), "busy"))
+    assert asked == [False] and "press s again" in (opened.subtitle or ""), "told, and nothing stopped yet"
+    assert "--force" not in (opened.subtitle or ""), "the page does not name a flag it cannot pass"
+
+    asyncio.run(command._stop(opened, object(), "busy"))
+    assert asked == [False, True], "the second s forces it"
+    assert opened.subtitle == "stopped; its record was kept" and not command._forced
+
+
+def test_a_refresh_forgets_which_working_daemons_were_warned(monkeypatch):
+    async def read(self, client):
+        return data()
+
+    monkeypatch.setattr(HubCommand, "_read", read)
+    command = HubCommand()
+    command._forced.add("busy")
+
+    asyncio.run(command._refresh(page(), object()))
+
+    assert not command._forced, "an s pressed long after the warning is a first s again"

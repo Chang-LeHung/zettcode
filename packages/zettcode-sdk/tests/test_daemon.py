@@ -365,6 +365,40 @@ async def test_only_the_stop_that_this_process_was_sent_decides_that_its_record_
     assert daemon.record.state is not None and daemon.record.state.keep is True
 
 
+async def test_a_status_written_between_the_stop_and_its_signal_does_not_lose_the_kept_record(home):
+    """A turn that was already marking `working` when the stop wrote `keep` writes its status over the stop's, keeping
+    the field; the daemon's own last write used to read `working`, not `stopping`, and put the field back to False, so
+    the record the reader asked to keep was removed and the stop said it had been."""
+    from zettcode.daemon.run import Daemon
+
+    class Client(_Client):
+        usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0, "context_tokens": 0})()
+
+    daemon = Daemon(Client(), Options(workspace=home, token="t"))
+    daemon.record.save(replace(state_for(home, status="idle"), keep=False))
+    # what `Daemons.stop` writes before it signals
+    daemon.record.change(lambda current: replace(current, status="stopping", keep=True))
+    await daemon.mark("working")  # a turn that was already starting, writing over the stop's status
+    assert daemon.record.state is not None and daemon.record.state.keep is True, "this write carries the field"
+    daemon.stopping.set()
+
+    await daemon.mark("stopping")  # the daemon's last write
+
+    assert daemon.record.state is not None and daemon.record.state.keep is True
+    assert daemon._kept() is True, "so the daemon leaves the record it was asked to leave"
+
+
+async def test_a_start_whose_first_state_write_missed_the_lock_does_not_inherit_an_old_keep(home):
+    """`_kept` reads the file without the guard `mark` has: a start that never got its own state written would find
+    the old record's field and leave a record behind on Ctrl-C that it would otherwise remove."""
+    from zettcode.daemon.run import Daemon
+
+    daemon = Daemon(_Client(), Options(workspace=home, token="a new start"))
+    daemon.record.save(replace(state_for(home, pid=2**22 + 17, status="stopping"), keep=True, token="an earlier start"))
+
+    assert daemon._kept() is False, "an earlier start's field is not this one's"
+
+
 class _OpeningClient:
     """The slice of a client `serve` uses to open a session: whether another process holds it is the one variable."""
 
@@ -1771,3 +1805,23 @@ async def test_the_pictures_of_a_chat_message_go_into_the_prompt_with_its_text(h
     await daemon._turn(IncomingMessage("web", "web-gateway", "", via="user", direct=True, images=(picture,)))
 
     assert client.session.images == (picture,) and client.session.calls[0] == ("prompt", "")
+
+
+def test_a_kept_stop_of_a_daemon_that_left_without_taking_its_own_heartbeat_takes_it_away(home, monkeypatch):
+    """The process is gone by the time the stop looks (killed elsewhere, or an error while its client closed), so the
+    daemon never reached its last act and the beat is still fresh."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))  # this process's pid: alive when `stop` starts
+    record.beat()
+    record = Registry().find("01a1")  # read afresh: a record reads whether its process is there once, when it is made
+    assert record is not None and record.alive
+    seen = iter([True, False])  # alive for the check that decides to signal, gone for the wait that follows
+    monkeypatch.setattr(process, "_signal", lambda pid, number: True)
+    monkeypatch.setattr(process, "pid_runs", lambda pid: next(seen, False))
+
+    said = process.Daemons().stop(record, keep=True)
+
+    assert said == "stopped; its record was kept"
+    assert not record.beating(), "the record reads dead by the rule, not by a pid that can be reused"
+    gone = Registry().find("01a1")
+    assert gone is not None and gone.status == "dead"

@@ -93,13 +93,22 @@ class Peer:
 
 @dataclass(frozen=True, slots=True)
 class Daemon:
-    """One daemon recorded on this machine, running or not."""
+    """One daemon recorded on this machine, running or not, or a stored session no daemon has (status ``offline``).
+
+    ``label`` is what the row is called; ``name`` and ``title`` are the two things it may be called after, kept apart
+    because a search finds either. ``effort`` and ``permission`` are what the record says the daemon ran at, so that
+    starting it again does not change them: a daemon that was denied a shell is not given one by pressing Enter.
+    """
 
     session_id: str
     label: str
     status: str
     model: str = ""
     workspace: str = ""
+    name: str = ""
+    title: str = ""
+    effort: str = ""
+    permission: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,11 +167,13 @@ COLUMN_GAP = 2
 
 #: The steps of a reading, in the order :meth:`HubCommand._read` takes them. A new step is added here, which is a
 #: decision to make where it can be seen: ``lap`` refuses a name that is not in it, and the letters below go with it.
-STEPS = ("peers", "daemons", "sessions", "graph", "picture")
+#: ``build`` is the picture's title dictionary only; routing the lines needs the page's size, so it runs in the first
+#: frame drawn after a reading (``_picture_for``) and is not a step of the reading.
+STEPS = ("peers", "daemons", "sessions", "graph", "build")
 
 #: The letters a narrow page writes the steps of a reading with:
-#: ``p0 d3 s1 g19 pic0`` is peers 0 ms, daemons 3, sessions 1, graph 19 and the picture 0.
-STEP_LETTERS = dict(zip(STEPS, ("p", "d", "s", "g", "pic"), strict=True))
+#: ``p0 d3 s1 g19 b0`` is peers 0 ms, daemons 3, sessions 1, graph 19 and the build 0.
+STEP_LETTERS = dict(zip(STEPS, ("p", "d", "s", "g", "b"), strict=True))
 
 
 def _table(titles: tuple[str, ...], rows: Sequence[tuple[str, str, str, tuple[str, ...], str]]) -> Table:
@@ -221,7 +232,7 @@ def _daemon_table(data: HubData) -> Table:
                 daemon.label or daemon.session_id,
                 state,
                 (said, daemon.model or "no model", daemon.workspace),
-                f"{daemon.label} {daemon.session_id}",
+                f"{daemon.label} {daemon.name} {daemon.title} {daemon.session_id}",
             )
         )
     table = _table(("NAME", "STATE", "MODEL", "WORKSPACE"), rows)
@@ -409,7 +420,7 @@ class HubPage(ListPage):
 
         The page is the only side that knows the room, so the data carries the parts and the page picks, longest
         first: the clock, the total and each step by name; without the clock; with the steps shortened to the
-        letters of :data:`STEP_LETTERS` (``p0 d3 s1 g19 pic0``); the same without the clock; the clock and the total;
+        letters of :data:`STEP_LETTERS` (``p0 d3 s1 g19 b0``); the same without the clock; the clock and the total;
         the total alone. The steps are the point of it, so they come before the clock in the narrower forms. Two
         columns are kept clear of the last tab.
         """
@@ -437,6 +448,7 @@ class HubPage(ListPage):
             self._picture_key = key
             if self.selected is not None and all(node.key != self.selected for node in self._picture.nodes):
                 self.selected = None
+                self.footer = self._footer()  # it says "esc deselect" only while something is selected
         return self._picture
 
     def _forget_picture(self) -> None:
@@ -588,6 +600,10 @@ class HubPage(ListPage):
             chosen = self._daemon()
             if chosen is None:
                 self.note("no daemon under the mark")
+            elif chosen.status == OFFLINE:
+                # A stored session no daemon ever had: there is nothing to stop, and the SDK's sentence about a daemon
+                # that does not exist is not one for this page.
+                self.note("no daemon to stop on this one; enter starts one")
             else:
                 self.note("stopping\u2026")
                 self.on_stop(chosen.session_id)
@@ -679,12 +695,15 @@ class HubCommand(TuiPlugin):
     _actions: set[asyncio.Future[None]]
     #: Session ids a daemon is being started for, so a second Enter does not start a second one.
     _starting: set[str]
+    #: Daemons that were working when ``s`` was pressed and have been told so: the next ``s`` stops them anyway.
+    _forced: set[str]
 
     def __init__(self) -> None:
         """Start with no page and no action running."""
         self._page = None
         self._actions = set()
         self._starting = set()
+        self._forced = set()
 
     def activate(self, ctx: PluginContext) -> None:
         """Register ``/hub``; it only reads, so it opens over a running request rather than turning the reader away."""
@@ -749,25 +768,44 @@ class HubCommand(TuiPlugin):
         """Read everything again, and show it.
 
         ``r`` runs this too: the page said "refreshing" when the key was pressed, and the new reading's own time and
-        duration, at the top right, say it is done (and differ from the last one's if it was pressed twice).
+        duration, at the top right, say it is done (and differ from the last one's if it was pressed twice). It also
+        forgets which working daemons were warned, so a second ``s`` that is meant to force a stop follows the first.
         """
+        self._forced.clear()
         page.set_data(await self._read(client))
 
     async def _stop(self, page: HubPage, client: object, session_id: str) -> None:
-        """Stop one daemon, then show what that changed."""
+        """Stop one daemon, keeping its record, then show what that changed.
+
+        A daemon in the middle of a turn is not stopped by the first ``s``: stopping it throws that turn away. The page
+        says so and remembers it; the next ``s`` on it stops it anyway. (The SDK asks for ``force`` in a flag the page
+        cannot pass, and its sentence names that flag, so the page words it itself.)
+        """
         from zettcode.sdk.daemons import stop_daemon
+        from zettcode.sdk.errors import ConfigurationError
 
         page.note("stopping\u2026")
-        said = await stop_daemon(session_id, keep=True)
+        try:
+            said = await stop_daemon(session_id, keep=True, force=session_id in self._forced)
+        except ConfigurationError:
+            self._forced.add(session_id)
+            chosen = next((daemon for daemon in page.data.daemons if daemon.session_id == session_id), None)
+            label = chosen.label if chosen is not None else session_id[:8]
+            page.note(f"{label} is working on a turn: press s again to stop it anyway and throw that turn away")
+            return
+        self._forced.discard(session_id)
         await self._refresh(page, client)
         page.note(said)
 
     async def _resume(self, page: HubPage, client: object, session_id: str) -> None:
         """Start a daemon on an offline session, resuming it: one whose daemon was stopped, or one that is only stored.
 
-        A daemon that was stopped starts on the workspace and model its record names; a stored session has no record,
-        so it starts in the reader's own workspace (the store is read for that workspace) on the first configured model.
-        A record with no workspace falls back to the reader's own, and one with no model to the first configured.
+        A daemon that was stopped starts on the workspace, model, reasoning level and shell level its record names, and
+        under the label it had: pressing Enter must not give a shell to a daemon that was denied one, or take it from
+        one that had it. A stored session has no record, so it starts in the reader's own workspace (the store is read
+        for that workspace) on the first configured model, with the SDK's defaults. A record with no workspace falls
+        back to the reader's own, and one with no model to the first configured. A session another process has open is
+        said so before anything is started: a daemon cannot write to it, and would only say so from its log after a start.
         One start per row at a time, until the page shows it running: a second ``Enter`` while the first is starting
         or the page is being read again is told so, since two processes would share one record and one session lock.
         A running daemon is not started again.
@@ -788,7 +826,22 @@ class HubCommand(TuiPlugin):
         try:
             try:
                 workspace = chosen.workspace or str(client.workspace)  # type: ignore[attr-defined]
-                started = await spawn_daemon(workspace, model=chosen.model or None, resume=session_id)
+                if await _open_elsewhere(client, session_id, workspace):
+                    raise RuntimeError(
+                        "that session is open in another ZettCode process, so a daemon cannot write to it"
+                    )
+                # What the record says, and nothing it does not: an offline session has none of these, and the SDK's
+                # own defaults are the right ones for it.
+                kept = {
+                    key: value
+                    for key, value in (
+                        ("effort", chosen.effort),
+                        ("name", chosen.name),
+                        ("permission", chosen.permission),
+                    )
+                    if value
+                }
+                started = await spawn_daemon(workspace, model=chosen.model or None, resume=session_id, **kept)
             except Exception as error:  # noqa: BLE001 - the page says what happened, whatever it was
                 text = str(error)
                 # The store has no such session: a daemon that never held a conversation leaves none (an empty one is
@@ -845,6 +898,10 @@ class HubCommand(TuiPlugin):
                 status=info.status,
                 model=info.model or "",
                 workspace=str(info.workspace or ""),
+                name=info.name or "",
+                title=info.title or "",
+                effort=info.effort or "",
+                permission=info.permission or "",
             )
             for info in await asyncio.to_thread(list_daemons)
         )
@@ -887,21 +944,37 @@ class HubCommand(TuiPlugin):
             nodes, links = (), ()
         # Offline: the stored sessions of this workspace that nothing accounts for — not the reader's own, not in the
         # roster, and not the session of any daemon record (which has its row already, running or stopped). They follow
-        # the daemons, newest first, and are what a daemon can be started on. Who is in the roster is the live graph's
-        # word; the client's cached peers stand in only when the graph could not be read, because a peer that has just
-        # disconnected lingers in that cache and would hide its session's row until the broker says it left.
-        roster = (
-            {str(entry.get("session_id", "")) for entry in graph.get("sessions", ())}
-            if graph_ok
-            else {peer.session_id for peer in peers}
-        )
+        # the daemons, newest first, and are what a daemon can be started on.
+        # Who is in the roster is the live graph's word, and the Sessions tab, the picture and the offline rows all take
+        # it from there: a peer that has just disconnected lingers in the client's cache, and one tab would call a
+        # session idle while another called it offline. The cached peers stand in only when the graph could not be read.
+        if graph_ok:
+            peers = tuple(
+                Peer(
+                    handle=str(entry.get("handle", "")),
+                    title=str(entry.get("title", "")),
+                    status=str(entry.get("status", "")),
+                    workspace=str(entry.get("workspace", "")),
+                    kind=str(entry.get("kind", "")),
+                    session_id=str(entry.get("session_id", "")),
+                )
+                for entry in graph.get("sessions", ())
+                if str(entry.get("session_id", "")) != me
+            )
+        roster = {peer.session_id for peer in peers}
         accounted = {me, *roster, *(daemon.session_id for daemon in daemons)}
         offline = tuple(
-            Daemon(session_id=info.id, label=info.title or info.id[:8], status=OFFLINE, workspace=str(here))
+            Daemon(
+                session_id=info.id,
+                label=info.title or info.id[:8],
+                status=OFFLINE,
+                workspace=str(here),
+                title=info.title or "",
+            )
             for info in listed
             if info.id not in accounted
         )
-        lap("picture")
+        lap("build")
         return HubData(
             peers=peers,
             daemons=(*daemons, *offline),
@@ -914,6 +987,18 @@ class HubCommand(TuiPlugin):
             took=round((time.perf_counter() - began) * 1000),
             steps=tuple(steps),
         )
+
+
+async def _open_elsewhere(client: object, session_id: str, workspace: str) -> bool:
+    """Return whether another process has the session open, asked of the SDK on a thread (it takes a file lock for an
+    instant to find out). A client that cannot be asked is not a reason to refuse a start: a daemon that cannot write
+    to its session refuses by itself, and says why."""
+    try:
+        return bool(
+            await asyncio.to_thread(client.sessions.open_elsewhere, session_id, workspace=workspace)  # type: ignore[attr-defined]
+        )
+    except Exception:  # noqa: BLE001 - see above
+        return False
 
 
 def _tail(text: str, width: int) -> str:
