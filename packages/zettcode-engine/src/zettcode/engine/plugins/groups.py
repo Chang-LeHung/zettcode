@@ -11,8 +11,10 @@ from typing import TYPE_CHECKING, TypeVar
 
 from zettcode.engine.service_contracts import (
     CONTEXT_REPORT,
+    SESSION_STORE,
     USAGE_LEDGER,
     ContextReportService,
+    SessionStoreService,
     UsageLedgerService,
 )
 
@@ -89,6 +91,10 @@ class AgentGroups:
     def find(self, name: str, kind: type[_T]) -> _T | None:
         """Return the object under ``name``, or ``None`` when there is none."""
         return self._context.find(name, kind)
+
+    def session_store_service(self) -> SessionStoreService | None:
+        """Return the runtime's session-store service, or ``None`` when it is not provided."""
+        return self.find(SESSION_STORE, SessionStoreService)  # type: ignore[type-abstract]
 
     def usage_ledger_service(self) -> UsageLedgerService | None:
         """Return the runtime's usage-ledger service, or ``None`` when it is not provided."""

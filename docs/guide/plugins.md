@@ -623,7 +623,8 @@ share one. A distribution or a file cannot take an entry-point name another plug
 found keeps it and the other is left out, with a line in the log.
 
 A plugin publishes an object for the ones that need it with `ctx.inject(name, service)`. The runtime's page services
-are reached through the typed readers `ctx.agent.usage_ledger_service()` and `ctx.agent.context_report_service()`;
+are reached through the typed readers `ctx.agent.session_store_service()`, `ctx.agent.usage_ledger_service()` and
+`ctx.agent.context_report_service()`;
 anything else is read with `ctx.service(name, kind)` (or `ctx.find`, which returns `None` when nobody provides it).
 What the object is, and how it is used, is for the plugins involved to agree on; ZettCode only keeps the name unique
 and the order right.

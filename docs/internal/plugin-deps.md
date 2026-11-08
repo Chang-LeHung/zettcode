@@ -13,7 +13,7 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
   raises `RequiredPluginError(missing={name: why})`, which is how "no presenters ⇒ it does not start" is expressed.
 - Names are unique. Dependencies are resolved by name, so the name is the identity. An entry point or file that takes
   the name of another plugin loses it and is logged (`plugins.name_taken`).
-- Services: `ctx.inject(name, obj)` (same as `provide`) publishes; `ctx.service(name, kind)` / `ctx.find(...)` reads, and the page services have typed readers (`ctx.agent.usage_ledger_service()` / `context_report_service()`).
+- Services: `ctx.inject(name, obj)` (same as `provide`) publishes; `ctx.service(name, kind)` / `ctx.find(...)` reads, and the page services have typed readers (`ctx.agent.session_store_service()`, `usage_ledger_service()` / `context_report_service()`).
 - One entry-point group, `zettcode.plugin`: one line per plugin class, whichever part of the program it is. The role
   of a point is decided by the **distribution** it came from (`PROGRAM_DISTRIBUTIONS` in the engine's loader), which
   `importlib.metadata` knows before the plugin's module is imported:
