@@ -160,7 +160,11 @@ class Daemon:
         """Take a message from the broker: refused at once when it carries pictures this model cannot read.
 
         The sender is told then and there, in words it can act on, rather than after a turn that was bound to fail.
+        A daemon that has been asked to stop takes nothing: the turn would run while the client is being closed, and
+        its first state write would put a heartbeat back after the stop took it away.
         """
+        if self.stopping.is_set():
+            return Receipt(False, "this daemon is stopping")
         if message.images:
             try:
                 model = self.client.model
@@ -213,7 +217,13 @@ class Daemon:
         asyncio.ensure_future(self._answer(message))
 
     async def _answer(self, message: IncomingMessage) -> None:
-        """Run one turn, then the next waiting message, and go idle when there is none."""
+        """Run one turn, then the next waiting message, and go idle when there is none.
+
+        A message queued before the stop is not answered after it: the process is leaving, and the turn would run
+        while the client is being closed.
+        """
+        if self.stopping.is_set():
+            return
         try:
             await self._apply_requests()
             await self.mark("working")
@@ -403,7 +413,13 @@ class Daemon:
 
         The heartbeat is touched here as well as on its own clock: the first state a reader can see is written with
         proof of life beside it, so a daemon is never listed as dead between its start and its first beat.
+
+        Once the process has been asked to stop, the only state it writes is ``stopping``: whatever a task that was
+        already running says after that would also beat, and a heartbeat written after the daemon took its own away
+        reads as a daemon that is still there.
         """
+        if self.stopping.is_set() and status != "stopping":
+            return
         self.record.beat()
         sent, made, context = self._spend()
         state = State(
@@ -437,8 +453,16 @@ class Daemon:
                         requested_error=current.requested_error if current is not None else None,
                         # A stop that wants the record kept writes that here before it signals, and this write is the
                         # daemon's last: built afresh, the state would say "do not keep" and the daemon would remove
-                        # the record it was asked to leave.
-                        keep=current.keep if current is not None else False,
+                        # the record it was asked to leave. Only the stopping state this process was sent carries it: a
+                        # daemon started again on a kept record finds the old stopping state and its field in the folder
+                        # and must not inherit them, or a Ctrl-C of it would leave a record behind that it used to
+                        # remove.
+                        keep=bool(
+                            current is not None
+                            and current.status == "stopping"
+                            and current.pid == os.getpid()
+                            and current.keep
+                        ),
                     ),
                     wait=0,
                 )

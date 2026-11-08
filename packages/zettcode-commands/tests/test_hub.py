@@ -573,7 +573,7 @@ def test_a_client_with_no_current_session_still_shows_the_roster(tmp_path, daemo
 # -- resuming ---------------------------------------------------------------------------------------
 
 
-def test_a_daemon_that_never_held_a_conversation_says_so_instead_of_the_stores_error(monkeypatch, tmp_path):
+def test_a_start_with_no_stored_session_says_so_instead_of_the_stores_error(monkeypatch, tmp_path):
     from zettcode.sdk import daemons
 
     async def refuse(workspace, **kwargs):
@@ -589,7 +589,7 @@ def test_a_daemon_that_never_held_a_conversation_says_so_instead_of_the_stores_e
 
     asyncio.run(HubCommand()._resume(opened, client, "d-2"))
 
-    assert opened.subtitle == "nothing to resume: this daemon never held a conversation"
+    assert opened.subtitle == "nothing to resume: its session is not stored in that workspace"
 
 
 def test_a_failure_that_is_not_about_the_session_is_shown_as_it_is(monkeypatch, tmp_path):

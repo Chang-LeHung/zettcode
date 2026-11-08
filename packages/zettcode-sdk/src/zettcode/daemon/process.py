@@ -201,6 +201,7 @@ class Daemons:
             return "removed: it never recorded what it was"
         if not record.alive:
             if keep:
+                record.end_beat()
                 return "was already gone; its record was kept"
             record.remove()
             return "was already gone; its record was removed"
@@ -236,8 +237,13 @@ class Daemons:
 
     @staticmethod
     def _gone(record: Record, keep: bool, said: str) -> str:
-        """Finish a stop whose process was already gone: keep the record or remove it."""
+        """Finish a stop whose process was already gone: keep the record or remove it.
+
+        A kept record loses its heartbeat like on the other two ways out, so it reads as dead by the same rule and not
+        by the pid alone, which a busy machine can reuse before the beat has gone stale.
+        """
         if keep:
+            record.end_beat()
             return f"{said}; its record was kept"
         record.remove()
         return f"{said}; its record was removed"

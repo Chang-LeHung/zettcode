@@ -625,9 +625,14 @@ class HubCommand(TuiPlugin):
                 started = await spawn_daemon(workspace, model=chosen.model or None, resume=session_id)
             except Exception as error:  # noqa: BLE001 - the page says what happened, whatever it was
                 text = str(error)
-                # A daemon that never held a conversation has no stored session: an empty one is removed when it
-                # closes, so there is nothing for the start to continue.
-                note = "nothing to resume: this daemon never held a conversation" if "Unknown session" in text else text
+                # The store has no such session: a daemon that never held a conversation leaves none (an empty one is
+                # removed when it closes), and a record whose workspace no longer holds it reads the same. The words
+                # are the engine's, reached through the daemon's log, so this is a match on a message, not a type.
+                note = (
+                    "nothing to resume: its session is not stored in that workspace"
+                    if "Unknown session" in text
+                    else text
+                )
             else:
                 note = f"started {started.session_id[:8]}"
             await self._refresh(page, client)

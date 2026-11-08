@@ -299,6 +299,67 @@ def test_a_record_with_no_heartbeat_reads_as_dead_even_while_its_pid_still_answe
     record.end_beat()  # taking it away twice is not an error
 
 
+def test_a_kept_stop_of_a_process_that_was_already_gone_also_takes_the_heartbeat_away(home, monkeypatch):
+    """All four ways out of a kept stop leave a record that reads dead by the heartbeat, not by the pid alone."""
+    # the process vanished between the liveness check and the signal
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))  # this process's pid: alive
+    record.beat()
+    monkeypatch.setattr(process, "_signal", lambda pid, number: False)
+
+    assert process.Daemons().stop(record, keep=True) == "was already gone; its record was kept"
+    assert not record.beating()
+
+    # the record was already dead when the stop came, with a fresh beat left behind by a pid that is not there
+    other = Registry().record(home, "01a2", create=True)
+    other.save(replace(state_for(home, pid=2**22 + 17), session_id="01a2"))
+    other.beat()
+
+    assert process.Daemons().stop(other, keep=True) == "was already gone; its record was kept"
+    assert not other.beating()
+
+
+async def test_a_daemon_that_is_stopping_takes_no_message_runs_no_turn_and_writes_no_state_that_would_beat_again(home):
+    from zettcode.daemon.run import Daemon
+
+    client = _Client()
+    daemon = Daemon(client, Options(workspace=home, token="t"))
+    daemon.record.save(state_for(home))
+    daemon.record.beat()
+    daemon.record.end_beat()  # what a kept stop does as the daemon's last act
+    daemon.stopping.set()
+
+    receipt = daemon.take(IncomingMessage("peer", "peer", "late"))
+    await daemon._answer(IncomingMessage("peer", "peer", "queued before the stop"))
+    await daemon.mark("working")  # a task that was already running, saying so after the stop
+    await daemon.mark("idle")
+
+    assert not receipt.accepted and "stopping" in receipt.reason
+    assert client.session.calls == [], "no turn ran while the client was being closed"
+    assert not daemon.record.beating(), "and nothing put the heartbeat back"
+    assert daemon.record.state is not None and daemon.record.state.status == "idle"
+
+
+async def test_only_the_stop_that_this_process_was_sent_decides_that_its_record_stays(home):
+    from zettcode.daemon.run import Daemon
+
+    class Client(_Client):
+        usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0, "context_tokens": 0})()
+
+    daemon = Daemon(Client(), Options(workspace=home, token="t"))
+
+    # a daemon started again on a kept record finds the old stopping state and its field in the folder
+    daemon.record.save(replace(state_for(home, pid=2**22 + 17, status="stopping"), keep=True))
+    await daemon.mark("starting")
+    assert daemon.record.state is not None and daemon.record.state.keep is False, "it does not inherit the field"
+
+    # the stop this process was sent writes the field under its own pid, and the daemon's last write carries it
+    daemon.record.save(replace(state_for(home, status="stopping"), keep=True))
+    daemon.stopping.set()
+    await daemon.mark("stopping")
+    assert daemon.record.state is not None and daemon.record.state.keep is True
+
+
 def test_a_daemon_that_cannot_start_says_why_and_leaves_no_record(home, monkeypatch, tmp_path):
     broken = tmp_path / "broken.toml"
     broken.write_text("[[models]]\nmodel = 3\n", encoding="utf-8")
