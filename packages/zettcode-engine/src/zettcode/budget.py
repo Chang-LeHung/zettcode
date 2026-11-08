@@ -1,6 +1,6 @@
 """What a context budget is made of: the vocabulary the engine measures with and the views draw with.
 
-A leaf with no imports, shared like :mod:`zettcode.statusline` and :mod:`zettcode.providers`, so the engine that counts
+A leaf with no imports, shared like :mod:`zettcode.statusline_parts` and :mod:`zettcode.providers`, so the engine that counts
 the request and the page that shows the count agree on the names without either importing the other.
 """
 

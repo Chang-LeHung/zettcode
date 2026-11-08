@@ -19,7 +19,7 @@ from zettcode.config_edit import (
     write_text_atomically,
 )
 from zettcode.engine.agent.settings import SettingsMixin
-from zettcode.statusline import NAMES
+from zettcode.presenters.statusline import NAMES
 
 
 class AppearanceMixin(SettingsMixin):

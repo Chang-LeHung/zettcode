@@ -14,7 +14,7 @@ from zettcode.app.ui.widgets.statusline_page import PARTS, ROW_OF
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.config_edit import set_pet_position
 from zettcode.pets import GLAD, IDLE, WORKING, PetCatalog, bundled_pets
-from zettcode.statusline import NAMES, PET, unknown
+from zettcode.presenters.statusline import NAMES, PET, unknown
 
 #: The pet a shell starts with when nothing says otherwise.
 CAT = PetCatalog(bundled_pets()).load("cat")

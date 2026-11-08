@@ -17,8 +17,8 @@ from zettcode.plugin_api.pets import PetCatalog
 from zettcode.plugin_api.plugin import TuiPlugins
 from zettcode.plugin_api.presenters import Presenters
 from zettcode.plugin_api.state import TurnSegment, UiRow
+from zettcode.presenters.statusline import NAMES, unknown
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
-from zettcode.statusline import NAMES, unknown
 from zettcode.tui import ThemeCatalog
 
 from .settings import AppearanceMixin

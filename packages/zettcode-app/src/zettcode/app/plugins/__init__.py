@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING
 
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
-    "BUILTIN_PLUGINS": ".builtins",
     "Activity": "zettcode.plugin_api.state",
     "ActivityState": "zettcode.plugin_api.state",
     "DisplayState": "zettcode.plugin_api.state",
@@ -68,7 +67,6 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         UiSide,
     )
 
-    from .builtins import BUILTIN_PLUGINS
     from .groups import UiSlots
     from .loader import TerminalLoader, load_terminal_plugins
 
@@ -88,7 +86,6 @@ def __dir__() -> list[str]:
 
 
 __all__ = [
-    "BUILTIN_PLUGINS",
     "HOST_LINK",
     "Activity",
     "ActivityState",

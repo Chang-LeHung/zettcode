@@ -448,7 +448,7 @@ class ZettCodeConfig:
         self_compaction: Whether a session lets the model request compaction unless it says otherwise;
             the default a new session starts with; the terminal's ``/plugins`` switch writes it.
         statusline_hidden: The names of the header and status-line parts the reader switched off in the
-            ``[statusline]`` table (``ctx = false``); see :mod:`zettcode.statusline`. Every part not named
+            ``[statusline]`` table (``ctx = false``); see :mod:`zettcode.presenters.statusline`. Every part not named
             is shown.
         plugins_enabled: Load third-party plugins published under the
             ``zettcode.plugin`` entry-point group. The builtin rows always

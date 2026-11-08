@@ -3076,6 +3076,7 @@ dependencies = [
     { name = "zettcode-app" },
     { name = "zettcode-engine" },
     { name = "zettcode-plugin-api" },
+    { name = "zettcode-presenters" },
     { name = "zettcode-sdk" },
     { name = "zettcode-tui" },
 ]
@@ -3085,6 +3086,7 @@ requires-dist = [
     { name = "zettcode-app", editable = "packages/zettcode-app" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
     { name = "zettcode-plugin-api", editable = "packages/zettcode-plugin-api" },
+    { name = "zettcode-presenters", editable = "packages/zettcode-presenters" },
     { name = "zettcode-sdk", editable = "packages/zettcode-sdk" },
     { name = "zettcode-tui", editable = "packages/zettcode-tui" },
 ]
@@ -3282,6 +3284,7 @@ provides-extras = ["types"]
 name = "zettcode-presenters"
 source = { editable = "packages/zettcode-presenters" }
 dependencies = [
+    { name = "zettcode-engine" },
     { name = "zettcode-plugin-api" },
     { name = "zettcode-tui" },
 ]
@@ -3293,6 +3296,7 @@ types = [
 
 [package.metadata]
 requires-dist = [
+    { name = "zettcode-engine", editable = "packages/zettcode-engine" },
     { name = "zettcode-plugin-api", editable = "packages/zettcode-plugin-api" },
     { name = "zettcode-sdk", marker = "extra == 'types'", editable = "packages/zettcode-sdk" },
     { name = "zettcode-tui", editable = "packages/zettcode-tui" },

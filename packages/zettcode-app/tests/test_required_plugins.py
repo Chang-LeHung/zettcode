@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.plugins import BUILTIN_PLUGINS, load_terminal_plugins
+from zettcode.app.plugins import load_terminal_plugins
 from zettcode.app.plugins.builtins import BuiltinThemes
 from zettcode.app.plugins.loader import REQUIRED_PLUGINS
 from zettcode.commands.plugin import CommandsPlugin
@@ -21,8 +21,8 @@ from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import catalog, set_many
 from zettcode.engine.plugins.loader import RequiredPluginError
 from zettcode.pets.plugin import PetsPlugin
-from zettcode.plugin_api import Plugin
 from zettcode.presenters.plugin import PresentersPlugin
+from zettcode.presenters.rows import ShellRows, TurnLine
 
 
 class Point:
@@ -37,7 +37,12 @@ class Point:
 
 
 #: The required plugins that are found through an entry point.
-REQUIRED_POINTS = [Point("commands", CommandsPlugin), Point("presenters", PresentersPlugin)]
+REQUIRED_POINTS = [
+    Point("commands", CommandsPlugin),
+    Point("presenters", PresentersPlugin),
+    Point("shell", ShellRows),
+    Point("turn-line", TurnLine),
+]
 
 #: Every part found through an entry point: the required ones, and the ones a reader may switch off.
 POINTS = [*REQUIRED_POINTS, Point("pets", PetsPlugin), Point("themes", BuiltinThemes)]
@@ -53,22 +58,16 @@ def _config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:
     )
 
 
-def _origin(plugin: Plugin) -> str:
-    return plugin.name or type(plugin).__name__
-
-
-#: The parts with no configuration key: what the program cannot do without.
-PARTS = tuple(_origin(plugin) for plugin in BUILTIN_PLUGINS if plugin.setting is None)
-REQUIRED = (*PARTS, *REQUIRED_PLUGINS)
+#: The program's required parts, the same list the loader names.
+REQUIRED = REQUIRED_PLUGINS
 
 
 def _load(tmp_path: Path, **overrides: object):
-    return load_terminal_plugins(_config(tmp_path, **overrides), entry_points=POINTS, required=REQUIRED_PLUGINS)
+    return load_terminal_plugins(_config(tmp_path, **overrides), entry_points=POINTS, required=REQUIRED)
 
 
 def test_the_required_plugins_are_the_rows_and_the_presenters():
-    assert set(REQUIRED_PLUGINS) == {"shell", "presenters", "commands"}
-    assert {"shell", "turn-line"} <= set(PARTS)
+    assert set(REQUIRED_PLUGINS) == {"shell", "turn-line", "presenters", "commands"}
 
 
 def test_a_disable_line_that_names_a_part_of_the_program_does_nothing(tmp_path: Path):
@@ -116,7 +115,12 @@ def test_the_program_does_not_start_without_its_presenters(tmp_path: Path):
     with pytest.raises(RequiredPluginError) as raised:
         load_terminal_plugins(_config(tmp_path), entry_points=[], required=REQUIRED_PLUGINS)
 
-    assert raised.value.missing == {"presenters": "not installed", "commands": "not installed"}
+    assert raised.value.missing == {
+        "shell": "not installed",
+        "turn-line": "not installed",
+        "presenters": "not installed",
+        "commands": "not installed",
+    }
 
 
 @pytest.mark.parametrize("name", REQUIRED)

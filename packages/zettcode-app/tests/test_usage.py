@@ -12,7 +12,7 @@ from zett_agent.messages import AssistantMessage
 from zett_agent.model import ModelEvent, ModelResponse, ModelUsage, ServerToolCall
 
 from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot, session_usage
-from zettcode.statusline import compact_tokens, context_text, usage_text
+from zettcode.presenters.statusline import compact_tokens, context_text, usage_text
 
 
 class _Config:

@@ -97,5 +97,5 @@ the runtime's idle notice lands before the shell clears its own busy flag.
 
 ## Left
 
-- Shrink `app` further: `shell` and `turn-line` are still compiled in (`BUILTIN_PLUGINS`) and `labels`/`UsagePage` live
-  in `app` because the commands open them.
+- Nothing to move: `usage_charts` intentionally stays in `app` because the sessions and context pages share its
+  drawing primitives with `/usage`.

@@ -13,10 +13,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from zettcode.presenters.text import STOP_HINT
-from zettcode.statusline import TURN_PARTS, Row
 from zettcode.tui import ARROW_DOWN, ARROW_UP, ELLIPSIS, HEADER, STATUS
 from zettcode.tui.render import display_width
+
+from .statusline import TURN_PARTS, Row
+from .text import STOP_HINT
 
 #: The keys worth remembering, shown at the right of the status row.
 KEY_HINTS = f"{STOP_HINT}  ^D exit"
@@ -160,7 +161,8 @@ def hidden_parts(config_file: Path) -> tuple[str, ...]:
     answers "nothing hidden" for that entry, and the application reports the mistake when it arrives.
     """
     from zettcode._compat import tomllib
-    from zettcode.statusline import NAMES
+
+    from .statusline import NAMES
 
     if not config_file.is_file():
         return ()

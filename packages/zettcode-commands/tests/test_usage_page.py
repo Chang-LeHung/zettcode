@@ -11,10 +11,10 @@ from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ModelUsage
 
 from zettcode.app.plugins.loader import terminal_context
-from zettcode.app.ui.widgets import UsagePage
 from zettcode.app.ui.widgets import usage_charts as charts
 from zettcode.commands.plugin import CommandsPlugin
 from zettcode.commands.usage import UsageCommand
+from zettcode.commands.usage_page import UsagePage
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.storage import SessionStore
 from zettcode.plugin_api.commands import CommandContext

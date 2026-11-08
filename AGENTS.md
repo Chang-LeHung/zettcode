@@ -33,8 +33,8 @@ from the root.
     framework only (the SDK is an extra, for type-checking a plugin). A plugin depends on that one package. The implementations are written against it and
     sit above it: `zettcode-presenters` draws the built-in rows, `zettcode-app` is the shell and the loader. Moving a
     part of the program into a distribution of its own follows the same cut — the contract goes in `plugin-api`, the
-    implementation in its own package — and a part of the program is never an entry point, so `[plugins] disable` cannot
-    reach it (`packages/zettcode-app/tests/test_required_plugins.py`).
+    implementation in its own package. A part is named in `PROGRAM_DISTRIBUTIONS`; the ones the program cannot run
+    without are in `REQUIRED_PLUGINS`, and only those are unreachable by `[plugins] disable`.
 - The plugins are the distributions in `packages/` that say `[tool.zettcode] plugin = true` (`zettcode-monitor`,
   `zettcode-recap`), each with its own version and tag. They are workspace members like the rest — one environment,
   `uv.lock`, the suite `make check` runs — and `.github/workflows/release-packages.yml` releases whichever of them has

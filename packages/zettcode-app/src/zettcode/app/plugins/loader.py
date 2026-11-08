@@ -22,7 +22,6 @@ from zettcode.plugin_api.state import TurnSegment
 from zettcode.sdk.builtins import require_agent_parts
 from zettcode.tui import RESERVED_THEMES
 
-from .builtins import BUILTIN_PLUGINS
 from .groups import TuiGroups, UiSlots
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -43,7 +42,7 @@ def load_terminal_plugins(
     config: ZettCodeConfig,
     *,
     entry_points: Iterable[EntryPoint] | None = None,
-    builtins: Sequence[OfferedPlugin] = BUILTIN_PLUGINS,
+    builtins: Sequence[OfferedPlugin] = (),
     shared: Mapping[str, object] | None = None,
     required: Sequence[str] = (),
     agent: bool = True,
@@ -70,7 +69,7 @@ def load_terminal_plugins(
 #: The plugins the terminal cannot run without: the rows it paints, the presenters that draw the conversation and the
 #: commands that are the way back to a working setup (`/help`, `/plugins`, `/model`).
 #: ``[plugins] disable`` does not reach them, and the terminal does not start when one is missing.
-REQUIRED_PLUGINS: tuple[str, ...] = ("shell", "presenters", "commands")
+REQUIRED_PLUGINS: tuple[str, ...] = ("shell", "turn-line", "presenters", "commands")
 
 
 def terminal_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -> TuiPlugins:

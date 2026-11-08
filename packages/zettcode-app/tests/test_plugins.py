@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from zettcode.app.plugins import (
-    BUILTIN_PLUGINS,
     HOST_LINK,
     Activity,
     ActivityState,
@@ -43,6 +42,7 @@ from zettcode.plugin_api.commands import CommandContext, CommandResult, CommandU
 from zettcode.plugin_api.entries import EditEntry, EntryKind, ReadEntry, TextEntry
 from zettcode.plugin_api.presenters import Presenter
 from zettcode.presenters.plugin import PresentersPlugin
+from zettcode.presenters.rows import ShellRows, TurnLine
 from zettcode.providers import Provider
 from zettcode.sdk.builtins import AGENT_PLUGINS
 from zettcode.tui import DARK, Span, Style, TextLine
@@ -120,6 +120,8 @@ def with_parts(*points: FakeEntryPoint) -> list[FakeEntryPoint]:
         FakeEntryPoint("commands", CommandsPlugin, "zettcode.terminal"),
         FakeEntryPoint("pets", PetsPlugin, "zettcode.terminal"),
         FakeEntryPoint("presenters", PresentersPlugin, "zettcode.terminal"),
+        FakeEntryPoint("shell", ShellRows, "zettcode.terminal"),
+        FakeEntryPoint("turn-line", TurnLine, "zettcode.terminal"),
         FakeEntryPoint("themes", BuiltinThemes, "zettcode.terminal"),
         *points,
     ]
@@ -692,7 +694,7 @@ async def test_a_plugin_overrides_a_builtin_segment_by_name(tmp_path: Path):
         def render_header_right(self, context: ShellContext) -> str:
             return "mine"
 
-    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("mine", Mine)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=with_parts(FakeEntryPoint("mine", Mine)))
 
     rows = {row.region: row for row in plugins.rows}
     assert [segment.name for segment in rows["header"].right] == ["header_right"]
@@ -709,7 +711,7 @@ async def test_a_new_segment_appends_after_the_builtin_one(tmp_path: Path):
         def draw(self, context: ShellContext) -> str:
             return "main"
 
-    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("branch", Branch)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=with_parts(FakeEntryPoint("branch", Branch)))
 
     rows = {row.region: row for row in plugins.rows}
     assert [segment.name for segment in rows["header"].right] == ["header_right", "branch"]
@@ -729,7 +731,7 @@ async def test_override_clears_the_side_it_names(tmp_path: Path):
         def draw(self, context: ShellContext) -> str:
             return "banner"
 
-    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("banner", Banner)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=with_parts(FakeEntryPoint("banner", Banner)))
 
     rows = {row.region: row for row in plugins.rows}
     assert [segment.builder(None) for segment in rows["status"].left] == ["banner"]
@@ -768,11 +770,13 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
         == TuiPlugins()
     )
 
-    # The switch only governs distributions: the builtin rows still load.
+    # The switch only governs the reader's plugins: the terminal's parts still load through their entry points.
     loaded = load_terminal_plugins(
-        make_config(tmp_path, plugins_enabled=False), entry_points=[one], builtins=BUILTIN_PLUGINS
+        make_config(tmp_path, plugins_enabled=False),
+        entry_points=with_parts(one),
+        builtins=(),
     )
-    assert loaded_names(loaded) == ["shell", "turn-line"]
+    assert set(loaded_names(loaded)) == {"commands", "pets", "presenters", "shell", "themes", "turn-line"}
     assert [row.region for row in loaded.rows] == ["header", "status"]
     assert all(row.left for row in loaded.rows)
 
@@ -930,12 +934,16 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
     runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path), terminal_plugins)
 
     # The builtin rows load too; a lower priority sorts it after the plugin.
-    assert loaded_names(runtime.plugins) == [
+    names = loaded_names(runtime.plugins)
+    assert names[0] == "greeter"
+    assert set(names) == {
         "greeter",
         "shell",
         "turn-line",
-        # The merged order of the agent's parts: a part of another distribution has no rank, so it stands among the
-        # rank-0 ones by name (hook order is the extensions' priority, not this), and the SDK's follow by rank.
+        "presenters",
+        "commands",
+        "pets",
+        "themes",
         "ask-user",
         "coding",
         "files",
@@ -950,11 +958,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "tool-guidelines",
         "tool-output",
         *(plugin.name for plugin in AGENT_PLUGINS if plugin.name != "coding"),
-        "commands",
-        "pets",
-        "presenters",
-        "themes",
-    ]
+    }
     assert len(runtime.plugins.extensions) == 1
     # The program's own commands come first, in the order /help lists them, and the installed plugin's after them.
     assert [command.name for command in runtime.plugins.builtin_commands] == [

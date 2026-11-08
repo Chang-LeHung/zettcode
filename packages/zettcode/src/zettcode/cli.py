@@ -687,9 +687,9 @@ async def launch(options: Options) -> None:
     Args:
         options: What the command line asked for.
     """
-    from zettcode.app.ui import labels
     from zettcode.app.ui.boot import boot_tree
     from zettcode.paths import DEFAULT_LOG, check_config_path, config_path
+    from zettcode.presenters import labels
     from zettcode.tui import DARK, Terminal, TerminalRunner, TuiApp
 
     # `check_config_path` comes from `paths` and not from the settings module: this runs before the first frame,

@@ -23,7 +23,7 @@ from zettcode.plugin_api.pets import PET_NAME, Pet, PetSource
 from zettcode.plugin_api.presenters import Presenter
 from zettcode.plugin_api.state import TurnBuilder, TurnSegment, UiBuilder, UiRegion, UiRow, UiSegment, UiSide
 from zettcode.plugin_tui import TuiGroup
-from zettcode.statusline import TURN_PREFIX
+from zettcode.presenters.statusline import TURN_PREFIX
 from zettcode.tui import RESERVED_THEMES, THEME_NAME, Theme, ThemeSource, file_theme
 
 #: Rows and sides in paint order; the shell's frame, fixed by the application.

@@ -15,9 +15,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from zettcode.plugin_api.rows import GAP, JOIN, Piece, Row
-from zettcode.presenters.text import compact_tokens
 from zettcode.statusline_parts import NAMES, PET, TURN_PARTS, TURN_PREFIX, Part, is_part, unknown
 from zettcode.tui.glyphs import ARROW_DOWN, ARROW_UP, SEPARATOR
+
+from .text import compact_tokens
 
 #: The names and the shape of a part are the config's vocabulary, shipped by the engine
 #: (:mod:`zettcode.statusline_parts`); they are re-exported here so the terminal reads one module.

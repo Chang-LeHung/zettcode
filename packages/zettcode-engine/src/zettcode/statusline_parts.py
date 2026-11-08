@@ -1,7 +1,7 @@
 """The names the header and the status line are made of: what ``[statusline]`` may set, and what a part is.
 
 The configuration validates the table against these names, so they live here, in the engine's shipped leaves, and not
-in :mod:`zettcode.statusline`, which paints the parts and therefore imports the widget framework and the usage types.
+in :mod:`zettcode.presenters.statusline`, which paints the parts and therefore imports the widget framework and the usage types.
 That module re-exports everything here, so a reader of the terminal still imports one place.
 """
 
