@@ -218,6 +218,8 @@ class HubPage(ListPage):
         self.marks = [0] * len(TABS)
         #: The node whose lines are kept bright, by key; ``None`` shows every line as it is.
         self.selected: str | None = None
+        #: Set when the page is closed: a task that finishes after that writes on a page nobody sees, and wakes nothing.
+        self.closed = False
         self.on_stop = on_stop
         self.on_start = on_start
         self.on_refresh = on_refresh
@@ -416,16 +418,18 @@ class HubPage(ListPage):
         """
         self.data = dataclasses.replace(self.data, note=text)
         self.subtitle = text
-        self.request_layout()
         self._repaint()
 
     def _repaint(self) -> None:
         """Wake the loop for a frame: a change made by a task is not an input event, and without this the old screen
         stays until the next key (``refreshing…`` stayed up for as long as the reader did not press anything).
 
-        A page that is not mounted has no app to ask, and nothing on screen to bring up to date.
+        Only the app's own calls are heard: a widget's ``invalidate`` and ``request_layout`` set flags nothing in the
+        framework reads. ``invalidate`` is enough here because the page's geometry is constants; a note that took a
+        row of its own would need ``self.app.request_layout()``. A page that was never mounted has no app to ask, and
+        a closed one has nothing on screen to bring up to date.
         """
-        if self.app is not None:
+        if self.app is not None and not self.closed:
             self.app.invalidate()
 
     def _show(self, tab: int) -> None:
@@ -436,7 +440,7 @@ class HubPage(ListPage):
         self.list.set_items(rows)
         self.list.selected = min(self.marks[tab], len(rows) - 1)
         self.footer = self._footer()
-        self.request_layout()
+        self._repaint()
 
     # -- the keys ---------------------------------------------------------------------------------------
     def capture_event(self, event, host) -> bool:
@@ -460,7 +464,7 @@ class HubPage(ListPage):
         if self.tab == GRAPH and key == "escape" and self.selected is not None:
             self.selected = None
             self.footer = self._footer()
-            self.request_layout()
+            self._repaint()
             return True
         if self.tab == DAEMONS and key == "enter":
             self._chosen()
@@ -481,7 +485,7 @@ class HubPage(ListPage):
         if target is not None:
             self.selected = target
             self.footer = self._footer()
-            self.request_layout()
+            self._repaint()
 
     def _daemon(self) -> Daemon | None:
         """Return the daemon under the mark, by the id the row carries: a refresh may have reordered the list."""
@@ -547,39 +551,45 @@ class HubCommand(TuiPlugin):
         page = HubPage(
             data,
             on_close=self._closer(host),
-            on_refresh=lambda: self._start(self._reload(page, client)),
-            on_stop=lambda session_id: self._start(self._stop(page, client, session_id)),
-            on_start=lambda session_id: self._start(self._resume(page, client, session_id)),
+            on_refresh=lambda: self._start(self._reload(page, client), page),
+            on_stop=lambda session_id: self._start(self._stop(page, client, session_id), page),
+            on_start=lambda session_id: self._start(self._resume(page, client, session_id), page),
         )
         self._page = page
         return CommandResult(widget=page)
 
     def _closer(self, host: CommandHost) -> Callable[[], None]:
-        """Return what closing the page runs: forget it here, then let the shell close it.
+        """Return what closing the page runs: mark it closed, forget it here, then let the shell close it.
 
-        A late failure then has nothing to write on, and the page it would have written on is gone.
+        A late failure then has nothing to write on, and a task that finishes after the page was closed neither wakes
+        the app nor lands on the page that was opened in its place.
         """
 
         def close() -> None:
+            if self._page is not None:
+                self._page.closed = True
             self._page = None
             host.close_page()
 
         return close
 
-    def _start(self, task: Awaitable[None]) -> None:
-        """Run one action on the loop the page was opened on, and keep it so a failure is not lost."""
+    def _start(self, task: Awaitable[None], page: HubPage) -> None:
+        """Run one action on the loop the page was opened on, and keep it so a failure is not lost.
+
+        The action belongs to ``page``: a failure is written there, and only while it is the page in front.
+        """
         running = asyncio.ensure_future(task)
         self._actions.add(running)
-        running.add_done_callback(self._done)
+        running.add_done_callback(lambda finished: self._done(finished, page))
 
-    def _done(self, finished: asyncio.Future[None]) -> None:
-        """Forget an action, and say what it failed with, on the page."""
+    def _done(self, finished: asyncio.Future[None], page: HubPage) -> None:
+        """Forget an action, and say what it failed with, on the page it was started from."""
         self._actions.discard(finished)
         if finished.cancelled():
             return
         error = finished.exception()
-        if error is not None and self._page is not None:
-            self._page.note(str(error))
+        if error is not None and page is self._page:
+            page.note(str(error))
 
     async def _refresh(self, page: HubPage, client: object) -> None:
         """Read everything again, and show it."""
