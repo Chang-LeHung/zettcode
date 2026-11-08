@@ -131,8 +131,6 @@ class Picture:
         undrawn: How many lines join two drawn nodes and are not drawn: only the strongest :data:`MAX_LINKS` are
             routed, and a line with no way round the boxes is not drawn either.
         unnumbered: How many drawn lines found no place to write their number.
-        width: The rectangle's size, which the picture is valid for.
-        height: The rectangle's height.
     """
 
     nodes: tuple[Node, ...] = ()
@@ -143,8 +141,6 @@ class Picture:
     hidden_nodes: int = 0
     undrawn: int = 0
     unnumbered: int = 0
-    width: int = 0
-    height: int = 0
 
 
 def state_of(status: str, kind: str) -> State:
@@ -461,7 +457,7 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
     those left out between two drawn nodes are counted in ``undrawn``.
     """
     if not nodes or width <= 0 or height <= 0:
-        return Picture(width=width, height=height, hidden_nodes=len(nodes))
+        return Picture(hidden_nodes=len(nodes))
     ranked = rank(nodes, links)
     shown: list[Node] = []
     spots: dict[str, Cell] = {}
@@ -477,7 +473,7 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
             continue
         break
     else:
-        return Picture(width=width, height=height, hidden_nodes=len(nodes))
+        return Picture(hidden_nodes=len(nodes))
 
     by_key = {node.key: node for node in shown}
     total = _totals(links)
@@ -531,8 +527,6 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
         hidden_nodes=len(nodes) - len(shown),
         undrawn=len(inside) - len(routes),
         unnumbered=len(routes) - len(labels),
-        width=width,
-        height=height,
     )
 
 
