@@ -71,6 +71,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.broker.models import Receipt as BrokerReceipt
     from zettcode.config import ModelConfig, ZettCodeConfig
     from zettcode.engine.agent import ZettCodeAgent
+    from zettcode.engine.core import ZettCodeEngine
     from zettcode.engine.inbox import Inbox
     from zettcode.engine.plugins.commands import PlainCommand
     from zettcode.mentions import MentionRegistry
@@ -514,7 +515,7 @@ class Client:
         self._ledger_reader: Any = None
 
     # -- process-wide bookkeeping --
-    def _bind_context_page(self, runtime: Any) -> None:
+    def _bind_context_page(self, runtime: ZettCodeEngine) -> None:
         """Give the page service the client's own compact-percent write, so it shares the open check and errors."""
         from zettcode.engine.service_contracts import CONTEXT_PAGE, ContextPageService
 

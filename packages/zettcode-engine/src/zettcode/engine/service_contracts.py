@@ -67,7 +67,10 @@ class ContextPageService(ABC):
 
     @abstractmethod
     def bind_writer(self, writer: ContextPageWriter) -> None:
-        """Bind the config writer used by :meth:`set_compact_percent`."""
+        """Bind the config writer used by :meth:`set_compact_percent`.
+
+        This is a provider hook, called by the runtime/SDK when the agent exists; a page plugin only reads the service.
+        """
 
     @abstractmethod
     def set_compact_percent(self, percent: float) -> tuple[str, str | None]:
@@ -91,6 +94,7 @@ __all__ = [
     "USAGE_LEDGER",
     "ContextPageService",
     "ContextPageSnapshot",
+    "ContextPageWriter",
     "ContextReportService",
     "SessionStoreService",
     "UsageLedgerService",

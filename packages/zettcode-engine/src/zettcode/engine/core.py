@@ -248,7 +248,7 @@ class _ContextPageAdapter(ContextPageService):
     async def snapshot(self, session_id: str) -> ContextPageSnapshot:
         runtime = self._runtime
         if runtime is None or runtime.active_model is None:
-            raise ValueError("No model is configured")
+            raise ValueError(NO_MODEL_REFUSAL)
         model = runtime.active_model
         return ContextPageSnapshot(
             model_name=model.shown_name,
