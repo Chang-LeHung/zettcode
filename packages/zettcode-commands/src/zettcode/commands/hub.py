@@ -98,10 +98,10 @@ def _described(state: str, rest: str) -> tuple[str, Callable[[Any], list[tuple[s
 def _session_rows(data: HubData) -> list[ListItem]:
     rows = []
     for peer in data.peers:
-        text, parts = _described(
-            hub_graph.state_of(peer.status, peer.kind),
-            f" {SEPARATOR} {peer.title or 'untitled'} {SEPARATOR} {peer.kind} {SEPARATOR} {peer.workspace}",
-        )
+        state = hub_graph.state_of(peer.status, peer.kind)
+        # An outsider's state word is its kind already, so the kind is not said twice.
+        kind = f" {SEPARATOR} {peer.kind}" if peer.kind != state else ""
+        text, parts = _described(state, f" {SEPARATOR} {peer.title or 'untitled'}{kind} {SEPARATOR} {peer.workspace}")
         rows.append(ListItem(peer.handle, peer.handle, text, parts=parts))
     for stored in data.offline:
         text, parts = _described("offline", f" {SEPARATOR} on disk {SEPARATOR} enter resumes it")
@@ -113,9 +113,10 @@ def _daemon_rows(data: HubData) -> list[ListItem]:
     rows = []
     for daemon in data.daemons:
         state = "stopped" if daemon.status in ("dead", "unknown") else hub_graph.state_of(daemon.status, "")
+        # The state word already says working or idle; the daemon's own word is added only when it says more.
+        said = f" {SEPARATOR} {daemon.status}" if daemon.status != state else ""
         text, parts = _described(
-            state,
-            f" {SEPARATOR} {daemon.status} {SEPARATOR} {daemon.model or 'no model'} {SEPARATOR} {daemon.workspace}",
+            state, f"{said} {SEPARATOR} {daemon.model or 'no model'} {SEPARATOR} {daemon.workspace}"
         )
         rows.append(ListItem(daemon.session_id, daemon.label or daemon.session_id, text, parts=parts))
     return rows
