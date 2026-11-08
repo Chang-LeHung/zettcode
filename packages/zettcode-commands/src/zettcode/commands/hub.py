@@ -31,7 +31,7 @@ import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from zettcode.commands import hub_graph
 from zettcode.commands.hub_graph import Link, Node, Picture
@@ -122,6 +122,10 @@ class HubData:
     links: tuple[Link, ...] = ()
     #: Whether the message graph could be read; an empty picture says which of the two it is.
     graph_ok: bool = True
+    #: The reader's own session: the name the other sessions call it by and its title, either of which may be empty.
+    #: The page writes them at the top left, cut to :data:`ME_NAME_WIDTH` and :data:`ME_TITLE_WIDTH` columns.
+    me_name: str = ""
+    me_title: str = ""
     #: Whether stored sessions older than the :data:`OFFLINE_LIMIT` newest were left out, which the table says.
     offline_cut: bool = False
     #: When the reading began (``12:34:56``), how long it took in milliseconds, and each step's share of that: elapsed
@@ -164,6 +168,10 @@ class Table:
 
 #: The space between two columns of a table.
 COLUMN_GAP = 2
+
+#: The most columns the reader's own name and title take at the top left, so a long title never crowds the page.
+ME_NAME_WIDTH = 20
+ME_TITLE_WIDTH = 40
 
 #: The steps of a reading, in the order :meth:`HubCommand._read` takes them. A new step is added here, which is a
 #: decision to make where it can be seen: ``lap`` refuses a name that is not in it, and the letters below go with it.
@@ -334,6 +342,9 @@ class HubPage(ListPage):
         # Three columns of air between the name and the tabs, and between the tabs themselves; the open one carries a
         # column of its own inside the accent band so the band never touches its neighbour.
         gap = 3
+        who = self._who(room)
+        if who:
+            canvas.draw_text(x, self.rect.y, who, hint, max_width=room)
         canvas.draw_text(x, y, "Hub", heading, max_width=room)
         x += len("Hub") + gap
         for index, name in enumerate(TABS):
@@ -459,6 +470,17 @@ class HubPage(ListPage):
         """
         self._picture, self._picture_key, self.selected = Picture(), None, None
         self.footer = self._footer()
+
+    def _who(self, room: int) -> str:
+        """Return the reader's own name and title for the top left: ``name \u00b7 title``, each cut to its own width
+        (the name 20 columns, the title 40) with an ellipsis, and the whole to the room there is. Whichever is empty
+        is left out, and an empty string means there is nothing to say."""
+        parts = [
+            truncate(text, width)
+            for text, width in ((self.data.me_name, ME_NAME_WIDTH), (self.data.me_title, ME_TITLE_WIDTH))
+            if text
+        ]
+        return truncate(" \u00b7 ".join(parts), room) if parts else ""
 
     def _draw_graph(self, canvas: Canvas, hint: Style, room: int) -> None:
         """Draw the summary, the note, the picture and the legend, or say why there is no picture."""
@@ -926,7 +948,19 @@ class HubCommand(TuiPlugin):
             graph, graph_ok = {}, False
             note = note or f"the message graph cannot be read: {error}"
         lap("graph")
-        # The picture is of this workspace: another project's dead daemons are on the Daemons tab, not in it, and a
+        # The reader's own name and title, for the top left: the roster knows both once the session is registered; the
+        # client's handle and the stored title stand in before that.
+        mine: dict[str, Any] = (
+            next((e for e in graph.get("sessions", ()) if str(e.get("session_id", "")) == me), {}) if me else {}
+        )
+        try:
+            handle = str(client.handle)  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 - a client with no handle still has a page to show
+            handle = ""
+        me_name = str(mine.get("handle", "")) or handle
+        me_title = str(mine.get("title", "")) or next(
+            (info.title or "" for info in listed if info.id == me), ""
+        )  # The picture is of this workspace: another project's dead daemons are on the Daemons tab, not in it, and a
         # session's own title wins over its daemon's name.
         try:
             here = Path(client.workspace).resolve()  # type: ignore[attr-defined]
@@ -982,6 +1016,8 @@ class HubCommand(TuiPlugin):
             nodes=nodes,
             links=links,
             graph_ok=graph_ok,
+            me_name=me_name,
+            me_title=me_title,
             offline_cut=cut,
             began=clock,
             took=round((time.perf_counter() - began) * 1000),
