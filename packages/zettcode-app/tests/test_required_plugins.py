@@ -150,7 +150,9 @@ def test_the_plugins_page_does_not_offer_a_switch_for_a_required_part(tmp_path: 
     listed = {entry.origin for entry in catalog(config, bundle, entry_points=POINTS)}
 
     assert listed.isdisjoint(REQUIRED), "a row with no switch would only invite the press"
-    assert {"pets", "themes", "usage", "context"} <= listed, "the optional parts, which do have a switch, are still there"
+    assert {"pets", "themes", "usage", "context"} <= listed, (
+        "the optional parts, which do have a switch, are still there"
+    )
 
 
 def test_the_pets_and_the_palettes_are_parts_a_reader_may_switch_off(tmp_path: Path):

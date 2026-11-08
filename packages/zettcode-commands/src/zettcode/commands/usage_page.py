@@ -6,7 +6,7 @@ import colorsys
 from collections.abc import Callable
 from datetime import date, timedelta
 
-from zettcode.app.ui.widgets import usage_charts as charts
+from zettcode.presenters import usage_charts as charts
 from zettcode.sdk.types import WorkspaceUsage
 from zettcode.tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Theme, Widget
 from zettcode.tui.render import blend, parse_hex

@@ -1,6 +1,6 @@
 """The drawings behind ``/context``: how full the window is, and where the tokens in it went.
 
-Like :mod:`~zettcode.app.ui.widgets.usage_charts`, everything here turns a report into *lines of
+Like :mod:`~zettcode.presenters.usage_charts`, everything here turns a report into *lines of
 roles* and never into colours, so the page decides what a role looks like in the active theme and a
 test can read the result as plain strings.
 
@@ -24,8 +24,8 @@ from __future__ import annotations
 import textwrap
 from collections.abc import Sequence
 
-from zettcode.app.ui.widgets.usage_charts import Line, fit, meter
 from zettcode.budget import CHARS_PER_TOKEN, SOURCES
+from zettcode.presenters.usage_charts import Line, fit, meter
 from zettcode.sdk.types import ContextReport
 from zettcode.tui import BAR_FULL
 from zettcode.tui.render.text import display_width
