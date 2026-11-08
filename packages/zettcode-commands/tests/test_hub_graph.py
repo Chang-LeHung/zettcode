@@ -37,7 +37,7 @@ def text_of(canvas: Canvas) -> str:
 
 
 def test_every_state_is_told_apart_and_an_unknown_end_of_a_line_is_a_node_of_its_own():
-    nodes, links = graph.build(WIRE, me="me", titles={"gone": "old one"}, stopped=["dead-1"])
+    nodes, links = graph.build(WIRE, me="me", titles={"gone": "old one"}, offline=["dead-1"])
 
     assert {node.key: node.state for node in nodes} == {
         "me": "working",
@@ -64,10 +64,10 @@ def test_the_two_directions_of_a_pair_are_one_line_with_the_counts_added():
     assert len(picture.routes) == 1 and len(picture.labels) == 1, "one line, one number"
 
 
-def test_a_daemon_whose_process_is_gone_is_stopped_even_with_no_messages():
-    nodes, _ = graph.build({}, titles={"d-1": "watcher"}, stopped=["d-1"])
+def test_a_daemon_whose_process_is_gone_is_offline_even_with_no_messages():
+    nodes, _ = graph.build({}, titles={"d-1": "watcher"}, offline=["d-1"])
 
-    assert [(node.label, node.state) for node in nodes] == [("watcher", "stopped")]
+    assert [(node.label, node.state) for node in nodes] == [("watcher", "offline")]
 
 
 def test_every_state_has_its_own_colour_and_they_come_from_the_theme():
@@ -76,7 +76,8 @@ def test_every_state_has_its_own_colour_and_they_come_from_the_theme():
 
     assert set(colours) == set(graph.STATES)
     assert len(set(colours.values())) == len(graph.STATES), "no two states share a colour"
-    assert colours["working"] == theme.accent and colours["stopped"] == theme.error
+    assert colours["working"] == theme.accent and colours["offline"] == theme.muted
+    assert "stopped" not in graph.STATES, "a daemon that was stopped is offline, the same as a stored session"
 
 
 # -- which nodes, and where -------------------------------------------------------------------------
@@ -494,4 +495,4 @@ def test_the_lists_colour_a_state_the_way_the_graph_does():
         states["external"],
     ]
     page._show(SESSIONS + 1)
-    assert [head(item) for item in page.list.items] == [states["stopped"], states["working"]]
+    assert [head(item) for item in page.list.items] == [states["offline"], states["working"]]

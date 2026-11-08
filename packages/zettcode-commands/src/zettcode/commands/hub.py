@@ -10,9 +10,13 @@ through :mod:`zettcode.sdk.daemons`, so nothing new is listened to and nothing i
 * **Sessions**: the sessions that are running, as the broker's roster has them, and nothing else. Only looked at here:
   it is a daemon that can be started.
 * **Daemons**: every daemon recorded on this machine, running or not, then the sessions of this workspace that are
-  only stored (``offline``): a daemon is what can be started on them. A daemon whose process is gone stays listed
-  (``stopped``) until it is deleted. ``s`` stops the one under the mark and keeps its record; ``Enter`` starts a stopped
-  or offline one, resuming its session.
+  only stored: a daemon is what can be started on them. Whatever has no process is ``offline`` — a daemon that was
+  stopped keeps its record and stays listed until it is deleted, and a stored session has none. ``s`` stops the one
+  under the mark and keeps its record; ``Enter`` starts an offline one, resuming its session.
+
+``/`` searches the table in front (Sessions or Daemons): what is typed after it keeps the rows whose name, title or id
+contain every word of it, ignoring case. ``Enter`` stops typing and keeps the filter (``s`` and ``r`` act again),
+``Esc`` clears it and only then closes the page. Each tab has its own search.
 
 ``Tab`` and ``Shift-Tab`` are the only keys that change tab, ``r`` reads everything again, and the top right of the
 page says when the last reading was and how long it took. The page shows what that reading found; it does not follow
@@ -33,7 +37,7 @@ from zettcode.commands import hub_graph
 from zettcode.commands.hub_graph import Link, Node, Picture
 from zettcode.plugin_api.commands import CommandContext, CommandHost, CommandResult
 from zettcode.plugin_api.plugin import TuiPlugin
-from zettcode.tui import SEPARATOR, Canvas, ListItem, ListPage, Rect, Theme, event_key
+from zettcode.tui import SEPARATOR, Canvas, ListItem, ListPage, Rect, TextEvent, Theme, event_key
 from zettcode.tui.render import Style, display_width, truncate
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -122,11 +126,30 @@ class HubData:
 
 @dataclass(frozen=True, slots=True)
 class Table:
-    """What a list tab shows: its rows, the title of each column, and how wide each column after the name is."""
+    """What a list tab shows: its rows, the title of each column, and how wide each column after the name is.
+
+    ``finds`` is what each row can be found by, in the order of the rows (the name, the title and the id, lower-cased);
+    a row without one, like the line that says older sessions were left out, is not a match for any search.
+    """
 
     items: list[ListItem]
     titles: tuple[str, ...] = ()
     widths: tuple[int, ...] = ()
+    finds: tuple[str, ...] = ()
+
+    def filtered(self, query: str) -> Table:
+        """Return the rows that contain every word of ``query``, ignoring case; the columns keep their widths.
+
+        A blank query is every row. The widths stay those of the whole table, so the columns do not move as the
+        reader types.
+        """
+        words = query.lower().split()
+        if not words:
+            return self
+        kept = [item for item, find in zip(self.items, self.finds, strict=False) if all(word in find for word in words)]
+        return Table(
+            kept, self.titles, self.widths, tuple(find for find in self.finds if all(w in find for w in words))
+        )
 
 
 #: The space between two columns of a table.
@@ -137,21 +160,22 @@ COLUMN_GAP = 2
 STEP_LETTERS = {"peers": "p", "daemons": "d", "sessions": "s", "graph": "g", "picture": "pic"}
 
 
-def _table(titles: tuple[str, ...], rows: Sequence[tuple[str, str, str, tuple[str, ...]]]) -> Table:
+def _table(titles: tuple[str, ...], rows: Sequence[tuple[str, str, str, tuple[str, ...], str]]) -> Table:
     """Build a table whose first column is each row's name and whose second is its state.
 
     Args:
         titles: The title of every column, the name's first.
-        rows: ``(value, name, state, cells)`` for each row: the cells are the columns after the state, and the state
-            column is written as the state's dot and word, in the state's colour.
+        rows: ``(value, name, state, cells, find)`` for each row: the cells are the columns after the state, and the
+            state column is written as the state's dot and word, in the state's colour; ``find`` is what the row can be
+            searched by (its name, title and id), and is kept lower-cased.
     """
-    cells = [(f"{hub_graph.glyph(state)} {text}", *rest) for _, _, state, (text, *rest) in rows]
+    cells = [(f"{hub_graph.glyph(state)} {text}", *rest) for _, _, state, (text, *rest), _ in rows]
     widths = tuple(
         max([display_width(titles[index + 1])] + [display_width(row[index]) for row in cells])
         for index in range(len(titles) - 1)
     )
     items = []
-    for (value, name, state, _), row in zip(rows, cells, strict=True):
+    for (value, name, state, _, _), row in zip(rows, cells, strict=True):
         padded = [
             cell + " " * (width - display_width(cell) + COLUMN_GAP) for cell, width in zip(row, widths, strict=True)
         ]
@@ -161,7 +185,7 @@ def _table(titles: tuple[str, ...], rows: Sequence[tuple[str, str, str, tuple[st
             return [(padded[0], hub_graph.colours(theme)[state]), *((text, theme.muted) for text in padded[1:])]
 
         items.append(ListItem(value, name, "".join(padded), parts=parts))
-    return Table(items, titles, widths)
+    return Table(items, titles, widths, tuple(find.lower() for *_, find in rows))
 
 
 def _session_table(data: HubData) -> Table:
@@ -171,6 +195,7 @@ def _session_table(data: HubData) -> Table:
             peer.handle,
             hub_graph.state_of(peer.status, peer.kind),
             (hub_graph.state_of(peer.status, peer.kind), peer.title or "untitled", peer.workspace),
+            f"{peer.handle} {peer.title} {peer.session_id}",
         )
         for peer in data.peers
     ]
@@ -180,23 +205,26 @@ def _session_table(data: HubData) -> Table:
 def _daemon_table(data: HubData) -> Table:
     rows = []
     for daemon in data.daemons:
-        if daemon.status == OFFLINE:
+        # No process is one word, whether it was a daemon that was stopped or a session that was only stored: the
+        # reader sees the same thing and `Enter` does the same thing. A record that says it is `unknown` keeps that.
+        if daemon.status in (OFFLINE, "dead"):
             state = OFFLINE
         else:
-            state = "stopped" if daemon.status in GONE else hub_graph.state_of(daemon.status, "")
+            state = OFFLINE if daemon.status in GONE else hub_graph.state_of(daemon.status, "")
         # The state word already says working or idle; the daemon's own word follows only when it says more.
-        said = state if daemon.status == state else f"{state} ({daemon.status})"
+        said = state if daemon.status in (state, "dead") else f"{state} ({daemon.status})"
         rows.append(
             (
                 daemon.session_id,
                 daemon.label or daemon.session_id,
                 state,
                 (said, daemon.model or "no model", daemon.workspace),
+                f"{daemon.label} {daemon.session_id}",
             )
         )
     table = _table(("NAME", "STATE", "MODEL", "WORKSPACE"), rows)
     if data.offline_cut:
-        # A row of words, not a session: it cannot be marked, so no key acts on it.
+        # A row of words, not a session: it cannot be marked, so no key acts on it, and no search finds it.
         table.items.append(
             ListItem(None, "\u2026", f"only the {OFFLINE_LIMIT} newest stored sessions are listed", disabled=True)
         )
@@ -228,6 +256,9 @@ class HubPage(ListPage):
         self.data = data
         self.tab = GRAPH
         self.marks = [0] * len(TABS)
+        #: What was typed after ``/`` on each tab, and whether the reader is still typing it (on the tab in front).
+        self.queries = [""] * len(TABS)
+        self.searching = False
         #: The node whose lines are kept bright, by key; ``None`` shows every line as it is.
         self.selected: str | None = None
         #: Set when the page is closed: a task that finishes after that writes on a page nobody sees, and wakes nothing.
@@ -239,6 +270,8 @@ class HubPage(ListPage):
         self._picture_key: tuple[object, ...] | None = None
         #: The table of the tab in front: its titles are drawn over the list, its widths line them up with the cells.
         self.table = _TABLES[GRAPH](data)
+        #: How many rows the tab in front has before a search keeps some of them, for "3 of 59".
+        self.total = 0
         super().__init__(
             self.table.items,
             title="Hub",
@@ -250,13 +283,23 @@ class HubPage(ListPage):
 
     # -- what the reader sees ---------------------------------------------------------------------------
     def _footer(self) -> str:
-        """Return the keys this tab takes."""
-        leave = "esc deselect" if self.tab == GRAPH and self.selected is not None else "esc close"
-        common = f"tab next tab {SEPARATOR} shift-tab back {SEPARATOR} r refresh {SEPARATOR} {leave}"
+        """Return the keys this tab takes: for the graph, the arrows; for a table, what it does now (typing a search,
+        a filter held, or neither)."""
         if self.tab == GRAPH:
-            return f"arrows move to the nearest node {SEPARATOR} {common}"
+            leave = "esc deselect" if self.selected is not None else "esc close"
+            return (
+                f"arrows move to the nearest node {SEPARATOR} tab next tab {SEPARATOR} shift-tab back {SEPARATOR} "
+                f"r refresh {SEPARATOR} {leave}"
+            )
+        if self.searching:
+            return f"type to search {SEPARATOR} enter keep the filter {SEPARATOR} esc clear it"
+        filtered = bool(self.queries[self.tab])
+        common = (
+            f"tab next tab {SEPARATOR} shift-tab back {SEPARATOR} / search {SEPARATOR} r refresh {SEPARATOR} "
+            f"{'esc clear the filter' if filtered else 'esc close'}"
+        )
         if self.tab == DAEMONS:
-            return f"enter start a stopped or offline one {SEPARATOR} s stop {SEPARATOR} {common}"
+            return f"enter start an offline one {SEPARATOR} s stop {SEPARATOR} {common}"
         return common
 
     def layout(self, rect: Rect) -> None:
@@ -292,12 +335,34 @@ class HubPage(ListPage):
         if self.tab == GRAPH:
             self._draw_graph(canvas, hint, room)
         else:
-            if self.subtitle is not None:
-                notice = Style(foreground=theme.accent_bright, background=theme.surface_alt, bold=True)
-                canvas.draw_text(self.rect.x + 2, self.rect.y + 2, self.subtitle, notice, max_width=room)
+            self._draw_search_and_note(canvas, theme, room)
             self._draw_titles(canvas, theme)
             self.list.render(canvas)
+            if self.queries[self.tab] and not self.list.items:
+                canvas.draw_text(
+                    self.rect.x + 4,
+                    self.rect.y + 5,
+                    truncate(f"nothing matches \u201c{self.queries[self.tab]}\u201d", max(0, room - 2)),
+                    hint,
+                )
         canvas.draw_text(self.rect.x + 2, self.rect.bottom - 1, self.footer, hint, max_width=room)
+
+    def _draw_search_and_note(self, canvas: Canvas, theme: Theme, room: int) -> None:
+        """Draw the one row under the tabs of a table: the search (what is typed, and how many rows it keeps) and the
+        note of the last action after it, or the note alone when there is no search."""
+        query, x, y = self.queries[self.tab], self.rect.x + 2, self.rect.y + 2
+        notice = Style(foreground=theme.accent_bright, background=theme.surface_alt, bold=True)
+        quiet = Style(foreground=theme.muted, background=theme.surface_alt)
+        if self.searching or query:
+            text = f"/ {query}" + ("\u258f" if self.searching else "")
+            canvas.draw_text(x, y, text, notice, max_width=room)
+            x += display_width(text)
+            kept = sum(1 for item in self.list.items if not item.disabled)
+            count = f"  {kept} of {self.total}"
+            canvas.draw_text(x, y, count, quiet, max_width=max(0, room - (x - self.rect.x - 2)))
+            x += display_width(count) + 3
+        if self.subtitle is not None:
+            canvas.draw_text(x, y, self.subtitle, notice, max_width=max(0, room - (x - self.rect.x - 2)))
 
     def _draw_titles(self, canvas: Canvas, theme: Theme) -> None:
         """Draw the title of each column over the list, lined up with the cells under it.
@@ -445,9 +510,16 @@ class HubPage(ListPage):
             self.app.invalidate()
 
     def _show(self, tab: int) -> None:
-        """Put one tab in front, with the mark it had."""
+        """Put one tab in front, with the mark it had and the search it holds.
+
+        Leaving a tab ends the typing of its search; the filter itself is kept for when the reader comes back.
+        """
+        if tab != self.tab:
+            self.searching = False
         self.tab = tab
-        self.table = _TABLES[tab](self.data)
+        whole = _TABLES[tab](self.data)
+        self.total = sum(1 for item in whole.items if not item.disabled)
+        self.table = whole.filtered(self.queries[tab])
         rows = self.table.items
         self.list.set_items(rows)
         # The mark the tab had, kept off a row nothing can act on: the one that says older sessions were left out can
@@ -464,8 +536,11 @@ class HubPage(ListPage):
 
     # -- the keys ---------------------------------------------------------------------------------------
     def capture_event(self, event, host) -> bool:
-        """Take Tab and Shift-Tab (the only keys that change tab), the node selection and the daemon keys."""
+        """Take Tab and Shift-Tab (the only keys that change tab), the search, the node selection and the daemon keys."""
         key = event_key(event)
+        if self.searching and self.tab != GRAPH and key not in ("tab", "backtab"):
+            # What is typed is the query, whatever it spells: `s` and `r` are letters here, not stop and refresh.
+            return self._type(event, key) or super().capture_event(event, host)
         if key == "tab":
             self.marks[self.tab] = max(0, self.list.selected)
             self._show((self.tab + 1) % len(TABS))
@@ -473,6 +548,13 @@ class HubPage(ListPage):
         if key == "backtab":
             self.marks[self.tab] = max(0, self.list.selected)
             self._show((self.tab - 1) % len(TABS))
+            return True
+        if key == "/" and self.tab != GRAPH:
+            self.searching = True
+            self._show(self.tab)
+            return True
+        if key == "escape" and self.tab != GRAPH and self.queries[self.tab]:
+            self._set_query("")  # a filter is cleared before the page is closed
             return True
         if key == "r" and self.on_refresh is not None:
             self.note("refreshing\u2026")
@@ -498,6 +580,39 @@ class HubPage(ListPage):
                 self.on_stop(chosen.session_id)
             return True
         return super().capture_event(event, host)
+
+    def _type(self, event: object, key: str | None) -> bool:
+        """Take one key while the search is being typed; return whether it was taken (``False`` leaves it to the list,
+        which still moves the mark with the arrow keys and pages).
+        """
+        query = self.queries[self.tab]
+        if key == "escape":
+            self.searching = False
+            self._set_query("")
+            return True
+        if key == "enter":
+            self.searching = False
+            self._show(self.tab)
+            return True
+        if key == "backspace":
+            self._set_query(query[:-1])
+            return True
+        if isinstance(event, TextEvent):
+            self._set_query(query + event.text)
+            return True
+        if key == "space":
+            self._set_query(query + " ")
+            return True
+        if key is not None and len(key) == 1:  # a printable key that arrived as a key and not as text
+            self._set_query(query + key)
+            return True
+        return False
+
+    def _set_query(self, text: str) -> None:
+        """Make ``text`` this tab's search, and show the rows that match it from the first."""
+        self.queries[self.tab] = text
+        self.marks[self.tab] = 0
+        self._show(self.tab)
 
     def _move(self, key: str) -> None:
         """Select the node nearest in the direction of an arrow key; the first arrow selects the reader's own."""
@@ -747,7 +862,7 @@ class HubCommand(TuiPlugin):
         for daemon in ours:
             titles.setdefault(daemon.session_id, daemon.label)
         nodes, links = hub_graph.build(
-            graph, me=me, titles=titles, stopped=[daemon.session_id for daemon in ours if daemon.status in GONE]
+            graph, me=me, titles=titles, offline=[daemon.session_id for daemon in ours if daemon.status in GONE]
         )
         if not graph_ok:
             # Nothing to say about who talks to whom, so the picture is empty and says why, not a lone stopped box.

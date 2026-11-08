@@ -195,7 +195,7 @@ def test_a_daemon_row_says_its_state_once():
     said = [item.description for item in opened.list.items]
 
     assert said[0].count("working") == 1 and said[1].count("idle") == 1
-    assert "stopped" in said[2] and "dead" in said[2], "a dead process keeps the word that explains the red"
+    assert said[2].count("offline") == 1 and "dead" not in said[2], "a stopped daemon is offline, said once"
 
 
 def test_an_outsider_row_does_not_say_external_twice():
@@ -326,7 +326,7 @@ def test_the_graph_tab_draws_the_summary_the_legend_and_a_picture():
     assert "Hub" in rows[1] and "Graph" in rows[1]
     assert "3 nodes" in rows[2] and "58 messages" in rows[2]
     assert "main (you)" in text and "review" in text and "docs" in text
-    assert "n = messages" in rows[-2] and "stopped" in rows[-2]
+    assert "n = messages" in rows[-2] and "offline" in rows[-2] and "stopped" not in rows[-2]
     assert "arrows move to the nearest node" in rows[-1]
 
 
@@ -584,12 +584,9 @@ def test_an_offline_row_is_muted_and_enter_on_it_starts_a_daemon_on_that_session
     opened._show(DAEMONS)
 
     rows = {item.label: item for item in opened.list.items}
-    assert (
-        "offline" in rows["an old conversation"].description
-        and "stopped" not in rows["an old conversation"].description
-    )
+    assert "offline" in rows["an old conversation"].description
     assert rows["an old conversation"].parts(Theme())[0][1] == graph_colours()["offline"], "in the offline colour"
-    assert "stopped or offline" in opened.footer
+    assert "start an offline one" in opened.footer
 
     opened.list.selected = 0
     opened.capture_event(_key("enter"), None)
@@ -618,7 +615,7 @@ def graph_colours() -> dict[str, str]:
     return colours(Theme())
 
 
-def test_a_stopped_daemon_stays_on_the_daemons_tab_as_stopped_and_can_be_started():
+def test_a_stopped_daemon_stays_on_the_daemons_tab_as_offline_and_can_be_started():
     started: list[str] = []
     opened = HubPage(
         data(daemons=(Daemon("run", "live", "idle"), Daemon("off", "was running", "dead", model="m"))),
@@ -628,7 +625,8 @@ def test_a_stopped_daemon_stays_on_the_daemons_tab_as_stopped_and_can_be_started
     opened._show(DAEMONS)
 
     rows = {item.label: item.description for item in opened.list.items}
-    assert "stopped" in rows["was running"] and "idle" in rows["live"], "both are listed"
+    assert "offline" in rows["was running"] and "idle" in rows["live"], "both are listed"
+    assert "stopped" not in rows["was running"], "after a stop it is offline, the word a stored session has too"
 
     opened.list.selected = 1
     opened.capture_event(_key("enter"), None)
@@ -650,7 +648,7 @@ def test_the_graph_becomes_nodes_and_links_with_the_reader_in_it(tmp_path, daemo
         "self-1": ("main", "working", True),
         "p-1": ("parser", "idle", False),
         "old-9": ("old-9", "offline", False),
-        "dead-1": ("worker", "stopped", False),
+        "dead-1": ("worker", "offline", False),
     }
     assert [(link.a, link.b, link.count) for link in reading.links] == [("p-1", "self-1", 7), ("p-1", "old-9", 2)]
     assert reading.graph_ok
@@ -667,8 +665,8 @@ def test_only_this_workspaces_dead_daemons_are_in_the_picture_and_a_title_beats_
     reading = _read(client)
 
     states = {node.key: (node.label, node.state) for node in reading.nodes}
-    assert states["dead-1"] == ("the stored title", "stopped"), "the session's title wins over the daemon's name"
-    assert states["dead-9"][1] == "offline", "another project's dead daemon is not drawn as ours"
+    assert states["dead-1"] == ("the stored title", "offline"), "the session's title wins over the daemon's name"
+    assert states["dead-9"] == ("dead-9", "offline"), "another project's daemon is not named from its record: not ours"
     assert [daemon.session_id for daemon in reading.daemons] == ["run-1", "dead-1", "dead-9"], "the list shows all"
 
 
@@ -1009,7 +1007,7 @@ def test_a_daemon_status_is_written_once_inside_the_state_column():
     said = [item.description for item in opened.list.items]
 
     assert said[0].count("working") == 1
-    assert "stopped (dead)" in said[1], "a dead process keeps the word that explains the red"
+    assert said[1].count("offline") == 1 and "dead" not in said[1], "a stopped daemon is offline, said once"
     assert "idle (starting)" in said[2]
 
 
@@ -1116,3 +1114,212 @@ def test_a_mark_that_a_refresh_leaves_on_the_cut_row_moves_to_the_last_session_b
     assert opened.list.selected == 3, "the band is not drawn on the row nothing can act on"
     opened.capture_event(_key("enter"), None)
     assert "no daemon under the mark" not in (opened.subtitle or "")
+
+
+# -- search ---------------------------------------------------------------------------------------------
+
+
+def _text(value: str) -> object:
+    from zettcode.tui import TextEvent
+
+    return TextEvent(text=value)
+
+
+def _typed(opened: HubPage, text: str) -> None:
+    """What a terminal sends for each character of ``text``: a text event, not a named key."""
+    for character in text:
+        opened.capture_event(_text(character), None)
+
+
+def _searchable() -> HubPage:
+    peers = (
+        Peer("review", "Reading the PR", "working", "/w", session_id="01a1-aaaa"),
+        Peer("docs", "Writing the guide", "idle", "/w", session_id="01a2-bbbb"),
+        Peer("ci-bot", "Reading CI", "idle", "/w", "external", session_id="01a3-cccc"),
+    )
+    daemons = (
+        Daemon("01b1-1111", "code-review", "idle", workspace="/w"),
+        Daemon("01b2-2222", "was running", "dead", workspace="/w"),
+        Daemon("01b3-3333", "an old conversation", "offline", workspace="/w"),
+    )
+    return HubPage(data(peers=peers, daemons=daemons), on_close=lambda: None)
+
+
+def _labels(opened: HubPage) -> list[str]:
+    return [item.label for item in opened.list.items]
+
+
+def test_slash_starts_a_search_and_what_is_typed_keeps_the_rows_with_that_in_their_name_title_or_id():
+    opened = _searchable()
+    opened._show(SESSIONS)
+
+    opened.capture_event(_text("/"), None)
+    assert opened.searching and _labels(opened) == ["review", "docs", "ci-bot"], (
+        "nothing is cut until something is typed"
+    )
+
+    _typed(opened, "read")
+    assert _labels(opened) == ["review", "ci-bot"], "the title: Reading the PR, Reading CI"
+
+    opened.capture_event(_key("backspace"), None)
+    opened.capture_event(_key("backspace"), None)
+    opened.capture_event(_key("backspace"), None)
+    opened.capture_event(_key("backspace"), None)
+    _typed(opened, "01A2")
+    assert _labels(opened) == ["docs"], "the id, in any case"
+
+    opened.capture_event(_key("backspace"), None)
+    opened.capture_event(_key("backspace"), None)
+    opened.capture_event(_key("backspace"), None)
+    opened.capture_event(_key("backspace"), None)
+    _typed(opened, "DOCS")
+    assert _labels(opened) == ["docs"], "the name"
+
+
+def test_every_word_has_to_match_and_the_order_does_not_matter():
+    opened = _searchable()
+    opened._show(SESSIONS)
+    opened.capture_event(_text("/"), None)
+
+    _typed(opened, "ci reading")
+    assert _labels(opened) == ["ci-bot"]
+
+    for _ in "ci reading":
+        opened.capture_event(_key("backspace"), None)
+    _typed(opened, "reading guide")
+    assert _labels(opened) == [], "no row has both"
+
+
+def test_the_daemons_tab_searches_stopped_and_offline_rows_by_title_and_id_too():
+    opened = _searchable()
+    opened._show(DAEMONS)
+    opened.capture_event(_text("/"), None)
+
+    _typed(opened, "01b3")
+    assert _labels(opened) == ["an old conversation"], "an offline session, by its id"
+    for _ in "01b3":
+        opened.capture_event(_key("backspace"), None)
+    _typed(opened, "running")
+    assert _labels(opened) == ["was running"], "a stopped daemon, by its name"
+
+
+def test_while_typing_s_and_r_are_letters_and_after_enter_they_are_keys_again():
+    asked: list[str] = []
+    opened = HubPage(
+        data(daemons=(Daemon("d-1", "sessions daemon", "idle"),)),
+        on_close=lambda: None,
+        on_stop=lambda session_id: asked.append(f"stop {session_id}"),
+        on_refresh=lambda: asked.append("refresh"),
+    )
+    opened._show(DAEMONS)
+    opened.capture_event(_text("/"), None)
+
+    _typed(opened, "sr")
+    assert asked == [] and opened.queries[DAEMONS] == "sr", "typed into the query, not acted on"
+    _typed(opened, "e")
+    opened.capture_event(_key("backspace"), None)
+    opened.capture_event(_key("backspace"), None)
+    opened.capture_event(_key("backspace"), None)
+    _typed(opened, "sess")
+    opened.capture_event(_key("enter"), None)
+
+    assert not opened.searching and opened.queries[DAEMONS] == "sess", "enter stops typing and keeps the filter"
+    opened.capture_event(_text("s"), None)
+    opened.capture_event(_text("r"), None)
+    assert asked == ["stop d-1", "refresh"], "and the keys act again, on the row the filter left"
+
+
+def test_escape_clears_the_search_and_only_then_closes_the_page():
+    closed: list[bool] = []
+    opened = HubPage(
+        data(peers=(Peer("a", "t", "idle", "/w"), Peer("b", "t", "idle", "/w"))),
+        on_close=lambda: closed.append(True),
+    )
+    opened._show(SESSIONS)
+    opened.capture_event(_text("/"), None)
+    _typed(opened, "a")
+    assert _labels(opened) == ["a"]
+
+    opened.capture_event(_key("escape"), None)  # while typing: clears and leaves typing
+    assert not opened.searching and opened.queries[SESSIONS] == "" and _labels(opened) == ["a", "b"] and closed == []
+
+    opened.capture_event(_text("/"), None)
+    _typed(opened, "b")
+    opened.capture_event(_key("enter"), None)  # the filter is held
+    assert _labels(opened) == ["b"] and "esc clear the filter" in opened.footer
+    opened.capture_event(_key("escape"), None)
+    assert _labels(opened) == ["a", "b"] and closed == [], "the first Escape clears the filter"
+
+    opened.capture_event(_key("escape"), None)
+    assert closed == [True], "the next one closes the page"
+
+
+def test_each_tab_has_its_own_search_and_leaving_a_tab_ends_the_typing_but_keeps_the_filter():
+    opened = _searchable()
+    opened._show(SESSIONS)
+    opened.capture_event(_text("/"), None)
+    _typed(opened, "docs")
+
+    opened.capture_event(_key("tab"), None)  # to the daemons tab
+    assert not opened.searching and opened.tab == DAEMONS
+    assert _labels(opened) == ["code-review", "was running", "an old conversation"], "its own table, not filtered"
+
+    opened.capture_event(_key("backtab"), None)
+    assert opened.tab == SESSIONS and _labels(opened) == ["docs"], "the sessions filter is where it was left"
+
+
+def test_the_graph_tab_has_no_search_and_slash_does_nothing_there():
+    opened = _searchable()
+
+    opened.capture_event(_text("/"), None)
+
+    assert opened.tab == GRAPH and not opened.searching
+
+
+def test_the_titles_still_line_up_with_the_cells_while_typing_and_the_search_has_a_row_of_its_own():
+    opened = _searchable()
+    opened._show(DAEMONS)
+    opened.capture_event(_text("/"), None)
+    _typed(opened, "was")
+
+    rows = _rendered(opened, 110, 24)
+
+    assert rows[2].lstrip().startswith("/ was") and "1 of 3" in rows[2], "the search and how many it keeps"
+    assert rows[3].split()[:2] == ["NAME", "STATE"], "the titles are where they were: the row under the search"
+    assert rows[3].index("STATE") == rows[4].index("\u25cf"), "and over the cells of the rows that are left"
+    assert rows[3].index("MODEL") == rows[4].index("no model")
+    assert "was running" in rows[4] and "an old conversation" not in "\n".join(rows)
+    assert "type to search" in rows[-1]
+
+
+def test_a_note_and_the_search_share_the_row_and_nothing_matching_is_said_in_words():
+    opened = _searchable()
+    opened._show(SESSIONS)
+    opened.capture_event(_text("/"), None)
+    _typed(opened, "zzz")
+    opened.note("refreshing\u2026")
+
+    rows = _rendered(opened, 110, 24)
+
+    assert "/ zzz" in rows[2] and "0 of 3" in rows[2] and "refreshing" in rows[2], "one row, both of them"
+    assert any("nothing matches" in row and "zzz" in row for row in rows)
+
+
+def test_a_refresh_keeps_the_search_and_filters_the_new_reading():
+    opened = _searchable()
+    opened._show(SESSIONS)
+    opened.capture_event(_text("/"), None)
+    _typed(opened, "read")
+    opened.capture_event(_key("enter"), None)
+
+    fresh = data(
+        peers=(
+            Peer("review", "Reading the PR", "working", "/w"),
+            Peer("newcomer", "Reading about search", "idle", "/w"),
+            Peer("docs", "Writing", "idle", "/w"),
+        )
+    )
+    opened.set_data(fresh)
+
+    assert opened.queries[SESSIONS] == "read" and _labels(opened) == ["review", "newcomer"]
+    assert opened.total == 3
