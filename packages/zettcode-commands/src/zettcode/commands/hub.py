@@ -169,6 +169,9 @@ class Table:
 #: The space between two columns of a table.
 COLUMN_GAP = 2
 
+#: The most columns a table's TITLE cell takes, so a long title cannot push the model and workspace off a narrow page.
+TABLE_TITLE_WIDTH = 32
+
 #: The most columns the reader's own name and title take at the top left, so a long title never crowds the page.
 ME_NAME_WIDTH = 20
 ME_TITLE_WIDTH = 40
@@ -218,7 +221,11 @@ def _session_table(data: HubData) -> Table:
             peer.handle,
             peer.handle,
             hub_graph.state_of(peer.status, peer.kind),
-            (hub_graph.state_of(peer.status, peer.kind), peer.title or "untitled", peer.workspace),
+            (
+                hub_graph.state_of(peer.status, peer.kind),
+                truncate(peer.title or "untitled", TABLE_TITLE_WIDTH),
+                peer.workspace,
+            ),
             f"{peer.handle} {peer.title} {peer.session_id}",
         )
         for peer in data.peers
@@ -239,7 +246,12 @@ def _daemon_table(data: HubData) -> Table:
                 daemon.session_id,
                 daemon.label or daemon.session_id,
                 state,
-                (said, daemon.title or "untitled", daemon.model or "no model", daemon.workspace),
+                (
+                    said,
+                    truncate(daemon.title or "untitled", TABLE_TITLE_WIDTH),
+                    daemon.model or "no model",
+                    daemon.workspace,
+                ),
                 f"{daemon.label} {daemon.name} {daemon.title} {daemon.session_id}",
             )
         )
