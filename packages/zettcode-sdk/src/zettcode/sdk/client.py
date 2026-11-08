@@ -25,7 +25,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from zettcode.modes import MODE_FOLLOWUP, MODE_STEER
 
@@ -78,6 +78,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.messaging.relayed import Relayed
 
 __all__ = ["Client", "PluginReport", "SETTINGS", "Sessions", "TriggerInfo", "prompt", "prompt_sync"]
+
+_T = TypeVar("_T")
 
 
 class _Missing:
@@ -1456,6 +1458,28 @@ class Client:
                 for status in self._agent.runtime.trigger_statuses()
             ),
         )
+
+    def service(self, name: str, kind: type[_T]) -> _T:
+        """Return the object provided under ``name``, as a plugin gets it from its context.
+
+        The runtime provides the session state a plugin builds on, and a plugin provides what it creates; this is
+        how a page plugin or a program using the SDK reaches either without importing the provider.
+
+        Raises:
+            LookupError: When no loaded plugin provides the name.
+            TypeError: When the object there is not a ``kind``.
+        """
+        self._check_open()
+        from zettcode.engine.plugins.services import require
+
+        return require(self._agent.runtime.plugins.services, name, kind)
+
+    def find(self, name: str, kind: type[_T]) -> _T | None:
+        """Return the service called ``name`` as a ``kind``, or ``None`` when nothing provides it."""
+        self._check_open()
+        from zettcode.engine.plugins.services import lookup
+
+        return lookup(self._agent.runtime.plugins.services, name, kind)
 
     def set_plugin_enabled(self, name: str, enabled: bool) -> PluginEntry:
         """Record whether the next start does the work of one plugin, and return it as the list now shows it.
