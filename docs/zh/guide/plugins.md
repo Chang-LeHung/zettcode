@@ -495,7 +495,7 @@ class QuietNotices(TuiPlugin):
 ```
 
 presenter 指定一个 `kind`（`EntryKind` 的一项）；如果只画某一种子行——比如工具行里的编辑行——则指定
-`entry_type`。`lines` 收到 entry、可用列数、配色和动画步数，返回 `TextLine`；宽度是预算，要自己换行或截断。
+`entry_type`；两者都不指定时，它就是兜底 presenter，负责前面所有 handler 都没认领的行。`lines` 收到 entry、可用列数、配色和动画步数，返回 `TextLine`；宽度是预算，要自己换行或截断。
 需要动画的 presenter 读 `frame`，不需要的应当对任何 `frame` 都给出同样的行。
 
 同一个位置有多个 presenter 时，`priority` 高的赢；优先级相同则后注册的赢。内置 presenter 就是这样成为默认的：

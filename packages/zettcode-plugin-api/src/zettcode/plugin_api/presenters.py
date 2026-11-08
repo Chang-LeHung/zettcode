@@ -59,11 +59,11 @@ class Presenter(Generic[E], ABC):
     kind that routes it there, so :meth:`lines` receives exactly that entry.
 
     Attributes:
-        kind: The kind of entry this presenter presents; one presenter per kind.
-        entry_type: The entry class this presenter is for, when it is for one family of a kind
+        kind: The kind of entry this presenter claims; ``None`` means the final fallback.
+        entry_type: The entry class this presenter claims, when it is for one family of a kind
             rather than the kind as a whole: the presenter of an edit row is the one for
-            ``EditEntry``, though an edit row is a ``tool`` row like any other. The registry looks
-            for the entry's own class first (and its parents') and the kind second.
+            ``EditEntry``, though an edit row is a ``tool`` row like any other. The chain asks each
+            presenter in turn: an entry class first, then the kind, then the fallback.
         gutter: Whether the rows open with a marker the presenter draws in the
             gutter's own column — the user's arrow, the wait row's sparkle, a
             tool's outcome. Every other row is inset past the gutter, so every
@@ -75,10 +75,22 @@ class Presenter(Generic[E], ABC):
             kind, or to beat another plugin, raises this.
     """
 
-    kind: ClassVar[EntryKind]
+    kind: ClassVar[EntryKind | None] = None
     entry_type: ClassVar[type[Entry] | None] = None
     gutter: ClassVar[bool] = False
     priority: ClassVar[int] = 0
+
+    def handles(self, entry: Entry) -> bool:
+        """Return whether this presenter claims ``entry``.
+
+        A family claims its entry class; a kind claims every entry of that kind; a presenter with neither is the
+        fallback and claims whatever reached it.
+        """
+        if self.entry_type is not None:
+            return isinstance(entry, self.entry_type)
+        if self.kind is not None:
+            return entry.kind == self.kind
+        return True
 
     @abstractmethod
     def lines(self, entry: E, width: int, theme: Theme, frame: int) -> list[TextLine]:
@@ -202,71 +214,62 @@ class Indented(LineSource):
 
 
 class Presenters:
-    """The presenters of one transcript: one for each kind of entry, and for the families inside a kind.
+    """The chain of presenters one transcript asks, strongest claim first, with a fallback last.
 
-    A presenter is found by the entry's class first, walking up its parents, and by its kind
-    second. Most kinds have one presenter and no family (a notice is a notice), and ``tool`` has
-    one for tools in general and one for each tool whose entry carries more than the rest.
-
-    When more than one presenter could draw the same rows, the one with the higher
-    :attr:`Presenter.priority` wins, and an equal priority goes to the later registration. That is
-    what makes a transcript's own presenters the default: they are registered first, at priority 0,
-    so anything a plugin registers for the same rows wins without having to outrank them.
-    :meth:`replacing` appends, which is the same thing for a caller holding a registry rather than a
-    plugin container.
-
-    A presenter for a whole kind is a claim on every row of that kind, so it beats the families
-    registered before it at its priority: a plugin that draws every tool row draws every tool row.
-    A family registered after it, or at a higher priority, is a refinement and keeps its own.
+    A presenter claims an entry with :meth:`Presenter.handles`: a family claims its entry class, a kind claims
+    every entry of its kind, and a presenter with neither is the fallback. The chain is ordered by
+    :attr:`Presenter.priority` and then by registration order, later first; the first claim wins. That makes a
+    plugin's handler beat the built-in one without a lookup table, and lets a tool add a handler for its own
+    entry class without changing the kind's presenter.
     """
 
     def __init__(self, presenters: Iterable[Presenter[Any]]) -> None:
-        """Register presenters in order; for one kind or class, the strongest claim wins."""
+        """Build the chain; a later registration wins at equal priority, and the fallback is last."""
+        registered = tuple(presenters)
+        self._registered = registered
+        ordered = sorted(enumerate(registered), key=lambda pair: (pair[1].priority, pair[0]), reverse=True)
+        self._chain: tuple[Presenter[Any], ...] = tuple(presenter for _, presenter in ordered)
+        self._fallback: Presenter[Any] | None = next(
+            (p for p in self._chain if p.kind is None and p.entry_type is None), None
+        )
         self._by_kind: dict[EntryKind, tuple[int, int, Presenter[Any]]] = {}
         self._by_type: dict[type[Entry], tuple[int, int, Presenter[Any]]] = {}
-        for order, presenter in enumerate(presenters):
+        for order, presenter in enumerate(registered):
             rank = (presenter.priority, order)
             if presenter.entry_type is not None:
                 current = self._by_type.get(presenter.entry_type)
                 if current is None or rank >= current[:2]:
                     self._by_type[presenter.entry_type] = (*rank, presenter)
-            else:
-                current = self._by_kind.get(presenter.kind)
+            elif presenter.kind is not None:
+                kind = presenter.kind
+                current = self._by_kind.get(kind)
                 if current is None or rank >= current[:2]:
-                    self._by_kind[presenter.kind] = (*rank, presenter)
+                    self._by_kind[kind] = (*rank, presenter)
 
     @property
     def presenters(self) -> tuple[Presenter[Any], ...]:
-        """Return the presenters that draw something: the kinds' first, then the families'.
-
-        A family a kind's presenter has outranked is left out: it would never be asked for a row.
-        """
+        """Return the presenters that draw something: the kinds' first, then the live families, fallback last."""
         live = [presenter for _, _, presenter in self._by_kind.values()]
         live.extend(
             presenter
             for priority, order, presenter in self._by_type.values()
-            if self._by_kind.get(presenter.kind) is None or (priority, order) > self._by_kind[presenter.kind][:2]
+            if presenter.kind is None
+            or self._by_kind.get(presenter.kind) is None
+            or (priority, order) > self._by_kind[presenter.kind][:2]
         )
-        return tuple(live)
+        fallback = [self._fallback] if self._fallback is not None else []
+        return tuple((*live, *fallback))
 
     def replacing(self, *presenters: Presenter[Any]) -> Presenters:
-        """Return a registry that draws the given kinds, and families, with the given presenters."""
-        return Presenters((*self.presenters, *presenters))
+        """Return a registry that draws the given kinds, families and fallback with the given presenters."""
+        return Presenters((*self._registered, *presenters))
 
     def for_entry(self, entry: Entry) -> Presenter[Any]:
-        """Return the presenter for an entry: the strongest claim on its class or kind, else say so."""
-        family: tuple[int, int, Presenter[Any]] | None = None
-        for cls in type(entry).__mro__:
-            found = self._by_type.get(cls)
-            if found is not None:
-                family = found
-                break
-        kind = self._by_kind.get(entry.kind)
-        if family is not None and (kind is None or family[:2] > kind[:2]):
-            return family[2]
-        if kind is None:
-            raise ValueError(f"No presenter for a {entry.kind.value} row")
-        return kind[2]
+        """Return the first presenter in the chain that claims the entry, else raise."""
+        for presenter in self._chain:
+            if presenter.handles(entry):
+                return presenter
+        raise ValueError(f"No presenter for a {entry.kind.value} row")
 
     def lines(self, entry: Entry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Return the rows an entry paints, rendered now and not cached."""

@@ -910,3 +910,26 @@ def test_the_history_and_group_tools_have_rows_that_say_what_they_do():
         "Create group #review with bob, cal"
     )
     assert title("manage_group", action="leave", group="review") == "Leave group #review"
+
+
+def test_a_fallback_presenter_takes_whatever_no_handler_claims():
+    class Fallback(Presenter[ToolEntry]):
+        kind = None
+
+        def lines(self, entry, width, theme, frame):
+            return [TextLine()]
+
+    rows = Presenters((Fallback(),))
+    assert isinstance(rows.for_entry(_bare(ToolEntry)), Fallback)
+
+
+def test_an_entry_type_only_presenter_is_listed_as_a_drawer():
+    class Family(Presenter[MarkdownEntry]):
+        entry_type = MarkdownEntry
+        kind = None
+
+        def lines(self, entry, width, theme, frame):
+            return [TextLine()]
+
+    rows = Presenters((Family(),))
+    assert rows.presenters == (rows.for_entry(MarkdownEntry(id=1, kind=EntryKind.MESSAGE)),)
