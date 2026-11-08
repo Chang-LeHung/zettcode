@@ -1,6 +1,6 @@
 """The extensions that give an agent its file tools and its shell.
 
-The tools themselves are in :mod:`zettcode.engine.tools`; these register them for each request and tell the model
+The tools themselves are in :mod:`zettcode.tools`; these register them for each request and tell the model
 where it is working:
 
 * :class:`FileTools` registers ``read``, ``glob`` and ``grep``, and with ``read_only`` off ``write_file`` and
@@ -25,9 +25,9 @@ from zett_agent.extensions.base import AgentExtension
 from zett_agent.messages import SystemMessage
 from zett_agent.tools.base import AgentTool
 
-from ..tools.boundary import Boundary
-from ..tools.files import edit, glob, grep, read, write_file
-from ..tools.shell import shell_tool
+from zettcode.tools.boundary import Boundary
+from zettcode.tools.files import edit, glob, grep, read, write_file
+from zettcode.tools.shell import shell_tool
 
 __all__ = ["CodingBundle", "FileTools", "file_tools"]
 

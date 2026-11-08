@@ -14,8 +14,8 @@ from zettcode.engine.extensions.guidance import tool_guidance
 from zettcode.engine.extensions.subagents import build_subagents
 from zettcode.engine.plugins import AgentBuild, load_plugins
 from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
-from zettcode.engine.tools import files
 from zettcode.guidance import ToolGuidance
+from zettcode.tools import files
 
 
 def test_the_guidance_extension_puts_snippets_guidelines_and_returns_in_the_description():

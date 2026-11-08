@@ -1,0 +1,45 @@
+[project]
+name = "zettcode-tools"
+description = "The coding tools of ZettCode: read, search, write, edit and the shell, as a part of the agent that lives apart from it"
+requires-python = ">=3.10"
+dynamic = ["version"]
+license = "MIT"
+authors = [{name = "Chang-LeHung"}]
+keywords = ["zettcode", "tools", "agent"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Typing :: Typed",
+]
+dependencies = [
+  # The tool contract, the message types and the @tool builder.
+  "zett-agent>=0.2.10,<0.3",
+  # A tool's parameters are described with the schema library the framework uses.
+  "pydantic>=2,<3",
+]
+
+[project.urls]
+Repository = "https://github.com/Chang-LeHung/zettcode"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# One version for the whole repository: the engine ships the file.
+path = "../zettcode-engine/src/zettcode/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zettcode"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

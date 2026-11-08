@@ -1,12 +1,12 @@
 """The shell tool: run one command in a directory it names, bounded in time and in what comes back.
 
 The command's two streams go to files and not into memory, so the volume of output costs nothing, and what is
-returned is a preview of each (see :func:`~zettcode.engine.tools.output.stream_preview`). When a preview had to cut
+returned is a preview of each (see :func:`~zettcode.tools.output.stream_preview`). When a preview had to cut
 something, the files are kept and the result ends with a note naming them, which the model can read; otherwise they
 are removed. A command that fails or runs out of time is reported as an error that carries its output.
 
 At the ``safe`` permission level the command is rewritten to run inside the sandbox (see
-:class:`~zettcode.engine.tools.boundary.Boundary`).
+:class:`~zettcode.tools.boundary.Boundary`).
 """
 
 from __future__ import annotations

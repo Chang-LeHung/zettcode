@@ -17,9 +17,9 @@ from zett_agent.tools.base import AgentTool
 
 from zettcode.engine.dialogue.side import READ_ONLY_TOOLS
 from zettcode.engine.extensions.files import CodingBundle, FileTools, file_tools
-from zettcode.engine.tools.files import edit, glob, grep, read, read_file, write_file
-from zettcode.engine.tools.output import MAX_OUTPUT_BYTES
-from zettcode.engine.tools.workspace import MAX_FILE_BYTES
+from zettcode.tools.files import edit, glob, grep, read, read_file, write_file
+from zettcode.tools.output import MAX_OUTPUT_BYTES
+from zettcode.tools.workspace import MAX_FILE_BYTES
 
 
 def _png(path: Path) -> Path:
@@ -69,8 +69,8 @@ def test_every_tool_is_one_of_ours_and_is_typed_as_one():
     tools = (read, read_file, glob, grep, write_file, edit, *CodingBundle().tools)
 
     assert all(isinstance(tool, AgentTool) for tool in tools)
-    assert {tool.handler.__module__ for tool in tools[:6]} == {"zettcode.engine.tools.files"}, "defined here"
-    assert CodingBundle().tools[-1].handler.__module__ == "zettcode.engine.tools.shell"
+    assert {tool.handler.__module__ for tool in tools[:6]} == {"zettcode.tools.files"}, "defined here"
+    assert CodingBundle().tools[-1].handler.__module__ == "zettcode.tools.shell"
 
 
 def test_every_bundled_tool_says_what_it_returns():

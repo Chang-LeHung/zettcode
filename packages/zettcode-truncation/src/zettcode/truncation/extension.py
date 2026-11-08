@@ -1,6 +1,6 @@
 """Keep a tool result that is too long to send in a file, and send its start and its end instead.
 
-The tools in this repository bound what they return (``engine/tools/output.py``: 50 KB and 2000 lines, with a note
+The tools in this repository bound what they return (``zettcode/tools/output.py``: 50 KB and 2000 lines, with a note
 saying how to go on). Nothing bounds a tool that comes from somewhere else — an MCP server's answer, a subagent's
 report, a plugin's own tool — and one of those can arrive carrying a megabyte: it is paid for in the model's context
 on every later request of the session, and once it is cut nothing in it can be read again.
@@ -23,7 +23,7 @@ from zett_agent.extensions.base import AgentExtension
 from zett_agent.messages import ToolCall, ToolMessage
 
 from zettcode.engine.storage import KEPT_OUTPUT, SessionStore
-from zettcode.engine.tools.output import MAX_OUTPUT_BYTES, MAX_OUTPUT_LINES, stream_preview
+from zettcode.tools.output import MAX_OUTPUT_BYTES, MAX_OUTPUT_LINES, stream_preview
 
 #: The tool that keeps its own output: it names the streams it kept, and that note is the whole point of its
 #: result, so its preview is never taken apart here.

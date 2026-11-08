@@ -17,8 +17,9 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  # The plugin base classes, the session store the result is kept in, and the budget and preview the engine's tools own.
+  # The plugin base classes, the session store the result is kept in, and the budget and preview the tools own.
   "zettcode-engine",
+  "zettcode-tools",
   # The extension, its hooks and the messages it rewrites.
   "zett-agent>=0.2.10,<0.3",
 ]
