@@ -607,6 +607,7 @@ A plugin names the plugins it needs, and ZettCode activates them first:
 ```python
 class Statistics(Plugin[PluginContext]):
     name = "statistics"
+    deps = ("presenters",)  # a real entry-point name
 
     def activate(self, ctx: PluginContext) -> None:
         service = ctx.agent.usage_ledger_service()  # the published ABC, already typed

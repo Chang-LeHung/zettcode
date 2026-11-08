@@ -533,10 +533,12 @@ shell 审批、压缩、`ask_user` 工具、项目指令、skills、MCP 和待�
 ```python
 class Statistics(Plugin[PluginContext]):
     name = "statistics"
-    deps = ("usage-ledger",)
+    deps = ("presenters",)  # 真实的入口点名
 
     def activate(self, ctx: PluginContext) -> None:
-        ledger = ctx.service("usage-ledger", object)  # 填对方发布的类型；`object` 接受任何对象
+        service = ctx.agent.usage_ledger_service()  # 已发布的 ABC，类型已确定
+        if service is None:
+            return
 ```
 
 `deps` 里写的是插件的**名字**：各插件声明的 `name`；没有声明时就是它入口点的名字。依赖的插件不存在、被关掉、加载失败或处在环里时，

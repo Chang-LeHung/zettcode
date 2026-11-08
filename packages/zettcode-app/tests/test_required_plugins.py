@@ -16,7 +16,9 @@ import pytest
 from zettcode.app.plugins import load_terminal_plugins
 from zettcode.app.plugins.builtins import BuiltinThemes
 from zettcode.app.plugins.loader import REQUIRED_PLUGINS
+from zettcode.commands.context import ContextPagePlugin
 from zettcode.commands.plugin import CommandsPlugin
+from zettcode.commands.usage import UsageCommand
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import catalog, set_many
 from zettcode.engine.plugins.loader import RequiredPluginError
@@ -45,7 +47,13 @@ REQUIRED_POINTS = [
 ]
 
 #: Every part found through an entry point: the required ones, and the ones a reader may switch off.
-POINTS = [*REQUIRED_POINTS, Point("pets", PetsPlugin), Point("themes", BuiltinThemes)]
+POINTS = [
+    *REQUIRED_POINTS,
+    Point("pets", PetsPlugin),
+    Point("themes", BuiltinThemes),
+    Point("usage", UsageCommand),
+    Point("context", ContextPagePlugin),
+]
 
 
 def _config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:
@@ -142,7 +150,7 @@ def test_the_plugins_page_does_not_offer_a_switch_for_a_required_part(tmp_path: 
     listed = {entry.origin for entry in catalog(config, bundle, entry_points=POINTS)}
 
     assert listed.isdisjoint(REQUIRED), "a row with no switch would only invite the press"
-    assert {"pets", "themes"} <= listed, "the optional parts, which do have a switch, are still there"
+    assert {"pets", "themes", "usage", "context"} <= listed, "the optional parts, which do have a switch, are still there"
 
 
 def test_the_pets_and_the_palettes_are_parts_a_reader_may_switch_off(tmp_path: Path):
