@@ -456,10 +456,13 @@ class Daemon:
                         # the record it was asked to leave. Only the stopping state this process was sent carries it: a
                         # daemon started again on a kept record finds the old stopping state and its field in the folder
                         # and must not inherit them, or a Ctrl-C of it would leave a record behind that it used to
-                        # remove.
+                        # remove. The token is this start's own and the pid is this process's: the token alone names the
+                        # state this process wrote, and the pid alone could be a stopped daemon's pid the system gave
+                        # to the new one, so both have to say so.
                         keep=bool(
                             current is not None
                             and current.status == "stopping"
+                            and current.token == self.options.token
                             and current.pid == os.getpid()
                             and current.keep
                         ),
