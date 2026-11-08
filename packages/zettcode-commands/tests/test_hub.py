@@ -426,7 +426,12 @@ class _FakeClient:
         self.session = type("Session", (), {"id": "self-1"})()
         self.sessions = _FakeSessions(["self-1", "p-1", "old-9", "run-1"])
         self.workspace = workspace
-        self._graph = graph if graph is not None else {"sessions": [], "edges": []}
+        # The broker's roster agrees with the client's cached peers unless one has just disconnected.
+        self._graph = (
+            graph
+            if graph is not None
+            else {"sessions": [{"session_id": "p-1", "handle": "p-1", "status": "idle"}], "edges": []}
+        )
 
     def peers(self) -> list[object]:
         return [
@@ -500,6 +505,50 @@ def test_the_daemons_tab_lists_running_stopped_and_offline_ones(tmp_path, daemon
     }, "running and stopped (every workspace), then the stored session nothing runs"
     assert list(by_id)[-1] == "old-9", "offline ones follow the daemons"
     assert [daemon.workspace for daemon in reading.daemons if daemon.status == "offline"] == [str(tmp_path.resolve())]
+
+
+def test_a_peer_that_has_just_left_the_roster_is_offline_even_while_the_client_still_remembers_it(
+    tmp_path, daemons_on_disk
+):
+    """The cached peers lag the broker by a moment; the live graph says who is in the roster."""
+    client = _FakeClient(tmp_path, {"sessions": [], "edges": []})  # the graph no longer has `p-1`; `peers()` does
+
+    reading = _read(client)
+
+    assert [peer.session_id for peer in reading.peers] == ["p-1"], "still remembered"
+    assert "p-1" in {daemon.session_id for daemon in reading.daemons if daemon.status == "offline"}
+
+
+def test_the_cached_peers_stand_in_for_the_roster_only_when_the_graph_could_not_be_read(tmp_path, daemons_on_disk):
+    reading = _read(_FakeClient(tmp_path, RuntimeError("no broker")))
+
+    assert "p-1" not in {daemon.session_id for daemon in reading.daemons}, "the best word there is says it runs"
+    assert "old-9" in {daemon.session_id for daemon in reading.daemons if daemon.status == "offline"}
+
+
+def test_a_table_cut_at_the_limit_says_so_and_the_saying_is_not_a_row_anything_acts_on(tmp_path, daemons_on_disk):
+    from zettcode.commands import hub
+
+    many = [f"stored-{n:03d}" for n in range(hub.OFFLINE_LIMIT + 5)]
+    client = _FakeClient(tmp_path)
+    client.sessions = _FakeSessions(many)
+
+    reading = _read(client)
+
+    offline = [daemon for daemon in reading.daemons if daemon.status == "offline"]
+    assert reading.offline_cut and len(offline) == hub.OFFLINE_LIMIT, "one more was asked for, and not shown"
+
+    started: list[str] = []
+    opened = HubPage(reading, on_close=lambda: None, on_start=started.append)
+    opened._show(DAEMONS)
+    last = opened.list.items[-1]
+    assert last.disabled and str(hub.OFFLINE_LIMIT) in last.description
+    opened.list.selected = len(opened.list.items) - 1
+    opened.capture_event(_key("enter"), None)
+    assert started == [] and "no daemon under the mark" in (opened.subtitle or "")
+
+    whole = _read(_FakeClient(tmp_path))
+    assert not whole.offline_cut, "nothing is said when nothing was left out"
 
 
 def test_a_stored_session_that_a_daemon_record_has_is_listed_once_not_as_offline_too(tmp_path, daemons_on_disk):

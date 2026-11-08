@@ -654,6 +654,11 @@ async def serve(options: Options) -> int:
                     await client.sessions.open(options.session)
                 except (ConfigurationError, SessionNotFoundError, SessionLockedError) as error:
                     return _failed(str(error))
+                if client.session.locked:
+                    # `open` does not refuse a session another process holds: it selects it, to be read and not
+                    # written. That is a fine thing for a reader and no thing at all for a daemon, whose every turn
+                    # would fail on the first write while the daemon sat there listed as idle.
+                    return _failed("this session is open in another ZettCode process, so a daemon cannot write to it")
             if options.title:
                 # The session this process holds, so the name is written where the daemon and `/resume` both read it.
                 try:

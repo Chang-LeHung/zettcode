@@ -55,6 +55,10 @@ OFFLINE = "offline"
 #: What ``Enter`` can start: a daemon whose process is gone, and a stored session with no daemon.
 STARTABLE = (*GONE, OFFLINE)
 
+#: How many of the newest stored sessions are looked at. The store reads every session's file to answer however many
+#: are asked for, so the cost is the same at any limit; the limit only bounds how long the table is.
+OFFLINE_LIMIT = 200
+
 #: The smallest area the picture is drawn in: room for two rows of boxes and a number between them, and for a box and
 #: its neighbour side by side. Below it the page says so rather than draw a chain of two boxes.
 MIN_GRAPH_WIDTH = 40
@@ -105,6 +109,8 @@ class HubData:
     links: tuple[Link, ...] = ()
     #: Whether the message graph could be read; an empty picture says which of the two it is.
     graph_ok: bool = True
+    #: Whether stored sessions older than the :data:`OFFLINE_LIMIT` newest were left out, which the table says.
+    offline_cut: bool = False
     #: When the reading began (``12:34:56``), how long it took in milliseconds, and each step's share of that: elapsed
     #: time on the event loop, so a step is also slow when the loop was busy with something else meanwhile. The page
     #: composes the fullest line of it that fits (:meth:`HubPage._stamp`): the steps need about 85 columns, by their
@@ -188,7 +194,13 @@ def _daemon_table(data: HubData) -> Table:
                 (said, daemon.model or "no model", daemon.workspace),
             )
         )
-    return _table(("NAME", "STATE", "MODEL", "WORKSPACE"), rows)
+    table = _table(("NAME", "STATE", "MODEL", "WORKSPACE"), rows)
+    if data.offline_cut:
+        # A row of words, not a session: it cannot be marked, so no key acts on it.
+        table.items.append(
+            ListItem(None, "\u2026", f"only the {OFFLINE_LIMIT} newest stored sessions are listed", disabled=True)
+        )
+    return table
 
 
 def _no_table(data: HubData) -> Table:
@@ -702,10 +714,12 @@ class HubCommand(TuiPlugin):
         except Exception:  # noqa: BLE001 - a client with no session still has a roster to show
             me = ""
         try:
-            # The fifty newest of this workspace, for their titles; a longer store is cut there rather than paged.
-            listed = await client.sessions.list(limit=50)  # type: ignore[attr-defined]
+            # One more than is shown, so the table can say when older sessions were left out.
+            listed = await client.sessions.list(limit=OFFLINE_LIMIT + 1)  # type: ignore[attr-defined]
         except Exception:  # noqa: BLE001 - a store that cannot be read costs only the names of sessions that are gone
             listed = ()
+        cut = len(listed) > OFFLINE_LIMIT
+        listed = listed[:OFFLINE_LIMIT]
         lap("sessions")
         graph_ok = True
         try:
@@ -732,9 +746,15 @@ class HubCommand(TuiPlugin):
             nodes, links = (), ()
         # Offline: the stored sessions of this workspace that nothing accounts for — not the reader's own, not in the
         # roster, and not the session of any daemon record (which has its row already, running or stopped). They follow
-        # the daemons, newest first, and are what a daemon can be started on.
-        accounted = {me, *(peer.session_id for peer in peers), *(daemon.session_id for daemon in daemons)}
-        accounted |= {str(entry.get("session_id", "")) for entry in graph.get("sessions", ())}
+        # the daemons, newest first, and are what a daemon can be started on. Who is in the roster is the live graph's
+        # word; the client's cached peers stand in only when the graph could not be read, because a peer that has just
+        # disconnected lingers in that cache and would hide its session's row until the broker says it left.
+        roster = (
+            {str(entry.get("session_id", "")) for entry in graph.get("sessions", ())}
+            if graph_ok
+            else {peer.session_id for peer in peers}
+        )
+        accounted = {me, *roster, *(daemon.session_id for daemon in daemons)}
         offline = tuple(
             Daemon(session_id=info.id, label=info.title or info.id[:8], status=OFFLINE, workspace=str(here))
             for info in listed
@@ -748,6 +768,7 @@ class HubCommand(TuiPlugin):
             nodes=nodes,
             links=links,
             graph_ok=graph_ok,
+            offline_cut=cut,
             began=clock,
             took=round((time.perf_counter() - began) * 1000),
             steps=tuple(steps),
