@@ -217,20 +217,58 @@ def test_a_number_is_never_over_a_box_a_corner_a_foreign_line_or_against_another
             else:  # beside a line
                 assert (x, top) not in picture.cells, "never over any line"
                 for near in ((x - 1, top), (x + 1, top), (x, top - 1), (x, top + 1)):
-                    assert owner.get(near, route.origin) == route.origin, "never against a box that is not its own"
+                    joined = (route.link.a, route.link.b)
+                    assert owner.get(near, route.origin) in joined, "never against a box its line does not join"
 
 
-def test_a_short_ring_still_numbers_its_lines_and_says_when_it_could_not():
+def test_a_short_ring_numbers_every_line_even_one_between_two_boxes_a_row_apart():
     nodes, links = crowd(6)
 
     roomy = graph.layout(nodes, links, 76, 17)
     cramped = graph.layout(nodes, links, 56, 13)
 
     assert roomy.routes and len(roomy.labels) == len(roomy.routes), "every line is numbered when there is room"
-    assert cramped.routes
-    assert len(cramped.labels) + cramped.unnumbered == len(cramped.routes)
-    assert cramped.unnumbered > 0, "a lane of one cell has nowhere to write, and the picture knows"
-    assert "without a number" in graph.summary(nodes, links, cramped)
+    assert cramped.routes and len(cramped.labels) == len(cramped.routes), "and in a short ring too"
+    assert cramped.unnumbered == 0
+    for _, _, text, index in cramped.labels:
+        assert text.strip() == str(cramped.routes[index].link.count)
+
+
+def test_the_summary_says_when_a_number_found_no_place():
+    nodes, links = crowd(4)
+    picture = graph.Picture(nodes=tuple(nodes), unnumbered=2)
+
+    assert "2 without a number" in graph.summary(nodes, links, picture)
+
+
+def test_two_wide_boxes_in_the_narrowest_area_the_page_draws_both_and_the_line():
+    nodes, links = graph.build(
+        {
+            "sessions": [
+                {"session_id": "me", "handle": "session-0", "status": "idle"},
+                {"session_id": "b", "handle": "session-1", "status": "idle"},
+            ],
+            "edges": [{"a": "me", "b": "b", "count": 7}],
+        },
+        me="me",
+    )
+
+    picture = graph.layout(nodes, links, 40, 10)
+
+    assert len(picture.nodes) == 2, "two boxes fit at the page's own minimum width"
+    assert picture.routes and picture.labels, "with a line between them and its number"
+    (al, _, aw), (bl, _, bw) = picture.boxes.values()
+    assert al == 1 and bl > al + aw and bl + bw <= 39, "the first against the edge, a free lane, the second inside"
+
+
+def test_a_summary_cut_by_a_narrow_page_loses_the_working_count_and_not_what_was_left_out():
+    nodes, links = crowd(40)
+    picture = graph.layout(nodes, links, 110, 32)
+
+    line = graph.summary(nodes, links, picture)
+
+    assert line.index("quieter not drawn") < line.index("working"), "what is left out comes first"
+    assert line.endswith("working")
 
 
 def test_lines_that_are_not_drawn_between_drawn_nodes_are_counted_and_the_summary_says_so():
