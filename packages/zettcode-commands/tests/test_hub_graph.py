@@ -76,12 +76,11 @@ def test_the_busiest_are_kept_and_the_readers_own_session_is_never_the_one_cut()
     assert picture.nodes[0].me, "the reader's own is first and in the picture"
     assert 0 < len(picture.nodes) <= graph.MAX_NODES
     assert picture.hidden_nodes == len(nodes) - len(picture.nodes)
-    quiet = {node.key for node in nodes} - {node.key for node in picture.nodes}
-    busy = {link.a for link in links} | {link.b for link in links}
     totals = graph._totals(links)
-    kept = [totals.get(node.key, 0) for node in picture.nodes[1:]]
-    cut = [totals.get(key, 0) for key in quiet]
-    assert min(kept) >= max(cut), f"every node kept talks at least as much as any left out ({busy and 'ok'})"
+    assert graph.rank(nodes, links)[0].me, "rank puts the reader's own first whatever it has said"
+    by_total = [totals.get(node.key, 0) for node in graph.rank(nodes, links)[1:]]
+    assert by_total == sorted(by_total, reverse=True), "and the rest busiest first, so a cut drops the quietest"
+    assert [node.key for node in picture.nodes] == [node.key for node in graph.rank(nodes, links)[: len(picture.nodes)]]
 
 
 @pytest.mark.parametrize("size", [(20, 5), (40, 10), (76, 17), (56, 13), (110, 32), (200, 50)])
@@ -100,6 +99,28 @@ def test_boxes_never_touch_and_stay_inside_the_area_at_any_size(size, count):
             apart = al + aw < bl or bl + bw < al or at + graph.BOX_HEIGHT < bt or bt + graph.BOX_HEIGHT < at
             assert apart, "at least one free cell between any two boxes"
     assert len(picture.nodes) + picture.hidden_nodes == len(nodes)
+
+
+@pytest.mark.parametrize(
+    ("size", "fits"),
+    [((76, 17), 8), ((96, 23), 12), ((106, 25), 12), ((150, 44), 16), ((60, 20), 3)],
+)
+def test_every_node_is_drawn_when_it_fits_the_area(size, fits):
+    """The loops above pass over an empty picture; this says that a picture is not empty when it should not be."""
+    for count in range(1, fits + 1):
+        nodes, links = crowd(count)
+
+        picture = graph.layout(nodes, links, *size)
+
+        assert len(picture.nodes) == count, f"{count} nodes in {size}: {len(picture.nodes)} drawn"
+        assert picture.hidden_nodes == 0
+
+
+def test_the_ring_is_not_dropped_for_the_half_row_of_an_even_height():
+    """150x44: the vertical radius is 19.5 and rounding put a ring box on the edge, so three nodes drew two."""
+    nodes, links = crowd(3)
+
+    assert len(graph.layout(nodes, links, 150, 44).nodes) == 3
 
 
 def test_two_nodes_with_long_names_in_a_narrow_area_do_not_touch():
@@ -167,7 +188,79 @@ def test_a_line_is_numbered_at_the_end_that_is_not_the_reader_and_the_numbers_do
             assert route.origin != me, "a line to the reader is numbered at the other end"
         first = route.cells[0]
         assert abs(left - first[0]) + abs(top - first[1]) <= 14, "the number sits near the end it belongs to"
+    assert len(picture.labels) + picture.unnumbered == len(picture.routes)
     assert len(picture.labels) >= len(picture.routes) // 2
+
+
+@pytest.mark.parametrize("size", [(110, 32), (76, 17), (106, 25), (96, 23)])
+@pytest.mark.parametrize("count", [6, 10, 14])
+def test_a_number_is_never_over_a_box_a_corner_a_foreign_line_or_against_another_box(size, count):
+    nodes, links = crowd(count)
+    picture = graph.layout(nodes, links, *size)
+    owner = {
+        (x, y): key
+        for key, (left, top, w) in picture.boxes.items()
+        for x in range(left, left + w)
+        for y in range(top, top + graph.BOX_HEIGHT)
+    }
+    assert picture.labels, "something is numbered"
+
+    for left, top, text, index in picture.labels:
+        route = picture.routes[index]
+        for x in range(left, left + len(text)):
+            assert (x, top) not in owner, "never over a box"
+            if text.startswith(" "):  # written on its own line: only a straight stretch, never the joining cell
+                (_, sides) = next(part for part in picture.cells[(x, top)] if part[0] == index)
+                assert len(picture.cells[(x, top)]) == 1, "never on a cell another line also runs through"
+                assert sides == 0b1010, "never over a corner or a junction: only a straight east-west stretch"
+                assert (x, top) != route.cells[-1], "never the cell that joins the box at the far end"
+            else:  # beside a line
+                assert (x, top) not in picture.cells, "never over any line"
+                for near in ((x - 1, top), (x + 1, top), (x, top - 1), (x, top + 1)):
+                    assert owner.get(near, route.origin) == route.origin, "never against a box that is not its own"
+
+
+def test_a_short_ring_still_numbers_its_lines_and_says_when_it_could_not():
+    nodes, links = crowd(6)
+
+    roomy = graph.layout(nodes, links, 76, 17)
+    cramped = graph.layout(nodes, links, 56, 13)
+
+    assert roomy.routes and len(roomy.labels) == len(roomy.routes), "every line is numbered when there is room"
+    assert cramped.routes
+    assert len(cramped.labels) + cramped.unnumbered == len(cramped.routes)
+    assert cramped.unnumbered > 0, "a lane of one cell has nowhere to write, and the picture knows"
+    assert "without a number" in graph.summary(nodes, links, cramped)
+
+
+def test_lines_that_are_not_drawn_between_drawn_nodes_are_counted_and_the_summary_says_so():
+    everyone = [{"session_id": str(i), "handle": f"s{i}", "status": "idle"} for i in range(16)]
+    pairs = [{"a": str(i), "b": str(j), "count": 1 + i + j} for i in range(16) for j in range(i + 1, 16)]
+    nodes, links = graph.build({"sessions": everyone, "edges": pairs}, me="0")
+
+    picture = graph.layout(nodes, links, 150, 44)
+
+    assert len(picture.nodes) == 16 and len(links) == 120
+    assert len(picture.routes) <= graph.MAX_LINKS
+    assert picture.undrawn == 120 - len(picture.routes) > 0, "the lines lost between two drawn boxes are counted"
+    assert f"{picture.undrawn} lines not drawn" in graph.summary(nodes, links, picture)
+
+
+def test_a_selected_node_reports_the_lines_drawn_out_of_those_it_has():
+    everyone = [{"session_id": str(i), "handle": f"s{i}", "status": "idle"} for i in range(16)]
+    pairs = [{"a": str(i), "b": str(j), "count": 1 + i + j} for i in range(16) for j in range(i + 1, 16)]
+    nodes, links = graph.build({"sessions": everyone, "edges": pairs}, me="0")
+    picture = graph.layout(nodes, links, 150, 44)
+
+    quiet = next(
+        node.key
+        for node in picture.nodes
+        if sum(1 for route in picture.routes if node.key in (route.link.a, route.link.b)) < 15
+    )
+
+    said = graph.summary(nodes, links, picture, quiet)
+
+    assert " of 15 lines" in said, said
 
 
 def test_the_route_with_most_messages_is_routed_first():
@@ -194,13 +287,15 @@ def test_a_line_is_drawn_in_the_colour_of_the_end_it_is_numbered_at():
     canvas = painted(picture)
 
     by_key = {node.key: node for node in nodes}
+    checked = 0
     for route in picture.routes:
         x, y = route.cells[len(route.cells) // 2]
-        cell = canvas.cells[y][x]
         if len(picture.cells[(x, y)]) == 1:
-            assert cell.style.foreground == graph.colours(theme)[by_key[route.origin].state]
+            checked += 1
+            assert canvas.cells[y][x].style.foreground == graph.colours(theme)[by_key[route.origin].state]
+    assert checked == len(picture.routes) >= 2, "every line was looked at"
     text = text_of(canvas)
-    assert "main (you)" in text and "review" in text and "ci-bot" in text or "ci-bot" not in text
+    assert "main (you)" in text and "review" in text and "ci-bot" in text, "all three nodes are drawn"
     assert "55" in text, "the count is written beside its line"
     assert any(char in "\u2500\u2502\u256d\u256e\u256f\u2570" for char in text)
     assert not any(0x2800 <= ord(char) < 0x2900 for char in text), "no braille: a font draws it as loose dots"
@@ -225,6 +320,50 @@ def test_selecting_a_node_keeps_its_lines_and_dims_the_others():
     x, y = only(other[0])
     assert selected.cells[y][x].style.foreground == theme.border, "the rest are dimmed"
     assert normal.cells[y][x].style.foreground != theme.border
+
+
+def test_selecting_a_node_does_not_cut_a_dimmed_line_where_a_bright_one_crosses_it():
+    nodes, links = crowd(12)
+    picture = graph.layout(nodes, links, 110, 32)
+    normal = painted(picture)
+    crossings = 0
+
+    for chosen in (node.key for node in picture.nodes):
+        selected = painted(picture, chosen)
+        for (x, y), parts in picture.cells.items():
+            lit = [i for i, _ in parts if chosen in (picture.routes[i].link.a, picture.routes[i].link.b)]
+            if len(parts) > 1 and lit and len(lit) < len(parts):
+                crossings += 1
+                assert selected.cells[y][x].character == normal.cells[y][x].character, "the glyph keeps its shape"
+    assert crossings > 5, "the picture has crossings to check"
+
+
+def test_arrows_are_the_same_in_every_direction_a_row_counting_as_two_columns():
+    def box(x: int, y: int) -> tuple[int, int, int]:
+        return (x - 3, y - 1, 6)
+
+    nodes = tuple(graph.Node(key, key, "idle", key == "mid") for key in ("mid", "r", "l", "d", "u"))
+    boxes = {"mid": box(50, 20), "r": box(70, 20), "l": box(30, 20), "d": box(50, 30), "u": box(50, 10)}
+    picture = graph.Picture(nodes=nodes, boxes=boxes)
+
+    # 20 columns across and 10 rows down are the same distance on screen.
+    assert [graph.nearest(picture, "mid", arrow) for arrow in ("right", "left", "down", "up")] == ["r", "l", "d", "u"]
+    assert graph.nearest(picture, None, "left") == "mid", "the first arrow selects the reader's own"
+    assert graph.nearest(picture, "r", "right") is None, "nothing further that way"
+    assert graph.nearest(picture, "u", "up") is None, "nothing above the top one"
+    assert graph.nearest(picture, "r", "up") == "u", "up and to the left, 45 degrees, is still up"
+    assert graph.nearest(graph.Picture(), None, "left") is None
+
+
+def test_an_arrow_prefers_the_node_in_line_over_a_closer_one_off_to_the_side():
+    def box(x: int, y: int) -> tuple[int, int, int]:
+        return (x - 3, y - 1, 6)
+
+    nodes = tuple(graph.Node(key, key, "idle", key == "mid") for key in ("mid", "inline", "aside"))
+    boxes = {"mid": box(50, 20), "inline": box(80, 20), "aside": box(66, 30)}
+    picture = graph.Picture(nodes=nodes, boxes=boxes)
+
+    assert graph.nearest(picture, "mid", "right") == "inline", "the one in line beats the closer one off to the side"
 
 
 def test_a_label_wider_than_its_box_is_cut_by_columns_not_characters():

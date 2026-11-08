@@ -129,6 +129,9 @@ class Picture:
         labels: ``(x, y, text, route index)`` for each number that found a place.
         hidden_nodes: How many nodes did not fit.
         hidden_links: How many lines were left out, because an end is hidden or there were too many.
+        undrawn: How many of those join two drawn nodes: only the strongest :data:`MAX_LINKS` are routed, and a line
+            with no way round the boxes is not drawn either.
+        unnumbered: How many drawn lines found no place to write their number.
         width: The rectangle's size, which the picture is valid for.
         height: The rectangle's height.
     """
@@ -140,6 +143,8 @@ class Picture:
     labels: tuple[tuple[int, int, str, int], ...] = ()
     hidden_nodes: int = 0
     hidden_links: int = 0
+    undrawn: int = 0
+    unnumbered: int = 0
     width: int = 0
     height: int = 0
 
@@ -255,8 +260,14 @@ def _ring_order(nodes: Sequence[Node], links: Sequence[Link]) -> list[Node]:
     return out
 
 
-def _spots(shown: Sequence[Node], links: Sequence[Link], width: int, height: int) -> dict[str, Cell]:
-    """Return the centre of each node's box: the reader's own in the middle, the rest on an ellipse round it."""
+def _spots(
+    shown: Sequence[Node], links: Sequence[Link], width: int, height: int, *, whole_rows: bool = False
+) -> dict[str, Cell]:
+    """Return the centre of each node's box: the reader's own in the middle, the rest on an ellipse round it.
+
+    The ellipse's vertical radius is half a row when the height is even, and rounding a ring box onto a half row can
+    push its last row onto the edge; ``whole_rows`` takes the radius down to a whole number of rows instead.
+    """
     cx, cy = width // 2, height // 2
     if len(shown) == 1:
         return {shown[0].key: (cx, cy)}
@@ -272,6 +283,8 @@ def _spots(shown: Sequence[Node], links: Sequence[Link], width: int, height: int
     widest = max(_box(node) for node in shown)
     rx = max(1.0, (width - widest) / 2 - 1)
     ry = max(1.0, (height - BOX_HEIGHT) / 2 - 1)
+    if whole_rows:
+        ry = float(max(1, int(ry)))
     spots: dict[str, Cell] = {}
     if centre is not None:
         spots[centre.key] = (cx, cy)
@@ -438,8 +451,10 @@ def _origin(link: Link, nodes: Mapping[str, Node], total: Mapping[str, int]) -> 
 def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int) -> Picture:
     """Lay the graph out in a ``width`` by ``height`` rectangle.
 
-    The busiest nodes are kept, as many as fit with a lane left between every two boxes; the rest are counted in
-    ``hidden_nodes``. Lines are routed strongest first, so the busy ones get the straightest paths.
+    The busiest nodes are kept, as many as fit on one ellipse with a lane left between every two boxes (a count that
+    does not fit by a row is dropped, and the next smaller is tried); the rest are counted in ``hidden_nodes``.
+    Only the strongest :data:`MAX_LINKS` lines are routed, strongest first so the busy ones get the straightest paths;
+    those left out between two drawn nodes are counted in ``undrawn``.
     """
     if not nodes or width <= 0 or height <= 0:
         return Picture(width=width, height=height, hidden_nodes=len(nodes), hidden_links=len(links))
@@ -449,10 +464,14 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
     boxes: dict[str, tuple[int, int, int]] = {}
     for count in range(min(MAX_NODES, len(ranked)), 0, -1):
         shown = ranked[:count]
-        spots = _spots(shown, links, width, height)
-        boxes = _rects(shown, spots)
-        if _clear(boxes, width, height):
-            break
+        for whole_rows in (False, True):
+            spots = _spots(shown, links, width, height, whole_rows=whole_rows)
+            boxes = _rects(shown, spots)
+            if _clear(boxes, width, height):
+                break
+        else:
+            continue
+        break
     else:
         return Picture(width=width, height=height, hidden_nodes=len(nodes), hidden_links=len(links))
 
@@ -460,9 +479,13 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
     total = _totals(links)
     inside = [link for link in links if link.a in by_key and link.b in by_key]
     inside.sort(key=lambda link: -link.count)
-    blocked = {
-        (x, y) for left, top, w in boxes.values() for x in range(left, left + w) for y in range(top, top + BOX_HEIGHT)
+    owner = {
+        (x, y): key
+        for key, (left, top, w) in boxes.items()
+        for x in range(left, left + w)
+        for y in range(top, top + BOX_HEIGHT)
     }
+    blocked = set(owner)
     halo: dict[Cell, frozenset[str]] = {}
     for key, (left, top, w) in boxes.items():
         for x in range(left - 1, left + w + 1):
@@ -494,7 +517,7 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
         for cell, sides in zip(path, _sides(path, start_bit, end_bit), strict=True):
             cells.setdefault(cell, []).append((index, sides))
             used[cell] = used.get(cell, 0) | (1 if sides & (_E | _W) else 0) | (2 if sides & (_N | _S) else 0)
-    labels = _place_labels(routes, cells, blocked, width, height)
+    labels = _place_labels(routes, cells, owner, width, height)
     return Picture(
         nodes=tuple(shown),
         boxes=boxes,
@@ -503,6 +526,8 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
         labels=tuple(labels),
         hidden_nodes=len(nodes) - len(shown),
         hidden_links=len(links) - len(routes),
+        undrawn=len(inside) - len(routes),
+        unnumbered=len(routes) - len(labels),
         width=width,
         height=height,
     )
@@ -511,51 +536,58 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
 def _place_labels(
     routes: Sequence[Route],
     cells: Mapping[Cell, Sequence[tuple[int, int]]],
-    blocked: set[Cell],
+    owner: Mapping[Cell, str],
     width: int,
     height: int,
 ) -> list[tuple[int, int, str, int]]:
     """Put each line's number on its own line close to the end it is drawn from, or beside it, where nothing else is.
 
-    A number is never written over a box, over a cell another line runs through, or over another number.
+    On the line it replaces a straight stretch only (never a corner, never the cell that joins the box at the far
+    end). Beside it, any side of any of the first cells will do, including the first, so a line of one cell still gets
+    its number. A number is never written over a box, over a cell any line runs through or over another number, and
+    it never touches a box other than the one the line is drawn from, where it would read as that box's own.
     """
     taken: set[Cell] = set()
     out: list[tuple[int, int, str, int]] = []
+
+    def free(spot: set[Cell], origin: str) -> bool:
+        for x, y in spot:
+            if not (0 <= x < width and 0 <= y < height) or (x, y) in owner or (x, y) in cells or (x, y) in taken:
+                return False
+            if any(owner.get(near, origin) != origin for near in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1))):
+                return False
+        return True
+
     for index, route in enumerate(routes):
         text = f" {route.link.count} "
-        placed = False
         path = route.cells
-        for start in range(1, len(path) - len(text) + 1):
+        placed = False
+        for start in range(1, len(path) - len(text)):
             run = path[start : start + len(text)]
-            if any(cell[1] != run[0][1] for cell in run) or any(
-                abs(run[i + 1][0] - run[i][0]) != 1 for i in range(len(run) - 1)
-            ):
+            straight = all(cell[1] == run[0][1] for cell in run) and all(
+                abs(run[i + 1][0] - run[i][0]) == 1 for i in range(len(run) - 1)
+            )
+            if not straight or any(cell in taken or dict(cells[cell])[index] != _E | _W for cell in run):
                 continue
-            if any(taken & {cell} or len(cells[cell]) != 1 for cell in run):
+            if any(len(cells[cell]) != 1 for cell in run):
                 continue
-            left = min(cell[0] for cell in run)
-            out.append((left, run[0][1], text, index))
+            out.append((min(cell[0] for cell in run), run[0][1], text, index))
             taken.update(run)
             placed = True
             break
         if placed:
             continue
         number = str(route.link.count)
-        for cell in path[1:12]:
-            sides = dict(cells[cell])[index]
-            if sides not in (_N | _S, _N, _S):
-                continue
-            for left in (cell[0] + 1, cell[0] - len(number)):
-                spot = {(left + i, cell[1]) for i in range(len(number))}
-                if all(
-                    0 <= x < width
-                    and 0 <= y < height
-                    and (x, y) not in blocked
-                    and (x, y) not in cells
-                    and (x, y) not in taken
-                    for x, y in spot
-                ):
-                    out.append((left, cell[1], number, index))
+        for cell_x, cell_y in path[:12]:
+            for left, top in (
+                (cell_x + 1, cell_y),
+                (cell_x - len(number), cell_y),
+                (cell_x, cell_y - 1),
+                (cell_x, cell_y + 1),
+            ):
+                spot = {(left + i, top) for i in range(len(number))}
+                if free(spot, route.origin):
+                    out.append((left, top, number, index))
                     taken |= spot
                     placed = True
                     break
@@ -582,12 +614,14 @@ def paint(canvas: Canvas, theme: Theme, x: int, y: int, picture: Picture, select
         return states[by_key[route.origin].state] if lit(route) else theme.border
 
     for (cell_x, cell_y), parts in picture.cells.items():
-        shown = [(index, sides) for index, sides in parts if lit(picture.routes[index])] or list(parts)
+        # The glyph keeps every line through the cell, so a dimmed line is not cut where a bright one crosses it; the
+        # colour is a bright line's when there is one.
         bits = 0
-        for _, sides in shown:
+        for _, sides in parts:
             bits |= sides
+        owner_route = next((index for index, _ in parts if lit(picture.routes[index])), parts[0][0])
         if bits in _JOINS:
-            style = Style(foreground=colour_of(picture.routes[shown[0][0]]), background=page)
+            style = Style(foreground=colour_of(picture.routes[owner_route]), background=page)
             canvas.set_cell(x + cell_x, y + cell_y, _JOINS[bits], style)
     for left, top, text, index in picture.labels:
         route = picture.routes[index]
@@ -642,6 +676,8 @@ def nearest(picture: Picture, selected: str | None, direction: str) -> str | Non
     if selected is None or selected not in picture.boxes:
         return picture.nodes[0].key
     step_x, step_y = _ARROWS[direction]
+    # Everything below is in columns: a row is about twice as tall as a column is wide, so a row is two units. That
+    # one unit is used for the cone and for the score, which is what makes up and down behave like left and right.
     left, top, width = picture.boxes[selected]
     here_x, here_y = left + width / 2, (top + BOX_HEIGHT / 2) * 2
     best: dict[bool, tuple[float, str]] = {}
@@ -667,14 +703,20 @@ def summary(nodes: Sequence[Node], links: Sequence[Link], picture: Picture, sele
     chosen = next((node for node in nodes if node.key == selected), None)
     if chosen is not None:
         mine = [link for link in links if selected in (link.a, link.b)]
+        drawn = sum(1 for route in picture.routes if selected in (route.link.a, route.link.b))
+        shown = f"{drawn}" if drawn == len(mine) else f"{drawn} of {len(mine)}"
         return (
             f"{glyph(chosen.state)} {_text(chosen)} \u00b7 {chosen.state} \u00b7 "
-            f"{len(mine)} {'line' if len(mine) == 1 else 'lines'} \u00b7 {sum(link.count for link in mine)} messages"
+            f"{shown} {'line' if len(mine) == 1 else 'lines'} \u00b7 {sum(link.count for link in mine)} messages"
         )
     working = sum(1 for node in nodes if node.state == "working")
     text = f"{len(nodes)} nodes \u00b7 {working} working \u00b7 {sum(link.count for link in links)} messages"
     if picture.hidden_nodes:
         text += f" \u00b7 {picture.hidden_nodes} quieter not drawn"
+    if picture.undrawn:
+        text += f" \u00b7 {picture.undrawn} lines not drawn"
+    if picture.unnumbered:
+        text += f" \u00b7 {picture.unnumbered} without a number"
     return text
 
 

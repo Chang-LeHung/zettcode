@@ -343,18 +343,25 @@ def test_selecting_a_node_says_what_it_is_part_of():
     assert "review" in row and "2 lines" in row and "58 messages" in row
 
 
-@pytest.mark.parametrize("size", [(110, 32), (80, 24), (60, 12), (30, 8), (24, 4), (10, 3)])
+@pytest.mark.parametrize(
+    "size", [(110, 32), (80, 24), (60, 20), (60, 12), (60, 9), (60, 8), (60, 5), (60, 4), (30, 8), (24, 4), (10, 3)]
+)
 def test_the_page_renders_at_any_size_and_keeps_its_tab_line_and_footer(size):
     width, height = size
     opened = HubPage(_graph_data(), on_close=lambda: None)
+    opened.note("started abcdef12")
 
     rows = _rendered(opened, width, height)
 
     if height >= 5:
-        assert rows[1].lstrip().startswith("Hub")
+        assert rows[1].split()[:2] == ["Hub", "Graph"] or width < 20, "nothing is written over the tab line"
         assert rows[-1].lstrip().startswith("arrows") or width < 20
+    if height >= 6 and width >= 40:
+        assert rows[2].lstrip().startswith("3 nodes"), "nor over the summary"
     if height >= 9 and width >= 40:
         assert "n = messages" in rows[-2], "the legend is its own row, never over the tab line"
+    for row in rows[:3]:
+        assert "too small" not in row, "the note about the size has a row of its own, below the chrome"
 
 
 def test_a_page_too_small_for_the_picture_says_so_instead_of_drawing_boxes_over_each_other():
@@ -362,6 +369,20 @@ def test_a_page_too_small_for_the_picture_says_so_instead_of_drawing_boxes_over_
 
     assert "too small for the graph" in "\n".join(rows)
     assert "╭" not in "\n".join(rows)
+
+
+def test_a_window_too_small_for_the_picture_forgets_the_selection_so_no_arrow_moves_an_unseen_node():
+    opened = HubPage(_graph_data(), on_close=lambda: None)
+    _rendered(opened, 110, 32)
+    opened.capture_event(_key("right"), None)
+    assert opened.selected == "me"
+
+    rows = _rendered(opened, 30, 12)
+
+    assert opened.selected is None and not opened._picture.nodes
+    assert "·" not in rows[2] or "main" not in rows[2], "the summary does not describe a selected node"
+    opened.capture_event(_key("right"), None)
+    assert opened.selected is None, "an arrow has nothing to move"
 
 
 def test_the_empty_picture_says_whether_there_was_nothing_or_the_read_failed():
@@ -590,6 +611,45 @@ def test_a_stored_session_is_not_something_resume_accepts(monkeypatch, tmp_path)
     asyncio.run(HubCommand()._resume(page(), client, "old-id"))
 
     assert calls == [], "old-id is on disk with no daemon record, so there is nothing to start"
+
+
+def test_a_second_enter_while_the_page_is_still_being_read_again_is_told_so_and_starts_nothing(monkeypatch, tmp_path):
+    """The window after the spawn: the daemon is up but the page still lists it as dead until the read is done."""
+    calls: list[tuple[object, dict[str, object]]] = []
+    client = type("Client", (), {"workspace": tmp_path})()
+
+    async def scenario() -> list[str]:
+        _fake_spawn(monkeypatch, calls)
+        reading = asyncio.Event()
+
+        async def slow_read(self, client):
+            await reading.wait()
+            return data()
+
+        monkeypatch.setattr(HubCommand, "_read", slow_read)
+        command, opened = HubCommand(), _stopped()
+        first = asyncio.ensure_future(command._resume(opened, client, "d-2"))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert len(calls) == 1, "the spawn is done and the read is being waited for"
+        await command._resume(opened, client, "d-2")
+        said = [opened.subtitle or ""]
+        reading.set()
+        await first
+        assert not command._starting, "the id is forgotten once the page shows the result"
+        return said
+
+    assert asyncio.run(scenario()) == ["already starting that one"]
+    assert len(calls) == 1
+
+
+def test_a_client_with_no_workspace_still_shows_the_roster(tmp_path, daemons_on_disk):
+    client = _FakeClient(tmp_path)
+    del client.workspace
+
+    reading = _read(client)
+
+    assert reading.peers
 
 
 def test_a_second_enter_while_the_first_is_starting_is_told_so_and_starts_nothing(monkeypatch, tmp_path):
