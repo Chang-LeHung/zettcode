@@ -30,6 +30,7 @@ async def test_enabled_sessions_offer_the_tool_and_it_only_requests_a_safe_bound
     ctx = context()
     await extension.on_tool(ctx)
     assert set(ctx.tools) == {"compact_context"}
+    assert ctx.tools["compact_context"].returns_description, "the model is told what the tool reports"
     result = await ctx.tools["compact_context"].handler()
     assert "next model call" in result
     assert ctx in extension._requested
