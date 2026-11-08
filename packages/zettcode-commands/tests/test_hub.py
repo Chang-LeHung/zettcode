@@ -107,21 +107,19 @@ def test_stop_and_start_act_on_the_daemon_under_the_mark():
     assert started == ["d-2"], "enter starts a stopped one"
 
 
-def test_enter_on_an_offline_session_resumes_it_and_on_a_live_one_does_nothing():
+def test_a_session_row_has_no_action_only_a_daemon_can_be_started():
     started: list[str] = []
-    opened = HubPage(data(), on_close=lambda: None, on_start=started.append)
+    opened = HubPage(data(), on_close=lambda: None, on_start=started.append, on_stop=started.append)
     opened._show(SESSIONS)
 
-    opened.list.selected = 0  # "main", registered
-    opened.capture_event(_key("enter"), None)
-    assert started == []
-    assert "already running" in opened.subtitle, "an Enter that starts nothing says why"
+    for row in (0, 1):  # "main" registered, "old" stored with no process
+        opened.list.selected = row
+        opened.capture_event(_key("enter"), None)
+        opened.capture_event(_key("s"), None)
 
-    opened.list.selected = 1  # "old", stored and not running
-    opened.capture_event(_key("enter"), None)
-    assert started == ["old-id"], "the id is what resumes it, not the title"
-    assert opened.subtitle == "starting\u2026", "and the page says it began"
-    assert "enter resume" in opened.footer
+    assert started == [], "neither Enter nor s does anything on the sessions tab"
+    assert "enter" not in opened.footer, "and the footer does not offer it"
+    assert "no process" in opened.list.items[1].description
 
 
 def test_a_reading_replaces_the_note_and_an_action_says_its_own_after_it():
@@ -489,17 +487,43 @@ def _fake_spawn(monkeypatch, calls, release=None):
     monkeypatch.setattr(HubCommand, "_read", read)
 
 
-def test_resuming_a_stored_session_starts_a_daemon_in_the_clients_workspace(monkeypatch, tmp_path):
+def _stopped(**changes: object) -> HubPage:
+    """A page whose one daemon is dead: the thing Enter starts."""
+    return page(daemons=(Daemon("d-2", "gone", "dead", model="m", workspace="/work"),), **changes)
+
+
+def test_starting_a_dead_daemon_resumes_its_session_on_the_workspace_and_model_it_had(monkeypatch, tmp_path):
     calls: list[tuple[object, dict[str, object]]] = []
     _fake_spawn(monkeypatch, calls)
     client = type("Client", (), {"workspace": tmp_path / "project"})()
-    opened = page()
+    opened = _stopped()
 
-    asyncio.run(HubCommand()._resume(opened, client, "old-id"))
+    asyncio.run(HubCommand()._resume(opened, client, "d-2"))
     asyncio.run(HubCommand()._resume(opened, client, "nobody"))
 
-    assert calls == [(str(tmp_path / "project"), {"model": None, "resume": "old-id"})], "not the process's cwd"
+    assert calls == [("/work", {"model": "m", "resume": "d-2"})], "its own workspace and model, nothing else"
     assert opened.subtitle == "started abcdef12"
+
+
+def test_a_daemon_with_no_recorded_workspace_resumes_in_the_clients(monkeypatch, tmp_path):
+    calls: list[tuple[object, dict[str, object]]] = []
+    _fake_spawn(monkeypatch, calls)
+    client = type("Client", (), {"workspace": tmp_path / "project"})()
+    opened = page(daemons=(Daemon("d-2", "gone", "dead"),))
+
+    asyncio.run(HubCommand()._resume(opened, client, "d-2"))
+
+    assert calls == [(str(tmp_path / "project"), {"model": None, "resume": "d-2"})]
+
+
+def test_a_stored_session_is_not_something_resume_accepts(monkeypatch, tmp_path):
+    calls: list[tuple[object, dict[str, object]]] = []
+    _fake_spawn(monkeypatch, calls)
+    client = type("Client", (), {"workspace": tmp_path})()
+
+    asyncio.run(HubCommand()._resume(page(), client, "old-id"))
+
+    assert calls == [], "old-id is on disk with no daemon record, so there is nothing to start"
 
 
 def test_a_second_enter_while_the_first_is_starting_is_told_so_and_starts_nothing(monkeypatch, tmp_path):
@@ -509,10 +533,10 @@ def test_a_second_enter_while_the_first_is_starting_is_told_so_and_starts_nothin
     async def scenario() -> list[str]:
         release = asyncio.Event()
         _fake_spawn(monkeypatch, calls, release)
-        command, opened = HubCommand(), page()
-        first = asyncio.ensure_future(command._resume(opened, client, "old-id"))
+        command, opened = HubCommand(), _stopped()
+        first = asyncio.ensure_future(command._resume(opened, client, "d-2"))
         await asyncio.sleep(0)
-        await command._resume(opened, client, "old-id")
+        await command._resume(opened, client, "d-2")
         said = [opened.subtitle or ""]
         release.set()
         await first
