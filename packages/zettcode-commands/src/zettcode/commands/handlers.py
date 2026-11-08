@@ -1,6 +1,6 @@
 """The slash commands that act on the application, written as ordinary plugins.
 
-``/resume``, ``/model``, ``/context`` and the rest used to be methods of the shell. They are plugins now, for
+``/resume``, ``/model`` and the rest used to be methods of the shell. They are plugins now, for
 the reason the shell's rows and the agent's extensions are: the shell asks the loaded plugins for what to show and
 does not know which of it is its own, and a plugin that wants a command of this kind finds the way already laid.
 
@@ -96,18 +96,17 @@ def _switched(written: dict[str, bool]) -> str:
 
 
 class SessionCommands(TuiPlugin):
-    """``/resume``, ``/continue``, ``/fork``, ``/title`` and ``/context``: the session you are in and the ones before it."""
+    """``/resume``, ``/continue``, ``/fork`` and ``/title``: the session you are in and the ones before it."""
 
     name = "session-commands"
-    description = "resume, continue, fork, title and context"
+    description = "resume, continue, fork and title"
 
     def activate(self, ctx: PluginContext) -> None:
-        """Register the five commands."""
+        """Register the four commands."""
         tui = require_tui(ctx)
         tui.register_command("resume", "resume a session: /resume [id]", self.resume)
         tui.register_command("continue", "carry on a request that was cut short", self.continue_)
         tui.register_command("fork", "carry this conversation into a new session", self.fork)
-        tui.register_command("context", "what is filling the context window", self.context, when_busy="now")
         tui.register_command("title", "name this session: /title <name>", self.title, when_busy="now")
 
     async def resume(self, context: CommandContext) -> CommandResult:
@@ -175,56 +174,6 @@ class SessionCommands(TuiPlugin):
         except COMMAND_ERRORS as error:
             return CommandResult(message=str(error))
         return CommandResult(notification=f"renamed to {renamed}", relayout=True)
-
-    async def context(self, context: CommandContext) -> CommandResult:
-        """Show what the next request carries, by source and token share.
-
-        The breakdown comes from the request the runtime assembled for the last model call, so it needs one turn
-        before it exists: before that there is nothing measured to show, and the panel would be a page of zeroes.
-        """
-        host = context.require_host()
-        if host.client.active_model is None:
-            return CommandResult(
-                message="No model is configured yet \u2014 `/config` adds one; `/context` has something to measure "
-                "after the first request."
-            )
-        report = await host.client.session.context()
-        if report is None:
-            return CommandResult(
-                message="No request yet \u2014 send one (or resume a session), then `/context` shows the breakdown."
-            )
-
-        # Imported here and not at the top: the panels import the agent, and the agent imports the plugins.
-        from zettcode.app.ui.config_form import whole_if_whole
-        from zettcode.app.ui.widgets import ContextPage
-
-        def apply(percent: float) -> None:
-            host.close_page()
-            try:
-                model, unwritten = host.client.use_compact_percent(percent)
-            except COMMAND_ERRORS as error:
-                host.transcript.error(str(error))
-                return
-            said = f"{model.name}: compacts at {whole_if_whole(model.compact_percent)}% of the window"
-            said += f" ({round(model.context_window * model.compact_percent / 100):,} tokens)"
-            if unwritten is None:
-                host.transcript.notice(said)
-            else:
-                host.transcript.notice(f"{said} for this run; not remembered: {unwritten}")
-            host.request_layout()
-
-        model = host.client.model
-        return CommandResult(
-            widget=ContextPage(
-                report,
-                path=host.client.session.path,
-                model=model.name,
-                trigger=model.compaction_max_tokens,
-                compact_percent=model.compact_percent,
-                on_apply=apply,
-                on_cancel=host.close_page,
-            )
-        )
 
 
 # -- the model ------------------------------------------------------------------------------------

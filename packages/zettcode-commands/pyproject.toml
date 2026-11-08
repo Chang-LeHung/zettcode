@@ -30,6 +30,7 @@ dependencies = [
 [project.entry-points."zettcode.plugin"]
 commands = "zettcode.commands.plugin:CommandsPlugin"
 usage = "zettcode.commands.usage:UsageCommand"
+context = "zettcode.commands.context:ContextPagePlugin"
 
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"
