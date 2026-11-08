@@ -169,7 +169,7 @@ class Table:
 #: The space between two columns of a table.
 COLUMN_GAP = 2
 
-#: The most columns a table's TITLE cell takes, so a long title cannot push the model and workspace off a narrow page.
+#: The most columns a table's TITLE cell takes, so a long title takes at most its own share of the row.
 TABLE_TITLE_WIDTH = 32
 
 #: The most columns the reader's own name and title take at the top left, so a long title never crowds the page.

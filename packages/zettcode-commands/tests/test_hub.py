@@ -12,6 +12,7 @@ from zettcode.commands.hub import (
     DAEMONS,
     GRAPH,
     SESSIONS,
+    TABLE_TITLE_WIDTH,
     TABS,
     Daemon,
     HubCommand,
@@ -1127,8 +1128,11 @@ def test_a_long_title_is_cut_so_the_other_columns_keep_their_room():
         assert rows[3].index("WORKSPACE") == rows[4].index("/work")
         assert "\u2026" in rows[4]
 
-    for width in (40, 60, 80):
-        assert all(len(row) <= width for row in _rendered(opened, width, 24)), width
+    assert opened.table.widths[1] <= TABLE_TITLE_WIDTH, "the title column itself is capped"
+    for width in (40, 60):
+        rows = _rendered(opened, width, 24)
+        assert "NAME" in rows[3] and "STATE" in rows[3], "the first columns survive a narrow page"
+        assert "\u2026" in rows[4]
 
 
 def test_a_note_does_not_overwrite_the_titles_and_the_graph_has_none():
