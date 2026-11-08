@@ -102,7 +102,7 @@ def test_stop_and_start_act_on_the_daemon_under_the_mark():
     dead._show(DAEMONS)
     dead.capture_event(_key("enter"), None)
 
-    assert started == ["d-2"], "enter starts a stopped one"
+    assert started == ["d-2"], "enter starts an offline daemon"
 
 
 def test_a_session_row_has_no_action_only_a_daemon_can_be_started():
@@ -490,7 +490,7 @@ def test_the_sessions_tab_is_the_roster_and_no_stored_session_is_added_to_it(tmp
     assert not hasattr(reading, "offline")
 
 
-def test_the_daemons_tab_lists_running_stopped_and_offline_ones(tmp_path, daemons_on_disk):
+def test_the_daemons_tab_lists_running_daemons_then_every_one_with_no_process(tmp_path, daemons_on_disk):
     """Offline: stored in this workspace, and nothing runs it. The reader's own session, a registered peer and the
     session of a daemon record (`run-1`, `dead-1`, whatever its status) are each accounted for already."""
     reading = _read(_FakeClient(tmp_path))
@@ -524,6 +524,74 @@ def test_the_cached_peers_stand_in_for_the_roster_only_when_the_graph_could_not_
 
     assert "p-1" not in {daemon.session_id for daemon in reading.daemons}, "the best word there is says it runs"
     assert "old-9" in {daemon.session_id for daemon in reading.daemons if daemon.status == "offline"}
+
+
+def test_enter_and_s_act_on_the_row_under_the_mark_by_its_id_not_by_its_position_in_a_filtered_table():
+    """H31: the third daemon is the first row once the table is filtered to it, and it is the third that is acted on.
+    With one daemon left in the table a position would have passed, so there are three."""
+    acted: list[str] = []
+    opened = HubPage(
+        data(
+            daemons=(
+                Daemon("id-one", "alpha", "idle"),
+                Daemon("id-two", "bravo", "idle"),
+                Daemon("id-three", "charlie", "offline", workspace="/w"),
+            )
+        ),
+        on_close=lambda: None,
+        on_stop=lambda session_id: acted.append(f"stop {session_id}"),
+        on_start=lambda session_id: acted.append(f"start {session_id}"),
+    )
+    opened._show(DAEMONS)
+    opened.capture_event(_text("/"), None)
+    _typed(opened, "charlie")
+    opened.capture_event(_key("enter"), None)  # hold the filter
+    assert _labels(opened) == ["charlie"] and opened.list.selected == 0
+
+    opened.capture_event(_key("enter"), None)
+    opened.capture_event(_text("s"), None)
+
+    assert acted == ["start id-three", "stop id-three"], "the third daemon, not the first one of the whole table"
+
+    opened.capture_event(_key("escape"), None)  # the filter is cleared and the mark is on the first row of the three
+    opened.capture_event(_key("enter"), None)
+    assert acted == ["start id-three", "stop id-three"], "alpha is running, so Enter starts nothing"
+    assert opened.subtitle == "alpha is running; enter starts an offline one"
+
+
+def test_an_offline_session_is_started_end_to_end_from_the_reading_through_enter_to_the_spawn(
+    monkeypatch, tmp_path, daemons_on_disk
+):
+    """H30: `_read` makes the offline row, `Enter` starts it, and `spawn_daemon` is called for its session in the
+    reader's workspace, on the first model. Each half has its own test; this is the seam between them."""
+    calls: list[tuple[object, dict[str, object]]] = []
+    client = _FakeClient(tmp_path)
+
+    async def scenario() -> HubPage:
+        from zettcode.sdk import daemons
+
+        async def spawn(workspace, **kwargs):
+            calls.append((workspace, kwargs))
+            return type("Info", (), {"session_id": "abcdef123456"})()
+
+        monkeypatch.setattr(daemons, "spawn_daemon", spawn)
+        command = HubCommand()
+        reading = await command._read(client)
+        opened = HubPage(reading, on_close=lambda: None)
+        opened.on_start = lambda session_id: command._start(command._resume(opened, client, session_id), opened)
+        opened._show(DAEMONS)
+        row = next(i for i, item in enumerate(opened.list.items) if item.value == "old-9")
+        opened.list.selected = row
+
+        opened.capture_event(_key("enter"), None)
+        for _ in range(20):
+            await asyncio.sleep(0)
+        return opened
+
+    opened = asyncio.run(scenario())
+
+    assert calls == [(str(tmp_path), {"model": None, "resume": "old-9"})], calls
+    assert opened.subtitle is not None and opened.subtitle.startswith("started abcdef12")
 
 
 def test_a_table_cut_at_the_limit_says_so_and_the_saying_is_not_a_row_anything_acts_on(tmp_path, daemons_on_disk):
@@ -900,12 +968,12 @@ def test_a_refresh_replaces_refreshing_with_the_new_readings_time_and_keeps_a_fa
     opened.note("refreshing\u2026")
 
     monkeypatch.setattr(HubCommand, "_read", read_ok)
-    asyncio.run(HubCommand()._reload(opened, object()))
+    asyncio.run(HubCommand()._refresh(opened, object()))
     assert opened.subtitle is None, "refreshing is gone once the read is done"
     assert "read 12:34:56 \u00b7 23 ms" in _rendered(opened, 110, 32)[1], "and the time is at the top right"
 
     monkeypatch.setattr(HubCommand, "_read", read_bad)
-    asyncio.run(HubCommand()._reload(opened, object()))
+    asyncio.run(HubCommand()._refresh(opened, object()))
     assert opened.subtitle == "the message graph cannot be read: no broker"
 
 
@@ -1190,7 +1258,7 @@ def test_every_word_has_to_match_and_the_order_does_not_matter():
     assert _labels(opened) == [], "no row has both"
 
 
-def test_the_daemons_tab_searches_stopped_and_offline_rows_by_title_and_id_too():
+def test_the_daemons_tab_searches_offline_rows_by_title_and_id_too():
     opened = _searchable()
     opened._show(DAEMONS)
     opened.capture_event(_text("/"), None)
@@ -1323,3 +1391,114 @@ def test_a_refresh_keeps_the_search_and_filters_the_new_reading():
 
     assert opened.queries[SESSIONS] == "read" and _labels(opened) == ["review", "newcomer"]
     assert opened.total == 3
+
+
+def test_pasting_into_the_search_takes_the_text_as_one_line_of_words():
+    from zettcode.tui import PasteEvent
+
+    opened = _searchable()
+    opened._show(SESSIONS)
+    opened.capture_event(_text("/"), None)
+
+    opened.capture_event(PasteEvent(text="  01a2-bbbb\n"), None)
+
+    assert opened.queries[SESSIONS] == "01a2-bbbb" and _labels(opened) == ["docs"], "a pasted id finds its session"
+
+    opened.capture_event(PasteEvent(text="x\n\ty"), None)
+    assert opened.queries[SESSIONS] == "01a2-bbbbx y", "newlines and tabs never reach the query line"
+    assert "\n" not in opened.queries[SESSIONS] and "\t" not in opened.queries[SESSIONS]
+
+
+def test_a_query_longer_than_the_row_keeps_its_tail_the_cursor_and_the_count():
+    opened = _searchable()
+    opened._show(SESSIONS)
+    opened.capture_event(_text("/"), None)
+    long = "a-very-long-search-query-that-runs-well-past-the-end-of-the-row"
+    _typed(opened, long)
+
+    row = _rendered(opened, 60, 24)[2]
+
+    assert "\u258f" in row, "the cursor is on the row"
+    assert "0 of 3" in row, "and so is how many rows the search keeps"
+    assert long[-12:] in row, "the end of what is being typed, not the beginning"
+    assert long[:12] not in row and "\u2026" in row, "the head is what went, and an ellipsis says so"
+    assert len(row.rstrip()) <= 60 - 2
+
+
+def test_a_wide_query_is_cut_by_columns_not_characters():
+    opened = _searchable()
+    opened._show(SESSIONS)
+    opened.capture_event(_text("/"), None)
+    _typed(opened, "评审机器人评审机器人评审机器人评审机器人评审机器人评审机器人")
+
+    row = _rendered(opened, 50, 24)[2]
+
+    assert "\u258f" in row and "0 of 3" in row and "\u2026" in row
+
+
+def test_a_long_note_after_a_search_is_cut_with_an_ellipsis_and_does_not_hide_the_search():
+    opened = _searchable()
+    opened._show(SESSIONS)
+    opened.capture_event(_text("/"), None)
+    _typed(opened, "read")
+    opened.note("the message graph cannot be read: connection refused by the session broker on port 65076")
+
+    row = _rendered(opened, 80, 24)[2]
+
+    assert "/ read" in row and "2 of 3" in row, "the search comes first"
+    assert "\u2026" in row and row.rstrip().endswith("\u2026"), "the note is cut where it ends, and says so"
+
+
+def test_a_row_too_narrow_for_the_count_gives_the_query_all_of_it():
+    opened = _searchable()
+    opened._show(SESSIONS)
+    opened.capture_event(_text("/"), None)
+    _typed(opened, "docs")
+
+    row = _rendered(opened, 14, 24)[2]
+
+    assert "/ docs" in row and "\u258f" in row
+
+
+def test_the_tail_helper_counts_columns_and_always_leaves_the_end():
+    from zettcode.commands.hub import _tail
+    from zettcode.tui.render import display_width
+
+    assert _tail("abc", 10) == "abc" and _tail("abc", 3) == "abc"
+    assert _tail("abcdefgh", 4) == "\u2026fgh" and _tail("abcdefgh", 1) == "\u2026" and _tail("abc", 0) == ""
+    assert _tail("评审机器人", 5) == "\u2026器人", "an ellipsis (1 column) and two wide glyphs (2 + 2)"
+    assert _tail("评审机器人评审", 6) == "\u2026评审", "the end is kept, whatever the head was"
+    assert _tail("评审机器人", 4) == "\u2026人", "a second glyph would not fit, and half of one is never drawn"
+    for width in range(1, 12):
+        assert display_width(_tail("评审机器人评审abc", width)) <= width, width
+
+
+def test_the_notice_that_older_sessions_were_left_out_keeps_the_lists_the_same_length_and_no_search_keeps_it():
+    from zettcode.commands import hub
+
+    many = tuple(Daemon(f"o{n}", f"stored {n}", "offline", workspace="/w") for n in range(3))
+    whole = hub._daemon_table(data(daemons=many, offline_cut=True))
+
+    assert len(whole.items) == len(whole.finds) == 4, "three sessions and the notice, each with a `find`"
+    assert whole.items[-1].disabled and whole.finds[-1] == ""
+    assert [item.label for item in whole.filtered("stored").items] == ["stored 0", "stored 1", "stored 2"]
+    assert whole.filtered("older").items == [], "the notice is not a match for what it says"
+    assert whole.filtered("   ") is whole, "a blank search is the whole table, notice included"
+
+
+def test_a_table_that_is_only_the_notice_marks_nothing_and_enter_has_no_daemon_to_start():
+    started: list[str] = []
+    opened = HubPage(data(daemons=(), offline_cut=True), on_close=lambda: None, on_start=started.append)
+
+    opened._show(DAEMONS)
+
+    assert [item.disabled for item in opened.list.items] == [True], "the only row is the notice"
+    assert opened.list.selected == -1, "and it is not marked"
+    opened.capture_event(_key("enter"), None)
+    assert started == [] and opened.subtitle == "no daemon under the mark"
+
+
+def test_the_steps_of_a_reading_are_named_once_and_each_has_its_letter():
+    from zettcode.commands.hub import STEP_LETTERS, STEPS
+
+    assert tuple(STEP_LETTERS) == STEPS and len(set(STEP_LETTERS.values())) == len(STEPS)

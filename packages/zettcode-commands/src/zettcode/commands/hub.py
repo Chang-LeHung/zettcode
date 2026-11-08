@@ -37,7 +37,7 @@ from zettcode.commands import hub_graph
 from zettcode.commands.hub_graph import Link, Node, Picture
 from zettcode.plugin_api.commands import CommandContext, CommandHost, CommandResult
 from zettcode.plugin_api.plugin import TuiPlugin
-from zettcode.tui import SEPARATOR, Canvas, ListItem, ListPage, Rect, TextEvent, Theme, event_key
+from zettcode.tui import SEPARATOR, Canvas, ListItem, ListPage, PasteEvent, Rect, TextEvent, Theme, event_key
 from zettcode.tui.render import Style, display_width, truncate
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -141,23 +141,28 @@ class Table:
         """Return the rows that contain every word of ``query``, ignoring case; the columns keep their widths.
 
         A blank query is every row. The widths stay those of the whole table, so the columns do not move as the
-        reader types.
+        reader types. A row with no ``find`` (the line that says older sessions were left out) matches no word, so
+        a search leaves it out, deliberately: it describes the whole table and not the rows that are left.
         """
         words = query.lower().split()
         if not words:
             return self
-        kept = [item for item, find in zip(self.items, self.finds, strict=False) if all(word in find for word in words)]
-        return Table(
-            kept, self.titles, self.widths, tuple(find for find in self.finds if all(w in find for w in words))
-        )
+        kept = [
+            (item, find) for item, find in zip(self.items, self.finds, strict=True) if all(w in find for w in words)
+        ]
+        return Table([item for item, _ in kept], self.titles, self.widths, tuple(find for _, find in kept))
 
 
 #: The space between two columns of a table.
 COLUMN_GAP = 2
 
-#: The letters a narrow page writes the steps of a reading with, in the order :meth:`HubCommand._read` takes them:
+#: The steps of a reading, in the order :meth:`HubCommand._read` takes them. A new step is added here, which is a
+#: decision to make where it can be seen: ``lap`` refuses a name that is not in it, and the letters below go with it.
+STEPS = ("peers", "daemons", "sessions", "graph", "picture")
+
+#: The letters a narrow page writes the steps of a reading with:
 #: ``p0 d3 s1 g19 pic0`` is peers 0 ms, daemons 3, sessions 1, graph 19 and the picture 0.
-STEP_LETTERS = {"peers": "p", "daemons": "d", "sessions": "s", "graph": "g", "picture": "pic"}
+STEP_LETTERS = dict(zip(STEPS, ("p", "d", "s", "g", "pic"), strict=True))
 
 
 def _table(titles: tuple[str, ...], rows: Sequence[tuple[str, str, str, tuple[str, ...], str]]) -> Table:
@@ -206,12 +211,9 @@ def _daemon_table(data: HubData) -> Table:
     rows = []
     for daemon in data.daemons:
         # No process is one word, whether it was a daemon that was stopped or a session that was only stored: the
-        # reader sees the same thing and `Enter` does the same thing. A record that says it is `unknown` keeps that.
-        if daemon.status in (OFFLINE, "dead"):
-            state = OFFLINE
-        else:
-            state = OFFLINE if daemon.status in GONE else hub_graph.state_of(daemon.status, "")
-        # The state word already says working or idle; the daemon's own word follows only when it says more.
+        # reader sees the same thing and `Enter` does the same thing, which is what STARTABLE says.
+        state = OFFLINE if daemon.status in STARTABLE else hub_graph.state_of(daemon.status, "")
+        # The state word already says working or idle or offline; the daemon's own word follows only when it says more.
         said = state if daemon.status in (state, "dead") else f"{state} ({daemon.status})"
         rows.append(
             (
@@ -224,10 +226,10 @@ def _daemon_table(data: HubData) -> Table:
         )
     table = _table(("NAME", "STATE", "MODEL", "WORKSPACE"), rows)
     if data.offline_cut:
-        # A row of words, not a session: it cannot be marked, so no key acts on it, and no search finds it.
-        table.items.append(
-            ListItem(None, "\u2026", f"only the {OFFLINE_LIMIT} newest stored sessions are listed", disabled=True)
-        )
+        # A row of words, not a session: it cannot be marked, so no key acts on it, and it has no `find`, so no search
+        # keeps it. The two lists stay the same length.
+        notice = ListItem(None, "\u2026", f"only the {OFFLINE_LIMIT} newest stored sessions are listed", disabled=True)
+        table = Table([*table.items, notice], table.titles, table.widths, (*table.finds, ""))
     return table
 
 
@@ -349,20 +351,33 @@ class HubPage(ListPage):
 
     def _draw_search_and_note(self, canvas: Canvas, theme: Theme, room: int) -> None:
         """Draw the one row under the tabs of a table: the search (what is typed, and how many rows it keeps) and the
-        note of the last action after it, or the note alone when there is no search."""
+        note of the last action after it, or the note alone when there is no search.
+
+        The row has to hold what the reader is typing, so that comes first and is never what gets cut: a query too
+        long for the row loses its head and keeps its tail and the cursor, then the count is kept, and the note gets
+        what is left, with an ellipsis where it is cut.
+        """
         query, x, y = self.queries[self.tab], self.rect.x + 2, self.rect.y + 2
         notice = Style(foreground=theme.accent_bright, background=theme.surface_alt, bold=True)
         quiet = Style(foreground=theme.muted, background=theme.surface_alt)
+        used = 0
         if self.searching or query:
-            text = f"/ {query}" + ("\u258f" if self.searching else "")
-            canvas.draw_text(x, y, text, notice, max_width=room)
-            x += display_width(text)
             kept = sum(1 for item in self.list.items if not item.disabled)
             count = f"  {kept} of {self.total}"
-            canvas.draw_text(x, y, count, quiet, max_width=max(0, room - (x - self.rect.x - 2)))
-            x += display_width(count) + 3
-        if self.subtitle is not None:
-            canvas.draw_text(x, y, self.subtitle, notice, max_width=max(0, room - (x - self.rect.x - 2)))
+            keep_count = room - display_width(count) >= 8  # a row too narrow for both gives the query all of it
+            typed = _tail(
+                query + ("\u258f" if self.searching else ""), room - 2 - (display_width(count) if keep_count else 0)
+            )
+            prompt = f"/ {typed}"
+            canvas.draw_text(x, y, prompt, notice, max_width=room)
+            used = display_width(prompt)
+            if keep_count:
+                canvas.draw_text(x + used, y, count, quiet, max_width=room - used)
+                used += display_width(count)
+            used += 3  # air between the search and the note
+        left = room - used
+        if self.subtitle is not None and left >= 6:
+            canvas.draw_text(x + used, y, truncate(self.subtitle, left), notice, max_width=left)
 
     def _draw_titles(self, canvas: Canvas, theme: Theme) -> None:
         """Draw the title of each column over the list, lined up with the cells under it.
@@ -523,14 +538,12 @@ class HubPage(ListPage):
         rows = self.table.items
         self.list.set_items(rows)
         # The mark the tab had, kept off a row nothing can act on: the one that says older sessions were left out can
-        # take its index when a refresh leaves fewer rows, so the nearest row before it that can be marked is used.
-        if not rows:
-            self.list.selected = -1
-        else:
-            wanted = min(self.marks[tab], len(rows) - 1)
-            while wanted > 0 and rows[wanted].disabled:
-                wanted -= 1
-            self.list.selected = wanted
+        # take its index when a refresh leaves fewer rows, so the nearest row before it that can be marked is used,
+        # and none is marked when that row is all there is.
+        wanted = min(self.marks[tab], len(rows) - 1)
+        while wanted > 0 and rows[wanted].disabled:
+            wanted -= 1
+        self.list.selected = wanted if rows and not rows[wanted].disabled else -1
         self.footer = self._footer()
         self._repaint()
 
@@ -597,6 +610,11 @@ class HubPage(ListPage):
         if key == "backspace":
             self._set_query(query[:-1])
             return True
+        if isinstance(event, PasteEvent):
+            # A pasted id is the likeliest thing to type here. A paste carries newlines and a text event does not, and
+            # the search splits on any whitespace anyway, so the query takes the paste as one line of words.
+            self._set_query(query + " ".join(event.text.split()))
+            return True
         if isinstance(event, TextEvent):
             self._set_query(query + event.text)
             return True
@@ -645,7 +663,7 @@ class HubPage(ListPage):
             self.note("starting\u2026")
             self.on_start(chosen.session_id)
         else:
-            self.note(f"{chosen.label or chosen.session_id[:8]} is running; enter starts a stopped or offline one")
+            self.note(f"{chosen.label or chosen.session_id[:8]} is running; enter starts an offline one")
         return None
 
 
@@ -687,7 +705,7 @@ class HubCommand(TuiPlugin):
         page = HubPage(
             data,
             on_close=self._closer(host),
-            on_refresh=lambda: self._start(self._reload(page, client), page),
+            on_refresh=lambda: self._start(self._refresh(page, client), page),
             on_stop=lambda session_id: self._start(self._stop(page, client, session_id), page),
             on_start=lambda session_id: self._start(self._resume(page, client, session_id), page),
         )
@@ -728,13 +746,12 @@ class HubCommand(TuiPlugin):
             page.note(str(error))
 
     async def _refresh(self, page: HubPage, client: object) -> None:
-        """Read everything again, and show it."""
-        page.set_data(await self._read(client))
+        """Read everything again, and show it.
 
-    async def _reload(self, page: HubPage, client: object) -> None:
-        """``r``: read everything again. The page said "refreshing" when the key was pressed; the new reading's own
-        time and duration, at the top right, say it is done, and differ from the last one's if it was pressed twice."""
-        await self._refresh(page, client)
+        ``r`` runs this too: the page said "refreshing" when the key was pressed, and the new reading's own time and
+        duration, at the top right, say it is done (and differ from the last one's if it was pressed twice).
+        """
+        page.set_data(await self._read(client))
 
     async def _stop(self, page: HubPage, client: object, session_id: str) -> None:
         """Stop one daemon, then show what that changed."""
@@ -746,11 +763,10 @@ class HubCommand(TuiPlugin):
         page.note(said)
 
     async def _resume(self, page: HubPage, client: object, session_id: str) -> None:
-        """Start a daemon on a session nothing is running, resuming it: a daemon whose process is gone, or a session
-        that is only stored.
+        """Start a daemon on an offline session, resuming it: one whose daemon was stopped, or one that is only stored.
 
-        A stopped daemon starts on the workspace and model its record names; an offline session has no record, so it
-        starts in the reader's own workspace (the store is read for that workspace) on the first configured model.
+        A daemon that was stopped starts on the workspace and model its record names; a stored session has no record,
+        so it starts in the reader's own workspace (the store is read for that workspace) on the first configured model.
         A record with no workspace falls back to the reader's own, and one with no model to the first configured.
         One start per row at a time, until the page shows it running: a second ``Enter`` while the first is starting
         or the page is being read again is told so, since two processes would share one record and one session lock.
@@ -804,6 +820,8 @@ class HubCommand(TuiPlugin):
 
         def lap(name: str) -> None:
             nonlocal last
+            if name not in STEPS:
+                raise ValueError(f"{name!r} is not a step of a reading: add it to STEPS, with its letter")
             now = time.perf_counter()
             steps.append((name, round((now - last) * 1000)))
             last = now
@@ -896,6 +914,26 @@ class HubCommand(TuiPlugin):
             took=round((time.perf_counter() - began) * 1000),
             steps=tuple(steps),
         )
+
+
+def _tail(text: str, width: int) -> str:
+    """Return the last ``width`` columns of ``text``, with an ellipsis in front where the head was cut.
+
+    Columns, not characters: a wide glyph is two. What is typed ends at the cursor, so the end is what has to stay.
+    """
+    if width <= 0:
+        return ""
+    if display_width(text) <= width:
+        return text
+    kept: list[str] = []
+    used = 1  # the ellipsis
+    for character in reversed(text):
+        step = display_width(character)
+        if used + step > width:
+            break
+        kept.append(character)
+        used += step
+    return "\u2026" + "".join(reversed(kept))
 
 
 def _is_in(workspace: str, here: Path) -> bool:

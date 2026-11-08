@@ -182,6 +182,15 @@ class Record:
     Reading a record reads its state once, at construction, and whether the process is there: a command that lists
     ten daemons asks the disk ten times, and nothing between two reads of one record can change the answer without
     the file changing too.
+
+    **When a record reads as alive.** Only while its pid answers *and* its heartbeat is fresh; either alone is not
+    proof (a pid is reused, and a zombie its parent has not reaped still answers signal zero). A record that is left
+    behind on purpose (a stop that asked to keep it) has no folder going away to say the process has stopped, so the
+    process says it itself: :meth:`end_beat` is the last thing it writes, and **nothing may beat after it** — which is
+    why ``Daemon.mark`` refuses every state but ``stopping`` once the daemon is stopping, ``take`` and ``_answer``
+    refuse work, and the stop paths in :mod:`.process` that find the process already gone take the beat away too.
+    A new writer of this folder that touches the heartbeat has to respect that, or a stopped daemon reads as running
+    for the thirty seconds a beat stays fresh (invariant H29).
     """
 
     def __init__(self, folder: Path) -> None:

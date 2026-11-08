@@ -98,7 +98,9 @@ def test_the_busiest_are_kept_and_the_readers_own_session_is_never_the_one_cut()
     assert [node.key for node in picture.nodes] == [node.key for node in graph.rank(nodes, links)[: len(picture.nodes)]]
 
 
-@pytest.mark.parametrize("size", [(20, 5), (40, 10), (76, 17), (56, 13), (110, 32), (200, 50)])
+# (20, 5) and (40, 10) are not here: `layout` draws nothing or one box in them, and the loops below would pass over an
+# empty list. `test_a_window_too_small...` in test_hub.py and `test_two_wide_boxes_in_the_narrowest_area...` cover them.
+@pytest.mark.parametrize("size", [(76, 17), (56, 13), (110, 32), (200, 50)])
 @pytest.mark.parametrize("count", [3, 8, 16, 30])
 def test_boxes_never_touch_and_stay_inside_the_area_at_any_size(size, count):
     width, height = size
