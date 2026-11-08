@@ -1,9 +1,9 @@
 """The conversation's entries: plain data, one class for each way a row can look.
 
 An entry says *what happened* — a user asked, a tool ran, the model is thinking —
-and nothing about how that is drawn. The drawing is ``presenters.py``, which looks
-an entry up by its :class:`EntryKind`; the list of entries, and what the agent
-does to it, is ``transcript.py``.
+and nothing about how that is drawn. The drawing is ``presenters.py``, whose chain each presenter takes part in
+through ``handle``, claiming a row by its :class:`EntryKind` or, for a tool, by its name; the list of entries, and
+what the agent does to it, is ``transcript.py``.
 
 Two base classes carry what the concrete ones share. :class:`Entry` is identity
 and a place for the presenter to leave its rendered rows; :class:`TimedEntry`
@@ -222,7 +222,7 @@ class ToolEntry(TimedEntry):
 
     A tool whose row shows something of its own has an entry of its own that adds it
     (:class:`ReadEntry`, :class:`WriteEntry`, :class:`EditEntry`); they are all ``tool`` rows,
-    folded and timed alike, and the presenter registry finds the one that draws each by its class.
+    folded and timed alike, and the presenter for each claims it by the tool's own name.
     Which class a call gets is decided by the render handler that describes it
     (:class:`~.rendering.ToolRow`), so nothing here, and nothing in the transcript, names a tool.
     """

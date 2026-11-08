@@ -64,7 +64,7 @@ class Transcript(OneOffMixin, FoldMixin, StreamMixin, EntryLog, CommandTranscrip
             clock: Time source for row durations, injectable for tests.
             renderers: Chain that phrases tool rows; tests can pass their own to
                 pin the wording a row would show.
-            presenters: How each kind of entry is drawn; the view reads this so a
+            presenters: How each row is drawn; the view reads this so a
                 transcript given other presenters is drawn with them.
             max_entries: Conversation entries kept for display; older ones are
                 dropped, while the session file keeps the whole tree. Must be

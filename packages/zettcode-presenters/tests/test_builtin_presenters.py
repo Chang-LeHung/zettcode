@@ -13,9 +13,32 @@ from zettcode.tui.render import display_width
 
 def test_every_kind_of_row_has_a_builtin_presenter():
     """A transcript with a kind nobody draws raises at the first row of it; that is how a new kind is caught."""
-    drawn = {presenter.kind for presenter in DEFAULT_PRESENTERS.presenters}
+    from zettcode.plugin_api.entries import (
+        ChangesEntry,
+        MarkdownEntry,
+        RelayEntry,
+        TextEntry,
+        ThinkingEntry,
+        ToolEntry,
+        WaitEntry,
+    )
 
-    assert set(EntryKind) == drawn, set(EntryKind) ^ drawn
+    entries = (
+        TextEntry(id=1, kind=EntryKind.WELCOME, text="hello"),
+        TextEntry(id=2, kind=EntryKind.USER, text="hello"),
+        TextEntry(id=3, kind=EntryKind.NOTICE, text="saved"),
+        TextEntry(id=4, kind=EntryKind.ANNOUNCEMENT, text="changed"),
+        MarkdownEntry(id=5, kind=EntryKind.ANSWER),
+        MarkdownEntry(id=6, kind=EntryKind.MESSAGE),
+        WaitEntry(id=7, started_at=0.0),
+        ThinkingEntry(id=8, text="reasoning"),
+        ToolEntry(id=9, call_id="c", tool="a-tool", title="Ran a-tool"),
+        ChangesEntry(id=10),
+        RelayEntry(id=11, peer="peer", text="hello"),
+    )
+
+    assert {entry.kind for entry in entries} == set(EntryKind)
+    assert all(DEFAULT_PRESENTERS.for_entry(entry) is not None for entry in entries)
 
 
 def test_the_builtin_presenters_are_ordinary_presenters_at_the_lowest_priority():
@@ -26,8 +49,10 @@ def test_the_builtin_presenters_are_ordinary_presenters_at_the_lowest_priority()
 
 def test_the_default_registry_is_the_builtins_and_a_plugin_can_replace_one_of_them():
     class Louder(Presenter[TextEntry]):
-        kind = EntryKind.NOTICE
         priority = 1
+
+        def handle(self, entry, next):
+            return self if entry.kind is EntryKind.NOTICE else next(entry)
 
         def lines(self, entry, width, theme, frame):
             return render_entry(entry, width, theme, frame)[:0]
@@ -38,7 +63,7 @@ def test_the_default_registry_is_the_builtins_and_a_plugin_can_replace_one_of_th
 
     assert registry.for_entry(entry) is not louder
     assert registry.replacing(louder).for_entry(entry) is louder
-    assert DEFAULT_PRESENTERS.for_entry(entry).kind is EntryKind.NOTICE
+    assert DEFAULT_PRESENTERS.for_entry(entry).__class__.__name__ == "NoticePresenter"
 
 
 @pytest.mark.parametrize("kind", [EntryKind.NOTICE, EntryKind.USER, EntryKind.ANNOUNCEMENT])

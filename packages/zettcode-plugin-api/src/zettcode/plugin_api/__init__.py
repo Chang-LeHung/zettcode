@@ -78,6 +78,7 @@ _EXPORTS = {
     "ModelState": ".state",
     "MouseAction": "zettcode.tui",
     "MouseEvent": "zettcode.tui",
+    "NextPresenter": ".presenters",
     "NoticeLevel": ".entries",
     "Pet": ".pets",
     "PetSource": ".pets",
@@ -236,7 +237,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .panels import bottom_panel, pressed
     from .pets import Pet, PetSource
     from .plugin import TuiPlugin, TuiPlugins
-    from .presenters import CONTENT_INDENT, Presenter, Presenters
+    from .presenters import CONTENT_INDENT, NextPresenter, Presenter, Presenters
     from .rows import Row
     from .state import (
         Activity,
@@ -330,6 +331,7 @@ __all__ = [
     "ModelState",
     "MouseAction",
     "MouseEvent",
+    "NextPresenter",
     "NoticeLevel",
     "Pet",
     "PetSource",

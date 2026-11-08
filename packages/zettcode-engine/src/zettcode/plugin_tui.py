@@ -81,7 +81,7 @@ class TuiGroup(ABC):
 
     @abstractmethod
     def register_presenter(self, presenter: Any) -> Any:
-        """Draw a kind, one family inside a kind, or the fallback for rows nobody else claims."""
+        """Add a presenter to the chain; its ``handle`` claims a row or passes it to the next presenter."""
 
     @abstractmethod
     def register_header_left(self, builder: Any, *, name: str = "", override: bool = False) -> tuple[Any, bool]:

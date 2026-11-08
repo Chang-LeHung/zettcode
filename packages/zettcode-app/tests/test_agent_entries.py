@@ -253,7 +253,7 @@ def test_a_running_reasoning_or_tool_row_is_not_rebuilt_by_an_animation_step():
     row itself has to rebuild, which is the half that keeps the sweep honest.
     """
     thinking = ThinkingEntry(id=1, text="reasoning", started_at=0.0, duration=1.0)
-    tool = ToolEntry(id=2, call_id="c1", tool="read_file", title="Read app.py", started_at=0.0, duration=1.0)
+    tool = ReadEntry(id=2, call_id="c1", tool="read_file", title="Read app.py", started_at=0.0, duration=1.0)
     waiting = WaitEntry(id=3, started_at=0.0, duration=1.0)
 
     thinking_block = block_for(thinking, 48, DARK, frame=0)
@@ -346,13 +346,13 @@ def test_a_settled_wait_row_is_not_rebuilt_by_an_animation_step():
 
 def test_a_tool_row_rebuilds_for_every_field_the_renderer_reads():
     """The tool row's words, body, state, and language are all keyed."""
-    entry = ToolEntry(id=1, call_id="c1", tool="read_file", title="Read app.py")
+    entry = ReadEntry(id=1, call_id="c1", tool="read_file", title="Read app.py")
     before = _painted(entry)
     entry.title = "Read main.py"
     assert _painted(entry) != before
 
     # A running row refuses to open, so expansion is observed on a settled row.
-    entry = ToolEntry(
+    entry = ReadEntry(
         id=2,
         call_id="c2",
         tool="read_file",
@@ -364,7 +364,7 @@ def test_a_tool_row_rebuilds_for_every_field_the_renderer_reads():
     entry.expanded = True
     assert _painted(entry) != before
 
-    entry = ToolEntry(
+    entry = ReadEntry(
         id=3,
         call_id="c3",
         tool="read_file",
@@ -381,7 +381,7 @@ def test_a_tool_row_rebuilds_for_every_field_the_renderer_reads():
     entry.added, entry.removed = 12, 3
     assert _painted(entry) != before, "the counts change what the row looks like"
 
-    entry = ToolEntry(id=4, call_id="c4", tool="read_file", title="Read app.py", started_at=0.0, duration=1.0)
+    entry = ReadEntry(id=4, call_id="c4", tool="read_file", title="Read app.py", started_at=0.0, duration=1.0)
     before = _painted(entry)
     entry.status = EntryStatus.COMPLETED
     assert _painted(entry) != before
@@ -400,5 +400,5 @@ def test_a_tool_row_rebuilds_for_every_field_the_renderer_reads():
     entry.language = None
     assert _painted(entry) != before
 
-    entry = ToolEntry(id=6, call_id="c6", tool="read_file", title="Read app.py", started_at=0.0)
+    entry = ReadEntry(id=6, call_id="c6", tool="read_file", title="Read app.py", started_at=0.0)
     assert _painted(entry, frame=1) == _painted(entry, frame=0)

@@ -548,7 +548,8 @@ from zettcode.plugin_api import Span, Style, TextLine
 
 
 class QuietNotice(Presenter):
-    kind = EntryKind.NOTICE
+    def handle(self, entry, next):
+        return self if entry.kind is EntryKind.NOTICE else next(entry)
 
     def lines(self, entry, width, theme, frame):
         return [TextLine((Span(entry.text, Style(foreground=theme.muted)),))]
@@ -561,19 +562,25 @@ class QuietNotices(TuiPlugin):
         ctx.tui.register_presenter(QuietNotice())
 ```
 
-A presenter names a `kind` (one member of `EntryKind`), or an `entry_type` when it draws one family
-inside a kind — the edit row among the tool rows, say — or neither, which makes it the fallback for rows no earlier
-handler claims. `lines` receives the entry, the columns
+A presenter's `handle(entry, next)` is its whole claim: return `self` to draw the entry, or call
+`next(entry)` to pass it on. The registry only orders the chain and starts it — it never matches a
+row itself. A presenter that always returns `self` is the fallback, the last one asked when nothing
+before it claimed the row.
+
+The built-in presenters claim by `entry.kind`; the tool presenters claim by the tool's own name
+(`entry.tool`), so `read_file`, `edit`, `bash`, `grep` and the rest each have a presenter of their
+own, and `ToolPresenter` is the fallback for any tool none of them named. A plugin can replace one
+tool without touching the row of another.
+
+`lines` receives the entry, the columns
 available, the palette, and an animation step, and returns `TextLine`s; a width is a budget, so wrap
 or cut. A presenter that animates reads `frame`; one that does not should give the same rows for it.
 
 When more than one presenter could draw the same rows, the higher `priority` wins, and an equal
 priority goes to the later registration. That is why the built-ins are the default: priority 0,
 registered first. A plugin that wants to beat another plugin raises `priority` on its presenter's
-class; drawing only one family never needs a priority, because registering a family is already the
-narrower claim. A presenter for a whole kind
-claims every row of it, so it beats the families registered before it at its priority; a family
-registered after it, or at a higher priority, keeps its own rows.
+class; drawing only one family never needs a priority, because registering it later is already the
+narrower claim.
 
 ## Handing the agent a whole extension {#extensions}
 

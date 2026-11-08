@@ -1,8 +1,10 @@
 """What a plugin implements to draw a row: the base class, and how a drawn block is cached.
 
-A presenter turns one kind of entry into lines. The built-in ones live in `zettcode.presenters`; a plugin registers its
+A presenter turns one kind of row into lines. The built-in ones live in `zettcode.presenters`; a plugin registers its
 own through `ctx.tui.register_presenter`, and the row it draws is the same kind of object, so this — the base class and
-the rule for when a row is drawn again — is part of the plugin contract, not part of the terminal.
+the rule for when a row is drawn again — is part of the plugin contract, not part of the terminal. A presenter takes
+part in the registry's chain through its own `handle(entry, next)`: it returns itself to claim the row, or calls
+`next(entry)` to leave it to the presenters after it.
 
 The registry (`Presenters`) is here and not with the built-in rows because `Presenter.block` takes it as its `owner`:
 the base class names the registry in its own signature, so moving the registry out would make the base class import its
@@ -15,20 +17,23 @@ the width, the palette, the registry and what the row looks like, so a frame tha
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import fields as dataclass_fields
 from typing import Any, ClassVar, Generic, TypeVar
 
 from zettcode.tui import LineSource, Span, StaticLines, Style, TextLine, Theme
 from zettcode.tui.render import inset_line, layout_rich_lines, wrap_words
 
-from .entries import Entry, EntryKind
+from .entries import Entry
 
 #: Columns a row's content is inset by, past the gutter marker.
 CONTENT_INDENT = 2
 
 #: The entry a presenter accepts; each subclass pins it to one entry type.
 E = TypeVar("E", bound=Entry)
+
+#: The rest of the chain: asks the presenters after this one who draws the entry.
+NextPresenter = Callable[[Entry], "Presenter[Any]"]
 
 
 #: The entry fields that are not part of how a row looks: its identity, and the
@@ -55,15 +60,9 @@ def _look_fields(entry_type: type) -> tuple[str, ...]:
 class Presenter(Generic[E], ABC):
     """Turns one kind of entry into rows.
 
-    The type parameter is the entry the presenter handles, and :attr:`kind` is the
-    kind that routes it there, so :meth:`lines` receives exactly that entry.
+    The type parameter is the entry the presenter handles: :meth:`handle` claims it, then :meth:`lines` draws it.
 
     Attributes:
-        kind: The kind of entry this presenter claims; ``None`` means the final fallback.
-        entry_type: The entry class this presenter claims, when it is for one family of a kind
-            rather than the kind as a whole: the presenter of an edit row is the one for
-            ``EditEntry``, though an edit row is a ``tool`` row like any other. The chain asks each
-            presenter in turn: an entry class first, then the kind, then the fallback.
         gutter: Whether the rows open with a marker the presenter draws in the
             gutter's own column — the user's arrow, the wait row's sparkle, a
             tool's outcome. Every other row is inset past the gutter, so every
@@ -75,22 +74,17 @@ class Presenter(Generic[E], ABC):
             kind, or to beat another plugin, raises this.
     """
 
-    kind: ClassVar[EntryKind | None] = None
-    entry_type: ClassVar[type[Entry] | None] = None
     gutter: ClassVar[bool] = False
     priority: ClassVar[int] = 0
 
-    def handles(self, entry: Entry) -> bool:
-        """Return whether this presenter claims ``entry``.
+    @abstractmethod
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Return the presenter that draws ``entry``, handing it to ``next`` when this one does not claim it.
 
-        A family claims its entry class; a kind claims every entry of that kind; a presenter with neither is the
-        fallback and claims whatever reached it.
+        This is the chain's one decision: every presenter is asked in turn, and each answers for itself. A
+        presenter returns ``self`` to claim the entry, or calls ``next(entry)`` to pass it on. The registry orders
+        the chain and starts it, but never matches an entry itself.
         """
-        if self.entry_type is not None:
-            return isinstance(entry, self.entry_type)
-        if self.kind is not None:
-            return entry.kind == self.kind
-        return True
 
     @abstractmethod
     def lines(self, entry: E, width: int, theme: Theme, frame: int) -> list[TextLine]:
@@ -216,60 +210,47 @@ class Indented(LineSource):
 class Presenters:
     """The chain of presenters one transcript asks, strongest claim first, with a fallback last.
 
-    A presenter claims an entry with :meth:`Presenter.handles`: a family claims its entry class, a kind claims
-    every entry of its kind, and a presenter with neither is the fallback. The chain is ordered by
-    :attr:`Presenter.priority` and then by registration order, later first; the first claim wins. That makes a
-    plugin's handler beat the built-in one without a lookup table, and lets a tool add a handler for its own
-    entry class without changing the kind's presenter.
+    Every presenter in the chain is asked through :meth:`Presenter.handle`: it decides whether it draws the entry
+    and hands it to the next presenter when it does not. The chain is ordered by :attr:`Presenter.priority` and then
+    by registration order, later first. The registry only starts the chain; it never matches an entry itself.
     """
 
     def __init__(self, presenters: Iterable[Presenter[Any]]) -> None:
-        """Build the chain; a later registration wins at equal priority, and the fallback is last."""
-        registered = tuple(presenters)
-        self._registered = registered
-        ordered = sorted(enumerate(registered), key=lambda pair: (pair[1].priority, pair[0]), reverse=True)
+        """Build the chain; a later registration wins at equal priority."""
+        self._registered = tuple(presenters)
+        ordered = sorted(enumerate(self._registered), key=lambda pair: (pair[1].priority, pair[0]), reverse=True)
         self._chain: tuple[Presenter[Any], ...] = tuple(presenter for _, presenter in ordered)
-        self._fallback: Presenter[Any] | None = next(
-            (p for p in self._chain if p.kind is None and p.entry_type is None), None
-        )
-        self._by_kind: dict[EntryKind, tuple[int, int, Presenter[Any]]] = {}
-        self._by_type: dict[type[Entry], tuple[int, int, Presenter[Any]]] = {}
-        for order, presenter in enumerate(registered):
-            rank = (presenter.priority, order)
-            if presenter.entry_type is not None:
-                current = self._by_type.get(presenter.entry_type)
-                if current is None or rank >= current[:2]:
-                    self._by_type[presenter.entry_type] = (*rank, presenter)
-            elif presenter.kind is not None:
-                kind = presenter.kind
-                current = self._by_kind.get(kind)
-                if current is None or rank >= current[:2]:
-                    self._by_kind[kind] = (*rank, presenter)
 
     @property
     def presenters(self) -> tuple[Presenter[Any], ...]:
-        """Return the presenters that draw something: the kinds' first, then the live families, fallback last."""
-        live = [presenter for _, _, presenter in self._by_kind.values()]
-        live.extend(
-            presenter
-            for priority, order, presenter in self._by_type.values()
-            if presenter.kind is None
-            or self._by_kind.get(presenter.kind) is None
-            or (priority, order) > self._by_kind[presenter.kind][:2]
-        )
-        fallback = [self._fallback] if self._fallback is not None else []
-        return tuple((*live, *fallback))
+        """Return the presenters in registration order, which is what a new registry is built from."""
+        return self._registered
+
+    @property
+    def chain(self) -> tuple[Presenter[Any], ...]:
+        """Return the presenters in the order the chain asks them."""
+        return self._chain
 
     def replacing(self, *presenters: Presenter[Any]) -> Presenters:
-        """Return a registry that draws the given kinds, families and fallback with the given presenters."""
+        """Return a registry that appends the given presenters to this chain."""
         return Presenters((*self._registered, *presenters))
 
     def for_entry(self, entry: Entry) -> Presenter[Any]:
-        """Return the first presenter in the chain that claims the entry, else raise."""
-        for presenter in self._chain:
-            if presenter.handles(entry):
-                return presenter
-        raise ValueError(f"No presenter for a {entry.kind.value} row")
+        """Ask the chain, presenter by presenter, which one draws the entry, else raise.
+
+        The registry only starts the chain: each presenter's :meth:`Presenter.handle` decides whether it claims
+        the entry and hands it to the next when it does not.
+        """
+        chain = self._chain
+        if not chain:
+            raise ValueError(f"No presenter for a {entry.kind.value} row")
+
+        def ask(current: Entry, index: int) -> Presenter[Any]:
+            if index == len(chain):
+                raise ValueError(f"No presenter for a {current.kind.value} row")
+            return chain[index].handle(current, lambda entry: ask(entry, index + 1))
+
+        return ask(entry, 0)
 
     def lines(self, entry: Entry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Return the rows an entry paints, rendered now and not cached."""

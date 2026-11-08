@@ -268,7 +268,7 @@ def test_the_view_measures_and_serves_the_rows_like_any_other_entry():
 
 
 def test_a_transcript_given_other_presenters_can_still_draw_it_or_says_which_kind_has_none():
-    assert DEFAULT_PRESENTERS.for_entry(entry()).kind is EntryKind.RELAY
+    assert type(DEFAULT_PRESENTERS.for_entry(entry())).__name__ == "RelayPresenter"
 
 
 def test_beginning_a_turn_from_a_relayed_message_draws_it_as_relayed_and_opens_the_wait_row():

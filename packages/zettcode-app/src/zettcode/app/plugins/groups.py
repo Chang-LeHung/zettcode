@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.plugin_api.commands import Command, CommandList, CommandProvider
-from zettcode.plugin_api.entries import EntryKind
 from zettcode.plugin_api.pets import PET_NAME, Pet, PetSource
 from zettcode.plugin_api.presenters import Presenter
 from zettcode.plugin_api.state import TurnBuilder, TurnSegment, UiBuilder, UiRegion, UiRow, UiSegment, UiSide
@@ -482,16 +481,12 @@ class TuiGroups(TuiGroup):
         return source
 
     def register_presenter(self, presenter: Presenter[Any]) -> Presenter[Any]:
-        """Draw a kind of entry, or one family inside a kind, instead of the way it is drawn now.
+        """Draw rows with a presenter of the plugin's own instead of the way they are drawn now.
 
-        A presenter names a ``kind`` (one member of :class:`EntryKind`), an ``entry_type`` when it draws one family
-        of a kind — the edit row inside the tool rows, say — or neither, which makes it the fallback for rows no
-        earlier handler claims. It is placed by its own
-        :attr:`Presenter.priority`: the highest wins, and an equal priority goes to the later
-        registration, so the built-in presenters (priority 0, registered first) are the default any
-        plugin's presenter replaces. A plugin that wants to beat another plugin raises the
-        ``priority`` on its presenter's class. A presenter registered for a whole kind draws every
-        row of that kind unless a family outranks it.
+        The presenter takes part in the chain through its own ``handle``: it claims an entry by returning itself,
+        or calls ``next(entry)`` to leave it to the presenters registered after it. It is placed by its own
+        :attr:`Presenter.priority`: the highest wins, and an equal priority goes to the later registration, so the
+        built-in presenters (priority 0, registered first) are the default any plugin's presenter replaces.
 
         Args:
             presenter: The presenter.
@@ -500,16 +495,9 @@ class TuiGroups(TuiGroup):
             The presenter, in case the plugin wants to keep it.
 
         Raises:
-            ValueError: When the object is not a presenter, or names a kind that is not an `EntryKind` or an
-                entry type that is not a class.
+            ValueError: When the object is not a presenter.
         """
         if not isinstance(presenter, Presenter):
-            raise ValueError("A presenter must be a zettcode.presenters.presenters.Presenter")
-        if presenter.kind is None and presenter.entry_type is None:
-            pass  # the fallback: it claims whatever no handler before it claimed
-        elif presenter.kind is None and not isinstance(presenter.entry_type, type):
-            raise ValueError("A presenter must name a kind, an entry class, or neither for the fallback")
-        elif presenter.kind is not None and not isinstance(presenter.kind, EntryKind):
-            raise ValueError("A presenter must name the kind of entry it draws")
+            raise ValueError("A presenter must be a zettcode.plugin_api.presenters.Presenter")
         self._presenters.append(presenter)
         return presenter
