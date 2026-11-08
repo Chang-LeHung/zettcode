@@ -105,8 +105,12 @@ class HubData:
     links: tuple[Link, ...] = ()
     #: Whether the message graph could be read; an empty picture says which of the two it is.
     graph_ok: bool = True
-    #: When this reading was made and how long it took, step by step; drawn quietly at the top right of the page.
-    read: str = ""
+    #: When the reading began (``12:34:56``), how long it took in milliseconds, and each step's share of that: elapsed
+    #: time on the event loop, so a step is also slow when the loop was busy with something else meanwhile. The page
+    #: composes the fullest line of it that fits (:meth:`HubPage._stamp`).
+    began: str = ""
+    took: int = 0
+    steps: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,8 +267,8 @@ class HubPage(ListPage):
             canvas.draw_text(x, y, drawn, style, max_width=max(0, room - (x - self.rect.x)))
             x += display_width(drawn) + gap
         # When the page was read and how long it took, at the right end of the tab line and only where it fits.
-        stamp = self.data.read
-        if stamp and display_width(stamp) <= room - (x - self.rect.x):
+        stamp = self._stamp(room - (x - self.rect.x))
+        if stamp:
             canvas.draw_text(self.rect.right - 2 - display_width(stamp), y, stamp, hint)
         if self.tab == GRAPH:
             self._draw_graph(canvas, hint, room)
@@ -300,6 +304,26 @@ class HubPage(ListPage):
         ]
         cells[-1] = cells[-1].rstrip()
         canvas.draw_text(x + start, y, truncate("".join(cells), room), style, max_width=room)
+
+    def _stamp(self, room: int) -> str:
+        """Return the fullest account of the last reading that fits in ``room`` columns, or nothing.
+
+        The page is the only side that knows the room, so the data carries the parts and the page picks: the total on
+        its own is a dozen columns and fits an 80-column terminal, the clock and the steps are added where there is
+        space. Two columns are kept clear of the last tab.
+        """
+        data = self.data
+        if not data.took and not data.began:
+            return ""
+        steps = ", ".join(f"{name} {ms}" for name, ms in data.steps)
+        for text in (
+            f"read {data.began} \u00b7 {data.took} ms ({steps} ms)" if data.steps else "",
+            f"read {data.began} \u00b7 {data.took} ms",
+            f"read {data.took} ms",
+        ):
+            if text and display_width(text) + 2 <= room:
+                return text
+        return ""
 
     def _picture_for(self, width: int, height: int) -> Picture:
         """Return the laid-out graph for this size, laid out again only when the data or the size changed."""
@@ -590,13 +614,14 @@ class HubCommand(TuiPlugin):
         """
         from zettcode.sdk.daemons import list_daemons
 
+        clock = time.strftime("%H:%M:%S")
         began = last = time.perf_counter()
-        steps: list[str] = []
+        steps: list[tuple[str, int]] = []
 
         def lap(name: str) -> None:
             nonlocal last
             now = time.perf_counter()
-            steps.append(f"{name} {(now - last) * 1000:.0f}")
+            steps.append((name, round((now - last) * 1000)))
             last = now
 
         peers = tuple(
@@ -610,6 +635,7 @@ class HubCommand(TuiPlugin):
             )
             for peer in client.peers()  # type: ignore[attr-defined]
         )
+        lap("peers")
         daemons = tuple(
             Daemon(
                 session_id=info.session_id,
@@ -660,8 +686,7 @@ class HubCommand(TuiPlugin):
         if not graph_ok:
             # Nothing to say about who talks to whom, so the picture is empty and says why, not a lone stopped box.
             nodes, links = (), ()
-        total = (time.perf_counter() - began) * 1000
-        read = f"read {time.strftime('%H:%M:%S')} \u00b7 {total:.0f} ms ({', '.join(steps)})"
+        lap("picture")
         return HubData(
             peers=peers,
             daemons=daemons,
@@ -670,7 +695,9 @@ class HubCommand(TuiPlugin):
             nodes=nodes,
             links=links,
             graph_ok=graph_ok,
-            read=read,
+            began=clock,
+            took=round((time.perf_counter() - began) * 1000),
+            steps=tuple(steps),
         )
 
 

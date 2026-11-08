@@ -50,6 +50,20 @@ def test_every_state_is_told_apart_and_an_unknown_end_of_a_line_is_a_node_of_its
     assert [(link.a, link.b) for link in links] == [("me", "a"), ("a", "gone")], "a line to itself is dropped"
 
 
+def test_the_two_directions_of_a_pair_are_one_line_with_the_counts_added():
+    nodes, links = graph.build(
+        {
+            "sessions": [{"session_id": "a", "handle": "a"}, {"session_id": "b", "handle": "b"}],
+            "edges": [{"a": "a", "b": "b", "count": 3}, {"a": "b", "b": "a", "count": 4}],
+        },
+        me="a",
+    )
+
+    assert [(link.count, {link.a, link.b}) for link in links] == [(7, {"a", "b"})]
+    picture = graph.layout(nodes, links, 80, 17)
+    assert len(picture.routes) == 1 and len(picture.labels) == 1, "one line, one number"
+
+
 def test_a_daemon_whose_process_is_gone_is_stopped_even_with_no_messages():
     nodes, _ = graph.build({}, titles={"d-1": "watcher"}, stopped=["d-1"])
 
