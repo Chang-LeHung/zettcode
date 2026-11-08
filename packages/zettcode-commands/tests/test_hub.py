@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from zettcode.commands.hub import TABS, Daemon, HubData, HubPage, Peer
+from zettcode.commands.hub import TABS, Daemon, HubData, HubPage, Peer, Stored
 
 
 def data(**changes: object) -> HubData:
@@ -12,7 +12,7 @@ def data(**changes: object) -> HubData:
     base = HubData(
         peers=(Peer("main", "the parser", "working", "/work"),),
         daemons=(Daemon("d-1", "watcher", "idle", model="m", workspace="/work"),),
-        offline=("old",),
+        offline=(Stored("old-id", "old"),),
     )
     return dataclasses.replace(base, **changes)  # type: ignore[arg-type]
 
@@ -208,6 +208,47 @@ def test_the_reading_lists_only_the_stored_sessions_that_are_not_registered_and_
 
     data = asyncio.run(HubCommand()._read(_FakeClient()))
 
-    assert data.offline == ("old-9",)
+    assert [(s.session_id, s.title) for s in data.offline] == [("old-9", "old-9")]
     assert data.peers[0].session_id == "p-1"
     assert isinstance(data, HubData)
+
+
+def test_enter_on_an_offline_session_resumes_it_and_on_a_live_one_does_nothing():
+    started: list[str] = []
+    opened = HubPage(data(), on_close=lambda: None, on_start=started.append)
+    opened._show(1)
+
+    opened.list.selected = 0  # "main", registered
+    opened.capture_event(_key("enter"), None)
+    assert started == []
+
+    opened.list.selected = 1  # "old", stored and not running
+    opened.capture_event(_key("enter"), None)
+    assert started == ["old-id"], "the id is what resumes it, not the title"
+    assert "enter resume" in opened.footer
+
+
+def test_resuming_a_stored_session_starts_a_daemon_here(monkeypatch):
+    import asyncio
+
+    from zettcode.commands.hub import HubCommand
+    from zettcode.sdk import daemons
+
+    calls: list[tuple[object, dict[str, object]]] = []
+
+    async def spawn(workspace, **kwargs):
+        calls.append((workspace, kwargs))
+        return type("Info", (), {"session_id": "abcdef123456"})()
+
+    async def read(self, client):
+        return data()
+
+    monkeypatch.setattr(daemons, "spawn_daemon", spawn)
+    monkeypatch.setattr(HubCommand, "_read", read)
+    opened = page()
+
+    asyncio.run(HubCommand()._resume(opened, object(), "old-id"))
+    asyncio.run(HubCommand()._resume(opened, object(), "nobody"))
+
+    assert calls == [(".", {"model": None, "resume": "old-id"})]
+    assert opened.subtitle == "started abcdef12"

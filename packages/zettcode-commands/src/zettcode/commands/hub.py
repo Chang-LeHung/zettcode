@@ -35,7 +35,10 @@ __all__ = ["HubCommand", "HubData", "HubPage"]
 #: The three tabs, in the order Tab walks them; the first is the picture, the other two are lists.
 TABS = ("Graph", "Sessions", "Daemons")
 
-#: The tab that lists daemons, the only one whose keys act on a row.
+#: The tab that lists the sessions, where Enter resumes an offline one.
+SESSIONS = 1
+
+#: The tab that lists daemons, where keys act on a row.
 DAEMONS = 2
 
 
@@ -49,6 +52,14 @@ class Peer:
     workspace: str
     kind: str = "session"
     session_id: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Stored:
+    """One session kept on disk for this workspace that no process has registered: Enter resumes it."""
+
+    session_id: str
+    title: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +79,7 @@ class HubData:
 
     peers: tuple[Peer, ...] = ()
     daemons: tuple[Daemon, ...] = ()
-    offline: tuple[str, ...] = ()
+    offline: tuple[Stored, ...] = ()
     note: str = ""
     nodes: tuple[Node, ...] = ()
     links: tuple[Link, ...] = ()
@@ -92,9 +103,9 @@ def _session_rows(data: HubData) -> list[ListItem]:
             f" {SEPARATOR} {peer.title or 'untitled'} {SEPARATOR} {peer.kind} {SEPARATOR} {peer.workspace}",
         )
         rows.append(ListItem(peer.handle, peer.handle, text, parts=parts))
-    for name in data.offline:
-        text, parts = _described("offline", f" {SEPARATOR} on disk, not registered")
-        rows.append(ListItem(name, name, text, parts=parts))
+    for stored in data.offline:
+        text, parts = _described("offline", f" {SEPARATOR} on disk {SEPARATOR} enter resumes it")
+        rows.append(ListItem(stored.session_id, stored.title, text, parts=parts))
     return rows
 
 
@@ -153,6 +164,8 @@ class HubPage(ListPage):
         common = f"tab next {SEPARATOR} shift-tab back {SEPARATOR} r refresh {SEPARATOR} esc close"
         if self.tab == DAEMONS:
             return f"enter start a stopped one {SEPARATOR} s stop {SEPARATOR} {common}"
+        if self.tab == SESSIONS:
+            return f"enter resume an offline one {SEPARATOR} {common}"
         return common
 
     def render(self, canvas: Canvas) -> None:
@@ -252,7 +265,7 @@ class HubPage(ListPage):
         if key == "r" and self.on_refresh is not None:
             self.on_refresh()
             return True
-        if self.tab == DAEMONS and key == "enter":
+        if self.tab in (SESSIONS, DAEMONS) and key == "enter":
             self._chosen()
             return True
         if self.tab == DAEMONS and key == "s" and self.on_stop is not None:
@@ -271,12 +284,17 @@ class HubPage(ListPage):
         return next((daemon for daemon in self.data.daemons if daemon.session_id == chosen), None)
 
     def _chosen(self) -> None:
-        """Enter on the daemons tab starts the daemon under the mark when its process is gone."""
-        if self.tab != DAEMONS or self.on_start is None:
+        """Enter starts what is under the mark: a daemon whose process is gone, or a stored session no one runs."""
+        if self.on_start is None:
             return None
-        chosen = self._daemon()
-        if chosen is not None and chosen.status in ("dead", "unknown"):
-            self.on_start(chosen.session_id)
+        if self.tab == DAEMONS:
+            chosen = self._daemon()
+            if chosen is not None and chosen.status in ("dead", "unknown"):
+                self.on_start(chosen.session_id)
+        elif self.tab == SESSIONS and 0 <= self.list.selected < len(self.list.items):
+            wanted = self.list.items[self.list.selected].value
+            if any(stored.session_id == wanted for stored in self.data.offline):
+                self.on_start(str(wanted))
         return None
 
 
@@ -362,14 +380,20 @@ class HubCommand(TuiPlugin):
         page.note(said)
 
     async def _resume(self, page: HubPage, client: object, session_id: str) -> None:
-        """Start a daemon whose record is still there, on the workspace and model it had."""
+        """Start a background agent on a session that is not running: a daemon's record, or a stored session.
+
+        A daemon resumes on the workspace and model it had. A stored session is one of this workspace's (the store is
+        listed per workspace), so it resumes here, on the first configured model.
+        """
         from zettcode.sdk.daemons import spawn_daemon
 
         chosen = next((daemon for daemon in page.data.daemons if daemon.session_id == session_id), None)
-        if chosen is None:
+        if chosen is None and not any(stored.session_id == session_id for stored in page.data.offline):
             return
+        workspace = (chosen.workspace if chosen else "") or "."
+        model = (chosen.model if chosen else "") or None
         try:
-            started = await spawn_daemon(chosen.workspace or ".", model=chosen.model or None, resume=session_id)
+            started = await spawn_daemon(workspace, model=model, resume=session_id)
         except Exception as error:  # noqa: BLE001 - the page says what happened, whatever it was
             note = str(error)
         else:
@@ -403,7 +427,7 @@ class HubCommand(TuiPlugin):
             for info in await asyncio.to_thread(list_daemons)
         )
         note = ""
-        offline: tuple[str, ...] = ()
+        offline: tuple[Stored, ...] = ()
         try:
             # The fifty newest of this workspace; a longer store is cut there rather than paged.
             listed = await client.sessions.list(limit=50)  # type: ignore[attr-defined]
@@ -412,7 +436,7 @@ class HubCommand(TuiPlugin):
             listed = ()
         # Registered by id, and never the reader's own: `peers()` leaves self out and the store keeps it.
         registered = {peer.session_id for peer in peers} | {client.session.id}  # type: ignore[attr-defined]
-        offline = tuple(info.title or info.id[:8] for info in listed if info.id not in registered)
+        offline = tuple(Stored(info.id, info.title or info.id[:8]) for info in listed if info.id not in registered)
         try:
             graph = await client.traffic_graph()  # type: ignore[attr-defined]
         except Exception as error:  # noqa: BLE001 - without a broker the picture is empty, the lists still work
