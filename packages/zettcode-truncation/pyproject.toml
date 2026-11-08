@@ -20,7 +20,7 @@ dependencies = [
   # The plugin base classes, the session store the result is kept in, and the budget and preview the engine's tools own.
   "zettcode-engine",
   # The extension, its hooks and the messages it rewrites.
-  "zett-agent>=0.2.7,<0.3",
+  "zett-agent>=0.2.10,<0.3",
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for. It is

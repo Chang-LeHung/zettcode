@@ -27,7 +27,7 @@ dependencies = [
   "zettcode-plugin-api>=0.4,<0.5",
   # Imported directly for the extension hooks and message types; the floor zettcode itself asks for, so an
   # environment carries one zett-agent.
-  "zett-agent>=0.2.1,<0.3",
+  "zett-agent>=0.2.10,<0.3",
 ]
 
 [project.urls]

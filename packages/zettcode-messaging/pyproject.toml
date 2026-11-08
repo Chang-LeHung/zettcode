@@ -22,7 +22,7 @@ dependencies = [
   # The protocol, the client and the errors the tools speak.
   "zettcode-broker",
   # The tools this subclasses.
-  "zett-agent>=0.2.7,<0.3",
+  "zett-agent>=0.2.10,<0.3",
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for.

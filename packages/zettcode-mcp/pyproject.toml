@@ -20,7 +20,7 @@ dependencies = [
   # The plugin base classes, the notice the transcript recognises, and how an error is worded.
   "zettcode-engine",
   # The MCP extension this subclasses.
-  "zett-agent>=0.2.7,<0.3",
+  "zett-agent>=0.2.10,<0.3",
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for. It is

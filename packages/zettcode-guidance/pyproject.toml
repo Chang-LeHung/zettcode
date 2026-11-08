@@ -20,7 +20,7 @@ dependencies = [
   # The plugin base classes, and the factory the extension is built from (`engine.extensions.guidance`).
   "zettcode-engine",
   # The type the factory returns; the module is only imported by the type checker.
-  "zett-agent>=0.2.7,<0.3",
+  "zett-agent>=0.2.10,<0.3",
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for. It is
