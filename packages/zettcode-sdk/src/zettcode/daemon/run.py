@@ -208,8 +208,22 @@ class Daemon:
 
     def _kept(self) -> bool:
         """Return whether the stop that is ending this process asked for the record to stay."""
-        state = State.load(self.record.folder)
-        return state is not None and state.keep
+        return self._asked_to_keep(State.load(self.record.folder))
+
+    def _asked_to_keep(self, current: State | None) -> bool:
+        """Return whether ``current`` carries the ask to keep the record that was made of *this* process.
+
+        A stop writes ``keep`` into the state before it signals, and every later write of this process carries it, so
+        the daemon's last write cannot put it back: whatever status a turn that was already starting wrote over the
+        stop's, the field survives it. What may not be believed is a field left in the folder by an earlier start of
+        the same session (a daemon started again on a kept record finds it there, and would leave a record behind on
+        Ctrl-C that it used to remove). The token is this start's own and the pid is this process's: the token alone
+        names the state this process wrote, and the pid alone could be a stopped daemon's pid the system gave to the
+        new one, so both have to say so.
+        """
+        return bool(
+            current is not None and current.keep and current.token == self.options.token and current.pid == os.getpid()
+        )
 
     # -- what it answers ---------------------------------------------------------------------------
     def _start(self, message: IncomingMessage) -> None:
@@ -451,21 +465,10 @@ class Daemon:
                         requested_model=current.requested_model if current is not None else None,
                         requested_effort=current.requested_effort if current is not None else None,
                         requested_error=current.requested_error if current is not None else None,
-                        # A stop that wants the record kept writes that here before it signals, and this write is the
+                        # A stop that wants the record kept writes the field before it signals, and this write is the
                         # daemon's last: built afresh, the state would say "do not keep" and the daemon would remove
-                        # the record it was asked to leave. Only the stopping state this process was sent carries it: a
-                        # daemon started again on a kept record finds the old stopping state and its field in the folder
-                        # and must not inherit them, or a Ctrl-C of it would leave a record behind that it used to
-                        # remove. The token is this start's own and the pid is this process's: the token alone names the
-                        # state this process wrote, and the pid alone could be a stopped daemon's pid the system gave
-                        # to the new one, so both have to say so.
-                        keep=bool(
-                            current is not None
-                            and current.status == "stopping"
-                            and current.token == self.options.token
-                            and current.pid == os.getpid()
-                            and current.keep
-                        ),
+                        # the record it was asked to leave. What counts as this process's ask is `_asked_to_keep`.
+                        keep=self._asked_to_keep(current),
                     ),
                     wait=0,
                 )

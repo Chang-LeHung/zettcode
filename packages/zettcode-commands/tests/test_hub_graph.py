@@ -187,6 +187,17 @@ def test_a_line_never_runs_through_a_box_and_ends_at_the_two_it_joins(size):
                 or (left <= end[0] < left + w and top - 1 <= end[1] <= top + graph.BOX_HEIGHT)
             ]
             assert set(touching) & {route.link.a, route.link.b}, "a line ends beside one of its own boxes"
+        for cell in route.cells[1:-1]:
+            hugging = [
+                key
+                for key, (left, top, w) in picture.boxes.items()
+                if key not in (route.link.a, route.link.b)
+                and (
+                    (left - 1 <= cell[0] <= left + w and top <= cell[1] < top + graph.BOX_HEIGHT)
+                    or (left <= cell[0] < left + w and top - 1 <= cell[1] <= top + graph.BOX_HEIGHT)
+                )
+            ]
+            assert not hugging, f"no cell between the ends touches the side of a box the line does not join: {hugging}"
 
 
 def test_a_line_is_numbered_at_the_end_that_is_not_the_reader_and_the_numbers_do_not_overlap():
