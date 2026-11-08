@@ -546,8 +546,8 @@ class Statistics(Plugin[PluginContext]):
 所以两个插件不能重名。发行版或单文件插件也不能占用别的插件已经有的入口名：先发现的保留，后来的不加载，并在日志里留一行。
 
 插件用 `ctx.inject(name, service)` 把对象交给需要它的插件。运行时页面服务用类型化 reader 读取：
-`ctx.agent.session_store_service()`、`ctx.agent.usage_ledger_service()` 和
-`ctx.agent.context_report_service()`；其他服务用 `ctx.service(name, kind)` 取（`ctx.find` 在没人提供时返回
+`ctx.agent.session_store_service()`、`ctx.agent.usage_ledger_service()`、
+`ctx.agent.context_report_service()` 和 `ctx.agent.context_page_service()`；其他服务用 `ctx.service(name, kind)` 取（`ctx.find` 在没人提供时返回
 `None`）。对象是什么、怎么用，由相关插件自己约定；ZettCode 只保证名字唯一、顺序正确。
 
 ## 事件发生时开始工作 {#triggers}

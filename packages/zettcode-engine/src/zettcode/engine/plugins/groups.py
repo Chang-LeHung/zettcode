@@ -10,9 +10,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeVar
 
 from zettcode.engine.service_contracts import (
+    CONTEXT_PAGE,
     CONTEXT_REPORT,
     SESSION_STORE,
     USAGE_LEDGER,
+    ContextPageService,
     ContextReportService,
     SessionStoreService,
     UsageLedgerService,
@@ -99,6 +101,10 @@ class AgentGroups:
     def usage_ledger_service(self) -> UsageLedgerService | None:
         """Return the runtime's usage-ledger service, or ``None`` when it is not provided."""
         return self.find(USAGE_LEDGER, UsageLedgerService)  # type: ignore[type-abstract]
+
+    def context_page_service(self) -> ContextPageService | None:
+        """Return the runtime's context-page service, or ``None`` when it is not provided."""
+        return self.find(CONTEXT_PAGE, ContextPageService)  # type: ignore[type-abstract]
 
     def context_report_service(self) -> ContextReportService | None:
         """Return the runtime's context-report service, or ``None`` when it is not provided."""

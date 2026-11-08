@@ -303,7 +303,14 @@ def test_an_impostor_is_still_reported_when_the_part_it_imitates_was_disabled_an
 
 
 def test_the_typed_page_readers_return_the_provided_services(tmp_path: Path):
-    from zettcode.engine.service_contracts import CONTEXT_REPORT, SESSION_STORE, USAGE_LEDGER
+    from zettcode.engine.service_contracts import (
+        CONTEXT_PAGE,
+        CONTEXT_REPORT,
+        SESSION_STORE,
+        USAGE_LEDGER,
+        ContextPageService,
+        ContextPageSnapshot,
+    )
     from zettcode.engine.storage import SessionStore
 
     store = SessionStore(tmp_path / "sessions", tmp_path)
@@ -314,16 +321,30 @@ def test_the_typed_page_readers_return_the_provided_services(tmp_path: Path):
             return None
 
     context = Report()
+
+    class Page(ContextPageService):
+        def bind_writer(self, writer) -> None:
+            pass
+
+        async def snapshot(self, session_id: str) -> ContextPageSnapshot:
+            return ContextPageSnapshot("m", 1, 1, 80.0, "s")
+
+        def set_compact_percent(self, percent: float) -> tuple[str, str | None]:
+            return "m", None
+
+    page = Page()
     ctx = PluginContext(
         ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)),
-        {SESSION_STORE: store, USAGE_LEDGER: store, CONTEXT_REPORT: context},
+        {SESSION_STORE: store, USAGE_LEDGER: store, CONTEXT_REPORT: context, CONTEXT_PAGE: page},
     )
 
     assert ctx.agent.session_store_service() is store
     assert ctx.agent.usage_ledger_service() is store
     assert ctx.agent.context_report_service() is context
+    assert ctx.agent.context_page_service() is page
 
     empty = PluginContext(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
     assert empty.agent.session_store_service() is None
     assert empty.agent.usage_ledger_service() is None
     assert empty.agent.context_report_service() is None
+    assert empty.agent.context_page_service() is None
