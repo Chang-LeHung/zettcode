@@ -837,3 +837,52 @@ def test_a_daemon_status_is_written_once_inside_the_state_column():
     assert said[0].count("working") == 1
     assert "stopped (dead)" in said[1], "a dead process keeps the word that explains the red"
     assert "idle (starting)" in said[2]
+
+
+# -- a change that arrives from a task must reach the screen ------------------------------------------
+
+
+def _mounted() -> tuple[HubPage, object]:
+    from zettcode.tui.testing import Harness
+
+    opened = HubPage(_graph_data(), on_close=lambda: None)
+    harness = Harness(opened, width=110, height=32)
+    harness.render()
+    harness.app.scheduler.poll()  # the frame that was just drawn: nothing is pending now
+    assert not harness.app.scheduler.pending
+    return opened, harness
+
+
+def test_a_note_written_by_a_task_asks_for_a_frame_or_it_stays_on_screen_until_the_next_key():
+    """The bug: `r` showed "refreshing…", the read finished in 10 ms, and the screen kept the old line, because a task
+    that changes the page is not an input event and nothing asked the loop for another frame."""
+    opened, harness = _mounted()
+    assert "refreshing" not in harness.text()
+
+    opened.note("refreshing\u2026")  # what `r` writes, in the key handler
+
+    assert harness.app.scheduler.pending, "the page asked the app for a frame"
+    assert "refreshing\u2026" in harness.text()
+    harness.app.scheduler.poll()
+
+    opened.set_data(data())  # what the task writes when the read is done, with no key involved
+
+    assert harness.app.scheduler.pending, "and again when the task finished, or the line above would stay"
+    assert "refreshing" not in harness.text(), "the next frame no longer has it"
+
+
+def test_a_reading_that_arrives_from_a_task_asks_for_a_frame():
+    opened, harness = _mounted()
+
+    opened.set_data(data(note="", nodes=(), links=()))
+
+    assert harness.app.scheduler.pending
+
+
+def test_the_page_off_screen_or_not_yet_mounted_can_still_be_changed_without_an_app():
+    opened = page()
+
+    opened.note("a note")
+    opened.set_data(data())
+
+    assert opened.app is None and opened.subtitle is None

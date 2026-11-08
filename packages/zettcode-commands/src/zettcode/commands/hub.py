@@ -399,17 +399,34 @@ class HubPage(ListPage):
                     x += display_width(text)
 
     def set_data(self, data: HubData) -> None:
-        """Take a fresh reading, and keep the mark where it was on the tab in front."""
+        """Take a fresh reading, and keep the mark where it was on the tab in front.
+
+        It is called from a task, not from an input event, so it asks for a frame itself (:meth:`_repaint`).
+        """
         self.marks[self.tab] = max(0, self.list.selected)
         self.data = data
         self.subtitle = self.data.note or None
         self._show(self.tab)
+        self._repaint()
 
     def note(self, text: str) -> None:
-        """Say one line under the tabs — what a key just did, or why it could not."""
+        """Say one line under the tabs — what a key just did, or why it could not.
+
+        A task writes notes too (``started …``, an error), so it asks for a frame itself (:meth:`_repaint`).
+        """
         self.data = dataclasses.replace(self.data, note=text)
         self.subtitle = text
         self.request_layout()
+        self._repaint()
+
+    def _repaint(self) -> None:
+        """Wake the loop for a frame: a change made by a task is not an input event, and without this the old screen
+        stays until the next key (``refreshing…`` stayed up for as long as the reader did not press anything).
+
+        A page that is not mounted has no app to ask, and nothing on screen to bring up to date.
+        """
+        if self.app is not None:
+            self.app.invalidate()
 
     def _show(self, tab: int) -> None:
         """Put one tab in front, with the mark it had."""
