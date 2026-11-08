@@ -5,11 +5,12 @@ from __future__ import annotations
 import pytest
 
 from zettcode.app import Transcript, TranscriptView
-from zettcode.app.plugins.builtins import BUILTIN_PLUGINS
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui.turns import TurnTally, turn_parts
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.plugin_api.state import TurnContext
+from zettcode.presenters.rows import TurnLine
+from zettcode.presenters.statusline import NAMES, TURN_PARTS, is_part, unknown
 from zettcode.presenters.text import (
     cache_text,
     calls_text,
@@ -20,7 +21,6 @@ from zettcode.presenters.text import (
 )
 from zettcode.sdk.events import ToolFinished, ToolStarted
 from zettcode.sdk.types import Usage
-from zettcode.statusline import NAMES, TURN_PARTS, is_part, unknown
 from zettcode.tui import DARK
 from zettcode.tui.testing.snapshot import render_block
 
@@ -40,9 +40,7 @@ def context(usage: Usage | None = None, tools: int = 5, failed: int = 1) -> Turn
 def builtin_segments(tmp_path):
     """The items the program registers, as the shell receives them."""
     ctx = terminal_context(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
-    for plugin in BUILTIN_PLUGINS:
-        if plugin.name == "turn-line":
-            plugin.activate(ctx)
+    TurnLine().activate(ctx)
     return ctx, ctx.tui.turn_segments
 
 

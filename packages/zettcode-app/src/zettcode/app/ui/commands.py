@@ -26,7 +26,7 @@ from zettcode.plugin_api.commands import (
     Subcommand,
     subcommand_words,
 )
-from zettcode.statusline import NAMES, Part
+from zettcode.presenters.statusline import NAMES, Part
 
 from .widgets import (
     PetPage,

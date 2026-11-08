@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.ui import labels
 from zettcode.app.ui.boot import boot_tree
-from zettcode.app.ui.labels import compact_path
+from zettcode.presenters import labels
+from zettcode.presenters.labels import compact_path
 from zettcode.presenters.text import compact_path as agent_compact_path
 from zettcode.tui import TuiApp
 
@@ -113,7 +113,7 @@ def test_the_boot_frames_labels_come_without_the_application(tmp_path: Path, mon
             "import sys",
             "from pathlib import Path",
             "from zettcode.app.ui.boot import boot_tree",
-            "from zettcode.app.ui.labels import model_name",
+            "from zettcode.presenters.labels import model_name",
             "from zettcode.paths import config_path",
             "from zettcode.tui import TuiApp",
             "app = TuiApp(boot_tree(Path(sys.argv[1]).resolve(), model=model_name(config_path())), width=70, height=12)",

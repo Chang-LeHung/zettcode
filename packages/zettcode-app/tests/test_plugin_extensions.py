@@ -23,7 +23,6 @@ from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 
 from plugin_helpers import agent_extensions, agent_plugins, runtime_inputs
 from zettcode.app.agent.agent import TerminalAgent
-from zettcode.app.plugins import BUILTIN_PLUGINS
 from zettcode.ask_user import AskUser
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
@@ -331,7 +330,9 @@ def test_the_agent_plugins_load_without_failures_and_have_distinct_names(tmp_pat
     plugins = agent_plugins(make_config(tmp_path))
 
     assert plugins.failures == ()
-    listed = [plugin.name for plugin in (*BUILTIN_PLUGINS, *AGENT_PLUGINS)]
+    #: The terminal's published parts, kept in step by hand with `support/conftest.PROGRAM_PARTS` and the pyprojects.
+    terminal_parts = ("shell", "turn-line", "commands", "presenters", "pets", "themes")
+    listed = [*terminal_parts, *(plugin.name for plugin in AGENT_PLUGINS)]
     assert len(listed) == len(set(listed))
 
 

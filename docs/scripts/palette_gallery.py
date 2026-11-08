@@ -36,11 +36,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from palette_data import NOTES, Palette, palettes  # noqa: E402
 
 from zettcode.app.agent.agent import TerminalAgent  # noqa: E402
-from zettcode.app.plugins.builtins import BUILTIN_PLUGINS, ShellRows  # noqa: E402
 from zettcode.app.plugins.loader import load_terminal_plugins, terminal_plugins  # noqa: E402
 from zettcode.app.ui import app as app_module  # noqa: E402
 from zettcode.app.ui.app import ZettCodeApp  # noqa: E402
-from zettcode.app.ui.labels import header_left  # noqa: E402
 from zettcode.app.ui.shell import PAGE_SCREEN  # noqa: E402
 from zettcode.app.ui.widgets import (  # noqa: E402
     EFFORT_ROWS,
@@ -53,6 +51,8 @@ from zettcode.config import ModelConfig, ZettCodeConfig  # noqa: E402
 from zettcode.engine.core import ZettCodeEngine  # noqa: E402
 from zettcode.messaging.relayed import Relayed  # noqa: E402
 from zettcode.plugin_api.entries import EntryStatus  # noqa: E402
+from zettcode.presenters.labels import header_left  # noqa: E402
+from zettcode.presenters.rows import ShellRows  # noqa: E402
 from zettcode.tui import Canvas, Screen, Theme, TuiApp  # noqa: E402
 from zettcode.tui.gallery import GALLERY, render_entry  # noqa: E402
 from zettcode.tui.testing import Harness  # noqa: E402
@@ -73,7 +73,7 @@ class PreviewRows(ShellRows):
 
 def preview_plugins() -> tuple[object, ...]:
     """Every built-in plugin, with the illustrative header rows in place of the shell's own."""
-    return (PreviewRows(), *(plugin for plugin in BUILTIN_PLUGINS if plugin.name != "shell"))
+    return (PreviewRows(),)
 
 
 class Env:
@@ -449,7 +449,7 @@ def context_scene(env: Env, theme: Theme) -> Canvas:
 
 def usage_scene(tab: str) -> Callable[[Env, Theme], Canvas]:
     def build(env: Env, theme: Theme) -> Canvas:
-        from zettcode.app.ui.widgets import UsagePage
+        from zettcode.commands.usage_page import UsagePage
         from zettcode.sdk.types import DayTotals, ModelTotals, SessionTotals, Totals, WorkspaceUsage
 
         today = date(2026, 10, 17)

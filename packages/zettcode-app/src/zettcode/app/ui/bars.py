@@ -18,7 +18,7 @@ from zettcode.plugin_api.state import (
     UiRegion,
     UiSide,
 )
-from zettcode.statusline import Row
+from zettcode.presenters.statusline import Row
 from zettcode.tui import HEADER, SEPARATOR, Span, Style, TextLine
 from zettcode.tui.render import blend, display_width
 from zettcode.wording import UNTITLED_SESSION
@@ -219,7 +219,7 @@ class BarsMixin(ShellState):
         place. A segment that returns nothing is skipped, one that raises is
         dropped for that frame only, and one that returns ``(line, True)`` takes
         the side over — the segments painted before it are dropped. A segment may
-        also return a :class:`~zettcode.statusline.Row`, which is written out without the parts the
+        also return a :class:`~zettcode.plugin_api.rows.Row`, which is written out without the parts the
         reader switched off in ``/statusline``. ``spare`` names parts to leave out as well, for a row that
         has not the room for them.
         """

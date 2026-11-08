@@ -566,10 +566,10 @@ runtime lists no extension itself.
 
 `sdk/builtins.py` is where the program's own are, in `AGENT_PLUGINS` in the order the agent
 receives them (extensions that share a priority keep it, so the order is the one `_build` used to
-write out). The agent's list names classes and the loader instantiates one per load; `BUILTIN_PLUGINS` holds
-instances, because a `TuiPlugin` needs nothing to build one. They are not in `BUILTIN_PLUGINS`: they build on state
-only a runtime has, so the
-runtime loads both, and a test that wants the shell's rows alone does not need a store. Each
+write out). The agent's list names classes and the loader instantiates one per load; the terminal's rows are
+entry points of `zettcode-presenters` (`shell`, `turn-line`) and are not built-in instances. The agent's parts build
+on state only a runtime has, so the runtime loads both, and a test that wants the shell's rows alone does not need a
+store. Each
 reads its switch in `activate`. One that imports something costly (the coding bundle) or needs
 the provider (the subagents) registers a *factory*, called with an `AgentBuild` when the agent is
 built; the coding bundle is also in `WARM_MODULES` so its import happens on the pipeline's thread.

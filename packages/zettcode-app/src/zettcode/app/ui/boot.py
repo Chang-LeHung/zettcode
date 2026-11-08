@@ -22,11 +22,11 @@ from pathlib import Path
 
 from zettcode.plugin_api.entries import EntryKind, TextEntry
 from zettcode.plugin_api.presenters import CONTENT_INDENT
+from zettcode.presenters import labels
 from zettcode.presenters.presenters import WelcomePresenter
 from zettcode.tui import PROMPT, Canvas, Constraints, Rule, Size, StatusBar, Text, TextArea, TextLine, VBox, Widget
 from zettcode.tui.layout import Slot
 
-from . import labels
 from .widgets.welcome import WELCOME
 
 #: What the composer shows before anything is typed, matching the real one.

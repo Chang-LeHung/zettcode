@@ -23,6 +23,7 @@ dependencies = [
   "zettcode-tui",
   "zettcode-sdk",
   "zettcode-app",
+  "zettcode-presenters",
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for.

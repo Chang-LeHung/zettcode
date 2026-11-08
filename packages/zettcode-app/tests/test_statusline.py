@@ -15,7 +15,6 @@ from test_zettcode_app import (
 from zett_agent.events import AgentEvent, AgentEventType
 
 from zettcode._compat import tomllib
-from zettcode.app.ui import labels
 from zettcode.app.ui.boot import boot_tree
 from zettcode.app.ui.widgets.statusline_page import (
     CHROME,
@@ -28,7 +27,8 @@ from zettcode.app.ui.widgets.statusline_page import (
 from zettcode.config import ZettCodeConfig, load_config
 from zettcode.config_edit import ConfigEditError, set_statusline
 from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
-from zettcode.statusline import NAMES, Part, Row, unknown
+from zettcode.presenters import labels
+from zettcode.presenters.statusline import NAMES, Part, Row, unknown
 from zettcode.tui import TuiApp
 
 MODEL = '[[models]]\nmodel = "m"\ntoken = "t"\n'
@@ -636,7 +636,7 @@ async def test_typed_hide_and_show_write_the_same_table_the_panel_does(config_fi
 
 
 async def test_the_items_of_the_request_line_are_parts_the_panel_the_command_and_the_file_all_switch(config_file):
-    from zettcode.statusline import TURN_PARTS
+    from zettcode.presenters.statusline import TURN_PARTS
 
     assert [name for name, _ in TURN_PARTS] == [name for name in NAMES if name.startswith("turn-")]
     assert next(part for part in PARTS if part.name == "turn-tools").text, "the panel previews the line"

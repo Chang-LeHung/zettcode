@@ -5,6 +5,9 @@ roles* — a line is a list of ``(text, role)`` pairs and a role is a name such 
 or ``"heat3"`` — and never into colours. The page that owns a terminal decides what a role
 looks like in the active theme, which keeps these functions testable as plain strings and
 lets a light theme and a dark one share them.
+
+`zettcode-commands` imports this module for `/usage`; that is a deliberate use of the app's widget internals because
+the sessions and context pages in this package share the same primitives.
 """
 
 from __future__ import annotations

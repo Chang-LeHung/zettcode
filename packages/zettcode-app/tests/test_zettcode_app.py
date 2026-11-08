@@ -37,7 +37,6 @@ from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.effort_gauge import EFFORT_SECONDS
 from zettcode.app.agent.conversation.projection import TranscriptProjector
 from zettcode.app.plugins import (
-    BUILTIN_PLUGINS,
     HOST_LINK,
     HostLink,
     ShellContext,
@@ -102,6 +101,8 @@ from zettcode.presenters.pulse import (
     move_frames,
     sweep_column,
 )
+from zettcode.presenters.rows import ShellRows, TurnLine
+from zettcode.presenters.statusline import context_text
 from zettcode.presenters.text import (
     STOP_HINT,
     clock_text,
@@ -111,7 +112,6 @@ from zettcode.presenters.text import (
     terminal_safe,
 )
 from zettcode.sdk.types import SessionInfo as ListedSession
-from zettcode.statusline import context_text
 from zettcode.tui import (
     DARK,
     LIGHT,
@@ -511,7 +511,8 @@ def rows_and_commands(
     # `/harness` belongs to the harness part now; the fixture registers its command directly because it does not build
     # the agent the part's extension needs.
     for plugin in (
-        *BUILTIN_PLUGINS,
+        ShellRows(),
+        TurnLine(),
         CommandsPlugin(),
         HarnessCommand(),
         BuiltinThemes(),
@@ -9293,7 +9294,7 @@ def test_an_untitled_session_is_called_new_session_in_the_header():
 
 
 def test_the_name_others_reach_the_session_by_follows_the_title_in_the_header():
-    from zettcode.app.ui import labels
+    from zettcode.presenters import labels
 
     text = labels.header_left(Path("/work/zettdemos"), "Fix the parser", "fix-the-parser").text()
 
@@ -9301,20 +9302,20 @@ def test_the_name_others_reach_the_session_by_follows_the_title_in_the_header():
 
 
 def test_a_session_with_no_name_to_reach_it_by_shows_only_its_title():
-    from zettcode.app.ui import labels
+    from zettcode.presenters import labels
 
     assert labels.header_left(Path("/w"), "Title", "").text() == f"  \u25c8 zettcode  Title \u00b7 {Path('/w')}"
     assert "@" not in build_app()._header_left().text, "messaging is off in this shell, so there is no name"
 
 
 def test_a_frame_with_no_session_to_name_is_the_old_header():
-    from zettcode.app.ui import labels
+    from zettcode.presenters import labels
 
     assert labels.header_left(Path("/w")).text() == f"  \u25c8 zettcode  {Path('/w')}"
 
 
 def test_a_long_title_is_cut_so_the_name_and_the_workspace_still_fit_behind_it():
-    from zettcode.app.ui import labels
+    from zettcode.presenters import labels
     from zettcode.tui.render import display_width
 
     text = labels.header_left(Path("/w"), "x" * 120, "name").text()
@@ -9324,7 +9325,7 @@ def test_a_long_title_is_cut_so_the_name_and_the_workspace_still_fit_behind_it()
 
 
 def test_a_title_in_a_wide_script_is_cut_whole_glyphs_within_its_columns():
-    from zettcode.app.ui import labels
+    from zettcode.presenters import labels
     from zettcode.tui.render import display_width
 
     title = "\u4fee\u590d\u89e3\u6790\u5668" * 20
@@ -9335,7 +9336,7 @@ def test_a_title_in_a_wide_script_is_cut_whole_glyphs_within_its_columns():
 
 
 def test_a_title_that_fits_exactly_is_not_cut():
-    from zettcode.app.ui import labels
+    from zettcode.presenters import labels
 
     title = "t" * labels.TITLE_COLUMNS
 
@@ -9530,7 +9531,7 @@ async def test_usage_opens_a_full_screen_page_and_escape_returns_to_the_conversa
     from zett_agent.messages import AssistantMessage
     from zett_agent.model import ModelUsage
 
-    from zettcode.app.ui.widgets import UsagePage
+    from zettcode.commands.usage_page import UsagePage
     from zettcode.engine.storage import SessionStore
 
     work = tmp_path / "work"

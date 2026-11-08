@@ -33,7 +33,7 @@ UiRegion: TypeAlias = Literal["header", "status"]
 #: registration method it calls, or the builtin segment it replaces, does.
 UiSide: TypeAlias = Literal["left", "right"]
 
-#: What one segment paints: a styled line, a plain string, a :class:`~zettcode.statusline.Row` of
+#: What one segment paints: a styled line, a plain string, a :class:`~zettcode.plugin_api.rows.Row` of
 #: named parts the reader may switch off, or nothing. The alias quotes its members because
 #: :class:`TextLine` is imported only for the checker; an alias evaluates eagerly, so the names must stay strings.
 UiSegmentValue: TypeAlias = "TextLine | Row | str | None"

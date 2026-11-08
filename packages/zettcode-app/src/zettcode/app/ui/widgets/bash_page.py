@@ -6,9 +6,8 @@ import asyncio
 from collections.abc import Callable, Sequence
 
 from zettcode.app.commandline import CommandHistory, CommandRunner, ShellCompleter
+from zettcode.presenters import labels
 from zettcode.tui import ConsolePanel
-
-from .. import labels
 
 #: What ends the page when typed, as it ends a shell.
 LEAVING = frozenset({"exit", "quit"})

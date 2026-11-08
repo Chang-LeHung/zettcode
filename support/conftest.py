@@ -29,7 +29,9 @@ PROGRAM_PARTS = (
     ("commands", "zettcode.commands.plugin:CommandsPlugin"),
     ("pets", "zettcode.pets.plugin:PetsPlugin"),
     ("presenters", "zettcode.presenters.plugin:PresentersPlugin"),
+    ("shell", "zettcode.presenters.rows:ShellRows"),
     ("themes", "zettcode.app.plugins.builtins:BuiltinThemes"),
+    ("turn-line", "zettcode.presenters.rows:TurnLine"),
 )
 
 #: The plugins that compose the agent, as the SDK publishes them under `zettcode.plugin`, sorted by name. The loader
@@ -156,6 +158,8 @@ _OWNER = {
     "side-questions": "zettcode-sdk",
     "self-compaction": "zettcode-sdk",
     "compaction": "zettcode-sdk",
+    "shell": "zettcode-presenters",
+    "turn-line": "zettcode-presenters",
     "skills": "zettcode-skills",
     "skill-tool": "zettcode-skills",
     "ask-user": "zettcode-ask-user",

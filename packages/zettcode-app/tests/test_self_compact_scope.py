@@ -300,7 +300,7 @@ def test_the_status_line_says_when_it_is_on():
 
     from test_zettcode_app import build_app
 
-    from zettcode.app.plugins.builtins import ShellRows
+    from zettcode.presenters.rows import ShellRows
 
     context = build_app()._shell_context()
     rows = ShellRows()

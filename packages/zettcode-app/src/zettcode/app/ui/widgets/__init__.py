@@ -53,7 +53,6 @@ _EXPORTS = {
     "TranscriptView": ".transcript",
     "UPGRADE": ".update_page",
     "UpdatePage": ".update_page",
-    "UsagePage": ".usage_page",
     "WELCOME": ".welcome",
     "ZettCodeRoot": ".root",
     "bottom_panel": "zettcode.plugin_api.panels",
@@ -91,7 +90,6 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .steering import SteeringQueue
     from .transcript import TranscriptSource, TranscriptView
     from .update_page import LATER, SKIP, UPGRADE, UpdatePage
-    from .usage_page import UsagePage
     from .welcome import WELCOME
 
 
@@ -155,7 +153,6 @@ __all__ = [
     "UPGRADE",
     "UPDATING_CAPTIONS",
     "UpdatePage",
-    "UsagePage",
     "WELCOME",
     "ZettCodeRoot",
     "bottom_panel",

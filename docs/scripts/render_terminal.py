@@ -15,13 +15,13 @@ from html import escape
 from pathlib import Path
 
 from zettcode.app.agent.agent import TerminalAgent
-from zettcode.app.plugins.builtins import BUILTIN_PLUGINS, ShellRows
 from zettcode.app.plugins.loader import load_terminal_plugins, terminal_plugins
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
 from zettcode.plugin_api.state import ShellContext
 from zettcode.presenters.brand import LOGO_PALETTE, LOGO_PIXELS
+from zettcode.presenters.rows import ShellRows
 from zettcode.tui import DARK, HEADER, Canvas
 
 
@@ -40,7 +40,7 @@ def preview_plugins() -> tuple[object, ...]:
     changes, and it changes because the workspace in a documented picture is not the temporary directory the
     preview happens to run in.
     """
-    return (PreviewRows(), *(plugin for plugin in BUILTIN_PLUGINS if plugin.name != "shell"))
+    return (PreviewRows(),)
 
 
 def api_users_body() -> str:

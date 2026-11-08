@@ -7,11 +7,11 @@ from collections.abc import Callable
 from pathlib import Path
 from time import monotonic
 
+from zettcode.presenters.labels import compact_path
 from zettcode.sdk.types import ContextReport
 from zettcode.tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Widget
 from zettcode.tui.render import blend, display_width
 
-from ..labels import compact_path
 from . import context_charts as charts
 from .effort_page import heat_colour
 

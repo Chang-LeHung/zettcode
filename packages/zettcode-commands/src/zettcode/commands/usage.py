@@ -5,10 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from zettcode.app.plugins.groups import require_tui
-from zettcode.app.ui import labels
-from zettcode.app.ui.widgets import UsagePage
 from zettcode.plugin_api.commands import CommandContext, CommandResult
 from zettcode.plugin_api.plugin import TuiPlugin
+from zettcode.presenters import labels
+
+from .usage_page import UsagePage
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.plugin_api import PluginContext
