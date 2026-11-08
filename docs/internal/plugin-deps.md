@@ -25,7 +25,7 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
     Every loader reads them (the engine's own default does not: `agent=False`). None can be switched off — they are
     protected like a compiled-in plugin, `[skills] enabled` and the other configuration keys being what turns a feature
     off — but a failure to activate one is recorded in `failed`, not raised, as it was when they were compiled in.
-  - `terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`). The SDK and the server
+  - `terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`, `usage`). The SDK and the server
     do not load them, so the terminal's packages are never imported there. `REQUIRED_PLUGINS = (shell, presenters,
     commands)` in `app/plugins/loader.py`.
   - anything else: what a reader installs, published on its own line with its own version (`[tool.zettcode] plugin =

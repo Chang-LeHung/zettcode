@@ -17,6 +17,7 @@ from zettcode.commands.usage import UsageCommand
 from zettcode.commands.usage_page import UsagePage
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.storage import SessionStore
+from zettcode.plugin_api import USAGE_LEDGER
 from zettcode.plugin_api.commands import CommandContext
 from zettcode.sdk.client import Client
 from zettcode.sdk.types import DayTotals, ModelTotals, SessionTotals, Totals, WorkspaceUsage
@@ -447,13 +448,15 @@ def command_over(tmp_path: Path):
         mcp_enabled=False,
     )
     ctx = terminal_context(config)
+    ctx.agent.provide(USAGE_LEDGER, SessionStore(config.store, config.workspace))
     UsageCommand().activate(ctx)
     return config, ctx.tui.registered_commands[0]
 
 
-def test_usage_is_one_of_the_commands_plugin_and_a_command_that_may_run_beside_a_request(tmp_path: Path):
-    assert any(isinstance(group, UsageCommand) for group in CommandsPlugin().groups)
+def test_usage_is_its_own_plugin_and_a_command_that_may_run_beside_a_request(tmp_path: Path):
+    assert not any(isinstance(group, UsageCommand) for group in CommandsPlugin().groups)
     ctx = terminal_context(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
+    ctx.agent.provide(USAGE_LEDGER, SessionStore(tmp_path / "s", tmp_path))
     UsageCommand().activate(ctx)
 
     (command,) = ctx.tui.registered_commands

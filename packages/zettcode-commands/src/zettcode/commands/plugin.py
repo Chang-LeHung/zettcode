@@ -23,14 +23,13 @@ from .handlers import (
     SideQuestion,
 )
 from .hub import HubCommand
-from .usage import UsageCommand
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.plugin_api import PluginContext
 
 
 class CommandsPlugin(TuiPlugin):
-    """``/help``, ``/plugins``, ``/resume``, ``/model``, ``/btw``, ``/review``, ``/bash``, ``/clear``, ``/usage``…"""
+    """``/help``, ``/plugins``, ``/resume``, ``/model``, ``/btw``, ``/review``, ``/bash``, ``/clear``…"""
 
     name = "commands"
     description = "The slash commands that act on the application"
@@ -46,7 +45,6 @@ class CommandsPlugin(TuiPlugin):
             CodeReview(),
             BashCommand(),
             ShellControl(),
-            UsageCommand(),
             HubCommand(),
         )
 

@@ -21,7 +21,7 @@ def test_the_commands_are_registered_in_the_order_help_lists_them(tmp_path: Path
 
     names = [command.name for command in ctx.tui.registered_commands]
     assert names[:2] == ["/help", "/plugins"]
-    assert names[-2:] == ["/usage", "/hub"]
+    assert names[-1:] == ["/hub"]
     assert {"/resume", "/model", "/btw", "/bash", "/clear", "/quit", "/hub"} <= set(names)
     assert [plain.name for plain in ctx.commands.commands] == ["/code-review"]
 
