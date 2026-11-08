@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -213,7 +214,8 @@ class HubPage(ListPage):
             self._draw_graph(canvas, hint, room)
         else:
             if self.subtitle is not None:
-                canvas.draw_text(self.rect.x + 2, self.rect.y + 2, self.subtitle, hint, max_width=room)
+                notice = Style(foreground=theme.accent_bright, background=theme.surface_alt, bold=True)
+                canvas.draw_text(self.rect.x + 2, self.rect.y + 2, self.subtitle, notice, max_width=room)
             self.list.render(canvas)
         canvas.draw_text(self.rect.x + 2, self.rect.bottom - 1, self.footer, hint, max_width=room)
 
@@ -235,7 +237,8 @@ class HubPage(ListPage):
         height = self.rect.bottom - BOTTOM_ROWS - top
         data = self.data
         if data.note:
-            canvas.draw_text(left, self.rect.y + 3, data.note, hint, max_width=room)
+            notice = Style(foreground=theme.accent_bright, background=theme.surface_alt, bold=True)
+            canvas.draw_text(left, self.rect.y + 3, data.note, notice, max_width=room)
         picture = Picture()
         if not data.nodes:
             said = "no session has talked to another yet" if data.graph_ok else "the message graph cannot be read"
@@ -298,6 +301,7 @@ class HubPage(ListPage):
             self._show((self.tab - 1) % len(TABS))
             return True
         if key == "r" and self.on_refresh is not None:
+            self.note("refreshing\u2026")
             self.on_refresh()
             return True
         if self.tab == GRAPH and key in ("up", "down"):
@@ -308,7 +312,10 @@ class HubPage(ListPage):
             return True
         if self.tab == DAEMONS and key == "s" and self.on_stop is not None:
             chosen = self._daemon()
-            if chosen is not None:
+            if chosen is None:
+                self.note("no daemon under the mark")
+            else:
+                self.note("stopping\u2026")
                 self.on_stop(chosen.session_id)
             return True
         return super().capture_event(event, host)
@@ -329,17 +336,28 @@ class HubPage(ListPage):
         return next((daemon for daemon in self.data.daemons if daemon.session_id == chosen), None)
 
     def _chosen(self) -> None:
-        """Enter starts what is under the mark: a daemon whose process is gone, or a stored session no one runs."""
+        """Enter starts what is under the mark: a daemon whose process is gone, or a stored session no one runs.
+
+        Whatever it does, it says so on the page: that it is starting, or why nothing was started.
+        """
         if self.on_start is None:
             return None
         if self.tab == DAEMONS:
             chosen = self._daemon()
-            if chosen is not None and chosen.status in GONE:
+            if chosen is None:
+                self.note("no daemon under the mark")
+            elif chosen.status in GONE:
+                self.note("starting\u2026")
                 self.on_start(chosen.session_id)
+            else:
+                self.note(f"{chosen.label or chosen.session_id[:8]} is running; enter starts a stopped one")
         elif self.tab == SESSIONS and 0 <= self.list.selected < len(self.list.items):
             wanted = self.list.items[self.list.selected].value
             if any(stored.session_id == wanted for stored in self.data.offline):
+                self.note("starting\u2026")
                 self.on_start(str(wanted))
+            else:
+                self.note("that session is already running; enter resumes an offline one")
         return None
 
 
@@ -381,7 +399,7 @@ class HubCommand(TuiPlugin):
         page = HubPage(
             data,
             on_close=self._closer(host),
-            on_refresh=lambda: self._start(self._refresh(page, client)),
+            on_refresh=lambda: self._start(self._reload(page, client)),
             on_stop=lambda session_id: self._start(self._stop(page, client, session_id)),
             on_start=lambda session_id: self._start(self._resume(page, client, session_id)),
         )
@@ -419,10 +437,17 @@ class HubCommand(TuiPlugin):
         """Read everything again, and show it."""
         page.set_data(await self._read(client))
 
+    async def _reload(self, page: HubPage, client: object) -> None:
+        """``r``: read everything again and say when, so a second press visibly did something."""
+        await self._refresh(page, client)
+        if not page.data.note:
+            page.note(f"refreshed {time.strftime('%H:%M:%S')}")
+
     async def _stop(self, page: HubPage, client: object, session_id: str) -> None:
         """Stop one daemon, then show what that changed."""
         from zettcode.sdk.daemons import stop_daemon
 
+        page.note("stopping\u2026")
         said = await stop_daemon(session_id, keep=True)
         await self._refresh(page, client)
         page.note(said)

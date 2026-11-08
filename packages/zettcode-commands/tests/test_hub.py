@@ -115,10 +115,12 @@ def test_enter_on_an_offline_session_resumes_it_and_on_a_live_one_does_nothing()
     opened.list.selected = 0  # "main", registered
     opened.capture_event(_key("enter"), None)
     assert started == []
+    assert "already running" in opened.subtitle, "an Enter that starts nothing says why"
 
     opened.list.selected = 1  # "old", stored and not running
     opened.capture_event(_key("enter"), None)
     assert started == ["old-id"], "the id is what resumes it, not the title"
+    assert opened.subtitle == "starting\u2026", "and the page says it began"
     assert "enter resume" in opened.footer
 
 
@@ -530,3 +532,48 @@ def test_a_daemon_that_is_running_is_not_started_again(monkeypatch, tmp_path):
     asyncio.run(HubCommand()._resume(opened, client, "d-1"))
 
     assert calls == [] and "running" in (opened.subtitle or "")
+
+
+def test_every_key_that_acts_says_so_on_the_page_at_once():
+    asked: list[str] = []
+    opened = HubPage(
+        data(daemons=(Daemon("d-1", "watcher", "idle"), Daemon("d-2", "gone", "dead"))),
+        on_close=lambda: None,
+        on_refresh=lambda: asked.append("r"),
+        on_stop=lambda session_id: asked.append(f"s {session_id}"),
+        on_start=lambda session_id: asked.append(f"enter {session_id}"),
+    )
+
+    opened.capture_event(_key("r"), None)
+    assert opened.subtitle == "refreshing\u2026"
+
+    opened._show(DAEMONS)
+    opened.capture_event(_key("s"), None)
+    assert opened.subtitle == "stopping\u2026"
+
+    opened.list.selected = 0
+    opened.capture_event(_key("enter"), None)
+    assert "is running" in opened.subtitle and "enter" not in " ".join(asked), "a live daemon is not restarted"
+
+    opened.list.selected = 1
+    opened.capture_event(_key("enter"), None)
+    assert opened.subtitle == "starting\u2026"
+    assert asked == ["r", "s d-1", "enter d-2"]
+
+
+def test_a_refresh_ends_with_the_time_it_finished_and_a_failure_is_not_overwritten(monkeypatch):
+    async def read_ok(self, client):
+        return data()
+
+    async def read_bad(self, client):
+        return data(note="the message graph cannot be read: no broker")
+
+    opened = page()
+
+    monkeypatch.setattr(HubCommand, "_read", read_ok)
+    asyncio.run(HubCommand()._reload(opened, object()))
+    assert opened.subtitle.startswith("refreshed ") and opened.subtitle.count(":") == 2
+
+    monkeypatch.setattr(HubCommand, "_read", read_bad)
+    asyncio.run(HubCommand()._reload(opened, object()))
+    assert opened.subtitle == "the message graph cannot be read: no broker"
