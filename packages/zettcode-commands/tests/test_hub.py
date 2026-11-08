@@ -155,7 +155,7 @@ def test_a_scheduled_action_is_kept_and_its_failure_reaches_the_page():
         command = HubCommand()
         opened = page()
         command._page = opened
-        command._start(failing())
+        command._start(failing(), opened)
         for _ in range(10):
             await asyncio.sleep(0)
         assert not command._actions, "a finished action is forgotten"
@@ -172,7 +172,7 @@ def test_a_cancelled_action_is_forgotten_without_complaint():
         command = HubCommand()
         opened = page()
         command._page = opened
-        command._start(forever())
+        command._start(forever(), opened)
         for _ in range(5):
             await asyncio.sleep(0)
         for task in list(command._actions):
@@ -886,3 +886,44 @@ def test_the_page_off_screen_or_not_yet_mounted_can_still_be_changed_without_an_
     opened.set_data(data())
 
     assert opened.app is None and opened.subtitle is None
+
+
+def test_a_page_closed_while_a_task_is_reading_is_written_but_wakes_nothing():
+    """The page keeps its `app` after it is closed, so closing is what has to say it is gone."""
+    opened, harness = _mounted()
+    command = HubCommand()
+    command._page = opened
+    closed: list[bool] = []
+
+    class Host:
+        def close_page(self) -> None:
+            closed.append(True)
+
+    command._closer(Host())()  # type: ignore[arg-type]
+    assert opened.closed and command._page is None and closed == [True]
+    assert opened.app is not None, "an unmounted page still has its app, which is why `closed` exists"
+
+    opened.set_data(data())
+    opened.note("started abcdef12")
+
+    assert not harness.app.scheduler.pending, "nothing is asked of the loop for a page nobody sees"
+
+
+def test_a_late_failure_does_not_land_on_the_page_that_was_opened_in_place_of_the_one_it_belongs_to():
+    async def failing() -> None:
+        raise RuntimeError("the daemon refused")
+
+    async def scenario() -> tuple[HubPage, HubPage]:
+        command = HubCommand()
+        first, second = page(), page()
+        command._page = first
+        command._start(failing(), first)
+        command._page = second  # the reader closed /hub and opened it again before the task ended
+        for _ in range(10):
+            await asyncio.sleep(0)
+        return first, second
+
+    first, second = asyncio.run(scenario())
+
+    assert second.subtitle is None, "the new page is not told about the old one's failure"
+    assert first.subtitle is None, "and the old one is not in front, so nothing is written there either"
