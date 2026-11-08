@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from typing import NamedTuple
 
+from zettcode.presenters.usage_charts import compact
 from zettcode.sdk.types import SessionInfo, SessionStatsInfo
 from zettcode.tui import (
     ELLIPSIS,
@@ -27,8 +28,6 @@ from zettcode.tui.render import blend, display_width
 from zettcode.tui.render.text import truncate
 from zettcode.tui.widgets.list import Part, draw_parts
 from zettcode.wording import UNTITLED_SESSION
-
-from .usage_charts import compact
 
 #: Columns the marker takes at the left of a row, and the gap between the title and the figures, as the list lays them.
 MARKER = 2

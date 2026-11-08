@@ -300,3 +300,30 @@ def test_an_impostor_is_still_reported_when_the_part_it_imitates_was_disabled_an
     assert bundle.failed == (), "the part loaded; the impostor is not a failure of it"
     assert [name for name, _note in bundle.taken] == ["presenters"]
     assert [r.plugin for r in caplog.records if r.getMessage() == "plugins.name_taken"] == ["presenters"]
+
+
+def test_the_typed_page_readers_return_the_provided_services(tmp_path: Path):
+    from zettcode.engine.service_contracts import CONTEXT_REPORT, SESSION_STORE, USAGE_LEDGER
+    from zettcode.engine.storage import SessionStore
+
+    store = SessionStore(tmp_path / "sessions", tmp_path)
+    from zettcode.engine.service_contracts import ContextReportService
+
+    class Report(ContextReportService):
+        async def report(self, session_id: str):
+            return None
+
+    context = Report()
+    ctx = PluginContext(
+        ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)),
+        {SESSION_STORE: store, USAGE_LEDGER: store, CONTEXT_REPORT: context},
+    )
+
+    assert ctx.agent.session_store_service() is store
+    assert ctx.agent.usage_ledger_service() is store
+    assert ctx.agent.context_report_service() is context
+
+    empty = PluginContext(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
+    assert empty.agent.session_store_service() is None
+    assert empty.agent.usage_ledger_service() is None
+    assert empty.agent.context_report_service() is None

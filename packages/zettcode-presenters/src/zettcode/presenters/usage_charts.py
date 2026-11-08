@@ -6,16 +6,19 @@ or ``"heat3"`` — and never into colours. The page that owns a terminal decides
 looks like in the active theme, which keeps these functions testable as plain strings and
 lets a light theme and a dark one share them.
 
-`zettcode-commands` imports this module for `/usage` and `/context`; that is a deliberate use of the app's widget
-internals because the shell's sessions page and the commands' context page share the same primitives.
+The shell's sessions page and the commands' usage/context pages import these primitives from here; they are shared
+drawing code, not app widget internals.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING
 
-from zettcode.sdk.types import SessionTotals, Totals, WorkspaceUsage
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from zettcode.sdk.types import SessionTotals, Totals, WorkspaceUsage
+
 from zettcode.tui import BAR_EMPTY, ELLIPSIS
 from zettcode.tui.render.text import display_width, truncate
 
