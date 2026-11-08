@@ -22,26 +22,30 @@ def page(**changes: object) -> HubPage:
     return HubPage(data(**changes), on_close=lambda: None)
 
 
-def test_the_page_opens_on_the_sessions_tab_with_the_roster_and_the_offline_ones():
+def test_the_page_opens_on_the_graph_and_the_sessions_tab_has_the_roster_and_the_offline_ones():
     opened = page()
+    assert opened.tab == 0 and TABS[0] == "Graph"
 
-    assert "Sessions" in opened.title and "[Sessions]" in opened.title
+    opened._show(1)
+
     labels = [item.label for item in opened.list.items]
     assert labels == ["main", "old"]
     assert "on disk" in opened.list.items[1].description
 
 
-def test_tab_walks_the_two_and_keeps_a_mark_per_tab():
+def test_tab_walks_the_three_and_keeps_a_mark_per_tab():
     opened = page()
+    opened.capture_event(_key("tab"), None)
     opened.list.selected = 1
 
-    keys = [opened.capture_event(_key("tab"), None) for _ in range(1)]
-    assert keys == [True]
-    assert opened.tab == 1 and "Daemons" in opened.title
+    opened.capture_event(_key("tab"), None)
+    assert opened.tab == 2
     assert [item.label for item in opened.list.items] == ["watcher"]
 
     opened.capture_event(_key("tab"), None)
-    assert opened.tab == 0 and opened.list.selected == 1, "the sessions mark came back"
+    assert opened.tab == 0
+    opened.capture_event(_key("tab"), None)
+    assert opened.tab == 1 and opened.list.selected == 1, "the sessions mark came back"
 
 
 def test_shift_tab_walks_backwards():
@@ -61,7 +65,7 @@ def test_stop_and_start_act_on_the_daemon_under_the_mark():
         on_stop=stopped.append,
         on_start=started.append,
     )
-    opened._show(1)
+    opened._show(2)
     opened.capture_event(_key("s"), None)
 
     assert stopped == ["d-1"], "s stops the daemon under the mark"
@@ -71,7 +75,7 @@ def test_stop_and_start_act_on_the_daemon_under_the_mark():
         on_close=lambda: None,
         on_start=started.append,
     )
-    dead._show(1)
+    dead._show(2)
     dead.capture_event(_key("enter"), None)
 
     assert started == ["d-2"], "enter starts a stopped one"

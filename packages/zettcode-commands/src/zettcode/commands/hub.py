@@ -4,7 +4,9 @@ The gateway's page shows this in a browser; this is the same picture where the w
 broker's roster through the SDK, and the daemons' records through :mod:`zettcode.sdk.daemons`, so nothing new is
 listened to and nothing is stored here.
 
-The page is a list per tab, :class:`~zettcode.tui.ListPage` underneath: ``Tab`` and ``Shift-Tab`` (or the arrows alone)
+The page is full-screen. The first tab is the picture (:mod:`~zettcode.commands.hub_graph`): sessions as boxes coloured
+by state, messages as lines, a legend under it. The other two tabs are lists, :class:`~zettcode.tui.ListPage`
+underneath: ``Tab`` and ``Shift-Tab`` (or the arrows alone)
 move between the three, ``Up``/``Down`` through the rows, ``s`` stops the daemon under the mark, ``Enter`` starts one
 whose process is gone, and ``r`` reads everything again. A daemon whose process is gone is listed as ``dead`` or
 ``unknown``; a session stored on this machine that is not registered is listed offline, which is what the broker cannot
@@ -19,21 +21,22 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from zettcode.commands import hub_graph
+from zettcode.commands.hub_graph import Link, Node
 from zettcode.plugin_api.commands import CommandContext, CommandHost, CommandResult
-from zettcode.plugin_api.panels import bottom_panel
 from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.tui import SEPARATOR, Canvas, ListItem, ListPage, event_key
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.plugin_api import PluginContext
+    from zettcode.tui.render import Style
+__all__ = ["HubCommand", "HubData", "HubPage"]
 
-__all__ = ["HUB_ROWS", "HubCommand", "HubData", "HubPage"]
+#: The three tabs, in the order Tab walks them; the first is the picture, the other two are lists.
+TABS = ("Graph", "Sessions", "Daemons")
 
-#: Rows the page asks for when it is anchored to the bottom edge: the tab line, a blank, the list, and the keys.
-HUB_ROWS = 18
-
-#: The three tabs, in the order Tab walks them.
-TABS = ("Sessions", "Daemons")
+#: The tab that lists daemons, the only one whose keys act on a row.
+DAEMONS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +70,8 @@ class HubData:
     daemons: tuple[Daemon, ...] = ()
     offline: tuple[str, ...] = ()
     note: str = ""
+    nodes: tuple[Node, ...] = ()
+    links: tuple[Link, ...] = ()
 
 
 def _session_rows(data: HubData) -> list[ListItem]:
@@ -95,7 +100,7 @@ def _daemon_rows(data: HubData) -> list[ListItem]:
 
 
 #: What each tab shows, in the order :data:`TABS` names them.
-_ROWS: tuple[Callable[[HubData], list[ListItem]], ...] = (_session_rows, _daemon_rows)
+_ROWS: tuple[Callable[[HubData], list[ListItem]], ...] = (lambda data: [], _session_rows, _daemon_rows)
 
 
 class HubPage(ListPage):
@@ -113,7 +118,7 @@ class HubPage(ListPage):
         """Start on the sessions tab, with the first row marked."""
         self.data = data
         self.tab = 0
-        self.marks = [0, 0]
+        self.marks = [0, 0, 0]
         self.on_stop = on_stop
         self.on_start = on_start
         self.on_refresh = on_refresh
@@ -135,7 +140,7 @@ class HubPage(ListPage):
     def _footer(self) -> str:
         """Return the keys this tab takes."""
         common = f"tab next {SEPARATOR} shift-tab back {SEPARATOR} r refresh {SEPARATOR} esc close"
-        if self.tab == 1:
+        if self.tab == DAEMONS:
             return f"enter start a stopped one {SEPARATOR} s stop {SEPARATOR} {common}"
         return common
 
@@ -164,8 +169,39 @@ class HubPage(ListPage):
             x += len(drawn) + gap
         if self.subtitle is not None:
             canvas.draw_text(self.rect.x + 2, self.rect.y + 2, self.subtitle, hint, max_width=room)
-        self.list.render(canvas)
+        if self.tab == 0:
+            self._draw_graph(canvas, hint, room)
+        else:
+            self.list.render(canvas)
         canvas.draw_text(self.rect.x + 2, self.rect.bottom - 1, self.footer, hint, max_width=room)
+
+    def _draw_graph(self, canvas: Canvas, hint: Style, room: int) -> None:
+        """Draw the picture between the tab line and the legend, or say that there is nothing to draw."""
+        theme = self.theme
+        top = self.rect.y + 4
+        height = self.rect.bottom - 3 - top
+        if self.subtitle is None and self.data.nodes:
+            nodes, working = self.data.nodes, sum(1 for node in self.data.nodes if node.state == "working")
+            cut = max(0, len(nodes) - hub_graph.MAX_NODES)
+            summary = (
+                f"{len(nodes)} nodes {SEPARATOR} {working} working {SEPARATOR} "
+                f"{sum(link.count for link in self.data.links)} messages"
+                + (f" {SEPARATOR} {cut} not drawn" if cut else "")
+            )
+            canvas.draw_text(self.rect.x + 2, self.rect.y + 2, summary, hint, max_width=room)
+        if not self.data.nodes:
+            message = "no session has talked to another yet"
+            canvas.draw_text(
+                self.rect.x + max(2, (self.rect.width - len(message)) // 2), top + height // 2, message, hint
+            )
+        elif height >= 5 and room >= 20:
+            hub_graph.draw(canvas, theme, self.rect.x + 2, top, room, height, self.data.nodes, self.data.links)
+        x = self.rect.x + 2
+        for text, style in hub_graph.legend(theme):
+            if x + len(text) > self.rect.x + 2 + room:
+                break
+            canvas.draw_text(x, self.rect.bottom - 2, text, style)
+            x += len(text)
 
     def set_data(self, data: HubData) -> None:
         """Take a fresh reading, and keep the mark where it was on the tab in front."""
@@ -205,10 +241,10 @@ class HubPage(ListPage):
         if key == "r" and self.on_refresh is not None:
             self.on_refresh()
             return True
-        if self.tab == 1 and key == "enter":
+        if self.tab == DAEMONS and key == "enter":
             self._chosen()
             return True
-        if self.tab == 1 and key == "s" and self.on_stop is not None:
+        if self.tab == DAEMONS and key == "s" and self.on_stop is not None:
             chosen = self._daemon()
             if chosen is not None:
                 self.on_stop(chosen.session_id)
@@ -225,7 +261,7 @@ class HubPage(ListPage):
 
     def _chosen(self) -> None:
         """Enter on the daemons tab starts the daemon under the mark when its process is gone."""
-        if self.tab != 1 or self.on_start is None:
+        if self.tab != DAEMONS or self.on_start is None:
             return None
         chosen = self._daemon()
         if chosen is not None and chosen.status in ("dead", "unknown"):
@@ -273,7 +309,7 @@ class HubCommand(TuiPlugin):
             on_start=lambda session_id: self._start(self._resume(page, client, session_id)),
         )
         self._page = page
-        return CommandResult(widget=bottom_panel(page, rows=HUB_ROWS))
+        return CommandResult(widget=page)
 
     def _closer(self, host: CommandHost) -> Callable[[], None]:
         """Return what closing the page runs: forget it here, then let the shell close it.
@@ -366,4 +402,13 @@ class HubCommand(TuiPlugin):
         # Registered by id, and never the reader's own: `peers()` leaves self out and the store keeps it.
         registered = {peer.session_id for peer in peers} | {client.session.id}  # type: ignore[attr-defined]
         offline = tuple(info.title or info.id[:8] for info in listed if info.id not in registered)
-        return HubData(peers=peers, daemons=daemons, offline=offline, note=note)
+        try:
+            graph = await client.traffic_graph()  # type: ignore[attr-defined]
+        except Exception as error:  # noqa: BLE001 - without a broker the picture is empty, the lists still work
+            graph = {}
+            note = note or f"the message graph cannot be read: {error}"
+        titles = {info.id: info.title or info.id[:8] for info in listed}
+        titles.update({daemon.session_id: daemon.label for daemon in daemons})
+        stopped = [daemon.session_id for daemon in daemons if daemon.status in ("dead", "unknown")]
+        nodes, links = hub_graph.build(graph, me=client.session.id, titles=titles, stopped=stopped)  # type: ignore[attr-defined]
+        return HubData(peers=peers, daemons=daemons, offline=offline, note=note, nodes=nodes, links=links)
