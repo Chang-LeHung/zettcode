@@ -45,6 +45,7 @@ __all__ = [
     "glyph",
     "layout",
     "legend",
+    "nearest",
     "paint",
     "state_of",
     "summary",
@@ -621,6 +622,44 @@ def paint(canvas: Canvas, theme: Theme, x: int, y: int, picture: Picture, select
             x + left + 2, y + top + 1, glyph(node.state), Style(foreground=colour, background=fill, bold=True)
         )
         canvas.draw_text(x + left + 4, y + top + 1, truncate(_text(node), w - 6), body, max_width=w - 6)
+
+
+#: The step an arrow key takes on the picture, as (columns, rows).
+_ARROWS = {"left": (-1, 0), "right": (1, 0), "up": (0, -1), "down": (0, 1)}
+
+
+def nearest(picture: Picture, selected: str | None, direction: str) -> str | None:
+    """Return the node to select when an arrow key is pressed, or ``None`` when there is none that way.
+
+    Every node has a place, so an arrow goes to the node nearest in that direction: of those ahead of the selected
+    one it takes the one with the least distance along the arrow plus twice the distance across it, preferring
+    those inside a cone of about 60 degrees either side, and falling back to any that lies ahead. A row is about
+    twice as tall as a column is wide, so rows count double. With nothing selected the first arrow selects the
+    reader's own session, which comes first.
+    """
+    if not picture.nodes:
+        return None
+    if selected is None or selected not in picture.boxes:
+        return picture.nodes[0].key
+    step_x, step_y = _ARROWS[direction]
+    left, top, width = picture.boxes[selected]
+    here_x, here_y = left + width / 2, (top + BOX_HEIGHT / 2) * 2
+    best: dict[bool, tuple[float, str]] = {}
+    for node in picture.nodes:
+        if node.key == selected:
+            continue
+        left, top, width = picture.boxes[node.key]
+        dx, dy = left + width / 2 - here_x, (top + BOX_HEIGHT / 2) * 2 - here_y
+        ahead = dx * step_x + dy * step_y
+        across = abs(dx * step_y) + abs(dy * step_x)
+        if ahead <= 0:
+            continue
+        inside = across <= 1.7 * ahead
+        score = (ahead + 2 * across, node.key)
+        if inside not in best or score < best[inside]:
+            best[inside] = score
+    chosen = best.get(True) or best.get(False)
+    return chosen[1] if chosen else None
 
 
 def summary(nodes: Sequence[Node], links: Sequence[Link], picture: Picture, selected: str | None = None) -> str:

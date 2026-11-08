@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -30,8 +30,8 @@ from zettcode.commands import hub_graph
 from zettcode.commands.hub_graph import Link, Node, Picture
 from zettcode.plugin_api.commands import CommandContext, CommandHost, CommandResult
 from zettcode.plugin_api.plugin import TuiPlugin
-from zettcode.tui import SEPARATOR, Canvas, ListItem, ListPage, Theme, event_key
-from zettcode.tui.render import Style, display_width
+from zettcode.tui import SEPARATOR, Canvas, ListItem, ListPage, Rect, Theme, event_key
+from zettcode.tui.render import Style, display_width, truncate
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.plugin_api import PluginContext
@@ -101,50 +101,86 @@ class HubData:
     graph_ok: bool = True
 
 
-def _described(state: str, rest: str) -> tuple[str, Callable[[Theme], list[tuple[str, str | None]]]]:
-    """Return a row's description and the same text in colours: the state's dot and word in its own colour."""
-    head = f"{hub_graph.glyph(state)} {state}"
+@dataclass(frozen=True, slots=True)
+class Table:
+    """What a list tab shows: its rows, the title of each column, and how wide each column after the name is."""
 
-    def parts(theme: Theme) -> list[tuple[str, str | None]]:
-        return [(head, hub_graph.colours(theme)[state]), (rest, None)]
-
-    return head + rest, parts
-
-
-def _session_rows(data: HubData) -> list[ListItem]:
-    rows = []
-    for peer in data.peers:
-        state = hub_graph.state_of(peer.status, peer.kind)
-        # An outsider's state word is its kind already, so the kind is not said twice.
-        kind = f" {SEPARATOR} {peer.kind}" if peer.kind != state else ""
-        text, parts = _described(state, f" {SEPARATOR} {peer.title or 'untitled'}{kind} {SEPARATOR} {peer.workspace}")
-        rows.append(ListItem(peer.handle, peer.handle, text, parts=parts))
-    for stored in data.offline:
-        text, parts = _described("offline", f" {SEPARATOR} on disk, no process")
-        rows.append(ListItem(stored.session_id, stored.title, text, parts=parts))
-    return rows
+    items: list[ListItem]
+    titles: tuple[str, ...] = ()
+    widths: tuple[int, ...] = ()
 
 
-def _daemon_rows(data: HubData) -> list[ListItem]:
+#: The space between two columns of a table.
+COLUMN_GAP = 2
+
+
+def _table(titles: tuple[str, ...], rows: Sequence[tuple[str, str, str, tuple[str, ...]]]) -> Table:
+    """Build a table whose first column is each row's name and whose second is its state.
+
+    Args:
+        titles: The title of every column, the name's first.
+        rows: ``(value, name, state, cells)`` for each row: the cells are the columns after the state, and the state
+            column is written as the state's dot and word, in the state's colour.
+    """
+    cells = [(f"{hub_graph.glyph(state)} {text}", *rest) for _, _, state, (text, *rest) in rows]
+    widths = tuple(
+        max([display_width(titles[index + 1])] + [display_width(row[index]) for row in cells])
+        for index in range(len(titles) - 1)
+    )
+    items = []
+    for (value, name, state, _), row in zip(rows, cells, strict=True):
+        padded = [
+            cell + " " * (width - display_width(cell) + COLUMN_GAP) for cell, width in zip(row, widths, strict=True)
+        ]
+        padded[-1] = row[-1]
+
+        def parts(theme: Theme, state: str = state, padded: list[str] = padded) -> list[tuple[str, str | None]]:
+            return [(padded[0], hub_graph.colours(theme)[state]), *((text, theme.muted) for text in padded[1:])]
+
+        items.append(ListItem(value, name, "".join(padded), parts=parts))
+    return Table(items, titles, widths)
+
+
+def _session_table(data: HubData) -> Table:
+    rows = [
+        (
+            peer.handle,
+            peer.handle,
+            hub_graph.state_of(peer.status, peer.kind),
+            (hub_graph.state_of(peer.status, peer.kind), peer.title or "untitled", peer.workspace),
+        )
+        for peer in data.peers
+    ]
+    rows += [
+        (stored.session_id, stored.title, "offline", ("offline", "on disk, no process", "")) for stored in data.offline
+    ]
+    return _table(("NAME", "STATE", "TITLE", "WORKSPACE"), rows)
+
+
+def _daemon_table(data: HubData) -> Table:
     rows = []
     for daemon in data.daemons:
         state = "stopped" if daemon.status in GONE else hub_graph.state_of(daemon.status, "")
-        # The state word already says working or idle; the daemon's own word is added only when it says more.
-        said = f" {SEPARATOR} {daemon.status}" if daemon.status != state else ""
-        text, parts = _described(
-            state, f"{said} {SEPARATOR} {daemon.model or 'no model'} {SEPARATOR} {daemon.workspace}"
+        # The state word already says working or idle; the daemon's own word follows only when it says more.
+        said = state if daemon.status == state else f"{state} ({daemon.status})"
+        rows.append(
+            (
+                daemon.session_id,
+                daemon.label or daemon.session_id,
+                state,
+                (said, daemon.model or "no model", daemon.workspace),
+            )
         )
-        rows.append(ListItem(daemon.session_id, daemon.label or daemon.session_id, text, parts=parts))
-    return rows
+    return _table(("NAME", "STATE", "MODEL", "WORKSPACE"), rows)
 
 
-def _no_rows(data: HubData) -> list[ListItem]:
+def _no_table(data: HubData) -> Table:
     """The picture has no rows: it is drawn by the page."""
-    return []
+    return Table([])
 
 
 #: What each tab lists, in the order :data:`TABS` names them.
-_ROWS: tuple[Callable[[HubData], list[ListItem]], ...] = (_no_rows, _session_rows, _daemon_rows)
+_TABLES: tuple[Callable[[HubData], Table], ...] = (_no_table, _session_table, _daemon_table)
 
 
 class HubPage(ListPage):
@@ -170,8 +206,10 @@ class HubPage(ListPage):
         self.on_refresh = on_refresh
         self._picture = Picture()
         self._picture_key: tuple[object, ...] | None = None
+        #: The table of the tab in front: its titles are drawn over the list, its widths line them up with the cells.
+        self.table = _TABLES[GRAPH](data)
         super().__init__(
-            _ROWS[GRAPH](data),
+            self.table.items,
             title="Hub",
             subtitle=data.note or None,
             footer=self._footer(),
@@ -182,12 +220,18 @@ class HubPage(ListPage):
     # -- what the reader sees ---------------------------------------------------------------------------
     def _footer(self) -> str:
         """Return the keys this tab takes."""
-        common = f"tab next {SEPARATOR} shift-tab back {SEPARATOR} r refresh {SEPARATOR} esc close"
+        leave = "esc deselect" if self.tab == GRAPH and self.selected is not None else "esc close"
+        common = f"tab next tab {SEPARATOR} shift-tab back {SEPARATOR} r refresh {SEPARATOR} {leave}"
         if self.tab == GRAPH:
-            return f"up/down select a node {SEPARATOR} {common}"
+            return f"arrows move to the nearest node {SEPARATOR} {common}"
         if self.tab == DAEMONS:
             return f"enter start a stopped one {SEPARATOR} s stop {SEPARATOR} {common}"
         return common
+
+    def layout(self, rect: Rect) -> None:
+        """Lay the list one row lower than a plain list page does, to make room for the titles of its columns."""
+        super().layout(rect)
+        self.list.layout(Rect(rect.x + 2, rect.y + 4, max(0, rect.width - 4), max(0, rect.height - 5)))
 
     def render(self, canvas: Canvas) -> None:
         """Fill the page, then the tabs (the open one in the accent colour), the tab's body, and the keys."""
@@ -216,8 +260,34 @@ class HubPage(ListPage):
             if self.subtitle is not None:
                 notice = Style(foreground=theme.accent_bright, background=theme.surface_alt, bold=True)
                 canvas.draw_text(self.rect.x + 2, self.rect.y + 2, self.subtitle, notice, max_width=room)
+            self._draw_titles(canvas, theme)
             self.list.render(canvas)
         canvas.draw_text(self.rect.x + 2, self.rect.bottom - 1, self.footer, hint, max_width=room)
+
+    def _draw_titles(self, canvas: Canvas, theme: Theme) -> None:
+        """Draw the title of each column over the list, lined up with the cells under it.
+
+        The list puts its marker in two columns and the name after it, then every cell after the widest name; the
+        titles follow that, and are left out where the list itself gives up on columns for want of room.
+        """
+        table, items = self.table, self.list.items
+        if not table.titles or not items:
+            return
+        style = Style(foreground=theme.subtle, background=theme.surface_alt, bold=True)
+        x, y = self.list.rect.x, self.rect.y + 3
+        name = max(display_width(item.label) for item in items)
+        marker, gap = self.list.MARKER_WIDTH, self.list.COLUMN_GAP
+        canvas.draw_text(x + marker, y, truncate(table.titles[0], name + gap - 1), style, max_width=name + gap - 1)
+        start = marker + name + gap
+        room = self.list.rect.width - start
+        if room <= 3:
+            return
+        cells = [
+            title + " " * (width - display_width(title) + COLUMN_GAP)
+            for title, width in zip(table.titles[1:], table.widths, strict=True)
+        ]
+        cells[-1] = cells[-1].rstrip()
+        canvas.draw_text(x + start, y, truncate("".join(cells), room), style, max_width=room)
 
     def _picture_for(self, width: int, height: int) -> Picture:
         """Return the laid-out graph for this size, laid out again only when the data or the size changed."""
@@ -282,7 +352,8 @@ class HubPage(ListPage):
     def _show(self, tab: int) -> None:
         """Put one tab in front, with the mark it had."""
         self.tab = tab
-        rows = _ROWS[tab](self.data)
+        self.table = _TABLES[tab](self.data)
+        rows = self.table.items
         self.list.set_items(rows)
         self.list.selected = min(self.marks[tab], len(rows) - 1)
         self.footer = self._footer()
@@ -290,13 +361,13 @@ class HubPage(ListPage):
 
     # -- the keys ---------------------------------------------------------------------------------------
     def capture_event(self, event, host) -> bool:
-        """Take Tab, Shift-Tab, the node selection and the daemon keys before the list does."""
+        """Take Tab and Shift-Tab (the only keys that change tab), the node selection and the daemon keys."""
         key = event_key(event)
-        if key in ("tab", "right"):
+        if key == "tab":
             self.marks[self.tab] = max(0, self.list.selected)
             self._show((self.tab + 1) % len(TABS))
             return True
-        if key in ("backtab", "left"):
+        if key == "backtab":
             self.marks[self.tab] = max(0, self.list.selected)
             self._show((self.tab - 1) % len(TABS))
             return True
@@ -304,8 +375,13 @@ class HubPage(ListPage):
             self.note("refreshing\u2026")
             self.on_refresh()
             return True
-        if self.tab == GRAPH and key in ("up", "down"):
-            self._select(1 if key == "down" else -1)
+        if self.tab == GRAPH and key in ("up", "down", "left", "right"):
+            self._move(key)
+            return True
+        if self.tab == GRAPH and key == "escape" and self.selected is not None:
+            self.selected = None
+            self.footer = self._footer()
+            self.request_layout()
             return True
         if self.tab == DAEMONS and key == "enter":
             self._chosen()
@@ -320,12 +396,13 @@ class HubPage(ListPage):
             return True
         return super().capture_event(event, host)
 
-    def _select(self, step: int) -> None:
-        """Move the selection through the nodes drawn, busiest first, with "none selected" between the ends."""
-        ring: list[str | None] = [None, *(node.key for node in self._picture.nodes)]
-        here = ring.index(self.selected) if self.selected in ring else 0
-        self.selected = ring[(here + step) % len(ring)]
-        self.request_layout()
+    def _move(self, key: str) -> None:
+        """Select the node nearest in the direction of an arrow key; the first arrow selects the reader's own."""
+        target = hub_graph.nearest(self._picture, self.selected, key)
+        if target is not None:
+            self.selected = target
+            self.footer = self._footer()
+            self.request_layout()
 
     def _daemon(self) -> Daemon | None:
         """Return the daemon under the mark, by the id the row carries: a refresh may have reordered the list."""

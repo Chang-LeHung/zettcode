@@ -220,6 +220,15 @@ def _graph_data() -> HubData:
     return data(nodes=nodes, links=(Link("me", "a", 55), Link("a", "b", 3)))
 
 
+def crowd_nodes(count: int) -> tuple[tuple[Node, ...], tuple[Link, ...]]:
+    """The reader's own session and ``count - 1`` others, all talking to it and some to each other."""
+    nodes = (Node("me", "main", "working", me=True), *(Node(f"n{i}", f"node-{i}", "idle") for i in range(1, count)))
+    links = tuple(Link("me", f"n{i}", i) for i in range(1, count)) + tuple(
+        Link(f"n{i}", f"n{i + 1}", 2) for i in range(1, count - 1, 2)
+    )
+    return nodes, links
+
+
 def _rendered(opened: HubPage, width: int, height: int) -> list[str]:
     from zettcode.tui import Canvas
 
@@ -229,18 +238,75 @@ def _rendered(opened: HubPage, width: int, height: int) -> list[str]:
     return ["".join(cell.character or " " for cell in row) for row in canvas.cells]
 
 
-def test_up_and_down_select_the_drawn_nodes_busiest_first_with_none_between_the_ends():
+def _centres(opened: HubPage) -> dict[str, tuple[float, float]]:
+    return {key: (left + w / 2, top + 1.5) for key, (left, top, w) in opened._picture.boxes.items()}
+
+
+def test_an_arrow_goes_to_the_nearest_node_that_way_and_the_first_one_selects_the_readers_own():
+    nodes, links = crowd_nodes(9)
+    opened = HubPage(data(nodes=nodes, links=links), on_close=lambda: None)
+    _rendered(opened, 160, 40)
+    centres = _centres(opened)
+    assert len(centres) == 9
+
+    opened.capture_event(_key("right"), None)
+    assert opened.selected == "me", "nothing was selected, so the first arrow selects the reader's own"
+
+    moved = 0
+    for arrow, ahead in (
+        ("right", lambda here, there: there[0] > here[0]),
+        ("left", lambda here, there: there[0] < here[0]),
+        ("down", lambda here, there: there[1] > here[1]),
+        ("up", lambda here, there: there[1] < here[1]),
+    ):
+        for start in centres:
+            opened.selected = start
+            opened.capture_event(_key(arrow), None)
+            if opened.selected != start:
+                moved += 1
+                assert ahead(centres[start], centres[opened.selected]), f"{arrow} from {start} went the wrong way"
+    assert moved >= 12, "most nodes have a neighbour in most directions"
+
+
+def test_an_arrow_with_nothing_that_way_stays_put():
+    nodes, links = crowd_nodes(5)
+    opened = HubPage(data(nodes=nodes, links=links), on_close=lambda: None)
+    _rendered(opened, 160, 40)
+    centres = _centres(opened)
+    leftmost = min(centres, key=lambda key: centres[key][0])
+    opened.selected = leftmost
+
+    opened.capture_event(_key("left"), None)
+
+    assert opened.selected == leftmost
+
+
+def test_only_tab_and_shift_tab_change_tab_and_the_sideways_arrows_stay_on_the_graph():
     opened = HubPage(_graph_data(), on_close=lambda: None)
     _rendered(opened, 110, 32)
 
-    order = []
-    for _ in range(4):
-        opened.capture_event(_key("down"), None)
-        order.append(opened.selected)
-    opened.capture_event(_key("up"), None)
+    opened.capture_event(_key("right"), None)
+    opened.capture_event(_key("left"), None)
+    assert opened.tab == GRAPH
 
-    assert order == ["me", "a", "b", None], "the reader's own first, then by messages, then back to nothing"
-    assert opened.selected == "b"
+    opened._show(SESSIONS)
+    opened.capture_event(_key("right"), None)
+    opened.capture_event(_key("left"), None)
+    assert opened.tab == SESSIONS, "on a list the sideways arrows do not change tab either"
+
+
+def test_escape_deselects_a_node_and_only_then_closes():
+    closed: list[bool] = []
+    opened = HubPage(_graph_data(), on_close=lambda: closed.append(True))
+    _rendered(opened, 110, 32)
+    opened.capture_event(_key("down"), None)
+    assert opened.selected is not None and "esc deselect" in opened.footer
+
+    opened.capture_event(_key("escape"), None)
+    assert opened.selected is None and closed == [] and "esc close" in opened.footer
+
+    opened.capture_event(_key("escape"), None)
+    assert closed == [True]
 
 
 def test_selection_is_dropped_when_a_new_reading_no_longer_draws_the_node():
@@ -264,7 +330,7 @@ def test_the_graph_tab_draws_the_summary_the_legend_and_a_picture():
     assert "3 nodes" in rows[2] and "58 messages" in rows[2]
     assert "main (you)" in text and "review" in text and "docs" in text
     assert "n = messages" in rows[-2] and "stopped" in rows[-2]
-    assert "up/down select a node" in rows[-1]
+    assert "arrows move to the nearest node" in rows[-1]
 
 
 def test_selecting_a_node_says_what_it_is_part_of():
@@ -286,7 +352,7 @@ def test_the_page_renders_at_any_size_and_keeps_its_tab_line_and_footer(size):
 
     if height >= 5:
         assert rows[1].lstrip().startswith("Hub")
-        assert rows[-1].lstrip().startswith("up/down") or width < 20
+        assert rows[-1].lstrip().startswith("arrows") or width < 20
     if height >= 9 and width >= 40:
         assert "n = messages" in rows[-2], "the legend is its own row, never over the tab line"
 
@@ -601,3 +667,53 @@ def test_a_refresh_ends_with_the_time_it_finished_and_a_failure_is_not_overwritt
     monkeypatch.setattr(HubCommand, "_read", read_bad)
     asyncio.run(HubCommand()._reload(opened, object()))
     assert opened.subtitle == "the message graph cannot be read: no broker"
+
+
+def test_the_tables_have_titles_lined_up_with_their_columns():
+    opened = HubPage(
+        data(
+            peers=(Peer("main", "the parser", "working", "/work"), Peer("a-longer-handle", "t", "idle", "/elsewhere")),
+            daemons=(Daemon("d-1", "watcher", "idle", model="the-model", workspace="/work"),),
+        ),
+        on_close=lambda: None,
+    )
+
+    opened._show(SESSIONS)
+    rows = _rendered(opened, 110, 24)
+    head, first = rows[3], rows[4]
+    assert head.split() == ["NAME", "STATE", "TITLE", "WORKSPACE"]
+    assert head.index("STATE") == first.index("\u25cf"), "STATE sits over the dot"
+    assert head.index("TITLE") == first.index("the parser")
+    assert head.index("WORKSPACE") == first.index("/work")
+    assert head.index("NAME") == first.index("main")
+
+    opened._show(DAEMONS)
+    rows = _rendered(opened, 110, 24)
+    assert rows[3].split() == ["NAME", "STATE", "MODEL", "WORKSPACE"]
+    assert rows[3].index("MODEL") == rows[4].index("the-model")
+
+
+def test_a_note_does_not_overwrite_the_titles_and_the_graph_has_none():
+    opened = page()
+    opened.note("started abcdef12")
+    opened._show(SESSIONS)
+
+    rows = _rendered(opened, 110, 24)
+
+    assert "started abcdef12" in rows[2] and "NAME" in rows[3]
+    opened._show(GRAPH)
+    assert "NAME" not in "\n".join(_rendered(opened, 110, 24))
+
+
+def test_a_daemon_status_is_written_once_inside_the_state_column():
+    opened = HubPage(
+        data(daemons=(Daemon("a", "live", "working"), Daemon("b", "gone", "dead"), Daemon("c", "new", "starting"))),
+        on_close=lambda: None,
+    )
+    opened._show(DAEMONS)
+
+    said = [item.description for item in opened.list.items]
+
+    assert said[0].count("working") == 1
+    assert "stopped (dead)" in said[1], "a dead process keeps the word that explains the red"
+    assert "idle (starting)" in said[2]
