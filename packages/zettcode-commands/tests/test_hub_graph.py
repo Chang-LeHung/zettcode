@@ -70,7 +70,8 @@ def test_drawing_paints_lines_boxes_and_counts_and_nothing_outside_the_rectangle
     text = "\n".join("".join(cell.character or " " for cell in row) for row in canvas.cells)
     assert "main (you)" in text and "review" in text and "ci-bot" in text and "old one" in text
     assert "55" in text, "the count is written on the line"
-    assert any(0x2800 < ord(char) < 0x2900 for char in text), "lines are braille dots"
+    assert any(char in "\u2500\u2502\u256d\u256e\u256f\u2570" for char in text), "lines are box-drawing characters"
+    assert not any(0x2800 <= ord(char) < 0x2900 for char in text), "no braille: a font draws it as loose dots"
     assert all(
         cell.character in ("", " ") for cell in canvas.cells[0] + canvas.cells[1] + canvas.cells[22] + canvas.cells[23]
     )
@@ -98,3 +99,37 @@ def test_an_empty_picture_says_so_and_the_page_renders_at_every_size():
     canvas = Canvas(80, 24)
     page.render(canvas)
     assert "no session has talked" in "".join(cell.character or " " for row in canvas.cells for cell in row)
+
+
+def test_the_lists_colour_a_state_the_way_the_graph_does():
+    from zettcode.commands.hub import Daemon, Peer
+
+    theme = Theme()
+    states, _ = graph.colours(theme)
+    page = HubPage(
+        HubData(
+            peers=(
+                Peer("a", "t", "working", "/w"),
+                Peer("b", "t", "idle", "/w"),
+                Peer("c", "t", "idle", "/w", "external"),
+            ),
+            daemons=(Daemon("d", "dead one", "dead"), Daemon("e", "live", "working")),
+            offline=("old",),
+        ),
+        on_close=lambda: None,
+    )
+
+    def head(item):
+        first = item.parts(theme)[0]
+        assert "".join(text for text, _ in item.parts(theme)) == item.description
+        return first[1]
+
+    page._show(1)
+    assert [head(item) for item in page.list.items] == [
+        states["working"],
+        states["idle"],
+        states["external"],
+        states["offline"],
+    ]
+    page._show(2)
+    assert [head(item) for item in page.list.items] == [states["stopped"], states["working"]]

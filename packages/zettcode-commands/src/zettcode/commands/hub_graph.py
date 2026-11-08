@@ -2,24 +2,25 @@
 
 Nothing here reads anything. :func:`build` turns the broker's graph (and the daemons' records) into :class:`Node` and
 :class:`Link` values, :func:`place` puts the nodes on a ring around the reader's own session, and :func:`draw` paints
-both onto a canvas: the lines as braille dots, which are two dots wide and four high inside one cell and so bend like
-lines instead of stepping like blocks, and the nodes as rounded boxes laid over the ends of the lines.
+both onto a canvas: the lines as box-drawing characters routed at right angles with rounded corners (they join where
+they meet, and every font draws them unbroken), and the nodes as rounded boxes laid over the ends of the lines.
 
 A state has one colour, and the legend under the picture says which. The colours are the theme's own (``warning`` for
-working, ``accent`` for idle, ``error`` for a daemon that stopped), so a palette change recolours the picture.
+working, ``accent`` for idle, ``error`` for a daemon that stopped), so a palette change recolours the picture, and the
+two lists beside the picture use the same colours for the same words.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from zettcode.tui import Canvas
 from zettcode.tui.render import Style
 
-__all__ = ["Link", "Node", "build", "draw", "legend", "place"]
+__all__ = ["Link", "Node", "build", "colours", "draw", "glyph", "legend", "place", "state_of"]
 
 #: How many nodes the picture draws; a ring of more is a smear, and the rest are counted in the summary.
 MAX_NODES = 16
@@ -33,8 +34,25 @@ STATES = ("working", "idle", "external", "offline", "stopped")
 #: Message totals at which a line changes colour, and the words the legend uses for them.
 TIERS = ((1, "1-4"), (5, "5-19"), (20, "20+"))
 
-# The dot of a braille cell at (column, row) is this bit of the code point offset from U+2800.
-_DOTS = ((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80))
+# A cell of line is the set of sides it joins: these bits, and the glyph each set is drawn as.
+_N, _E, _S, _W = 1, 2, 4, 8
+_JOINS = {
+    _N: "\u2502",
+    _S: "\u2502",
+    _N | _S: "\u2502",
+    _E: "\u2500",
+    _W: "\u2500",
+    _E | _W: "\u2500",
+    _N | _E: "\u2570",
+    _N | _W: "\u256f",
+    _S | _E: "\u256d",
+    _S | _W: "\u256e",
+    _N | _E | _S: "\u251c",
+    _N | _S | _W: "\u2524",
+    _E | _S | _W: "\u252c",
+    _N | _E | _W: "\u2534",
+    _N | _E | _S | _W: "\u253c",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,11 +74,28 @@ class Link:
     count: int
 
 
-def _state(status: str, kind: str) -> str:
-    """Return the state a roster entry is drawn in."""
+def state_of(status: str, kind: str) -> str:
+    """Return the state a roster entry (or a daemon's status) is drawn in."""
     if kind == "external":
         return "external"
     return "working" if status == "working" else "idle"
+
+
+def glyph(state: str) -> str:
+    """Return the mark in front of a state: a diamond for an outsider, a dot for the rest."""
+    return "\u25c7" if state == "external" else "\u25cf"
+
+
+def colours(theme: Any) -> tuple[dict[str, str], tuple[str, ...]]:
+    """Return the colour of each state and of each line band, from the theme."""
+    states = {
+        "working": theme.warning,
+        "idle": theme.accent,
+        "external": theme.accent_bright,
+        "offline": theme.muted,
+        "stopped": theme.error,
+    }
+    return states, (theme.muted, theme.subtle, theme.text)
 
 
 def build(
@@ -68,7 +103,7 @@ def build(
     *,
     me: str = "",
     titles: Mapping[str, str] | None = None,
-    stopped: Iterable[str] = (),
+    stopped: Sequence[str] = (),
 ) -> tuple[tuple[Node, ...], tuple[Link, ...]]:
     """Return the nodes and links of the broker's graph.
 
@@ -86,7 +121,7 @@ def build(
         if not key:
             continue
         label = str(entry.get("handle") or entry.get("title") or key[:8])
-        nodes[key] = Node(key, label, _state(str(entry.get("status", "idle")), str(entry.get("kind", ""))), key == me)
+        nodes[key] = Node(key, label, state_of(str(entry.get("status", "idle")), str(entry.get("kind", ""))), key == me)
     links = []
     for edge in graph.get("edges", ()):
         a, b = str(edge.get("a", "")), str(edge.get("b", ""))
@@ -164,123 +199,158 @@ def place(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int)
     return spots
 
 
-def _line(x0: int, y0: int, x1: int, y1: int) -> Iterable[tuple[int, int]]:
-    """Yield the dots of a straight line between two dots (Bresenham)."""
-    dx, dy = abs(x1 - x0), -abs(y1 - y0)
-    step_x, step_y = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
-    error = dx + dy
-    while True:
-        yield x0, y0
-        if x0 == x1 and y0 == y1:
-            return
-        doubled = 2 * error
-        if doubled >= dy:
-            error += dy
-            x0 += step_x
-        if doubled <= dx:
-            error += dx
-            y0 += step_y
-
-
 def _tier(count: int) -> int:
     """Return which colour band a message total falls in: 0, 1 or 2."""
     return sum(1 for floor, _ in TIERS[1:] if count >= floor)
 
 
-def _colours(theme: Any) -> tuple[dict[str, str], tuple[str, ...]]:
-    """Return the colour of each state and of each line band, from the theme."""
-    states = {
-        "working": theme.warning,
-        "idle": theme.accent,
-        "external": theme.accent_bright,
-        "offline": theme.muted,
-        "stopped": theme.error,
-    }
-    return states, (theme.muted, theme.subtle, theme.accent_bright)
+def _route(a: tuple[int, int], b: tuple[int, int]) -> list[tuple[int, int]]:
+    """Return the cells of a right-angled path from ``a`` to ``b``, corner to corner of two straight runs.
+
+    A path leaves along the longer side: horizontally when the nodes are wider apart than twice their height apart
+    (a cell is about twice as tall as it is wide), vertically otherwise, and turns twice at the half way mark.
+    """
+    (ax, ay), (bx, by) = a, b
+    horizontal = abs(bx - ax) >= 2 * abs(by - ay)
+    points = [(ax, ay)]
+
+    def walk(x: int, y: int) -> None:
+        while (points[-1][0], points[-1][1]) != (x, y):
+            px, py = points[-1]
+            points.append((px + (x > px) - (x < px), py) if px != x else (px, py + (y > py) - (y < py)))
+
+    if horizontal:
+        mid = (ax + bx) // 2
+        walk(mid, ay)
+        walk(mid, by)
+        walk(bx, by)
+    else:
+        mid = (ay + by) // 2
+        walk(ax, mid)
+        walk(bx, mid)
+        walk(bx, by)
+    return points
+
+
+def _runs(points: Sequence[tuple[int, int]]) -> list[tuple[int, int, int]]:
+    """Return the length and middle cell of each straight stretch of a path, longest first."""
+    found: list[tuple[int, int, int]] = []
+    start = 0
+    for index in range(1, len(points) + 1):
+        turned = index == len(points) or (
+            index - start >= 2
+            and (points[index][0] - points[index - 1][0], points[index][1] - points[index - 1][1])
+            != (points[index - 1][0] - points[index - 2][0], points[index - 1][1] - points[index - 2][1])
+        )
+        if turned:
+            length = index - start
+            middle = points[start + length // 2]
+            found.append((length, middle[0], middle[1]))
+            start = index - 1
+    return sorted(found, reverse=True)
+
+
+def _sides(before: tuple[int, int] | None, here: tuple[int, int], after: tuple[int, int] | None) -> int:
+    """Return which sides of the cell a path joins, from the cells before and after it."""
+    bits = 0
+    for other in (before, after):
+        if other is None:
+            continue
+        dx, dy = other[0] - here[0], other[1] - here[1]
+        bits |= _E if dx > 0 else _W if dx < 0 else _S if dy > 0 else _N
+    return bits
 
 
 def draw(
-    canvas: Canvas, theme: Any, x: int, y: int, width: int, height: int, nodes: Sequence[Node], links: Sequence[Link]
+    canvas: Canvas,
+    theme: Any,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    nodes: Sequence[Node],
+    links: Sequence[Link],
 ) -> None:
-    """Paint the graph into the rectangle: lines first, then each box over its line ends, then the counts."""
+    """Paint the graph into the rectangle: lines first, then their counts, then each box over its line ends."""
     shown = list(nodes[:MAX_NODES])
     keep = {node.key for node in shown}
     links = [link for link in links if link.a in keep and link.b in keep]
     spots = place(shown, links, width, height)
-    states, bands = _colours(theme)
+    states, bands = colours(theme)
     page = theme.surface_alt
 
-    # The lines: one braille cell per 2x4 dots, the strongest band winning where lines cross.
-    dots: dict[tuple[int, int], int] = {}
-    band: dict[tuple[int, int], int] = {}
-    for link in sorted(links, key=lambda item: item.count):
-        (ax, ay), (bx, by) = spots[link.a], spots[link.b]
-        for dot_x, dot_y in _line(ax * 2 + 1, ay * 4 + 2, bx * 2 + 1, by * 4 + 2):
-            cell = (dot_x // 2, dot_y // 4)
-            dots[cell] = dots.get(cell, 0) | _DOTS[dot_y % 4][dot_x % 2]
-            band[cell] = max(band.get(cell, 0), _tier(link.count))
-    for (cell_x, cell_y), bits in dots.items():
-        if 0 <= cell_x < width and 0 <= cell_y < height:
-            style = Style(foreground=bands[band[(cell_x, cell_y)]], background=page)
-            canvas.set_cell(x + cell_x, y + cell_y, chr(0x2800 + bits), style)
-
-    # The counts, on the middle of each line, unless a box is there.
-    boxes = {}
+    boxes: dict[str, tuple[int, int, int, int]] = {}
     for node in shown:
-        if node.key in spots:
-            centre_x, centre_y = spots[node.key]
-            w = _box(node)
-            boxes[node.key] = (centre_x - w // 2, centre_y - 1, w, 3)
-    for link in links:
-        (ax, ay), (bx, by) = spots[link.a], spots[link.b]
-        mid_x, mid_y = (ax + bx) // 2, (ay + by) // 2
-        text = f" {link.count} "
-        left = mid_x - len(text) // 2
-        if any(
-            bx0 - 1 <= left + len(text) and left <= bx0 + bw and by0 - 1 <= mid_y <= by0 + bh
-            for bx0, by0, bw, bh in boxes.values()
-        ):
-            continue
-        canvas.draw_text(
-            x + left, y + mid_y, text, Style(foreground=bands[_tier(link.count)], background=page, bold=True)
-        )
+        centre_x, centre_y = spots[node.key]
+        boxes[node.key] = (centre_x - _box(node) // 2, centre_y - 1, _box(node), 3)
 
-    # The boxes.
+    sides: dict[tuple[int, int], int] = {}
+    band: dict[tuple[int, int], int] = {}
+    runs: list[tuple[int, list[tuple[int, int, int]]]] = []
+    for link in sorted(links, key=lambda item: item.count):
+        path = _route(spots[link.a], spots[link.b])
+        for index, cell in enumerate(path):
+            before = path[index - 1] if index else None
+            after = path[index + 1] if index + 1 < len(path) else None
+            sides[cell] = sides.get(cell, 0) | _sides(before, cell, after)
+            band[cell] = max(band.get(cell, 0), _tier(link.count))
+        runs.append((link.count, _runs(path)))
+    for (cell_x, cell_y), bits in sides.items():
+        if 0 <= cell_x < width and 0 <= cell_y < height and bits in _JOINS:
+            canvas.set_cell(
+                x + cell_x,
+                y + cell_y,
+                _JOINS[bits],
+                Style(foreground=bands[band[(cell_x, cell_y)]], background=page),
+            )
+
+    # The total sits on the longest stretch of its line that is clear of the boxes, with a space either side.
+    for count, stretches in runs:
+        text = f" {count} "
+        for length, mid_x, mid_y in stretches:
+            left = mid_x - len(text) // 2
+            if length < 4 or left < 0 or left + len(text) > width:
+                continue
+            if any(
+                bx <= left + len(text) and left <= bx + bw and by - 1 <= mid_y <= by + bh
+                for bx, by, bw, bh in boxes.values()
+            ):
+                continue
+            canvas.draw_text(
+                x + left, y + mid_y, text, Style(foreground=bands[_tier(count)], background=page, bold=True)
+            )
+            break
+
     for node in shown:
         left, top, w, _ = boxes[node.key]
         colour = states[node.state]
         edge = Style(foreground=colour, background=theme.surface, bold=node.me or node.state == "working")
         body = Style(foreground=theme.text, background=theme.surface, bold=node.me)
         canvas.fill(x + left, y + top, w, 3, Style(background=theme.surface))
-        top_left, top_right, bottom_left, bottom_right, bar = (
-            ("\u2554", "\u2557", "\u255a", "\u255d", "\u2550")
-            if node.me
-            else ("\u256d", "\u256e", "\u2570", "\u256f", "\u2500")
-        )
-        side = "\u2551" if node.me else "\u2502"
-        canvas.draw_text(x + left, y + top, top_left + bar * (w - 2) + top_right, edge)
-        canvas.draw_text(x + left, y + top + 2, bottom_left + bar * (w - 2) + bottom_right, edge)
+        if node.me:
+            tl, tr, bl, br, bar, side = "\u2554", "\u2557", "\u255a", "\u255d", "\u2550", "\u2551"
+        else:
+            tl, tr, bl, br, bar, side = "\u256d", "\u256e", "\u2570", "\u256f", "\u2500", "\u2502"
+        canvas.draw_text(x + left, y + top, tl + bar * (w - 2) + tr, edge)
+        canvas.draw_text(x + left, y + top + 2, bl + bar * (w - 2) + br, edge)
         canvas.draw_text(x + left, y + top + 1, side, edge)
         canvas.draw_text(x + left + w - 1, y + top + 1, side, edge)
-        glyph = "\u25c7" if node.state == "external" else "\u25cf"
         canvas.draw_text(
-            x + left + 2, y + top + 1, glyph, Style(foreground=colour, background=theme.surface, bold=True)
+            x + left + 2, y + top + 1, glyph(node.state), Style(foreground=colour, background=theme.surface, bold=True)
         )
-        label = _text(node)
-        canvas.draw_text(x + left + 4, y + top + 1, label, body, max_width=w - 6)
+        canvas.draw_text(x + left + 4, y + top + 1, _text(node), body, max_width=w - 6)
 
 
 def legend(theme: Any) -> list[tuple[str, Style]]:
     """Return the legend as text pieces with their styles, in the order they are laid left to right."""
-    states, bands = _colours(theme)
+    states, bands = colours(theme)
     muted = Style(foreground=theme.muted, background=theme.surface_alt)
     pieces: list[tuple[str, Style]] = []
     for state in STATES:
-        glyph = "\u25c7" if state == "external" else "\u25cf"
-        pieces.append((glyph + " ", Style(foreground=states[state], background=theme.surface_alt, bold=True)))
+        pieces.append((glyph(state) + " ", Style(foreground=states[state], background=theme.surface_alt, bold=True)))
         pieces.append((state + "   ", muted))
     pieces.append(("messages ", muted))
     for index, (_, words) in enumerate(TIERS):
-        pieces.append(("\u2501\u2501 ", Style(foreground=bands[index], background=theme.surface_alt, bold=True)))
+        pieces.append(("\u2500\u2500 ", Style(foreground=bands[index], background=theme.surface_alt, bold=True)))
         pieces.append((words + "  ", muted))
     return pieces

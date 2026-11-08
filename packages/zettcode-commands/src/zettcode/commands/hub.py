@@ -19,7 +19,7 @@ import asyncio
 import dataclasses
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from zettcode.commands import hub_graph
 from zettcode.commands.hub_graph import Link, Node
@@ -74,29 +74,40 @@ class HubData:
     links: tuple[Link, ...] = ()
 
 
+def _described(state: str, rest: str) -> tuple[str, Callable[[Any], list[tuple[str, str | None]]]]:
+    """Return a row's description and the same text in colours: the state's dot and word in its own colour."""
+    head = f"{hub_graph.glyph(state)} {state}"
+
+    def parts(theme: Any) -> list[tuple[str, str | None]]:
+        return [(head, hub_graph.colours(theme)[0][state]), (rest, None)]
+
+    return head + rest, parts
+
+
 def _session_rows(data: HubData) -> list[ListItem]:
-    rows = [
-        ListItem(
-            peer.handle,
-            peer.handle,
-            f"{peer.status} {SEPARATOR} {peer.title or 'untitled'} {SEPARATOR} "
-            f"{peer.kind} {SEPARATOR} {peer.workspace}",
+    rows = []
+    for peer in data.peers:
+        text, parts = _described(
+            hub_graph.state_of(peer.status, peer.kind),
+            f" {SEPARATOR} {peer.title or 'untitled'} {SEPARATOR} {peer.kind} {SEPARATOR} {peer.workspace}",
         )
-        for peer in data.peers
-    ]
-    rows += [ListItem(name, name, f"offline {SEPARATOR} on disk, not registered") for name in data.offline]
+        rows.append(ListItem(peer.handle, peer.handle, text, parts=parts))
+    for name in data.offline:
+        text, parts = _described("offline", f" {SEPARATOR} on disk, not registered")
+        rows.append(ListItem(name, name, text, parts=parts))
     return rows
 
 
 def _daemon_rows(data: HubData) -> list[ListItem]:
-    return [
-        ListItem(
-            daemon.session_id,
-            daemon.label or daemon.session_id,
-            f"{daemon.status} {SEPARATOR} {daemon.model or 'no model'} {SEPARATOR} {daemon.workspace}",
+    rows = []
+    for daemon in data.daemons:
+        state = "stopped" if daemon.status in ("dead", "unknown") else hub_graph.state_of(daemon.status, "")
+        text, parts = _described(
+            state,
+            f" {SEPARATOR} {daemon.status} {SEPARATOR} {daemon.model or 'no model'} {SEPARATOR} {daemon.workspace}",
         )
-        for daemon in data.daemons
-    ]
+        rows.append(ListItem(daemon.session_id, daemon.label or daemon.session_id, text, parts=parts))
+    return rows
 
 
 #: What each tab shows, in the order :data:`TABS` names them.
