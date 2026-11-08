@@ -25,9 +25,8 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
     Every loader reads them (the engine's own default does not: `agent=False`). None can be switched off — they are
     protected like a compiled-in plugin, `[skills] enabled` and the other configuration keys being what turns a feature
     off — but a failure to activate one is recorded in `failed`, not raised, as it was when they were compiled in.
-  - `terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`, `usage`). The SDK and the server
-    do not load them, so the terminal's packages are never imported there. `REQUIRED_PLUGINS = (shell, presenters,
-    commands)` in `app/plugins/loader.py`.
+  - `terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`, `usage`, `context`). The SDK and the server
+    do not load them, so the terminal's packages are never imported there. `REQUIRED_PLUGINS = (shell, turn-line, presenters, commands)` in `app/plugins/loader.py`.
   - anything else: what a reader installs, published on its own line with its own version (`[tool.zettcode] plugin =
     true` in its `pyproject.toml` is what the release order looks for). The two old group names (`zettcode.plugins`,
     the parts' `zettcode.agent`/`zettcode.terminal`) are still read, so a wheel published before the merge keeps
