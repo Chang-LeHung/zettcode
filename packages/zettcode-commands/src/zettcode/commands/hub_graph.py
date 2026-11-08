@@ -51,10 +51,10 @@ __all__ = [
     "summary",
 ]
 
-State = Literal["working", "idle", "external", "offline", "stopped"]
+State = Literal["working", "idle", "external", "offline"]
 
 #: The states a node can be in, in the order the legend lists them.
-STATES: tuple[State, ...] = ("working", "idle", "external", "offline", "stopped")
+STATES: tuple[State, ...] = ("working", "idle", "external", "offline")
 
 #: How many nodes the picture draws at most, and how many lines; more is a smear.
 MAX_NODES = 16
@@ -160,13 +160,12 @@ def glyph(state: str) -> str:
 
 
 def colours(theme: Theme) -> dict[str, str]:
-    """Return the colour of each state, from the theme: working is the accent, a stopped one the error colour."""
+    """Return the colour of each state, from the theme: working is the accent, one with no process the muted colour."""
     return {
         "working": theme.accent,
         "idle": theme.subtle,
         "external": theme.warning,
         "offline": theme.muted,
-        "stopped": theme.error,
     }
 
 
@@ -175,18 +174,21 @@ def build(
     *,
     me: str = "",
     titles: Mapping[str, str] | None = None,
-    stopped: Sequence[str] = (),
+    offline: Sequence[str] = (),
 ) -> tuple[tuple[Node, ...], tuple[Link, ...]]:
     """Return the nodes and links of the broker's graph.
+
+    A session the graph has a line to that is not in its roster is drawn ``offline``, as is every id in ``offline``:
+    nothing runs it, whether it was a daemon that was stopped or a session that was only stored.
 
     Args:
         graph: What ``Client.traffic_graph`` returned: ``sessions`` and ``edges``.
         me: The reader's own session id, drawn in the middle.
         titles: Names for sessions that are stored but not registered, by id.
-        stopped: Ids of daemons of this workspace whose process is gone.
+        offline: Ids of daemons of this workspace whose process is gone, which get a node even with no messages.
     """
     names = dict(titles or {})
-    gone = set(stopped)
+    gone = set(offline)
     nodes: dict[str, Node] = {}
     for entry in graph.get("sessions", ()):
         key = str(entry.get("session_id", ""))
@@ -201,8 +203,7 @@ def build(
             continue
         for key in (a, b):
             if key not in nodes:
-                state: State = "stopped" if key in gone else "offline"
-                nodes[key] = Node(key, names.get(key) or key[:8], state, key == me)
+                nodes[key] = Node(key, names.get(key) or key[:8], "offline", key == me)
         # A pair is one line whichever way the messages went: two entries for it are added, not drawn twice.
         count = int(edge.get("count", 1))
         seen = pairs.get(frozenset((a, b)))
@@ -210,7 +211,7 @@ def build(
     links = list(pairs.values())
     for key in gone:
         if key not in nodes and key in names:
-            nodes[key] = Node(key, names[key], "stopped", key == me)
+            nodes[key] = Node(key, names[key], "offline", key == me)
     return tuple(nodes.values()), tuple(links)
 
 
