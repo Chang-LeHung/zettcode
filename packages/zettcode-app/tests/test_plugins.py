@@ -1164,7 +1164,8 @@ def test_providers_are_absent_from_a_bundle_with_no_plugins(tmp_path):
 class LoudNotice(Presenter):
     """Draw notices as one word, so a test can tell it apart from the built-in presenter."""
 
-    kind = EntryKind.NOTICE
+    def handle(self, entry, next):
+        return self if entry.kind is EntryKind.NOTICE else next(entry)
 
     def lines(self, entry, width, theme, frame):
         return [TextLine((Span("LOUD", Style(bold=True)),))]
@@ -1406,7 +1407,8 @@ def test_a_plugin_can_register_a_fallback_presenter(tmp_path: Path):
             from zettcode.tui import TextLine
 
             class AnyRow(Presenter[Entry]):
-                kind = None
+                def handle(self, entry, next):
+                    return self
 
                 def lines(self, entry, width, theme, frame):
                     return [TextLine()]
@@ -1418,4 +1420,4 @@ def test_a_plugin_can_register_a_fallback_presenter(tmp_path: Path):
         entry_points=with_parts(FakeEntryPoint("fallback", Fallback)),
     )
 
-    assert any(presenter.kind is None for presenter in plugins.presenters)
+    assert any(presenter.__class__.__name__ == "AnyRow" for presenter in plugins.presenters)

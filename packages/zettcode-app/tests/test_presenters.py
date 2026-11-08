@@ -7,15 +7,18 @@ import pytest
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui.widgets.transcript import TranscriptSource
 from zettcode.plugin_api.entries import (
+    DeleteEntry,
     EditEntry,
     EntryKind,
     EntryStatus,
     MarkdownEntry,
+    MessageEntry,
     ReadEntry,
     TextEntry,
     ThinkingEntry,
     ToolEntry,
     WaitEntry,
+    WriteEntry,
 )
 from zettcode.presenters.presenters import (
     DEFAULT_PRESENTERS,
@@ -44,19 +47,40 @@ def _rows(source, width: int = 40) -> list[str]:
 
 
 def test_every_kind_of_entry_has_exactly_one_presenter():
-    """The enum and the registry cannot drift apart: a new kind with no presenter fails here.
+    """The enum and the chain cannot drift apart: a new kind with no presenter fails here.
 
-    This is the whole of what "add a kind of row" asks of the registry — a member of
-    :class:`EntryKind` and a presenter that names it — and it is checked for the
-    enum rather than for a hand-written list of the kinds that existed on the day
-    the test was written.
+    This is the whole of what "add a kind of row" asks — a member of :class:`EntryKind` and a presenter whose
+    ``handle`` claims it — and it is checked for the enum rather than for a hand-written list of the kinds that
+    existed on the day the test was written.
     """
-    whole = [presenter.kind for presenter in DEFAULT_PRESENTERS.presenters if presenter.entry_type is None]
+    from zettcode.plugin_api.entries import ChangesEntry, RelayEntry
+    from zettcode.presenters.presenters import (
+        AnswerPresenter,
+        ChangesPresenter,
+        MessagePresenter,
+        RelayPresenter,
+    )
 
-    assert sorted(whole) == sorted(EntryKind), "every kind has a presenter, and no kind has two"
-    assert all(isinstance(presenter, Presenter) for presenter in DEFAULT_PRESENTERS.presenters)
-    families = [presenter for presenter in DEFAULT_PRESENTERS.presenters if presenter.entry_type is not None]
-    assert all(presenter.kind in whole for presenter in families), "a family belongs to a kind that has its own"
+    entries = {
+        EntryKind.WELCOME: (TextEntry(id=1, kind=EntryKind.WELCOME, text="hello"), WelcomePresenter),
+        EntryKind.USER: (TextEntry(id=2, kind=EntryKind.USER, text="hello"), UserPresenter),
+        EntryKind.NOTICE: (TextEntry(id=3, kind=EntryKind.NOTICE, text="saved"), NoticePresenter),
+        EntryKind.ANNOUNCEMENT: (
+            TextEntry(id=4, kind=EntryKind.ANNOUNCEMENT, text="Model changed."),
+            AnnouncementPresenter,
+        ),
+        EntryKind.ANSWER: (MarkdownEntry(id=5, kind=EntryKind.ANSWER), AnswerPresenter),
+        EntryKind.MESSAGE: (MarkdownEntry(id=6, kind=EntryKind.MESSAGE), MessagePresenter),
+        EntryKind.WAIT: (WaitEntry(id=7, started_at=0.0), WaitPresenter),
+        EntryKind.THINKING: (ThinkingEntry(id=8, text="reasoning"), ThinkingPresenter),
+        EntryKind.TOOL: (ToolEntry(id=9, call_id="c", tool="t", title="Ran t"), ToolPresenter),
+        EntryKind.CHANGES: (ChangesEntry(id=10), ChangesPresenter),
+        EntryKind.RELAY: (RelayEntry(id=11, peer="peer", text="hello"), RelayPresenter),
+    }
+
+    assert set(entries) == set(EntryKind), "every kind has an entry in this test"
+    for kind, (entry, presenter) in entries.items():
+        assert type(DEFAULT_PRESENTERS.for_entry(entry)) is presenter, kind
 
 
 def test_each_entry_is_drawn_by_the_presenter_for_its_kind():
@@ -67,32 +91,33 @@ def test_each_entry_is_drawn_by_the_presenter_for_its_kind():
         (TextEntry(id=3, kind="user", text="hello"), UserPresenter),
         (WaitEntry(id=4, started_at=0.0), WaitPresenter),
         (ThinkingEntry(id=5, text="reasoning", expanded=True), ThinkingPresenter),
-        (ToolEntry(id=6, call_id="call-1", tool="read_file", title="Read app.py", text="content"), ToolPresenter),
+        (ToolEntry(id=6, call_id="call-1", tool="custom", title="Ran custom", text="content"), ToolPresenter),
     )
     for entry, presenter in entries:
         assert type(DEFAULT_PRESENTERS.for_entry(entry)) is presenter, entry.kind
         assert render_entry(entry, 40, DARK, 0)
 
-    for kind in (EntryKind.ANSWER, EntryKind.MESSAGE):
+    for kind, presenter in ((EntryKind.ANSWER, "AnswerPresenter"), (EntryKind.MESSAGE, "MessagePresenter")):
         markdown = MarkdownEntry(id=9, kind=kind)
         markdown.markdown.append("# heading")
-        assert DEFAULT_PRESENTERS.for_entry(markdown).kind is kind
+        assert type(DEFAULT_PRESENTERS.for_entry(markdown)).__name__ == presenter
         assert render_entry(markdown, 40, DARK, 0), "Markdown can also say all its rows at once"
 
 
 def test_a_later_presenter_for_a_kind_replaces_the_earlier_one():
-    """One presenter per kind, so overriding a kind is a replacement and not a chain to order."""
+    """A later registration claims first, so overriding a kind is a replacement and not a second drawer."""
 
     class CustomNotice(Presenter):
-        kind = EntryKind.NOTICE
+        def handle(self, entry, next):
+            return self if entry.kind is EntryKind.NOTICE else next(entry)
 
         def lines(self, entry, width, theme, frame):
             return [TextLine()]
 
     notice = TextEntry(id=1, kind="notice", text="handled")
     presenters = DEFAULT_PRESENTERS.replacing(CustomNotice())
+    assert type(presenters.for_entry(notice)) is CustomNotice
     assert presenters.lines(notice, 40, DARK, 0) == [TextLine()]
-    assert len(presenters.presenters) == len(DEFAULT_PRESENTERS.presenters), "replaced, not added"
 
     transcript = Transcript(presenters=presenters)
     transcript.notice("handled")
@@ -135,7 +160,7 @@ def test_agent_components_keep_every_line_within_narrow_bounds():
         TextEntry(id=2, kind="user", text="中文后面还有更多文字"),
         WaitEntry(id=3, started_at=0.0, duration=12.3),
         ThinkingEntry(id=4, text="中文后面还有更多文字", expanded=True, duration=12.3),
-        ToolEntry(
+        ReadEntry(
             id=5,
             call_id="call-5",
             tool="read_file",
@@ -240,9 +265,9 @@ def test_every_row_draws_its_marker_in_the_gutter_and_its_content_beside_it():
         ),
         "thinking": (ThinkingEntry(id=3, text="weighing", started_at=0.0, duration=1.0), True, "Thinking"),
         "tool": (
-            ToolEntry(id=4, call_id="c", tool="read_file", title="Read app.py", started_at=0.0),
+            ToolEntry(id=4, call_id="c", tool="custom", title="Ran custom", started_at=0.0),
             True,
-            "Read",
+            "Ran",
         ),
         "notice": (TextEntry(id=5, kind="notice", text="done"), False, "done"),
     }
@@ -280,7 +305,7 @@ def test_only_the_waiting_row_moves():
     from rebuilding rows nothing has changed in.
     """
     thinking = ThinkingEntry(id=1, text="weighing the options", started_at=0.0)
-    tool = ToolEntry(id=2, call_id="c1", tool="read_file", title="Read app.py", started_at=0.0)
+    tool = ReadEntry(id=2, call_id="c1", tool="read_file", title="Read app.py", started_at=0.0)
     waiting = WaitEntry(id=3, started_at=0.0)
 
     def painted(entry, frame: int) -> list[tuple[str, tuple[object, ...]]]:
@@ -371,7 +396,8 @@ def test_tool_component_keeps_code_colours_and_bounded_preview():
 
 def _tool_entry(tool: str, *, status: EntryStatus = EntryStatus.COMPLETED) -> ToolEntry:
     """Build one completed or failed tool row with a title and a result."""
-    return ToolEntry(id=1, call_id="call-1", tool=tool, title=f"Ran {tool}", text="output", status=status)
+    cls = {"read_file": ReadEntry, "write_file": WriteEntry, "edit": EditEntry}.get(tool, ToolEntry)
+    return cls(id=1, call_id="call-1", tool=tool, title=f"Ran {tool}", text="output", status=status)
 
 
 def _shipped_themes():
@@ -501,12 +527,83 @@ def test_a_failed_tool_row_is_red_whatever_the_tool_was():
 
 
 def _bare(cls, **extra):
-    fields = {"id": 1, "call_id": "c", "tool": "t", "title": "Ran t", "text": "out", "status": EntryStatus.COMPLETED}
+    tool = {ReadEntry: "read_file", WriteEntry: "write_file", EditEntry: "edit", MessageEntry: "send_message"}.get(
+        cls, "t"
+    )
+    fields = {
+        "id": 1,
+        "call_id": "c",
+        "tool": tool,
+        "title": "Ran t",
+        "text": "out",
+        "status": EntryStatus.COMPLETED,
+    }
     return cls(**{**fields, **extra})
 
 
+def test_each_tool_presenter_claims_by_name_and_the_generic_tool_presenter_takes_the_rest():
+    """A tool's own row is chosen by the name the call carries, and any other tool gets the kind's presenter."""
+    cases = (
+        (ReadEntry(id=1, call_id="c", tool="read_file", title="Read a.py"), "ReadPresenter"),
+        (WriteEntry(id=2, call_id="c", tool="write_file", title="Wrote a.py"), "WritePresenter"),
+        (EditEntry(id=3, call_id="c", tool="edit", title="Edited a.py"), "EditPresenter"),
+        (EditEntry(id=4, call_id="c", tool="replace_in_file", title="Edited a.py"), "EditPresenter"),
+        (MessageEntry(id=5, call_id="c", tool="send_message", title="Sent to bob"), "SessionMessagePresenter"),
+        (DeleteEntry(id=6, call_id="c", tool="delete_file", title="Deleted a.py"), "DeletePresenter"),
+        (ToolEntry(id=7, call_id="c", tool="bash", title="Bash ls"), "ShellPresenter"),
+        (ToolEntry(id=8, call_id="c", tool="glob", title="Listed *.py"), "SearchPresenter"),
+        (ToolEntry(id=9, call_id="c", tool="grep", title="Searched x"), "SearchPresenter"),
+        (ToolEntry(id=10, call_id="c", tool="web_search", title="Searched the web"), "WebSearchPresenter"),
+        (ToolEntry(id=11, call_id="c", tool="ask_user", title="Ask-User"), "AskUserPresenter"),
+        (ToolEntry(id=12, call_id="c", tool="todo_write", title="Updated the plan"), "TodoPresenter"),
+        (ToolEntry(id=13, call_id="c", tool="read_skill", title="Read skill x"), "SkillPresenter"),
+        (ToolEntry(id=14, call_id="c", tool="task", title="Subagent x"), "TaskPresenter"),
+        (ToolEntry(id=15, call_id="c", tool="message_history", title="Read history"), "HistoryPresenter"),
+        (ToolEntry(id=16, call_id="c", tool="manage_group", title="Create group #x"), "GroupPresenter"),
+        (ToolEntry(id=17, call_id="c", tool="a-tool-nobody-named", title="Ran a tool"), "ToolPresenter"),
+    )
+
+    for entry, presenter in cases:
+        assert type(DEFAULT_PRESENTERS.for_entry(entry)).__name__ == presenter, entry.tool
+
+
+def test_a_plain_entry_for_a_named_tool_is_left_to_the_generic_tool_presenter():
+    """A handler that opens no family entry still gets a row; the named presenter cannot read fields it lacks."""
+    cases = (
+        ("read_file", "ToolPresenter"),
+        ("write_file", "ToolPresenter"),
+        ("edit", "ToolPresenter"),
+        ("send_message", "ToolPresenter"),
+        ("delete_file", "DeletePresenter"),
+    )
+
+    for tool, presenter in cases:
+        plain = ToolEntry(id=1, call_id="c", tool=tool, title=f"Ran {tool}", text="output")
+        assert type(DEFAULT_PRESENTERS.for_entry(plain)).__name__ == presenter, tool
+        assert render_entry(plain, 40, DARK, 0), tool
+
+
+def test_a_plugin_can_claim_one_tool_by_its_name():
+    """A tool presenter's claim is the name, so a plugin can replace one tool without touching its family."""
+
+    class QuietBash(ToolPresenter):
+        def handle(self, entry, next):
+            return self if isinstance(entry, ToolEntry) and entry.tool == "bash" else next(entry)
+
+        def lines(self, entry, width, theme, frame):
+            return [TextLine()]
+
+    rows = DEFAULT_PRESENTERS.replacing(QuietBash())
+    bash = ToolEntry(id=1, call_id="c", tool="bash", title="Bash ls")
+
+    assert type(rows.for_entry(bash)) is QuietBash
+    assert any(rows.lines(bash, 40, DARK, 0))
+    assert type(rows.for_entry(ToolEntry(id=2, call_id="d", tool="grep", title="Searched x"))).__name__ == (
+        "SearchPresenter"
+    )
+
+
 def test_each_family_of_tool_entry_has_its_own_presenter_and_the_rest_share_the_general_one():
-    from zettcode.plugin_api.entries import WriteEntry
     from zettcode.presenters.presenters import EditPresenter, ReadPresenter, WritePresenter
 
     cases = [
@@ -530,7 +627,7 @@ def test_an_entry_class_nobody_wrote_a_presenter_for_is_drawn_by_the_nearest_one
     class AuditedEdit(EditEntry):
         reviewer: str = "me"
 
-    entry = AuditedEdit(id=1, call_id="c", tool="t", title="x", added=2, status=EntryStatus.COMPLETED)
+    entry = AuditedEdit(id=1, call_id="c", tool="edit", title="x", added=2, status=EntryStatus.COMPLETED)
 
     assert type(DEFAULT_PRESENTERS.for_entry(entry)) is EditPresenter
     assert any("+2" in line.text for line in render_entry(entry, 60, DARK, 0))
@@ -550,7 +647,8 @@ def test_a_presenter_given_for_the_whole_kind_replaces_the_families_too():
     """It was asked to draw every tool row; a family left behind would go on drawing its own."""
 
     class Everything(Presenter):
-        kind = EntryKind.TOOL
+        def handle(self, entry, next):
+            return self if entry.kind is EntryKind.TOOL else next(entry)
 
         def lines(self, entry, width, theme, frame):
             return [TextLine()]
@@ -559,14 +657,14 @@ def test_a_presenter_given_for_the_whole_kind_replaces_the_families_too():
 
     for cls in (ToolEntry, ReadEntry, EditEntry):
         assert presenters.lines(_bare(cls), 40, DARK, 0) == [TextLine()], cls.__name__
-    assert [p for p in presenters.presenters if p.kind is EntryKind.TOOL and p.entry_type is not None] == []
 
 
 def test_a_family_given_after_the_kind_is_a_refinement_of_it_and_stays():
     from zettcode.presenters.presenters import EditPresenter
 
     class Everything(Presenter):
-        kind = EntryKind.TOOL
+        def handle(self, entry, next):
+            return self if entry.kind is EntryKind.TOOL else next(entry)
 
         def lines(self, entry, width, theme, frame):
             return [TextLine()]
@@ -589,7 +687,6 @@ def test_a_family_can_be_replaced_without_touching_the_others():
 
     assert not any("+9" in line.text for line in presenters.lines(edit, 60, DARK, 0))
     assert any("+9" in line.text for line in DEFAULT_PRESENTERS.lines(edit, 60, DARK, 0))
-    assert len(presenters.presenters) == len(DEFAULT_PRESENTERS.presenters)
 
 
 def test_the_rows_every_tool_shares_are_drawn_the_same_whatever_the_entry():
@@ -876,16 +973,32 @@ def test_a_presenter_for_the_whole_kind_outranks_the_families_it_was_registered_
     assert rows.for_entry(edit).__class__ is StillMine
 
 
-def test_a_family_the_kinds_presenter_outranks_is_not_in_the_list_at_all():
-    """It would never be asked for a row, so the registry does not hold it out as one of the drawers."""
+def test_the_registry_lists_registration_order_and_asks_in_chain_order():
+    """The listing is what a new registry is built from; the chain is how it asks."""
 
-    class Everything(ToolPresenter):
+    class Earlier(NoticePresenter):
+        pass
+
+    class Stronger(NoticePresenter):
         priority = 4
 
-    rows = Presenters((*DEFAULT_PRESENTERS.presenters, Everything()))
+    class Later(NoticePresenter):
+        pass
 
-    families = [p for p in rows.presenters if p.kind is EntryKind.TOOL and p.entry_type is not None]
-    assert families == [] and type(rows.for_entry(ToolEntry(id=1, call_id="c", tool="t", title="x"))) is Everything
+    earlier, stronger, later = Earlier(), Stronger(), Later()
+    rows = Presenters((earlier, stronger, later))
+
+    assert rows.presenters == (earlier, stronger, later), "registration order, which a new registry is built from"
+    assert rows.chain == (stronger, later, earlier), "priority first, then the later registration"
+
+
+def test_the_registry_can_be_rebuilt_from_its_presenters():
+    """The listing is the constructor's input: rebuilding from it must not reorder the chain."""
+    entry = ReadEntry(id=1, call_id="c", tool="read_file", title="Read a.py")
+
+    rebuilt = Presenters(DEFAULT_PRESENTERS.presenters)
+
+    assert type(rebuilt.for_entry(entry)) is type(DEFAULT_PRESENTERS.for_entry(entry))
 
 
 def test_a_message_to_a_group_is_titled_by_the_group_and_keeps_it():
@@ -914,7 +1027,8 @@ def test_the_history_and_group_tools_have_rows_that_say_what_they_do():
 
 def test_a_fallback_presenter_takes_whatever_no_handler_claims():
     class Fallback(Presenter[ToolEntry]):
-        kind = None
+        def handle(self, entry, next):
+            return self
 
         def lines(self, entry, width, theme, frame):
             return [TextLine()]
@@ -923,10 +1037,10 @@ def test_a_fallback_presenter_takes_whatever_no_handler_claims():
     assert isinstance(rows.for_entry(_bare(ToolEntry)), Fallback)
 
 
-def test_an_entry_type_only_presenter_is_listed_as_a_drawer():
+def test_a_presenter_that_claims_one_entry_class_is_listed_as_a_drawer():
     class Family(Presenter[MarkdownEntry]):
-        entry_type = MarkdownEntry
-        kind = None
+        def handle(self, entry, next):
+            return self if isinstance(entry, MarkdownEntry) else next(entry)
 
         def lines(self, entry, width, theme, frame):
             return [TextLine()]

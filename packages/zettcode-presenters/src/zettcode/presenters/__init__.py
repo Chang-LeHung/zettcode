@@ -1,8 +1,8 @@
 """The conversation's rows and how the terminal draws them.
 
 `entries` is the data — one class per kind of row a transcript can hold — and `presenters` is how one kind becomes
-lines: a presenter per kind, the families inside a kind (a tool, a change, a relayed message), and the registry that
-picks between them. `brand` is the pixel art the welcome row draws; `labels`, `statusline` and `rows` are the shell's
+lines: a presenter per kind, a presenter per tool name, and the generic `ToolPresenter` that catches any tool no
+name claimed. `brand` is the pixel art the welcome row draws; `labels`, `statusline` and `rows` are the shell's
 header, status and turn-line, published as the `shell`/`turn-line` entry points.
 
 The terminal's transcript, the projector that fills it and the replay that rebuilds it stay in `zettcode.app`: this

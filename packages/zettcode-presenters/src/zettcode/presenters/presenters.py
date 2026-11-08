@@ -1,10 +1,10 @@
 """Present entries as styled lines, without mounting a widget per entry.
 
-An entry is data; a *presenter* is what turns one kind of entry into rows. There is
-one presenter per :class:`~.entries.EntryKind`, held in a :class:`Presenters`
-registry that looks the right one up by the entry's kind, so adding a kind of row
-is three things: a member of the enum, an entry class, and a presenter that names
-the kind it presents.
+An entry is data; a *presenter* is what turns a row into lines. The built-in presenters are one per
+:class:`~.entries.EntryKind` and one per tool name, held in a :class:`Presenters` chain: each presenter's
+``handle`` returns itself to claim a row and passes it to the next presenter otherwise, and ``ToolPresenter`` is the
+fallback for any tool no named presenter took. Adding a kind of row is three things: a member of the enum, an entry
+class, and a presenter that claims it.
 
 A presenter also says what its rows depend on (:meth:`Presenter.look`) and whether
 it draws its own marker in the gutter, because both are facts about the same code
@@ -15,10 +15,11 @@ transcript view then stacks the cached rows into one virtualized line source.
 
 from __future__ import annotations
 
-from typing import Any, TypeVar
+from typing import Any, ClassVar, TypeVar
 
 from zettcode.plugin_api.entries import (
     ChangesEntry,
+    DeleteEntry,
     EditEntry,
     Entry,
     EntryKind,
@@ -36,7 +37,14 @@ from zettcode.plugin_api.entries import (
     WaitEntry,
     WriteEntry,
 )
-from zettcode.plugin_api.presenters import CONTENT_INDENT, Indented, LeadingGap, Presenter, Presenters
+from zettcode.plugin_api.presenters import (
+    CONTENT_INDENT,
+    Indented,
+    LeadingGap,
+    NextPresenter,
+    Presenter,
+    Presenters,
+)
 from zettcode.tui import (
     DONE,
     ELLIPSIS,
@@ -156,7 +164,9 @@ def _unindented(spans: list[Span]) -> list[Span]:
 class WelcomePresenter(Presenter[TextEntry]):
     """Draw the shared brand pixels unchanged, with themed title and hint text."""
 
-    kind = EntryKind.WELCOME
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim the welcome banner, and nothing else."""
+        return self if entry.kind is EntryKind.WELCOME else next(entry)
 
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Keep labels beside the mark, stacking them when the window is narrow."""
@@ -193,7 +203,9 @@ class NoticePresenter(Presenter[TextEntry]):
     failure is what the palette's error colour is for.
     """
 
-    kind = EntryKind.NOTICE
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim a notice, and nothing else."""
+        return self if entry.kind is EntryKind.NOTICE else next(entry)
 
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Leave a blank separator and let the transcript gutter add the inset."""
@@ -204,7 +216,9 @@ class NoticePresenter(Presenter[TextEntry]):
 class AnnouncementPresenter(Presenter[TextEntry]):
     """Center an announcement — a model or effort change — between rules."""
 
-    kind = EntryKind.ANNOUNCEMENT
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim an announcement, and nothing else."""
+        return self if entry.kind is EntryKind.ANNOUNCEMENT else next(entry)
 
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Center the label inside the padded content box.
@@ -238,8 +252,11 @@ class AnnouncementPresenter(Presenter[TextEntry]):
 class UserPresenter(Presenter[TextEntry]):
     """Paint a full-width message surface with its arrow flush left."""
 
-    kind = EntryKind.USER
     gutter = True
+
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim the reader's message, and nothing else."""
+        return self if entry.kind is EntryKind.USER else next(entry)
 
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Wrap the message and fill each row to the edge of the surface.
@@ -297,8 +314,11 @@ class RelayPresenter(Presenter[RelayEntry]):
     and the accent for this reader's own message to it.
     """
 
-    kind = EntryKind.RELAY
     gutter = True
+
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim a message between sessions, and nothing else."""
+        return self if entry.kind is EntryKind.RELAY else next(entry)
 
     def lines(self, entry: RelayEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Return the header and the wrapped message on the surface, every row filled to the edge."""
@@ -355,8 +375,11 @@ class WaitPresenter(Presenter[WaitEntry]):
     request that was stopped still says how long it ran and when it stopped.
     """
 
-    kind = EntryKind.WAIT
     gutter = True
+
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim the wait row, and nothing else."""
+        return self if entry.kind is EntryKind.WAIT else next(entry)
 
     def look(self, entry: WaitEntry, frame: int) -> object:
         """Add the animation step while the row runs; a settled row is a line.
@@ -416,8 +439,11 @@ class WaitPresenter(Presenter[WaitEntry]):
 class ThinkingPresenter(Presenter[ThinkingEntry]):
     """Draw reasoning in the "model" hue, apart from the tool rows' green."""
 
-    kind = EntryKind.THINKING
     gutter = True
+
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim a reasoning row, and nothing else."""
+        return self if entry.kind is EntryKind.THINKING else next(entry)
 
     def lines(self, entry: ThinkingEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Show the heading, plus the indented body when expanded."""
@@ -456,8 +482,11 @@ class ToolPresenter(Presenter[T]):
     them and cannot drift apart.
     """
 
-    kind = EntryKind.TOOL
     gutter = True
+
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim any tool row that no more specific presenter took first."""
+        return self if entry.kind is EntryKind.TOOL else next(entry)
 
     def lines(self, entry: T, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Show the call, elapsed time, and whatever body the tool's entry has."""
@@ -529,7 +558,27 @@ class ToolPresenter(Presenter[T]):
         return lines
 
 
-class SessionMessagePresenter(ToolPresenter[MessageEntry]):
+class NamedToolPresenter(ToolPresenter[T]):
+    """A tool presenter that claims the tools it names, and leaves every other tool to the next presenter."""
+
+    names: ClassVar[frozenset[str]] = frozenset()
+    requires: ClassVar[type[ToolEntry] | None] = None
+
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim a tool row by the tool's own name; any other row goes on.
+
+        A presenter that reads fields only its family's entry carries names that class in :attr:`requires`, so a
+        plain entry for the same tool — one a handler opened without its family class — is left to the fallback
+        instead of failing on a field it does not have.
+        """
+        if not isinstance(entry, ToolEntry) or entry.tool not in self.names:
+            return next(entry)
+        if self.requires is not None and not isinstance(entry, self.requires):
+            return next(entry)
+        return self
+
+
+class SessionMessagePresenter(NamedToolPresenter[MessageEntry]):
     """A message the agent sent to another session: what it said, then how it ended.
 
     Folded, the row shows the first lines of the message and the one-line outcome; expanded, every
@@ -538,7 +587,8 @@ class SessionMessagePresenter(ToolPresenter[MessageEntry]):
     result — muted when it went, the error colour when it did not.
     """
 
-    entry_type = MessageEntry
+    names = frozenset({"send_message"})
+    requires = MessageEntry
 
     def body_lines(self, entry: MessageEntry, width: int, theme: Theme, muted: Style) -> list[TextLine]:
         """Return the message, bounded as any tool output is, and the outcome under it."""
@@ -567,10 +617,11 @@ class SessionMessagePresenter(ToolPresenter[MessageEntry]):
         return lines
 
 
-class ReadPresenter(ToolPresenter[ReadEntry]):
+class ReadPresenter(NamedToolPresenter[ReadEntry]):
     """A file that was read: the body is highlighted as the language the file is in, and the row says how much."""
 
-    entry_type = ReadEntry
+    names = frozenset({"read_file", "read"})
+    requires = ReadEntry
 
     def after_title(self, entry: ReadEntry, theme: Theme) -> list[Span]:
         """Say how many lines came back, beside the title rather than inside it.
@@ -598,7 +649,7 @@ def _change_counts(added: int, removed: int, theme: Theme) -> list[Span]:
     return spans
 
 
-class FileChangePresenter(ToolPresenter[F]):
+class FileChangePresenter(NamedToolPresenter[F]):
     """A tool that changed a file: the lines it changed beside the name, and the change under it.
 
     What a write and an edit share. They differ only in whether anything is taken away
@@ -655,17 +706,79 @@ class FileChangePresenter(ToolPresenter[F]):
 class WritePresenter(FileChangePresenter[WriteEntry]):
     """A file that was written whole: every line of it an addition."""
 
-    entry_type = WriteEntry
+    names = frozenset({"write_file"})
+    requires = WriteEntry
 
 
 class EditPresenter(FileChangePresenter[EditEntry]):
     """A file that was edited: the lines added and removed, and the change."""
 
-    entry_type = EditEntry
+    names = frozenset({"edit", "replace_in_file"})
+    requires = EditEntry
 
     def removed(self, entry: EditEntry) -> int:
         """Return the lines the edits remove."""
         return entry.removed
+
+
+class DeletePresenter(NamedToolPresenter[DeleteEntry]):
+    """A file that was deleted: the tool row names the file, and the deletion is the result."""
+
+    names = frozenset({"delete_file"})
+
+
+class ShellPresenter(NamedToolPresenter[ToolEntry]):
+    """A shell command: the command is the title, and its output is the body."""
+
+    names = frozenset({"bash"})
+
+
+class SearchPresenter(NamedToolPresenter[ToolEntry]):
+    """A listing or a content search: the pattern and where it looked are the title."""
+
+    names = frozenset({"glob", "grep"})
+
+
+class WebSearchPresenter(NamedToolPresenter[ToolEntry]):
+    """A web search: the endpoint ran it, so the query is the whole of the row's title."""
+
+    names = frozenset({"web_search"})
+
+
+class AskUserPresenter(NamedToolPresenter[ToolEntry]):
+    """A question put to the reader: the body is what they did, not the shell's payload."""
+
+    names = frozenset({"ask_user"})
+
+
+class TodoPresenter(NamedToolPresenter[ToolEntry]):
+    """A plan update: the number of steps is the story."""
+
+    names = frozenset({"todo_write"})
+
+
+class SkillPresenter(NamedToolPresenter[ToolEntry]):
+    """A skill whose instructions were read."""
+
+    names = frozenset({"read_skill"})
+
+
+class TaskPresenter(NamedToolPresenter[ToolEntry]):
+    """Work handed to a subagent: the profile names the row, and the report is the body."""
+
+    names = frozenset({"task"})
+
+
+class HistoryPresenter(NamedToolPresenter[ToolEntry]):
+    """A read of what was said before, with a session or in a group."""
+
+    names = frozenset({"message_history"})
+
+
+class GroupPresenter(NamedToolPresenter[ToolEntry]):
+    """A change to a group chat: what was done, to which group, and with whom."""
+
+    names = frozenset({"manage_group"})
 
 
 #: Files listed under "Changed N files" before the rest are counted. A request that rewrote forty
@@ -688,7 +801,9 @@ class ChangesPresenter(Presenter[ChangesEntry]):
     The same colours as the tool rows above it, so a count means the same thing in both places.
     """
 
-    kind = EntryKind.CHANGES
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim the changed-files summary, and nothing else."""
+        return self if entry.kind is EntryKind.CHANGES else next(entry)
 
     def lines(self, entry: ChangesEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Return the summary under a blank separator, each row cut at the width."""
@@ -728,6 +843,10 @@ class MarkdownPresenter(Presenter[MarkdownEntry]):
     look-keyed cache: the source is the cache.
     """
 
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim a Markdown row that a more specific answer or message presenter did not take first."""
+        return self if isinstance(entry, MarkdownEntry) else next(entry)
+
     def lines(self, entry: MarkdownEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Return every row of the document at one width, for a caller that wants them all."""
         entry.markdown.theme = theme
@@ -745,13 +864,17 @@ class MarkdownPresenter(Presenter[MarkdownEntry]):
 class AnswerPresenter(MarkdownPresenter):
     """Present the model's reply as it streams in."""
 
-    kind = EntryKind.ANSWER
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim the model's reply, and nothing else."""
+        return self if entry.kind is EntryKind.ANSWER else next(entry)
 
 
 class MessagePresenter(MarkdownPresenter):
     """Present Markdown that is not a reply, such as a command's output."""
 
-    kind = EntryKind.MESSAGE
+    def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
+        """Claim Markdown that is not a reply, and nothing else."""
+        return self if entry.kind is EntryKind.MESSAGE else next(entry)
 
 
 BUILTIN_PRESENTERS: tuple[Presenter[Any], ...] = (
@@ -770,6 +893,16 @@ BUILTIN_PRESENTERS: tuple[Presenter[Any], ...] = (
     WritePresenter(),
     EditPresenter(),
     SessionMessagePresenter(),
+    DeletePresenter(),
+    ShellPresenter(),
+    SearchPresenter(),
+    WebSearchPresenter(),
+    AskUserPresenter(),
+    TodoPresenter(),
+    SkillPresenter(),
+    TaskPresenter(),
+    HistoryPresenter(),
+    GroupPresenter(),
 )
 
 #: How a transcript draws entries when nothing has registered a presenter: the built-in ones, at the

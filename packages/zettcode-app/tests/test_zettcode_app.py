@@ -9589,7 +9589,8 @@ def test_a_row_on_screen_is_drawn_by_the_presenter_a_plugin_registered():
     from zettcode.tui import Span, Style, TextLine
 
     class Loud(Presenter):
-        kind = EntryKind.NOTICE
+        def handle(self, entry, next):
+            return self if entry.kind is EntryKind.NOTICE else next(entry)
 
         def lines(self, entry, width, theme, frame):
             return [TextLine((Span("LOUD", Style(bold=True)),))]

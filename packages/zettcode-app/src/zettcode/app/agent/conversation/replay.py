@@ -127,7 +127,7 @@ def replay(
         session: The parsed session (the ``records`` of an SDK ``StoredSession``; typed ``object`` because its type is
             the engine's, which the views do not import).
         renderers: Chain that phrases tool rows.
-        presenters: How each kind of entry is drawn.
+        presenters: How each row is drawn.
         frame: The animation step the rebuilt rows start at.
         max_entries: How many entries the transcript keeps. Only the lines that
             produce them are decoded and walked; the older ones add their usage to

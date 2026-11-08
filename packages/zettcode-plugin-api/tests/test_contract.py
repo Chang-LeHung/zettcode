@@ -11,7 +11,6 @@ import ast
 import subprocess
 import sys
 from pathlib import Path
-from typing import ClassVar
 
 import pytest
 
@@ -96,11 +95,12 @@ def test_the_contract_names_no_implementation_of_itself():
 
 
 class _Notice(Presenter[TextEntry]):
-    kind: ClassVar[EntryKind] = EntryKind.NOTICE
-
     def __init__(self, label: str, priority: int = 0) -> None:
         self.label = label
         self.priority = priority  # type: ignore[misc]
+
+    def handle(self, entry, next):
+        return self if entry.kind is EntryKind.NOTICE else next(entry)
 
     def lines(self, entry: TextEntry, width: int, theme, frame: int) -> list[TextLine]:
         return [TextLine((Span(self.label, Style()),))]
@@ -123,6 +123,25 @@ def test_replacing_appends_so_a_plugin_that_registers_last_draws_the_row():
 
     assert registry.replacing(mine).for_entry(_entry()) is mine
     assert registry.replacing(mine).lines(_entry(), 20, DARK, 0)[0].spans[0].text == "mine"
+
+
+def test_a_presenter_decides_for_itself_and_hands_on_what_it_does_not_claim():
+    """The chain asks ``handle``, not a lookup table: a presenter may claim something its kind cannot say."""
+    builtin = _Notice("built in")
+
+    class Tagged(Presenter[TextEntry]):
+        def handle(self, entry, next):
+            return self if entry.text == "tagged" else next(entry)
+
+        def lines(self, entry: TextEntry, width: int, theme, frame: int) -> list[TextLine]:
+            return [TextLine((Span("tagged", Style()),))]
+
+    registry = Presenters([builtin, Tagged()])
+    tagged = TextEntry(id=2, kind=EntryKind.NOTICE, text="tagged")
+
+    assert registry.for_entry(tagged).__class__ is Tagged
+    assert registry.for_entry(_entry()) is builtin, "the next presenter was asked when Tagged passed"
+    assert registry.lines(tagged, 20, DARK, 0)[0].spans[0].text == "tagged"
 
 
 #: What evaluates an annotation, which turns a name that only exists for the type checker into a failure at run time.

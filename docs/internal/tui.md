@@ -413,7 +413,7 @@ The conversation is four things, each in one place:
 | --- | --- | --- |
 | **Entry** | One item of the conversation: plain data, with an `EntryKind` that says which kind of row it is | `plugin_api/entries.py` |
 | **Transcript** | The ordered list of entries, what changed since the view last looked, how many are kept, and the verbs the agent's events map onto (start a tool, stream an answer, settle the wait) | `app/agent/conversation/transcript/` |
-| **Presenter** | Turns one kind of entry into styled rows; there is exactly one per `EntryKind`, held in a `Presenters` registry. The base class and the registry are the plugin contract (`plugin_api/presenters.py`); the built-in presenters are `zettcode-presenters` | `plugin_api/presenters.py`, `presenters/presenters.py` |
+| **Presenter** | Turns rows into styled lines; the chain holds one presenter per `EntryKind` and one per tool name, with a generic tool presenter as the fallback. The base class and the registry are the plugin contract (`plugin_api/presenters.py`); the built-in presenters are `zettcode-presenters` | `plugin_api/presenters.py`, `presenters/presenters.py` |
 | **TranscriptSource** | Stacks every entry's cached *block* (an entry presented as rows) into the single `LineSource` the scrolling view reads | `app/ui/widgets/transcript.py` |
 
 `Transcript` is split by responsibility the way the shell is: a state class and a
@@ -435,8 +435,8 @@ cannot be moved one without the other, and a timed row ends with `finish`, so it
 status and its duration are stamped together.
 
 Adding a kind of row is three things: a member of `EntryKind`, an entry class
-that declares it, and a presenter that names it. `test_every_kind_of_entry_has_exactly_one_presenter`
-checks the enum against the registry, so a kind that has no presenter fails there
+that declares it, and a presenter whose `handle` claims it. `test_every_kind_of_entry_has_exactly_one_presenter`
+checks the enum against the chain, so a kind that has no presenter fails there
 rather than on a user's screen.
 
 ### Messages between sessions
@@ -503,15 +503,17 @@ lines they changed and the change itself, a write's being every line of the file
 ask about `kind` or `ToolEntry`, do not know the difference. Two things pick the class and the
 drawing, and neither is the transcript: the render handler for a tool builds the entry
 (`open_tool`, which a plugin's handler may leave alone and get a plain `ToolEntry` from its
-`describe`), and the presenter registry finds a presenter by the entry's class first, walking up its
-parents, and by its kind second. A family's presenter extends the tool presenter in the two places a
+`describe`), and each presenter's `handle` answers whether it draws the row, handing it to the next
+presenter when it does not. Kind presenters claim by `entry.kind`; tool presenters claim by
+`entry.tool`, and `ToolPresenter` is the fallback that draws any tool none of them named. A
+family's presenter extends the tool presenter in the two places a
 row can differ, what follows the title (`after_title`) and what is under it (`body_lines`), so the
 symbol, the timer and the preview limits are written once.
 
-A presenter says three things about the kind it presents: the rows (`lines`), what
+A presenter says three things about the rows it presents: the rows (`lines`), what
 those rows depend on (`look`), and whether it draws its own marker in the gutter
-(`gutter`). They are in one class because they are facts about the same code that
-reads the entry. `look` defaults to **every field of the entry**, so a field
+(`gutter`); the fourth, `handle`, is how it takes part in the chain. They are in one class because
+they are facts about the same code that reads the entry. `look` defaults to **every field of the entry**, so a field
 nobody told the cache about costs one extra render rather than showing a stale
 row; the wait presenter adds the animation step, which is the whole of what makes
 it the one row that moves. `block_for` keeps an entry's rows on the entry, keyed by

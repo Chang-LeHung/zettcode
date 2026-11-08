@@ -481,7 +481,8 @@ from zettcode.plugin_api import Span, Style, TextLine
 
 
 class QuietNotice(Presenter):
-    kind = EntryKind.NOTICE
+    def handle(self, entry, next):
+        return self if entry.kind is EntryKind.NOTICE else next(entry)
 
     def lines(self, entry, width, theme, frame):
         return [TextLine((Span(entry.text, Style(foreground=theme.muted)),))]
@@ -494,14 +495,19 @@ class QuietNotices(TuiPlugin):
         ctx.tui.register_presenter(QuietNotice())
 ```
 
-presenter 指定一个 `kind`（`EntryKind` 的一项）；如果只画某一种子行——比如工具行里的编辑行——则指定
-`entry_type`；两者都不指定时，它就是兜底 presenter，负责前面所有 handler 都没认领的行。`lines` 收到 entry、可用列数、配色和动画步数，返回 `TextLine`；宽度是预算，要自己换行或截断。
-需要动画的 presenter 读 `frame`，不需要的应当对任何 `frame` 都给出同样的行。
+presenter 的 `handle(entry, next)` 就是它全部的认领声明：返回 `self` 表示画这一行，调用 `next(entry)`
+表示交给下一个 presenter。注册表只负责排序并启动这条链，自己不匹配任何行。永远返回 `self` 的 presenter
+就是兜底，负责前面没人认领的行。
+
+内置 presenter 按 `entry.kind` 认领；工具行的 presenter 按工具自己的名字（`entry.tool`）认领，所以
+`read_file`、`edit`、`bash`、`grep` 等每种工具都有自己的 presenter，`ToolPresenter` 则是所有未命名工具的兜底。
+插件可以只替换一种工具的行，而不影响另一种。`lines` 收到 entry、可用列数、配色和动画步数，返回
+`TextLine`；宽度是预算，要自己换行或截断。需要动画的 presenter 读 `frame`，不需要的应当对任何 `frame`
+都给出同样的行。
 
 同一个位置有多个 presenter 时，`priority` 高的赢；优先级相同则后注册的赢。内置 presenter 就是这样成为默认的：
-优先级 0，最先注册。插件想压过另一个插件，就在 presenter 类上把 `priority` 提高；只想画某一个子行时不需要
-优先级，注册子行本身就是更窄的声明。为整个 kind 注册的 presenter 声明接管它的每一行，所以会压过在它之前、
-同级注册的子行；在那之后注册、或优先级更高的子行仍然保留自己的行。
+优先级 0，最先注册。插件想压过另一个插件，就在 presenter 类上把 `priority` 提高；只想画某一种行时通常不需要
+优先级，后注册本身就是更窄的声明。
 
 ## 把整个扩展交给代理 {#extensions}
 
