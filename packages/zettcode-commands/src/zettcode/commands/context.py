@@ -5,10 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from zettcode.app.plugins.groups import require_tui
+from zettcode.app.ui.config_form import whole_if_whole
 from zettcode.plugin_api.commands import CommandContext, CommandResult
 from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.sdk.translation import context_report_from
 
+from .context_page import ContextPage
 from .handlers import COMMAND_ERRORS
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -41,10 +43,6 @@ class ContextPagePlugin(TuiPlugin):
                 return CommandResult(
                     message="No request yet \u2014 send one (or resume a session), then `/context` shows the breakdown."
                 )
-
-            # Imported here: the pages import the application, which imports the plugins.
-            from zettcode.app.ui.config_form import whole_if_whole
-            from zettcode.app.ui.widgets import ContextPage
 
             def apply(percent: float) -> None:
                 """Write the chosen compaction point and report what happened."""

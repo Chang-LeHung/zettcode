@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from zettcode.app.ui.widgets import ContextPage
-from zettcode.app.ui.widgets import context_charts as charts
 from zettcode.budget import SOURCES
+from zettcode.commands import context_charts as charts
+from zettcode.commands.context_page import ContextPage
 from zettcode.sdk.types import ContextReport, ContextShare
 from zettcode.tui import DARK, LIGHT, TuiApp
 from zettcode.tui.render.text import display_width
