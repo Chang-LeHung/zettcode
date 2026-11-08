@@ -7,11 +7,12 @@ through :mod:`zettcode.sdk.daemons`, so nothing new is listened to and nothing i
 * **Graph**: the busiest sessions as boxes, coloured by state, and a line between two that exchanged messages, with
   the number beside the end it is drawn from (:mod:`~zettcode.commands.hub_graph` says how). Every box has a place, so
   an arrow key selects the nearest box that way, which keeps its lines and dims the rest; ``Esc`` deselects.
-* **Sessions**: the sessions that are running, as the broker's roster has them. Only looked at here: it is a daemon
-  that can be started, and the stored sessions of the past are what ``/resume`` is for.
-* **Daemons**: every daemon recorded on this machine, running or not. A daemon whose process is gone stays listed
-  (``stopped``) until it is deleted, so it can be started again. ``s`` stops the one under the mark and keeps its record;
-  ``Enter`` starts one whose process is gone, resuming the session it had.
+* **Sessions**: the sessions that are running, as the broker's roster has them, and nothing else. Only looked at here:
+  it is a daemon that can be started.
+* **Daemons**: every daemon recorded on this machine, running or not, then the sessions of this workspace that are
+  only stored (``offline``): a daemon is what can be started on them. A daemon whose process is gone stays listed
+  (``stopped``) until it is deleted. ``s`` stops the one under the mark and keeps its record; ``Enter`` starts a stopped
+  or offline one, resuming its session.
 
 ``Tab`` and ``Shift-Tab`` are the only keys that change tab, ``r`` reads everything again, and the top right of the
 page says when the last reading was and how long it took. The page shows what that reading found; it does not follow
@@ -46,6 +47,13 @@ GRAPH, SESSIONS, DAEMONS = range(len(TABS))
 
 #: What a daemon's status says when its process is gone, or when nothing says it is running.
 GONE = ("dead", "unknown")
+
+#: The status of a row that is no daemon at all yet: a session stored in this workspace that nothing is running. It is
+#: on the Daemons tab because a daemon is what can be started on it, and ``Enter`` does that, resuming the session.
+OFFLINE = "offline"
+
+#: What ``Enter`` can start: a daemon whose process is gone, and a stored session with no daemon.
+STARTABLE = (*GONE, OFFLINE)
 
 #: The smallest area the picture is drawn in: room for two rows of boxes and a number between them, and for a box and
 #: its neighbour side by side. Below it the page says so rather than draw a chain of two boxes.
@@ -166,7 +174,10 @@ def _session_table(data: HubData) -> Table:
 def _daemon_table(data: HubData) -> Table:
     rows = []
     for daemon in data.daemons:
-        state = "stopped" if daemon.status in GONE else hub_graph.state_of(daemon.status, "")
+        if daemon.status == OFFLINE:
+            state = OFFLINE
+        else:
+            state = "stopped" if daemon.status in GONE else hub_graph.state_of(daemon.status, "")
         # The state word already says working or idle; the daemon's own word follows only when it says more.
         said = state if daemon.status == state else f"{state} ({daemon.status})"
         rows.append(
@@ -233,7 +244,7 @@ class HubPage(ListPage):
         if self.tab == GRAPH:
             return f"arrows move to the nearest node {SEPARATOR} {common}"
         if self.tab == DAEMONS:
-            return f"enter start a stopped one {SEPARATOR} s stop {SEPARATOR} {common}"
+            return f"enter start a stopped or offline one {SEPARATOR} s stop {SEPARATOR} {common}"
         return common
 
     def layout(self, rect: Rect) -> None:
@@ -485,7 +496,8 @@ class HubPage(ListPage):
         return next((daemon for daemon in self.data.daemons if daemon.session_id == chosen), None)
 
     def _chosen(self) -> None:
-        """Enter on the daemons tab starts the daemon under the mark when its process is gone.
+        """Enter on the daemons tab starts what is under the mark when nothing is running it: a daemon whose process
+        is gone, or an offline session.
 
         It says so on the page either way: that it is starting, or why nothing was started.
         """
@@ -494,11 +506,11 @@ class HubPage(ListPage):
         chosen = self._daemon()
         if chosen is None:
             self.note("no daemon under the mark")
-        elif chosen.status in GONE:
+        elif chosen.status in STARTABLE:
             self.note("starting\u2026")
             self.on_start(chosen.session_id)
         else:
-            self.note(f"{chosen.label or chosen.session_id[:8]} is running; enter starts a stopped one")
+            self.note(f"{chosen.label or chosen.session_id[:8]} is running; enter starts a stopped or offline one")
         return None
 
 
@@ -599,19 +611,22 @@ class HubCommand(TuiPlugin):
         page.note(said)
 
     async def _resume(self, page: HubPage, client: object, session_id: str) -> None:
-        """Start a daemon whose process is gone, resuming the session it had.
+        """Start a daemon on a session nothing is running, resuming it: a daemon whose process is gone, or a session
+        that is only stored.
 
-        It starts on the workspace and model its record names; a record with no workspace falls back to the reader's
-        own, and one with no model to the first configured. One start per daemon at a time, until the page shows the
-        daemon running: a second ``Enter`` while the first is starting or the page is being read again is told so,
-        since two processes would share one record and one session lock. A running daemon is not started again.
+        A stopped daemon starts on the workspace and model its record names; an offline session has no record, so it
+        starts in the reader's own workspace (the store is read for that workspace) on the first configured model.
+        A record with no workspace falls back to the reader's own, and one with no model to the first configured.
+        One start per row at a time, until the page shows it running: a second ``Enter`` while the first is starting
+        or the page is being read again is told so, since two processes would share one record and one session lock.
+        A running daemon is not started again.
         """
         from zettcode.sdk.daemons import spawn_daemon
 
         chosen = next((daemon for daemon in page.data.daemons if daemon.session_id == session_id), None)
         if chosen is None:
             return
-        if chosen.status not in GONE:
+        if chosen.status not in STARTABLE:
             page.note(f"{chosen.label or session_id[:8]} is running")
             return
         if session_id in self._starting:
@@ -715,10 +730,20 @@ class HubCommand(TuiPlugin):
         if not graph_ok:
             # Nothing to say about who talks to whom, so the picture is empty and says why, not a lone stopped box.
             nodes, links = (), ()
+        # Offline: the stored sessions of this workspace that nothing accounts for — not the reader's own, not in the
+        # roster, and not the session of any daemon record (which has its row already, running or stopped). They follow
+        # the daemons, newest first, and are what a daemon can be started on.
+        accounted = {me, *(peer.session_id for peer in peers), *(daemon.session_id for daemon in daemons)}
+        accounted |= {str(entry.get("session_id", "")) for entry in graph.get("sessions", ())}
+        offline = tuple(
+            Daemon(session_id=info.id, label=info.title or info.id[:8], status=OFFLINE, workspace=str(here))
+            for info in listed
+            if info.id not in accounted
+        )
         lap("picture")
         return HubData(
             peers=peers,
-            daemons=daemons,
+            daemons=(*daemons, *offline),
             note=note,
             nodes=nodes,
             links=links,
