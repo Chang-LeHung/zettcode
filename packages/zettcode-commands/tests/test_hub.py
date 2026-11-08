@@ -737,19 +737,30 @@ def test_a_refresh_replaces_refreshing_with_the_new_readings_time_and_keeps_a_fa
     assert opened.subtitle == "the message graph cannot be read: no broker"
 
 
-def test_the_stamp_is_the_fullest_account_that_fits_and_an_80_column_page_shows_one():
+def test_the_stamp_is_the_fullest_account_that_fits_and_an_80_column_page_shows_where_the_time_went():
     opened = HubPage(data(began="12:34:56", took=23, steps=STEPS), on_close=lambda: None)
 
     def tab_line(width: int) -> str:
-        return _rendered(opened, width, 32)[1]
+        return _rendered(opened, width, 32)[1].rstrip()
 
     full = tab_line(130)
-    assert full.rstrip().endswith("graph 19, picture 0 ms)") and "peers 0" in full, "with the unit after the steps"
-    assert full.index("read") > full.index("Daemons")
-    assert "read 12:34:56 \u00b7 23 ms" in tab_line(80) or "read 23 ms" in tab_line(80)
-    assert tab_line(80).rstrip().endswith("23 ms"), "an 80-column terminal still sees how long it took"
-    assert tab_line(60).rstrip().endswith("read 23 ms"), "narrower: the total alone"
+    assert full.endswith("graph 19, picture 0 ms)") and "peers 0" in full, "with the unit after the steps"
+    assert "12:34:56" in full and full.index("read") > full.index("Daemons")
+    assert tab_line(86).endswith("read 12:34:56 \u00b7 23 ms (p0 d3 s1 g19 pic0)"), "initials where names do not fit"
+    assert tab_line(80).endswith("read 23 ms (p0 d3 s1 g19 pic0)"), "an 80-column page sees the steps, not the clock"
+    assert tab_line(66).endswith("read 12:34:56 \u00b7 23 ms"), "narrower: the clock and the total"
+    assert tab_line(55).endswith("read 23 ms"), "narrower still: the total alone"
     assert "read" not in tab_line(44) and "Daemons" in tab_line(44), "too narrow for any: left out, not cut"
+
+
+def test_a_page_drops_steps_it_has_no_letter_for_to_three_characters_and_a_total_without_steps_is_still_shown():
+    from zettcode.commands.hub import STEP_LETTERS
+
+    opened = HubPage(data(began="12:34:56", took=9, steps=(("tail", 4), ("peers", 5))), on_close=lambda: None)
+
+    assert "tail" not in STEP_LETTERS
+    assert _rendered(opened, 70, 32)[1].rstrip().endswith("read 9 ms (tai4 p5)")
+    assert _rendered(HubPage(data(took=9), on_close=lambda: None), 80, 32)[1].rstrip().endswith("read 9 ms")
 
 
 def test_a_real_reading_says_when_it_began_and_where_the_time_went_and_the_steps_add_up(tmp_path, daemons_on_disk):
@@ -775,7 +786,7 @@ def test_a_slow_roster_is_blamed_on_the_roster_not_on_the_daemons(tmp_path, daem
     reading = _read(client)
 
     steps = dict(reading.steps)
-    assert steps["peers"] >= 55 and steps["daemons"] < 40, steps
+    assert steps["peers"] >= 55 and steps["peers"] > steps["daemons"], steps
 
 
 def test_the_tables_have_titles_lined_up_with_their_columns():

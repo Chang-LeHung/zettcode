@@ -107,7 +107,8 @@ class HubData:
     graph_ok: bool = True
     #: When the reading began (``12:34:56``), how long it took in milliseconds, and each step's share of that: elapsed
     #: time on the event loop, so a step is also slow when the loop was busy with something else meanwhile. The page
-    #: composes the fullest line of it that fits (:meth:`HubPage._stamp`).
+    #: composes the fullest line of it that fits (:meth:`HubPage._stamp`): the steps need about 85 columns, by their
+    #: initials, and about 110 by name, so a narrow window shows only the total and widening it shows where it went.
     began: str = ""
     took: int = 0
     steps: tuple[tuple[str, int], ...] = ()
@@ -124,6 +125,10 @@ class Table:
 
 #: The space between two columns of a table.
 COLUMN_GAP = 2
+
+#: The letters a narrow page writes the steps of a reading with, in the order :meth:`HubCommand._read` takes them:
+#: ``p0 d3 s1 g19 pic0`` is peers 0 ms, daemons 3, sessions 1, graph 19 and the picture 0.
+STEP_LETTERS = {"peers": "p", "daemons": "d", "sessions": "s", "graph": "g", "picture": "pic"}
 
 
 def _table(titles: tuple[str, ...], rows: Sequence[tuple[str, str, str, tuple[str, ...]]]) -> Table:
@@ -308,20 +313,25 @@ class HubPage(ListPage):
     def _stamp(self, room: int) -> str:
         """Return the fullest account of the last reading that fits in ``room`` columns, or nothing.
 
-        The page is the only side that knows the room, so the data carries the parts and the page picks: the total on
-        its own is a dozen columns and fits an 80-column terminal, the clock and the steps are added where there is
-        space. Two columns are kept clear of the last tab.
+        The page is the only side that knows the room, so the data carries the parts and the page picks, longest
+        first: the clock, the total and each step by name; without the clock; with the steps shortened to the
+        letters of :data:`STEP_LETTERS` (``p0 d3 s1 g19 pic0``); the same without the clock; the clock and the total;
+        the total alone. The steps are the point of it, so they come before the clock in the narrower forms. Two
+        columns are kept clear of the last tab.
         """
         data = self.data
         if not data.took and not data.began:
             return ""
-        steps = ", ".join(f"{name} {ms}" for name, ms in data.steps)
-        for text in (
-            f"read {data.began} \u00b7 {data.took} ms ({steps} ms)" if data.steps else "",
-            f"read {data.began} \u00b7 {data.took} ms",
-            f"read {data.took} ms",
-        ):
-            if text and display_width(text) + 2 <= room:
+        total = f"read {data.took} ms"
+        # A reading with no clock has no form that names one.
+        clock = f"read {data.began} \u00b7 {data.took} ms" if data.began else total
+        forms = [clock, total]
+        if data.steps:
+            named = ", ".join(f"{name} {ms}" for name, ms in data.steps)
+            short = " ".join(f"{STEP_LETTERS.get(name, name[:3])}{ms}" for name, ms in data.steps)
+            forms[:0] = [f"{clock} ({named} ms)", f"{total} ({named} ms)", f"{clock} ({short})", f"{total} ({short})"]
+        for text in forms:
+            if display_width(text) + 2 <= room:
                 return text
         return ""
 
