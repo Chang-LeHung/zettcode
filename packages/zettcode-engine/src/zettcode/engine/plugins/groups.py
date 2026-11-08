@@ -9,6 +9,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeVar
 
+from zettcode.engine.service_contracts import (
+    CONTEXT_REPORT,
+    USAGE_LEDGER,
+    ContextReportService,
+    UsageLedgerService,
+)
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.extensions.base import AgentExtension
 
@@ -82,3 +89,11 @@ class AgentGroups:
     def find(self, name: str, kind: type[_T]) -> _T | None:
         """Return the object under ``name``, or ``None`` when there is none."""
         return self._context.find(name, kind)
+
+    def usage_ledger_service(self) -> UsageLedgerService | None:
+        """Return the runtime's usage-ledger service, or ``None`` when it is not provided."""
+        return self.find(USAGE_LEDGER, UsageLedgerService)  # type: ignore[type-abstract]
+
+    def context_report_service(self) -> ContextReportService | None:
+        """Return the runtime's context-report service, or ``None`` when it is not provided."""
+        return self.find(CONTEXT_REPORT, ContextReportService)  # type: ignore[type-abstract]

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from zettcode.app.plugins.groups import require_tui
-from zettcode.plugin_api import CONTEXT_REPORT, ContextReportService
 from zettcode.plugin_api.commands import CommandContext, CommandResult
 from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.sdk.translation import context_report_from
@@ -33,7 +32,7 @@ class ContextPagePlugin(TuiPlugin):
                     message="No model is configured yet \u2014 `/config` adds one; `/context` has something to "
                     "measure after the first request."
                 )
-            service = ctx.find(CONTEXT_REPORT, ContextReportService)  # type: ignore[type-abstract]
+            service = ctx.agent.context_report_service()
             if service is None:
                 report = await host.client.session.context()
             else:
