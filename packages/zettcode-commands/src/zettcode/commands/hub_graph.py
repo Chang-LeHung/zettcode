@@ -128,9 +128,8 @@ class Picture:
         cells: For each cell a line runs through, which routes and which sides of the cell each joins.
         labels: ``(x, y, text, route index)`` for each number that found a place.
         hidden_nodes: How many nodes did not fit.
-        hidden_links: How many lines were left out, because an end is hidden or there were too many.
-        undrawn: How many of those join two drawn nodes: only the strongest :data:`MAX_LINKS` are routed, and a line
-            with no way round the boxes is not drawn either.
+        undrawn: How many lines join two drawn nodes and are not drawn: only the strongest :data:`MAX_LINKS` are
+            routed, and a line with no way round the boxes is not drawn either.
         unnumbered: How many drawn lines found no place to write their number.
         width: The rectangle's size, which the picture is valid for.
         height: The rectangle's height.
@@ -142,7 +141,6 @@ class Picture:
     cells: Mapping[Cell, tuple[tuple[int, int], ...]] = field(default_factory=dict)
     labels: tuple[tuple[int, int, str, int], ...] = ()
     hidden_nodes: int = 0
-    hidden_links: int = 0
     undrawn: int = 0
     unnumbered: int = 0
     width: int = 0
@@ -274,10 +272,11 @@ def _spots(
     if len(shown) == 2:
         first, second = shown
         w1, w2 = _box(first), _box(second)
-        return {
-            first.key: (max(width // 4, 1 + (w1 + 1) // 2), cy),
-            second.key: (min(width - width // 4, width - 1 - (w2 + 1) // 2), cy),
-        }
+        # Each box is centred in its own half by its own width, then pushed inside the edge: two wide boxes in a
+        # narrow area sit against the two edges, one cell from each, with whatever lane is left between them.
+        left1 = max(1, width // 4 - w1 // 2)
+        left2 = min(width - 1 - w2, width - width // 4 - w2 // 2)
+        return {first.key: (left1 + w1 // 2, cy), second.key: (left2 + w2 // 2, cy)}
     centre = next((node for node in shown if node.me), None)
     ring = _ring_order([node for node in shown if node is not centre], links)
     widest = max(_box(node) for node in shown)
@@ -457,7 +456,7 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
     those left out between two drawn nodes are counted in ``undrawn``.
     """
     if not nodes or width <= 0 or height <= 0:
-        return Picture(width=width, height=height, hidden_nodes=len(nodes), hidden_links=len(links))
+        return Picture(width=width, height=height, hidden_nodes=len(nodes))
     ranked = rank(nodes, links)
     shown: list[Node] = []
     spots: dict[str, Cell] = {}
@@ -473,7 +472,7 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
             continue
         break
     else:
-        return Picture(width=width, height=height, hidden_nodes=len(nodes), hidden_links=len(links))
+        return Picture(width=width, height=height, hidden_nodes=len(nodes))
 
     by_key = {node.key: node for node in shown}
     total = _totals(links)
@@ -525,7 +524,6 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
         cells={cell: tuple(parts) for cell, parts in cells.items()},
         labels=tuple(labels),
         hidden_nodes=len(nodes) - len(shown),
-        hidden_links=len(links) - len(routes),
         undrawn=len(inside) - len(routes),
         unnumbered=len(routes) - len(labels),
         width=width,
@@ -545,16 +543,16 @@ def _place_labels(
     On the line it replaces a straight stretch only (never a corner, never the cell that joins the box at the far
     end). Beside it, any side of any of the first cells will do, including the first, so a line of one cell still gets
     its number. A number is never written over a box, over a cell any line runs through or over another number, and
-    it never touches a box other than the one the line is drawn from, where it would read as that box's own.
+    it never touches a box other than the two its line joins, where it would read as that box's own label.
     """
     taken: set[Cell] = set()
     out: list[tuple[int, int, str, int]] = []
 
-    def free(spot: set[Cell], origin: str) -> bool:
+    def free(spot: set[Cell], ends: tuple[str, str]) -> bool:
         for x, y in spot:
             if not (0 <= x < width and 0 <= y < height) or (x, y) in owner or (x, y) in cells or (x, y) in taken:
                 return False
-            if any(owner.get(near, origin) != origin for near in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1))):
+            if any(owner.get(near, ends[0]) not in ends for near in ((x - 1, y), (x, y - 1), (x + 1, y), (x, y + 1))):
                 return False
         return True
 
@@ -586,7 +584,7 @@ def _place_labels(
                 (cell_x, cell_y + 1),
             ):
                 spot = {(left + i, top) for i in range(len(number))}
-                if free(spot, route.origin):
+                if free(spot, (route.link.a, route.link.b)):
                     out.append((left, top, number, index))
                     taken |= spot
                     placed = True
@@ -710,14 +708,15 @@ def summary(nodes: Sequence[Node], links: Sequence[Link], picture: Picture, sele
             f"{shown} {'line' if len(mine) == 1 else 'lines'} \u00b7 {sum(link.count for link in mine)} messages"
         )
     working = sum(1 for node in nodes if node.state == "working")
-    text = f"{len(nodes)} nodes \u00b7 {working} working \u00b7 {sum(link.count for link in links)} messages"
+    # What was left out comes before the count of working ones, so a narrow page that cuts the line cuts that.
+    text = f"{len(nodes)} nodes \u00b7 {sum(link.count for link in links)} messages"
     if picture.hidden_nodes:
         text += f" \u00b7 {picture.hidden_nodes} quieter not drawn"
     if picture.undrawn:
         text += f" \u00b7 {picture.undrawn} lines not drawn"
     if picture.unnumbered:
         text += f" \u00b7 {picture.unnumbered} without a number"
-    return text
+    return f"{text} \u00b7 {working} working"
 
 
 def legend(theme: Theme) -> list[list[tuple[str, Style]]]:

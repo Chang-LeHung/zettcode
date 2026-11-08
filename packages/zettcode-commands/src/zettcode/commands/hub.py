@@ -5,15 +5,16 @@ broker's roster and message graph through the SDK, the sessions stored for this 
 through :mod:`zettcode.sdk.daemons`, so nothing new is listened to and nothing is stored here.
 
 * **Graph**: the busiest sessions as boxes, coloured by state, and a line between two that exchanged messages, with
-  the number beside the end it is drawn from (:mod:`~zettcode.commands.hub_graph` says how). ``Up``/``Down`` select a
-  node, which keeps its lines and dims the rest.
+  the number beside the end it is drawn from (:mod:`~zettcode.commands.hub_graph` says how). Every box has a place, so
+  an arrow key selects the nearest box that way, which keeps its lines and dims the rest; ``Esc`` deselects.
 * **Sessions**: the broker's roster, then the sessions stored on this machine that no process has registered, which
   are listed offline. Sessions are only looked at here: it is a daemon that can be started.
 * **Daemons**: every daemon on the machine. ``s`` stops the one under the mark and ``Enter`` starts one whose process
   is gone, resuming the session it had.
 
-``Tab`` and ``Shift-Tab`` (or the arrows sideways) move between the tabs and ``r`` reads everything again. The page
-shows what the last reading found; it does not follow the broker by itself.
+``Tab`` and ``Shift-Tab`` are the only keys that change tab, ``r`` reads everything again, and the top right of the
+page says when the last reading was and how long it took. The page shows what that reading found; it does not follow
+the broker by itself.
 """
 
 from __future__ import annotations
@@ -104,6 +105,8 @@ class HubData:
     links: tuple[Link, ...] = ()
     #: Whether the message graph could be read; an empty picture says which of the two it is.
     graph_ok: bool = True
+    #: When this reading was made and how long it took, step by step; drawn quietly at the top right of the page.
+    read: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,6 +262,10 @@ class HubPage(ListPage):
             style = open_tab if index == self.tab else heading
             canvas.draw_text(x, y, drawn, style, max_width=max(0, room - (x - self.rect.x)))
             x += display_width(drawn) + gap
+        # When the page was read and how long it took, at the right end of the tab line and only where it fits.
+        stamp = self.data.read
+        if stamp and display_width(stamp) <= room - (x - self.rect.x):
+            canvas.draw_text(self.rect.right - 2 - display_width(stamp), y, stamp, hint)
         if self.tab == GRAPH:
             self._draw_graph(canvas, hint, room)
         else:
@@ -305,8 +312,13 @@ class HubPage(ListPage):
         return self._picture
 
     def _forget_picture(self) -> None:
-        """Drop the picture and the selection when nothing is drawn, so no key moves a node that is not there."""
+        """Drop the picture and the selection when nothing is drawn, so no key moves a node that is not there.
+
+        The footer is made again with them: it says ``esc deselect`` only while something is selected, and Escape
+        closes the page when nothing is.
+        """
         self._picture, self._picture_key, self.selected = Picture(), None, None
+        self.footer = self._footer()
 
     def _draw_graph(self, canvas: Canvas, hint: Style, room: int) -> None:
         """Draw the summary, the note, the picture and the legend, or say why there is no picture."""
@@ -335,14 +347,14 @@ class HubPage(ListPage):
             self._forget_picture()
         if data.nodes:
             line = hub_graph.summary(data.nodes, data.links, picture, self.selected)
-            canvas.draw_text(left, self.rect.y + 2, line, hint, max_width=room)
+            canvas.draw_text(left, self.rect.y + 2, truncate(line, room), hint, max_width=room)
         if said:
             if height > 0:
                 column = self.rect.x + max(2, (self.rect.width - display_width(said)) // 2)
                 canvas.draw_text(column, top + height // 2, said, hint, max_width=room)
         else:
             hub_graph.paint(canvas, theme, left + offset[0], top + offset[1], picture, self.selected)
-        if self.rect.height >= LEGEND_FROM:
+        if self.rect.height >= LEGEND_FROM and picture.nodes:
             x = left
             for group in hub_graph.legend(theme):
                 wide = sum(display_width(text) for text, _ in group)
@@ -523,10 +535,9 @@ class HubCommand(TuiPlugin):
         page.set_data(await self._read(client))
 
     async def _reload(self, page: HubPage, client: object) -> None:
-        """``r``: read everything again and say when, so a second press visibly did something."""
+        """``r``: read everything again. The page said "refreshing" when the key was pressed; the new reading's own
+        time and duration, at the top right, say it is done, and differ from the last one's if it was pressed twice."""
         await self._refresh(page, client)
-        if not page.data.note:
-            page.note(f"refreshed {time.strftime('%H:%M:%S')}")
 
     async def _stop(self, page: HubPage, client: object, session_id: str) -> None:
         """Stop one daemon, then show what that changed."""
@@ -579,6 +590,15 @@ class HubCommand(TuiPlugin):
         """
         from zettcode.sdk.daemons import list_daemons
 
+        began = last = time.perf_counter()
+        steps: list[str] = []
+
+        def lap(name: str) -> None:
+            nonlocal last
+            now = time.perf_counter()
+            steps.append(f"{name} {(now - last) * 1000:.0f}")
+            last = now
+
         peers = tuple(
             Peer(
                 handle=peer.handle,
@@ -600,6 +620,7 @@ class HubCommand(TuiPlugin):
             )
             for info in await asyncio.to_thread(list_daemons)
         )
+        lap("daemons")
         note = ""
         try:
             me = client.session.id  # type: ignore[attr-defined]
@@ -611,12 +632,14 @@ class HubCommand(TuiPlugin):
         except Exception as error:  # noqa: BLE001 - a store that cannot be read costs only the offline list
             note = f"the stored sessions cannot be read: {error}"
             listed = ()
+        lap("sessions")
         graph_ok = True
         try:
             graph = await client.traffic_graph()  # type: ignore[attr-defined]
         except Exception as error:  # noqa: BLE001 - without a broker the picture is empty, the lists still work
             graph, graph_ok = {}, False
             note = note or f"the message graph cannot be read: {error}"
+        lap("graph")
         present = {peer.session_id for peer in peers} | {me}
         present |= {str(entry.get("session_id", "")) for entry in graph.get("sessions", ())}
         present |= {daemon.session_id for daemon in daemons if daemon.status not in GONE}
@@ -637,8 +660,17 @@ class HubCommand(TuiPlugin):
         if not graph_ok:
             # Nothing to say about who talks to whom, so the picture is empty and says why, not a lone stopped box.
             nodes, links = (), ()
+        total = (time.perf_counter() - began) * 1000
+        read = f"read {time.strftime('%H:%M:%S')} \u00b7 {total:.0f} ms ({', '.join(steps)})"
         return HubData(
-            peers=peers, daemons=daemons, offline=offline, note=note, nodes=nodes, links=links, graph_ok=graph_ok
+            peers=peers,
+            daemons=daemons,
+            offline=offline,
+            note=note,
+            nodes=nodes,
+            links=links,
+            graph_ok=graph_ok,
+            read=read,
         )
 
 

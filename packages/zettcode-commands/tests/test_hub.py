@@ -358,8 +358,10 @@ def test_the_page_renders_at_any_size_and_keeps_its_tab_line_and_footer(size):
         assert rows[-1].lstrip().startswith("arrows") or width < 20
     if height >= 6 and width >= 40:
         assert rows[2].lstrip().startswith("3 nodes"), "nor over the summary"
-    if height >= 9 and width >= 40:
+    if height >= 17 and width >= 44:
         assert "n = messages" in rows[-2], "the legend is its own row, never over the tab line"
+    if height < 17 or width < 44:
+        assert "n = messages" not in "\n".join(rows), "no legend where no picture is drawn to explain"
     for row in rows[:3]:
         assert "too small" not in row, "the note about the size has a row of its own, below the chrome"
 
@@ -383,6 +385,7 @@ def test_a_window_too_small_for_the_picture_forgets_the_selection_so_no_arrow_mo
     assert "·" not in rows[2] or "main" not in rows[2], "the summary does not describe a selected node"
     opened.capture_event(_key("right"), None)
     assert opened.selected is None, "an arrow has nothing to move"
+    assert "esc deselect" not in opened.footer and "esc close" in opened.footer, "the footer says what Esc does now"
 
 
 def test_the_empty_picture_says_whether_there_was_nothing_or_the_read_failed():
@@ -711,22 +714,44 @@ def test_every_key_that_acts_says_so_on_the_page_at_once():
     assert asked == ["r", "s d-1", "enter d-2"]
 
 
-def test_a_refresh_ends_with_the_time_it_finished_and_a_failure_is_not_overwritten(monkeypatch):
+def test_a_refresh_replaces_refreshing_with_the_new_readings_time_and_keeps_a_failure(monkeypatch):
     async def read_ok(self, client):
-        return data()
+        return data(read="read 12:34:56 \u00b7 23 ms (daemons 3, sessions 1, graph 19)")
 
     async def read_bad(self, client):
         return data(note="the message graph cannot be read: no broker")
 
     opened = page()
+    opened.note("refreshing\u2026")
 
     monkeypatch.setattr(HubCommand, "_read", read_ok)
     asyncio.run(HubCommand()._reload(opened, object()))
-    assert opened.subtitle.startswith("refreshed ") and opened.subtitle.count(":") == 2
+    assert opened.subtitle is None, "refreshing is gone once the read is done"
+    assert "read 12:34:56 \u00b7 23 ms" in _rendered(opened, 110, 32)[1], "and the time is at the top right"
 
     monkeypatch.setattr(HubCommand, "_read", read_bad)
     asyncio.run(HubCommand()._reload(opened, object()))
     assert opened.subtitle == "the message graph cannot be read: no broker"
+
+
+def test_the_stamp_sits_at_the_right_end_of_the_tab_line_and_only_where_it_fits():
+    stamp = "read 12:34:56 \u00b7 23 ms (daemons 3, sessions 1, graph 19)"
+    opened = HubPage(data(read=stamp), on_close=lambda: None)
+
+    wide = _rendered(opened, 110, 32)[1]
+    narrow = _rendered(opened, 50, 32)[1]
+
+    assert wide.rstrip().endswith("graph 19)") and wide.index("read") > wide.index("Daemons")
+    assert "read 12" not in narrow, "a page too narrow for it leaves it out rather than cut it"
+    assert "Daemons" in narrow
+
+
+def test_a_real_reading_says_when_it_was_made_and_how_long_each_step_took(tmp_path, daemons_on_disk):
+    reading = _read(_FakeClient(tmp_path))
+
+    assert reading.read.startswith("read ") and " ms (" in reading.read
+    for step in ("daemons", "sessions", "graph"):
+        assert step in reading.read
 
 
 def test_the_tables_have_titles_lined_up_with_their_columns():
