@@ -619,8 +619,12 @@ def test_an_offline_session_is_started_end_to_end_from_the_reading_through_enter
         opened.list.selected = row
 
         opened.capture_event(_key("enter"), None)
-        for _ in range(20):
-            await asyncio.sleep(0)
+        # the start asks the SDK on a thread whether another process holds the session, so yielding a fixed number of
+        # times is not enough: wait for the page to say what happened
+        for _ in range(500):
+            await asyncio.sleep(0.01)
+            if opened.subtitle != "starting\u2026" and calls:
+                break
         return opened
 
     opened = asyncio.run(scenario())
