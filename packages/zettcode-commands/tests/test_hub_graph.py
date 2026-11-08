@@ -466,7 +466,7 @@ def test_the_legend_names_every_state_with_its_own_colour_and_starts_with_what_a
 
 
 def test_the_lists_colour_a_state_the_way_the_graph_does():
-    from zettcode.commands.hub import SESSIONS, Daemon, HubData, HubPage, Peer, StoredSession
+    from zettcode.commands.hub import SESSIONS, Daemon, HubData, HubPage, Peer
 
     theme = Theme()
     states = graph.colours(theme)
@@ -478,7 +478,6 @@ def test_the_lists_colour_a_state_the_way_the_graph_does():
                 Peer("c", "t", "idle", "/w", "external"),
             ),
             daemons=(Daemon("d", "dead one", "dead"), Daemon("e", "live", "working")),
-            offline=(StoredSession("o", "old"),),
         ),
         on_close=lambda: None,
     )
@@ -493,7 +492,6 @@ def test_the_lists_colour_a_state_the_way_the_graph_does():
         states["working"],
         states["idle"],
         states["external"],
-        states["offline"],
     ]
     page._show(SESSIONS + 1)
     assert [head(item) for item in page.list.items] == [states["stopped"], states["working"]]

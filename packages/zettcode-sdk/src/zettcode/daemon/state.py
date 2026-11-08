@@ -270,6 +270,22 @@ class Record:
         except OSError:
             pass
 
+    def end_beat(self) -> None:
+        """Take the heartbeat away: the daemon's last word when it leaves its record behind.
+
+        A record that stays has no folder going away to say the process has stopped, and a pid is no proof either —
+        a zombie its parent has not reaped still answers signal zero. No heartbeat is: the record then reads as dead
+        at once, instead of after the thirty seconds a stale beat takes.
+        """
+        try:
+            (self.folder / BEAT_FILE).unlink()
+        except OSError:
+            pass
+
+    def beating(self) -> bool:
+        """Return whether a heartbeat file is there to be read, whatever its age."""
+        return (self.folder / BEAT_FILE).exists()
+
     def log(self, text: str) -> None:
         """Append one line to the daemon's log; a log that cannot be written is not worth failing a daemon over."""
         stamp = time.strftime("%Y-%m-%d %H:%M:%S")

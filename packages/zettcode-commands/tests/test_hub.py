@@ -18,18 +18,16 @@ from zettcode.commands.hub import (
     HubData,
     HubPage,
     Peer,
-    StoredSession,
 )
 from zettcode.commands.hub_graph import Link, Node
 from zettcode.tui import KeyEvent, Rect
 
 
 def data(**changes: object) -> HubData:
-    """A reading with one session, one daemon and one stored session."""
+    """A reading with one session and one daemon."""
     base = HubData(
         peers=(Peer("main", "the parser", "working", "/work"),),
         daemons=(Daemon("d-1", "watcher", "idle", model="m", workspace="/work"),),
-        offline=(StoredSession("old-id", "old"),),
     )
     return dataclasses.replace(base, **changes)  # type: ignore[arg-type]
 
@@ -50,17 +48,17 @@ def test_the_tabs_are_named_once_and_the_constants_agree_with_them():
     assert page().tab == GRAPH
 
 
-def test_the_sessions_tab_has_the_roster_and_the_offline_ones():
+def test_the_sessions_tab_lists_only_the_sessions_that_are_running():
     opened = page()
 
     opened._show(SESSIONS)
 
-    assert [item.label for item in opened.list.items] == ["main", "old"]
-    assert "on disk" in opened.list.items[1].description
+    assert [item.label for item in opened.list.items] == ["main"]
+    assert "offline" not in "".join(item.description for item in opened.list.items)
 
 
 def test_tab_walks_the_three_and_keeps_a_mark_per_tab():
-    opened = page()
+    opened = page(peers=(Peer("main", "t", "idle", "/w"), Peer("second", "t", "idle", "/w")))
     opened.capture_event(_key("tab"), None)
     opened.list.selected = 1
 
@@ -112,14 +110,13 @@ def test_a_session_row_has_no_action_only_a_daemon_can_be_started():
     opened = HubPage(data(), on_close=lambda: None, on_start=started.append, on_stop=started.append)
     opened._show(SESSIONS)
 
-    for row in (0, 1):  # "main" registered, "old" stored with no process
+    for row in (0,):  # "main", running
         opened.list.selected = row
         opened.capture_event(_key("enter"), None)
         opened.capture_event(_key("s"), None)
 
     assert started == [], "neither Enter nor s does anything on the sessions tab"
     assert "enter" not in opened.footer, "and the footer does not offer it"
-    assert "no process" in opened.list.items[1].description
 
 
 def test_a_reading_replaces_the_note_and_an_action_says_its_own_after_it():
@@ -480,22 +477,37 @@ def _read(client: _FakeClient) -> HubData:
     return asyncio.run(HubCommand()._read(client))
 
 
-def test_the_reading_lists_only_the_stored_sessions_that_nothing_is_running(tmp_path, daemons_on_disk):
-    """Not the reader's own, not a registered peer, and not one a live daemon holds."""
+def test_the_sessions_tab_is_the_roster_and_no_stored_session_is_added_to_it(tmp_path, daemons_on_disk):
+    """The store has a session the roster does not (`old-9`); it is not listed, the reader has /resume for those."""
     reading = _read(_FakeClient(tmp_path))
 
-    assert [(s.session_id, s.title) for s in reading.offline] == [("old-9", "old-9")]
-    assert reading.peers[0].session_id == "p-1"
+    assert [peer.session_id for peer in reading.peers] == ["p-1"]
+    assert not hasattr(reading, "offline")
 
 
-def test_a_session_in_the_brokers_roster_is_present_even_when_the_cached_peers_do_not_have_it(
-    tmp_path, daemons_on_disk
-):
-    graph = {"sessions": [{"session_id": "old-9", "handle": "old", "status": "idle"}], "edges": []}
+def test_the_daemons_tab_lists_every_daemon_including_those_whose_process_is_gone(tmp_path, daemons_on_disk):
+    reading = _read(_FakeClient(tmp_path))
 
-    reading = _read(_FakeClient(tmp_path, graph))
+    by_id = {daemon.session_id: daemon.status for daemon in reading.daemons}
 
-    assert reading.offline == (), "the broker's own roster decides who is present"
+    assert by_id == {"run-1": "idle", "dead-1": "dead", "dead-9": "dead"}, "running and stopped, every workspace"
+
+
+def test_a_stopped_daemon_stays_on_the_daemons_tab_as_stopped_and_can_be_started():
+    started: list[str] = []
+    opened = HubPage(
+        data(daemons=(Daemon("run", "live", "idle"), Daemon("off", "was running", "dead", model="m"))),
+        on_close=lambda: None,
+        on_start=started.append,
+    )
+    opened._show(DAEMONS)
+
+    rows = {item.label: item.description for item in opened.list.items}
+    assert "stopped" in rows["was running"] and "idle" in rows["live"], "both are listed"
+
+    opened.list.selected = 1
+    opened.capture_event(_key("enter"), None)
+    assert started == ["off"], "and Enter starts the one whose process is gone"
 
 
 def test_the_graph_becomes_nodes_and_links_with_the_reader_in_it(tmp_path, daemons_on_disk):
@@ -559,6 +571,43 @@ def test_a_client_with_no_current_session_still_shows_the_roster(tmp_path, daemo
 
 
 # -- resuming ---------------------------------------------------------------------------------------
+
+
+def test_a_daemon_that_never_held_a_conversation_says_so_instead_of_the_stores_error(monkeypatch, tmp_path):
+    from zettcode.sdk import daemons
+
+    async def refuse(workspace, **kwargs):
+        raise RuntimeError("zettcode daemon: Cannot open session 'x': Unknown session: x")
+
+    async def read(self, client):
+        return data()
+
+    monkeypatch.setattr(daemons, "spawn_daemon", refuse)
+    monkeypatch.setattr(HubCommand, "_read", read)
+    client = type("Client", (), {"workspace": tmp_path})()
+    opened = _stopped()
+
+    asyncio.run(HubCommand()._resume(opened, client, "d-2"))
+
+    assert opened.subtitle == "nothing to resume: this daemon never held a conversation"
+
+
+def test_a_failure_that_is_not_about_the_session_is_shown_as_it_is(monkeypatch, tmp_path):
+    from zettcode.sdk import daemons
+
+    async def refuse(workspace, **kwargs):
+        raise RuntimeError("the model is not configured")
+
+    async def read(self, client):
+        return data()
+
+    monkeypatch.setattr(daemons, "spawn_daemon", refuse)
+    monkeypatch.setattr(HubCommand, "_read", read)
+    opened = _stopped()
+
+    asyncio.run(HubCommand()._resume(opened, type("Client", (), {"workspace": tmp_path})(), "d-2"))
+
+    assert opened.subtitle == "the model is not configured"
 
 
 def _fake_spawn(monkeypatch, calls, release=None):

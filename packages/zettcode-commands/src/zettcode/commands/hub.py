@@ -7,10 +7,11 @@ through :mod:`zettcode.sdk.daemons`, so nothing new is listened to and nothing i
 * **Graph**: the busiest sessions as boxes, coloured by state, and a line between two that exchanged messages, with
   the number beside the end it is drawn from (:mod:`~zettcode.commands.hub_graph` says how). Every box has a place, so
   an arrow key selects the nearest box that way, which keeps its lines and dims the rest; ``Esc`` deselects.
-* **Sessions**: the broker's roster, then the sessions stored on this machine that no process has registered, which
-  are listed offline. Sessions are only looked at here: it is a daemon that can be started.
-* **Daemons**: every daemon on the machine. ``s`` stops the one under the mark and ``Enter`` starts one whose process
-  is gone, resuming the session it had.
+* **Sessions**: the sessions that are running, as the broker's roster has them. Only looked at here: it is a daemon
+  that can be started, and the stored sessions of the past are what ``/resume`` is for.
+* **Daemons**: every daemon recorded on this machine, running or not. A daemon whose process is gone stays listed
+  (``stopped``) until it is deleted, so it can be started again. ``s`` stops the one under the mark and keeps its record;
+  ``Enter`` starts one whose process is gone, resuming the session it had.
 
 ``Tab`` and ``Shift-Tab`` are the only keys that change tab, ``r`` reads everything again, and the top right of the
 page says when the last reading was and how long it took. The page shows what that reading found; it does not follow
@@ -75,14 +76,6 @@ class Peer:
 
 
 @dataclass(frozen=True, slots=True)
-class StoredSession:
-    """One session kept on disk for this workspace that no process has registered. Listed, not started."""
-
-    session_id: str
-    title: str
-
-
-@dataclass(frozen=True, slots=True)
 class Daemon:
     """One daemon recorded on this machine, running or not."""
 
@@ -99,7 +92,6 @@ class HubData:
 
     peers: tuple[Peer, ...] = ()
     daemons: tuple[Daemon, ...] = ()
-    offline: tuple[StoredSession, ...] = ()
     note: str = ""
     nodes: tuple[Node, ...] = ()
     links: tuple[Link, ...] = ()
@@ -167,9 +159,6 @@ def _session_table(data: HubData) -> Table:
             (hub_graph.state_of(peer.status, peer.kind), peer.title or "untitled", peer.workspace),
         )
         for peer in data.peers
-    ]
-    rows += [
-        (stored.session_id, stored.title, "offline", ("offline", "on disk, no process", "")) for stored in data.offline
     ]
     return _table(("NAME", "STATE", "TITLE", "WORKSPACE"), rows)
 
@@ -635,7 +624,10 @@ class HubCommand(TuiPlugin):
                 workspace = chosen.workspace or str(client.workspace)  # type: ignore[attr-defined]
                 started = await spawn_daemon(workspace, model=chosen.model or None, resume=session_id)
             except Exception as error:  # noqa: BLE001 - the page says what happened, whatever it was
-                note = str(error)
+                text = str(error)
+                # A daemon that never held a conversation has no stored session: an empty one is removed when it
+                # closes, so there is nothing for the start to continue.
+                note = "nothing to resume: this daemon never held a conversation" if "Unknown session" in text else text
             else:
                 note = f"started {started.session_id[:8]}"
             await self._refresh(page, client)
@@ -644,10 +636,10 @@ class HubCommand(TuiPlugin):
         page.note(note)
 
     async def _read(self, client: object) -> HubData:
-        """Read the three tabs: the broker's roster and graph, the stored sessions, and the daemons' records.
+        """Read the three tabs: the broker's roster and graph, and the daemons' records, running or not.
 
-        One reading decides who is present: the graph's own roster, the cached peers and the daemons that are
-        running all count, so a session is offered as offline only when none of them has it.
+        The stored sessions of this workspace are read only for their titles, to name a session the graph has a line
+        to that is no longer in the roster; the Sessions tab lists what is running and nothing else.
         """
         from zettcode.sdk.daemons import list_daemons
 
@@ -690,10 +682,9 @@ class HubCommand(TuiPlugin):
         except Exception:  # noqa: BLE001 - a client with no session still has a roster to show
             me = ""
         try:
-            # The fifty newest of this workspace; a longer store is cut there rather than paged.
+            # The fifty newest of this workspace, for their titles; a longer store is cut there rather than paged.
             listed = await client.sessions.list(limit=50)  # type: ignore[attr-defined]
-        except Exception as error:  # noqa: BLE001 - a store that cannot be read costs only the offline list
-            note = f"the stored sessions cannot be read: {error}"
+        except Exception:  # noqa: BLE001 - a store that cannot be read costs only the names of sessions that are gone
             listed = ()
         lap("sessions")
         graph_ok = True
@@ -703,10 +694,6 @@ class HubCommand(TuiPlugin):
             graph, graph_ok = {}, False
             note = note or f"the message graph cannot be read: {error}"
         lap("graph")
-        present = {peer.session_id for peer in peers} | {me}
-        present |= {str(entry.get("session_id", "")) for entry in graph.get("sessions", ())}
-        present |= {daemon.session_id for daemon in daemons if daemon.status not in GONE}
-        offline = tuple(StoredSession(info.id, info.title or info.id[:8]) for info in listed if info.id not in present)
         # The picture is of this workspace: another project's dead daemons are on the Daemons tab, not in it, and a
         # session's own title wins over its daemon's name.
         try:
@@ -727,7 +714,6 @@ class HubCommand(TuiPlugin):
         return HubData(
             peers=peers,
             daemons=daemons,
-            offline=offline,
             note=note,
             nodes=nodes,
             links=links,

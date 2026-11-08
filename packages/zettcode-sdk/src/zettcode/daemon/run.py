@@ -196,6 +196,10 @@ class Daemon:
             # answers. A stop that asked to keep it leaves it, as a dead one the reader can start again or delete.
             if not self._kept():
                 self.record.remove()
+            else:
+                # Nothing removes the folder now, so the daemon says it is gone the one way that does not depend on
+                # its pid: it takes its heartbeat away, and the record reads as dead from here on.
+                self.record.end_beat()
         return EXIT_OK
 
     def _kept(self) -> bool:
@@ -431,6 +435,10 @@ class Daemon:
                         requested_model=current.requested_model if current is not None else None,
                         requested_effort=current.requested_effort if current is not None else None,
                         requested_error=current.requested_error if current is not None else None,
+                        # A stop that wants the record kept writes that here before it signals, and this write is the
+                        # daemon's last: built afresh, the state would say "do not keep" and the daemon would remove
+                        # the record it was asked to leave.
+                        keep=current.keep if current is not None else False,
                     ),
                     wait=0,
                 )
