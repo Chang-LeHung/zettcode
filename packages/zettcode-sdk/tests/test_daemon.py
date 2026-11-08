@@ -353,9 +353,14 @@ async def test_only_the_stop_that_this_process_was_sent_decides_that_its_record_
     await daemon.mark("starting")
     assert daemon.record.state is not None and daemon.record.state.keep is False, "it does not inherit the field"
 
-    # the stop this process was sent writes the field under its own pid, and the daemon's last write carries it
-    daemon.record.save(replace(state_for(home, status="stopping"), keep=True))
+    # the same, when the system gave the stopped daemon's pid to this one: only the token tells the two starts apart
+    daemon.record.save(replace(state_for(home, status="stopping"), keep=True, token="an earlier start"))
     daemon.stopping.set()
+    await daemon.mark("stopping")
+    assert daemon.record.state is not None and daemon.record.state.keep is False, "a reused pid is no proof"
+
+    # the stop this process was sent writes the field under its own pid and token, and the last write carries it
+    daemon.record.save(replace(state_for(home, status="stopping"), keep=True))
     await daemon.mark("stopping")
     assert daemon.record.state is not None and daemon.record.state.keep is True
 
