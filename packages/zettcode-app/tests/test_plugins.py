@@ -21,6 +21,7 @@ from zettcode.app.plugins import (
 from zettcode.app.plugins.builtins import BuiltinThemes
 from zettcode.app.plugins.loader import terminal_context, terminal_plugins
 from zettcode.commands.plugin import CommandsPlugin
+from zettcode.commands.usage import UsageCommand
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine.extensions.usage import UsageSnapshot
@@ -123,6 +124,7 @@ def with_parts(*points: FakeEntryPoint) -> list[FakeEntryPoint]:
         FakeEntryPoint("shell", ShellRows, "zettcode.terminal"),
         FakeEntryPoint("turn-line", TurnLine, "zettcode.terminal"),
         FakeEntryPoint("themes", BuiltinThemes, "zettcode.terminal"),
+        FakeEntryPoint("usage", UsageCommand, "zettcode.terminal"),
         *points,
     ]
 
@@ -776,7 +778,7 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
         entry_points=with_parts(one),
         builtins=(),
     )
-    assert set(loaded_names(loaded)) == {"commands", "pets", "presenters", "shell", "themes", "turn-line"}
+    assert set(loaded_names(loaded)) == {"commands", "pets", "presenters", "shell", "themes", "turn-line", "usage"}
     assert [row.region for row in loaded.rows] == ["header", "status"]
     assert all(row.left for row in loaded.rows)
 
@@ -944,6 +946,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "commands",
         "pets",
         "themes",
+        "usage",
         "ask-user",
         "coding",
         "files",
@@ -982,8 +985,8 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "/clear",
         "/quit",
         "/exit",
-        "/usage",
         "/hub",
+        "/usage",
     ]
     assert [command.name for command in runtime.plugins.installed_commands] == ["/greet"]
     assert runtime.plugins.commands == (*runtime.plugins.builtin_commands, *runtime.plugins.installed_commands)

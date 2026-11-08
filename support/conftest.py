@@ -32,6 +32,7 @@ PROGRAM_PARTS = (
     ("shell", "zettcode.presenters.rows:ShellRows"),
     ("themes", "zettcode.app.plugins.builtins:BuiltinThemes"),
     ("turn-line", "zettcode.presenters.rows:TurnLine"),
+    ("usage", "zettcode.commands.usage:UsageCommand"),
 )
 
 #: The plugins that compose the agent, as the SDK publishes them under `zettcode.plugin`, sorted by name. The loader
@@ -160,6 +161,7 @@ _OWNER = {
     "compaction": "zettcode-sdk",
     "shell": "zettcode-presenters",
     "turn-line": "zettcode-presenters",
+    "usage": "zettcode-commands",
     "skills": "zettcode-skills",
     "skill-tool": "zettcode-skills",
     "ask-user": "zettcode-ask-user",

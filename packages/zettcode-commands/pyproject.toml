@@ -29,6 +29,7 @@ dependencies = [
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for.
 [project.entry-points."zettcode.plugin"]
 commands = "zettcode.commands.plugin:CommandsPlugin"
+usage = "zettcode.commands.usage:UsageCommand"
 
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"

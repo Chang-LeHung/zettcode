@@ -73,6 +73,7 @@ from zettcode.app.ui.widgets import (
 from zettcode.app.ui.widgets.follow_up import OPTION
 from zettcode.commands.handlers import CodeReview
 from zettcode.commands.plugin import CommandsPlugin
+from zettcode.commands.usage import UsageCommand
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
 from zettcode.engine.delivery import Delivery
@@ -87,6 +88,7 @@ from zettcode.mentions import Mention, MentionProvider, MentionRegistry
 from zettcode.messaging.inbox import INBOX, Inbox
 from zettcode.messaging.relayed import Relayed
 from zettcode.pets.plugin import PetsPlugin
+from zettcode.plugin_api import USAGE_LEDGER
 from zettcode.plugin_api.commands import Command, CommandContext, CommandResult
 from zettcode.plugin_api.entries import EntryStatus
 from zettcode.plugin_api.state import TurnSegment
@@ -508,12 +510,16 @@ def rows_and_commands(
     """
     link = HostLink()
     ctx = terminal_context(config or FakeConfig(), {HOST_LINK: link})  # type: ignore[arg-type]
+    usage_store = SessionStore(config.store, config.workspace) if getattr(config, "store", None) else None
+    if usage_store is not None:
+        ctx.agent.provide(USAGE_LEDGER, usage_store)
     # `/harness` belongs to the harness part now; the fixture registers its command directly because it does not build
     # the agent the part's extension needs.
     for plugin in (
         ShellRows(),
         TurnLine(),
         CommandsPlugin(),
+        UsageCommand(),
         HarnessCommand(),
         BuiltinThemes(),
         PetsPlugin(),
@@ -538,7 +544,11 @@ def rows_and_commands(
         pets=ctx.tui.pets,
         presenters=ctx.tui.presenters,
         turn_segments=ctx.tui.turn_segments,
-        services={HOST_LINK: link, INBOX: Inbox(IdleDelivery(), cap=inbox_cap)},
+        services={
+            HOST_LINK: link,
+            INBOX: Inbox(IdleDelivery(), cap=inbox_cap),
+            **({USAGE_LEDGER: usage_store} if usage_store is not None else {}),
+        },
         builtins=("presenters", "commands"),
     )
 
@@ -9550,7 +9560,6 @@ async def test_usage_opens_a_full_screen_page_and_escape_returns_to_the_conversa
         mcp_enabled=False,
     )
     app = build_app(plugins=rows_and_commands(config=config))
-    app.agent.runtime.config = config  # the client reads the store from the runtime's configuration
     harness = _harness(app)
 
     harness.write("/usage")
