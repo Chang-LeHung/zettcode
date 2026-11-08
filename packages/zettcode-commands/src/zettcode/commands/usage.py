@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from zettcode.app.plugins.groups import require_tui
-from zettcode.plugin_api import USAGE_LEDGER, UsageLedgerService
+from zettcode.plugin_api import USAGE_LEDGER
 from zettcode.plugin_api.commands import CommandContext, CommandResult
 from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.presenters import labels
@@ -35,7 +35,10 @@ class UsageCommand(TuiPlugin):
 
         async def show(context: CommandContext) -> CommandResult:
             """Open the usage page, or say that nothing has been spent yet."""
-            usage = ledger_from(await ctx.service(USAGE_LEDGER, UsageLedgerService).ledger())  # type: ignore[type-abstract]
+            service = ctx.agent.usage_ledger_service()
+            if service is None:
+                raise LookupError(f"No plugin provides the {USAGE_LEDGER!r} service")
+            usage = ledger_from(await service.ledger())
             if usage.total.requests == 0:
                 return CommandResult(message="No model replies are recorded in this workspace yet.")
             return CommandResult(widget=UsagePage(usage, workspace=labels.compact_path(config.workspace, limit=None)))
