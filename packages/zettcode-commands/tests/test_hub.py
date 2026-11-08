@@ -1103,6 +1103,34 @@ def test_the_tables_have_titles_lined_up_with_their_columns():
     assert rows[3].index("WORKSPACE") == rows[4].index("/work")
 
 
+def test_a_long_title_is_cut_so_the_other_columns_keep_their_room():
+    opened = HubPage(
+        data(
+            daemons=(
+                Daemon(
+                    "d-1",
+                    "watcher",
+                    "idle",
+                    model="the-model",
+                    workspace="/work",
+                    title="a very long title " * 10,
+                ),
+            )
+        ),
+        on_close=lambda: None,
+    )
+    opened._show(DAEMONS)
+
+    for width in (80, 110):
+        rows = _rendered(opened, width, 24)
+        assert rows[3].index("MODEL") == rows[4].index("the-model")
+        assert rows[3].index("WORKSPACE") == rows[4].index("/work")
+        assert "\u2026" in rows[4]
+
+    for width in (40, 60, 80):
+        assert all(len(row) <= width for row in _rendered(opened, width, 24)), width
+
+
 def test_a_note_does_not_overwrite_the_titles_and_the_graph_has_none():
     opened = page()
     opened.note("started abcdef12")
