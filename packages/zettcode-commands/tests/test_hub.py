@@ -252,3 +252,23 @@ def test_resuming_a_stored_session_starts_a_daemon_here(monkeypatch):
 
     assert calls == [(".", {"model": None, "resume": "old-id"})]
     assert opened.subtitle == "started abcdef12"
+
+
+def test_a_daemon_row_says_its_state_once():
+    opened = HubPage(
+        data(daemons=(Daemon("a", "live", "working"), Daemon("b", "idle one", "idle"), Daemon("c", "gone", "dead"))),
+        on_close=lambda: None,
+    )
+    opened._show(2)
+
+    said = [item.description for item in opened.list.items]
+
+    assert said[0].count("working") == 1 and said[1].count("idle") == 1
+    assert "stopped" in said[2] and "dead" in said[2], "a dead process keeps the word that explains the red"
+
+
+def test_an_outsider_row_does_not_say_external_twice():
+    opened = HubPage(data(peers=(Peer("bot", "ci", "idle", "/w", "external"),)), on_close=lambda: None)
+    opened._show(1)
+
+    assert opened.list.items[0].description.count("external") == 1
