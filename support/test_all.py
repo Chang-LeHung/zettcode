@@ -34,14 +34,14 @@ PARALLEL = {
 
 
 def _jobs(given: str | None) -> int:
-    """Return how many suites run at once: the argument, then ``TEST_JOBS``, then 80% of the machine's cores."""
+    """Return how many suites run at once: the argument, then ``TEST_JOBS``, then 60% of the machine's cores."""
     for value in (given, os.environ.get("TEST_JOBS")):
         if value:
             try:
                 return max(1, int(value))
             except ValueError:
                 pass
-    return max(1, (os.cpu_count() or 4) * 8 // 10)
+    return max(1, (os.cpu_count() or 4) * 6 // 10)
 
 
 def _run(package: Path, jobs: int) -> tuple[Path, int, str, float]:

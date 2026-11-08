@@ -20,11 +20,11 @@ LINT_PATHS := conftest.py support docs/scripts .github/scripts $(PACKAGES)
 ORDER := .github/scripts/release_order.py
 # Recursive (`=`), so the script runs when a target needs the list, not on every `make help`.
 SPLIT = $(shell $(UV) run --no-sync python $(ORDER))
-#: How many jobs run at once: 80% of the machine's logical cores, rounded down, so the editor and the tests can share
+#: How many jobs run at once: 60% of the machine's logical cores, rounded down, so the editor and the tests can share
 #: it. `JOBS=4 make check` caps it by hand, `TEST_JOBS=1 make test` restores one suite at a time, and `CHECK_JOBS`
 #: is what the clients use after the Python side. CI runs the suites one at a time, where a shared runner's timings
 #: are part of what is checked.
-JOBS ?= $(shell n=$$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4); j=$$((n * 8 / 10)); if [ "$$j" -lt 1 ]; then j=1; fi; echo $$j)
+JOBS ?= $(shell n=$$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4); j=$$((n * 6 / 10)); if [ "$$j" -lt 1 ]; then j=1; fi; echo $$j)
 TEST_JOBS ?= $(if $(CI),1,$(JOBS))
 CHECK_JOBS ?= $(JOBS)
 # Each distribution's suite runs on its own, in that distribution's directory: its `pyproject.toml` is the pytest
@@ -67,7 +67,7 @@ help:
 	@echo "  make lint     Check formatting and linting with Ruff"
 	@echo "  make typecheck Check the shipped code with mypy"
 	@echo "  make test     Run every distribution's suite, $(TEST_JOBS) at a time (TEST_JOBS=1 for one at a time)"
-	@echo "  JOBS=$(JOBS) TEST_JOBS=$(TEST_JOBS) CHECK_JOBS=$(CHECK_JOBS)  how many run at once (80% of the cores)"
+	@echo "  JOBS=$(JOBS) TEST_JOBS=$(TEST_JOBS) CHECK_JOBS=$(CHECK_JOBS)  how many run at once (60% of the cores)"
 	@echo "  make order    Write the release order to packages/order.txt (generated, not in git)"
 	@echo "  make python   Lint, type-check and test the Python side"
 	@echo "  make client   Build and test the TypeScript client"
