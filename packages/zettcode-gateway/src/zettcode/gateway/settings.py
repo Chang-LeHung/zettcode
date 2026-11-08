@@ -13,6 +13,11 @@ DIRECTORY_VARIABLE = "ZETTCODE_GATEWAY_DIR"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 
+#: The origin the desktop client runs under: Electron's ``app://`` page. A gateway with a token lets it in; with no
+#: token it is ignored, because then the origin check is the only thing between another site and a gateway that runs
+#: commands. The Android app loads the gateway's own page at the gateway's origin and needs no entry here.
+APP_ORIGINS = ("app://-",)
+
 
 def default_directory() -> Path:
     """Return the gateway's own folder: ``$ZETTCODE_GATEWAY_DIR``, or ``~/.zettcode/gateway``."""
@@ -35,6 +40,8 @@ class Settings:
             command line (``--no-full`` turns it off), never from the page.
         directory: The gateway's own folder: its workspace, the id of its session, and what the page remembers.
         log_level: uvicorn's log level.
+        client_origins: Extra origins a native client or a page of its own is served from, on top of
+            :data:`APP_ORIGINS`. Ignored without a token.
     """
 
     token: str = ""
@@ -44,11 +51,23 @@ class Settings:
     allow_full: bool = False
     directory: Path = field(default_factory=default_directory)
     log_level: str = "info"
+    client_origins: tuple[str, ...] = ()
 
     @property
     def open(self) -> bool:
         """Return whether anybody who can reach the gateway may use it, with no token."""
         return not self.token
+
+    @property
+    def allowed_origins(self) -> tuple[str, ...]:
+        """Return the origins besides the gateway's own that may call it, and may write to it.
+
+        Empty when there is no token. The token is what keeps people out; an origin is not a credential, so letting a
+        native client's origin through is only safe while every request still has to show the token.
+        """
+        if self.open:
+            return ()
+        return tuple(dict.fromkeys((*APP_ORIGINS, *self.client_origins)))
 
     @property
     def workspace(self) -> Path:

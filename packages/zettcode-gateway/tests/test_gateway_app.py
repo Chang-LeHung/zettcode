@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import time
@@ -104,6 +105,148 @@ def test_a_request_from_another_site_is_refused_even_when_signed_in(parts):
     assert len(backend.sent) == 1
 
 
+# -- native clients: an origin of their own, and a token where a header cannot go --------------------------------
+
+
+def native(tmp_path, **changes):
+    """An app whose native clients are let in, with a backend that records what happened."""
+    work = tmp_path / "work"
+    work.mkdir()
+    settings = Settings(token=TOKEN, roots=(work,), directory=tmp_path / "gw", **changes)
+    backend = FakeBackend()
+    backend.add_daemon("01d", str(work), name="d")
+    return TestClient(create_app(settings, backend, static=page(tmp_path)), base_url="http://testserver")
+
+
+def subprotocol(token: str) -> str:
+    """The protocol a native client offers its token under, as ``clients/gateway`` writes it."""
+    return "zettcode.token." + base64.urlsafe_b64encode(token.encode()).decode().rstrip("=")
+
+
+def test_a_native_client_origin_may_read_and_write_with_the_token_and_is_told_so(tmp_path):
+    with native(tmp_path) as client:
+        read = client.get("/api/threads", headers={"origin": "app://-", "authorization": f"Bearer {TOKEN}"})
+        written = client.post(
+            "/api/threads/01d/send",
+            json={"text": "from the app"},
+            headers={"origin": "app://-", "authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert read.status_code == 200 and written.status_code == 200
+    assert read.headers["access-control-allow-origin"] == "app://-"
+    assert "origin" in read.headers["vary"].lower()
+
+
+def test_a_native_client_without_the_token_is_refused_and_a_foreign_origin_is_refused(tmp_path):
+    with native(tmp_path) as client:
+        anonymous = client.get("/api/threads", headers={"origin": "app://-"})
+        anonymous_write = client.post("/api/threads/01d/send", json={"text": "x"}, headers={"origin": "app://-"})
+        foreign = client.post(
+            "/api/threads/01d/send",
+            json={"text": "x"},
+            headers={"origin": "https://elsewhere.example", "authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert anonymous.status_code == 401
+    assert anonymous_write.status_code == 401, "an allowed origin is not a credential"
+    assert foreign.status_code == 403
+    assert "access-control-allow-origin" not in foreign.headers, "a foreign page is not told what it may read"
+
+
+def test_a_preflight_is_answered_without_the_token_and_names_only_the_native_origin(tmp_path):
+    with native(tmp_path) as client:
+        asked = client.options(
+            "/api/threads/01d/send",
+            headers={
+                "origin": "app://-",
+                "access-control-request-method": "POST",
+                "access-control-request-headers": "authorization,content-type",
+            },
+        )
+        foreign = client.options(
+            "/api/threads/01d/send",
+            headers={"origin": "https://elsewhere.example", "access-control-request-method": "POST"},
+        )
+        private = client.options(
+            "/api/threads/01d/send",
+            headers={
+                "origin": "app://-",
+                "access-control-request-method": "POST",
+                "access-control-request-private-network": "true",
+            },
+        )
+
+    assert asked.status_code == 200
+    assert asked.headers["access-control-allow-origin"] == "app://-"
+    assert "authorization" in asked.headers["access-control-allow-headers"].lower()
+    assert private.headers["access-control-allow-private-network"] == "true"
+    assert "access-control-allow-origin" not in foreign.headers
+
+
+def test_an_origin_configured_for_another_client_is_let_in(tmp_path):
+    with native(tmp_path, client_origins=("https://client.example",)) as client:
+        answer = client.get(
+            "/api/threads", headers={"origin": "https://client.example", "authorization": f"Bearer {TOKEN}"}
+        )
+
+    assert answer.status_code == 200
+    assert answer.headers["access-control-allow-origin"] == "https://client.example"
+
+
+def test_with_no_token_a_native_origin_is_not_let_in(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    settings = Settings(roots=(work,), directory=tmp_path / "gw", client_origins=("https://client.example",))
+    with TestClient(create_app(settings, FakeBackend(), static=page(tmp_path)), base_url="http://localhost") as client:
+        answer = client.post("/api/threads/01d/read", headers={"origin": "app://-"})
+        asked = client.options(
+            "/api/threads/01d/read",
+            headers={"origin": "app://-", "access-control-request-method": "POST"},
+        )
+
+    assert answer.status_code == 403
+    assert "access-control-allow-origin" not in asked.headers
+    assert settings.allowed_origins == ()
+
+
+def test_the_event_socket_takes_the_token_as_a_subprotocol_from_a_native_origin(tmp_path):
+    from starlette.websockets import WebSocketDisconnect
+
+    with native(tmp_path) as client:
+        with client.websocket_connect(
+            "/api/events",
+            subprotocols=["zettcode", subprotocol(TOKEN)],
+            headers={"origin": "app://-"},
+        ) as socket:
+            assert socket.accepted_subprotocol == "zettcode"
+            assert socket.receive_json()["type"] == "threads"
+        with client.websocket_connect(
+            "/api/events",
+            subprotocols=["zettcode", subprotocol("wrong")],
+            headers={"origin": "app://-"},
+        ) as socket:
+            assert socket.accepted_subprotocol == "zettcode"
+            with pytest.raises(WebSocketDisconnect) as refused:
+                socket.receive_json()
+
+    assert refused.value.code == 4401
+
+
+def test_the_event_socket_from_a_foreign_origin_still_needs_the_gateway_itself(tmp_path):
+    from starlette.websockets import WebSocketDisconnect
+
+    with native(tmp_path) as client:
+        with client.websocket_connect(
+            "/api/events",
+            subprotocols=["zettcode", subprotocol(TOKEN)],
+            headers={"origin": "https://elsewhere.example"},
+        ) as socket:
+            with pytest.raises(WebSocketDisconnect) as refused:
+                socket.receive_json()
+
+    assert refused.value.code == 4401
+
+
 def test_every_answer_carries_the_headers_that_keep_a_message_from_running(parts):
     client, _, _ = parts
 
@@ -190,15 +333,15 @@ def test_the_event_socket_needs_a_sign_in_and_the_same_site_then_starts_with_eve
 
     client, backend, _ = parts
 
-    with pytest.raises(WebSocketDisconnect) as refused, client.websocket_connect("/api/events"):
-        pass
+    with client.websocket_connect("/api/events") as socket:
+        with pytest.raises(WebSocketDisconnect) as refused:
+            socket.receive_json()
     assert refused.value.code == 4401
     signed_in(client)
-    with (
-        pytest.raises(WebSocketDisconnect),
-        client.websocket_connect("/api/events", headers={"origin": "http://evil.example"}),
-    ):
-        pass
+    with client.websocket_connect("/api/events", headers={"origin": "http://evil.example"}) as socket:
+        with pytest.raises(WebSocketDisconnect) as foreign:
+            socket.receive_json()
+    assert foreign.value.code == 4401
     with client.websocket_connect("/api/events") as socket:
         first = socket.receive_json()
         assert first["type"] == "threads" and first["threads"][0]["id"] == "01d"
@@ -291,6 +434,23 @@ def a_message(number: int, at: float) -> dict:
         "status": "delivered",
         "disposition": "started",
     }
+
+
+def test_a_message_to_a_group_goes_through_its_own_route(parts):
+    client, backend, _ = parts
+    backend.graph_data = {
+        "sessions": [],
+        "groups": [{"name": "team", "members": [GATEWAY_ID, "peer"], "created_at": 0.0, "updated_at": 0.0}],
+        "edges": [],
+        "recent": [],
+    }
+    signed_in(client)
+
+    answer = client.post("/api/groups/team/send", json={"text": "hello all"})
+
+    assert answer.status_code == 200
+    assert backend.group_sent == [("team", "hello all")]
+    assert answer.json()["delivered"][0]["to"] == "peer"
 
 
 def test_the_graph_needs_a_sign_in_and_is_what_the_broker_reported(parts):

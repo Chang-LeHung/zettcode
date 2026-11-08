@@ -51,6 +51,8 @@ packages/zettcode-gateway/src/zettcode/gateway/
   runfile.py   the record a serving gateway leaves, and the log of a background one
   static/      the built page (not in git: `make gateway-ui` builds it, and the release workflow builds it before the wheel)
 clients/gateway/   the page: src/{api,stores,lib,components}, tests with node:test
+clients/desktop/   Electron shell around the page's app build (see clients-app.md)
+clients/mobile/    Capacitor Android shell around the same build
 packages/zettcode-sdk/src/zettcode/sdk/daemons.py   spawn_daemon / list_daemons / stop_daemon / daemon_log
 packages/zettcode-engine/src/zettcode/processes.py     reading a process's command line, shared by the broker's and the gateway's stop
 ```
@@ -68,6 +70,16 @@ packages/zettcode-engine/src/zettcode/processes.py     reading a process's comma
 * **Security.** Loopback by default, a token (optional: with none the page opens straight in, only for a request whose `Host` is a loopback name, which stops DNS rebinding, and the command refuses to listen beyond loopback without one), an HttpOnly SameSite=Strict cookie, an `Origin` check on every write
   and on the socket (with no token it must be present too, so a bare `curl -X POST` is refused on an open gateway), a CSP that allows only the page's own files, roots for where agents may start (the whole filesystem unless `-r` narrows it), `full` shell
   unless the gateway was started with `--no-full`. Anyone signed in can run commands as the user; the page says so.
+* **Desktop client.** The desktop app in `clients/desktop` uses the page in a shell and speaks to the gateway from
+  `app://-` (`settings.APP_ORIGINS`). It is let in **only while a token is set**, and every request still carries it as
+  a bearer; `--client-origin` adds another origin for a client of your own, and is refused without a token. CORS
+  answers the preflight without a token, `same_origin` treats an allowed origin as the gateway's own for writes and
+  sockets, and a browser WebSocket offers its token as `Sec-WebSocket-Protocol: zettcode.token.<base64url>` because it
+  cannot set a header. The server echoes the offered `zettcode` protocol on both accepts; a socket that is not signed in
+  is accepted with that same subprotocol and then closed with 4401, because a close before the handshake is an HTTP 403
+  that a browser reports as 1006, and a browser that negotiated a protocol refuses a handshake with none selected. The
+  Android app in `clients/mobile` is a WebView shell that loads the gateway page at the gateway's own origin, so it uses
+  the page's cookie and needs none of this origin machinery. `docs/internal/clients-app.md` has both sides.
 * **A turn as it happens.** The gateway `watch`es every session in the roster; the broker tells a session how many
   watch it (`watched`), and only while any do, `RunStream` (so the terminal and a daemon alike) publishes `begin`,
   `text`, `thinking`, `tool`, `tool_end`, `end` through the messenger, which batches text for 60ms. The broker passes

@@ -66,6 +66,7 @@ def write(settings: Settings) -> None:
         "roots": [str(root) for root in settings.roots],
         "allow_full": settings.allow_full,
         "log_level": settings.log_level,
+        "client_origins": list(settings.client_origins),
     }
     descriptor, temporary = tempfile.mkstemp(dir=settings.directory, prefix=".run-", suffix=".tmp")
     try:
@@ -96,6 +97,7 @@ def read(directory: Path) -> Running | None:
     pid, port = raw.get("pid"), raw.get("port")
     host, token, log_level = raw.get("host"), raw.get("token"), raw.get("log_level")
     roots, allow_full = raw.get("roots"), raw.get("allow_full")
+    client_origins = raw.get("client_origins", [])
     if not (_whole(pid) and pid > 0 and _whole(port) and 0 < port < 65536):
         return None
     if not (isinstance(host, str) and isinstance(token, str) and isinstance(log_level, str)):
@@ -103,6 +105,8 @@ def read(directory: Path) -> Running | None:
     if not isinstance(allow_full, bool):
         return None
     if not isinstance(roots, list) or not all(isinstance(root, str) for root in roots):
+        return None
+    if not isinstance(client_origins, list) or not all(isinstance(item, str) for item in client_origins):
         return None
     settings = Settings(
         token=token,
@@ -114,6 +118,7 @@ def read(directory: Path) -> Running | None:
         # folder.
         directory=directory,
         log_level=log_level,
+        client_origins=tuple(client_origins),
     )
     return Running(pid, settings)
 

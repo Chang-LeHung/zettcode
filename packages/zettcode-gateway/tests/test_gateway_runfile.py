@@ -19,6 +19,7 @@ def settings(tmp_path: Path) -> Settings:
         allow_full=False,
         directory=tmp_path / "gw",
         log_level="debug",
+        client_origins=("https://client.example",),
     )
 
 
