@@ -235,6 +235,27 @@ Before a model is configured, `context.model.name` is empty, `context.model.effo
 is empty, and `context.model.config` — the entry itself — is `None`. A segment that
 reads the entry should say it has no model rather than assume one is there.
 
+## Off by default
+
+A plugin chooses whether it is on when the reader has not asked. Override `default_enabled` and return `False`; the
+loader leaves it out until `[plugins] enable` names its entry point:
+
+```python
+class Quiet(TuiPlugin):
+    name = "quiet"
+
+    @classmethod
+    def default_enabled(cls) -> bool:
+        return False
+```
+
+```toml
+[plugins]
+enable = ["quiet"]
+```
+
+The default is `True`, so a plugin that says nothing loads as before.
+
 ## Reading the configuration
 
 A plugin that has settings declares them, with the value each one takes when the reader has not written one. The

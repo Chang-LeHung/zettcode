@@ -24,6 +24,7 @@ members = [
     "zettcode-instructions",
     "zettcode-jit-harness",
     "zettcode-mcp",
+    "zettcode-memory",
     "zettcode-messaging",
     "zettcode-monitor",
     "zettcode-pets",
@@ -2950,6 +2951,7 @@ dependencies = [
     { name = "zettcode-instructions" },
     { name = "zettcode-jit-harness" },
     { name = "zettcode-mcp" },
+    { name = "zettcode-memory" },
     { name = "zettcode-messaging" },
     { name = "zettcode-pets" },
     { name = "zettcode-plugin-api" },
@@ -2990,6 +2992,7 @@ requires-dist = [
     { name = "zettcode-instructions", editable = "packages/zettcode-instructions" },
     { name = "zettcode-jit-harness", editable = "packages/zettcode-jit-harness" },
     { name = "zettcode-mcp", editable = "packages/zettcode-mcp" },
+    { name = "zettcode-memory", editable = "packages/zettcode-memory" },
     { name = "zettcode-messaging", editable = "packages/zettcode-messaging" },
     { name = "zettcode-monitor", marker = "extra == 'all'", editable = "packages/zettcode-monitor" },
     { name = "zettcode-monitor", marker = "extra == 'monitor'", editable = "packages/zettcode-monitor" },
@@ -3211,6 +3214,20 @@ requires-dist = [
 ]
 
 [[package]]
+name = "zettcode-memory"
+source = { editable = "packages/zettcode-memory" }
+dependencies = [
+    { name = "zett-agent" },
+    { name = "zettcode-engine" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
+    { name = "zettcode-engine", editable = "packages/zettcode-engine" },
+]
+
+[[package]]
 name = "zettcode-messaging"
 source = { editable = "packages/zettcode-messaging" }
 dependencies = [
@@ -3346,6 +3363,7 @@ dependencies = [
     { name = "zettcode-instructions" },
     { name = "zettcode-jit-harness" },
     { name = "zettcode-mcp" },
+    { name = "zettcode-memory" },
     { name = "zettcode-messaging" },
     { name = "zettcode-skills" },
     { name = "zettcode-todos" },
@@ -3365,6 +3383,7 @@ requires-dist = [
     { name = "zettcode-instructions", editable = "packages/zettcode-instructions" },
     { name = "zettcode-jit-harness", editable = "packages/zettcode-jit-harness" },
     { name = "zettcode-mcp", editable = "packages/zettcode-mcp" },
+    { name = "zettcode-memory", editable = "packages/zettcode-memory" },
     { name = "zettcode-messaging", editable = "packages/zettcode-messaging" },
     { name = "zettcode-skills", editable = "packages/zettcode-skills" },
     { name = "zettcode-todos", editable = "packages/zettcode-todos" },

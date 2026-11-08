@@ -87,6 +87,7 @@ def agent_parts() -> list[FakeEntryPoint]:
     from zettcode.instructions.plugin import ProjectInstructions
     from zettcode.jit_harness.plugin import Harness
     from zettcode.mcp.plugin import McpTools
+    from zettcode.memory.plugin import DaemonGuide, Memory
     from zettcode.messaging.plugin import Messaging
     from zettcode.skills.plugin import SkillResources, SkillTool
     from zettcode.todos.plugin import TodoPlan
@@ -96,6 +97,7 @@ def agent_parts() -> list[FakeEntryPoint]:
     own = [FakeEntryPoint(plugin.name, plugin, "zettcode.agent") for plugin in AGENT_PLUGINS]
     parts = (
         AskUser,
+        DaemonGuide,
         FileResources,
         Harness,
         LongOutput,
@@ -103,6 +105,7 @@ def agent_parts() -> list[FakeEntryPoint]:
         SkillResources,
         SkillTool,
         McpTools,
+        Memory,
         Messaging,
         TodoPlan,
         ToolGuidance,
@@ -936,6 +939,18 @@ def test_an_empty_host_keeps_the_default_priority():
     assert host.priority == 100
 
 
+def test_a_plugin_can_say_it_is_off_by_default_and_the_configuration_can_enable_it(tmp_path: Path):
+    """The loader reads the plugin's own default; ``[plugins] enable`` is what turns it on."""
+    from zettcode.engine.plugins import load_plugins
+
+    points = agent_parts()
+    default = load_plugins(make_config(tmp_path), builtins=(), entry_points=points)
+    enabled = load_plugins(make_config(tmp_path, enabled_plugins=("memory",)), builtins=(), entry_points=points)
+
+    assert "memory" not in [plugin.name for plugin in default.plugins]
+    assert "memory" in [plugin.name for plugin in enabled.plugins]
+
+
 async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     monkeypatch.setattr(
@@ -960,6 +975,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "usage",
         "context",
         "ask-user",
+        "daemon-guide",
         "coding",
         "files",
         "harness",

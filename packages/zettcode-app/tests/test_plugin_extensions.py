@@ -354,6 +354,7 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_in_reg
     assert [extension.name for extension in extensions] == [
         "AskUserExtension",
         "CodingBundle",
+        "DaemonGuideExtension",
         "SwitchedHarness",
         "LongOutputExtension",
         "AgentsMdExtension",
@@ -377,6 +378,7 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_in_reg
     # its 10, the permissions still run at 50, and the capabilities and side questions at 110 and 120.
     assert [extension.name for extension in sorted(extensions, key=lambda extension: extension.priority)] == [
         "AgentsMdExtension",
+        "DaemonGuideExtension",
         "ShellDenyExtension",
         "AskUserExtension",
         "CodingBundle",
@@ -410,6 +412,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     # `messaging` part sorts there among the rank-0 activations.
     assert shared == [
         "CodingBundle",
+        "DaemonGuideExtension",
         "LongOutputExtension",
         "SkillExtension",
         "ToolOutputExtension",
@@ -420,7 +423,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     assert "ParentModelSubAgents" not in shared and "SwitchedHarness" not in shared, "no task, no harness"
     assert "AskUserExtension" not in shared, "a child works through its task; it does not ask the person"
     assert "TodoWriteExtension" not in shared, "its plan would be drawn for nobody"
-    assert with_messaging == [*shared[:2], "SessionMessagingExtension", *shared[2:]]
+    assert with_messaging == [*shared[:3], "SessionMessagingExtension", *shared[3:]]
 
 
 def test_every_switch_adds_its_extension_at_its_place(tmp_path):
@@ -435,6 +438,7 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
         # `capabilities`.
         "AskUserExtension",
         "CodingBundle",
+        "DaemonGuideExtension",
         "SwitchedHarness",
         "LongOutputExtension",
         "SessionMessagingExtension",
@@ -471,6 +475,7 @@ def test_the_order_the_agent_runs_them_in_is_the_priority_of_each(tmp_path):
 
     assert [extension.name for extension in sorted(extensions, key=lambda extension: extension.priority)] == [
         "AgentsMdExtension",
+        "DaemonGuideExtension",
         "ShellDenyExtension",
         "SkillExtension",
         "AskUserExtension",

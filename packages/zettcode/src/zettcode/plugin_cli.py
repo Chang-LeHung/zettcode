@@ -445,7 +445,7 @@ def plugin_state() -> SwitchState:
     # (``[plugins.recap]``) is read past here exactly as it is at startup, and a ``[plugins]`` the program refuses is
     # refused here with the same words. That includes a value in a plugin's own table: the program would not start on it
     # either, so a switch that went through would change nothing, and the message names the key to fix.
-    enabled, disable, _settings = read_plugins_table(data.get("plugins"), path)
+    enabled, disable, _enable, _settings = read_plugins_table(data.get("plugins"), path)
     return SwitchState(plugins_file=DEFAULT_PLUGINS_FILE, plugins_enabled=enabled, disabled_plugins=disable)
 
 
