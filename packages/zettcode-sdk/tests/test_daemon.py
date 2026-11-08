@@ -255,6 +255,50 @@ def test_a_started_daemon_is_listed_alive_and_stopping_it_removes_the_record(hom
     assert not any(folder.name == record.session_id for folder in (home.parent / "daemon").rglob("*"))
 
 
+def test_stopping_a_running_daemon_with_keep_leaves_its_record_listed_as_dead(home):
+    """The record is the one thing that lets a stopped daemon be started again from a list.
+
+    The daemon removes its own record on the way out unless the stop asked to keep it, and the ask is a field the stop
+    writes before it signals. The daemon's last write of its state, on the way out, used to build the state afresh and
+    so wrote the field back as unset: the record went, the stop said "its record was kept", and nothing listed the
+    daemon any more. This runs a real process, because a stop with the signal stubbed never reaches that write.
+    """
+    record = process.Daemons().start(home)
+    try:
+        found = Registry().find(record.session_id)
+        assert found is not None and found.alive
+
+        said = process.Daemons().stop(found, keep=True)
+
+        assert said == "stopped; its record was kept"
+        kept = Registry().find(record.session_id)
+        assert kept is not None, "the record is still there"
+        assert not kept.alive and kept.status == "dead", "listed as a daemon whose process is gone"
+        assert kept.state is not None and kept.state.session_id == record.session_id
+    finally:
+        left = Registry().find(record.session_id)
+        if left is not None:
+            process.Daemons().stop(left)
+
+    assert Registry().all() == (), "and a stop without keep removes it as before"
+
+
+def test_a_record_with_no_heartbeat_reads_as_dead_even_while_its_pid_still_answers(home):
+    """A zombie its parent has not reaped answers signal zero, so the pid alone cannot say a daemon has stopped."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home, status="idle"))
+    record.beat()
+    found = Registry().find("01a1")
+    assert found is not None and found.alive and record.beating()
+
+    record.end_beat()
+
+    gone = Registry().find("01a1")
+    assert gone is not None and not gone.alive and gone.status == "dead"
+    assert not record.beating()
+    record.end_beat()  # taking it away twice is not an error
+
+
 def test_a_daemon_that_cannot_start_says_why_and_leaves_no_record(home, monkeypatch, tmp_path):
     broken = tmp_path / "broken.toml"
     broken.write_text("[[models]]\nmodel = 3\n", encoding="utf-8")

@@ -218,15 +218,19 @@ class Daemons:
         deadline = time.monotonic() + grace
         while time.monotonic() < deadline:
             # The daemon removes its own record on the way out (unless asked to keep it), so the folder going is the
-            # proof it stopped — a pid can outlive the process it named, as a zombie its parent has not reaped.
-            if not record.folder.exists() or not pid_runs(pid):
-                if keep:
-                    return "stopped; its record was kept"
-                record.remove()
-                return "stopped"
+            # proof it stopped — a pid can outlive the process it named, as a zombie its parent has not reaped. A
+            # record that was asked to stay has no folder to go, and its proof is the heartbeat the daemon takes away.
+            gone = not record.folder.exists()
+            if gone or not pid_runs(pid) or (keep and not record.beating()):
+                if not keep:
+                    record.remove()
+                    return "stopped"
+                return "stopped; its record was removed" if gone else "stopped; its record was kept"
             time.sleep(POLL_SECONDS)
         _signal(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
-        if not keep:
+        if keep:
+            record.end_beat()  # killed, it cannot take its own heartbeat away
+        else:
             record.remove()
         return "did not stop in time, so it was killed"
 
