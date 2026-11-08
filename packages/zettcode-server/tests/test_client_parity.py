@@ -67,6 +67,8 @@ PYTHON_ONLY: dict[str, dict[str, str]] = {
         "unwatch": "the same: see `watch`",
         "watch_streams": "the same: see `watch`",
         "send_back": "the answer of a direct turn goes back over the broker, which only a Python process joins",
+        "service": "in-process plugin services; the server exposes its own resources over HTTP",
+        "find": "in-process plugin services; the server exposes its own resources over HTTP",
     },
     "Session": {
         "id": "read with `session.info()`, a property cannot be asynchronous",
