@@ -450,7 +450,15 @@ class HubPage(ListPage):
         self.table = _TABLES[tab](self.data)
         rows = self.table.items
         self.list.set_items(rows)
-        self.list.selected = min(self.marks[tab], len(rows) - 1)
+        # The mark the tab had, kept off a row nothing can act on: the one that says older sessions were left out can
+        # take its index when a refresh leaves fewer rows, so the nearest row before it that can be marked is used.
+        if not rows:
+            self.list.selected = -1
+        else:
+            wanted = min(self.marks[tab], len(rows) - 1)
+            while wanted > 0 and rows[wanted].disabled:
+                wanted -= 1
+            self.list.selected = wanted
         self.footer = self._footer()
         self._repaint()
 
