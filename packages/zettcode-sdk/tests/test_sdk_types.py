@@ -217,21 +217,16 @@ def test_a_report_is_an_estimate_when_it_says_it_counted_characters():
 def test_the_sdks_report_agrees_with_the_engines_on_every_figure_a_page_reads():
     """The terminal draws the SDK's report; the engine's is what it used to draw. They must not drift."""
     from zettcode.engine.extensions import context as engine
+    from zettcode.sdk.translation import context_report_from
 
+    assert context_report_from(None) is None
     rows = (engine.ContextShare("Tool schemas", 1520, 9), engine.ContextShare("Tool output", 20216, 17))
     for label in ("tiktoken cl100k_base", "~4 chars/token"):
         for reported in (None, 30_000):
             theirs = engine.ContextReport(
                 window=200_000, measured_by=label, shares=rows, partial=True, reported=reported
             )
-            ours = ContextReport(
-                window=200_000,
-                used=theirs.used,
-                measured_by=label,
-                shares=tuple(ContextShare(s.name, s.tokens, s.items) for s in rows),
-                partial=True,
-                from_provider=theirs.from_provider,
-            )
+            ours = context_report_from(theirs)
             assert (ours.measured, ours.estimated, ours.free) == (theirs.measured, theirs.estimated, theirs.free)
             assert ours.percent(1234) == theirs.percent(1234) and ours.share(1234) == theirs.share(1234)
 

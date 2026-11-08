@@ -19,6 +19,7 @@ from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import TextContent
 
 from zettcode.engine.dialogue.ask import question_from
+from zettcode.engine.extensions.context import ContextReport as EngineContextReport
 from zettcode.engine.extensions.mcp_notice import notice_from, notice_level_from
 from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
 from zettcode.engine.server_tools import ServerToolRun, describe_output, not_reported
@@ -50,6 +51,8 @@ from .events import (
 )
 from .types import (
     Compaction,
+    ContextReport,
+    ContextShare,
     DayTotals,
     ModelCheck,
     ModelTotals,
@@ -60,7 +63,16 @@ from .types import (
     WorkspaceUsage,
 )
 
-__all__ = ["AgentBridge", "Bridge", "checks_from", "ledger_from", "stats_from", "translate", "usage_from"]
+__all__ = [
+    "AgentBridge",
+    "Bridge",
+    "checks_from",
+    "context_report_from",
+    "ledger_from",
+    "stats_from",
+    "translate",
+    "usage_from",
+]
 
 
 class Bridge(ABC):
@@ -89,6 +101,20 @@ class AgentBridge(Bridge):
             self._agent.decline_ask(question)
         else:
             self._agent.answer_ask(question, text)
+
+
+def context_report_from(report: EngineContextReport | None) -> ContextReport | None:
+    """Return the SDK's copy of an engine context report, or ``None`` before a request was assembled."""
+    if report is None:
+        return None
+    return ContextReport(
+        window=report.window,
+        used=report.used,
+        measured_by=report.measured_by,
+        shares=tuple(ContextShare(share.name, share.tokens, share.items) for share in report.shares),
+        partial=report.partial,
+        from_provider=report.from_provider,
+    )
 
 
 def usage_from(snapshot: UsageSnapshot) -> Usage:

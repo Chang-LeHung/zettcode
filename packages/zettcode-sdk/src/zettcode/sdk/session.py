@@ -59,7 +59,6 @@ from .types import (
     CacheMode,
     Compaction,
     ContextReport,
-    ContextShare,
     Image,
     IncomingMessage,
     Message,
@@ -1013,17 +1012,10 @@ class Session:
         """Report what the next request would carry, by source; ``None`` before the first reply."""
         self._client._check_open()
         await self._activate()
+        from .translation import context_report_from
+
         report = await self._client._agent.context_report()
-        if report is None:
-            return None
-        return ContextReport(
-            window=report.window,
-            used=report.used,
-            measured_by=report.measured_by,
-            shares=tuple(ContextShare(share.name, share.tokens, share.items) for share in report.shares),
-            partial=report.partial,
-            from_provider=report.from_provider,
-        )
+        return context_report_from(report)
 
     async def rename(self, title: str) -> str:
         """Give the conversation a name and return it as stored (trimmed).
