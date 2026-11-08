@@ -100,6 +100,14 @@ async def test_both_tools_are_registered_with_what_a_model_needs_to_use_them(wor
     assert ctx.tools[LIST_SESSIONS_TOOL_NAME].parameters["properties"] == {}
 
 
+async def test_every_messaging_tool_says_what_it_returns(world):
+    """The model gets a sentence about the result, not only its JSON shape, because ``returns=True`` is on."""
+    ctx = await tools_of(world)
+
+    for tool in ctx.tools.values():
+        assert tool.returns_description, tool.name
+
+
 async def test_the_list_says_who_is_running_with_the_name_to_use_and_the_id(world):
     await world.other(BOB, "Fix the parser")
     await world.other(CAL, "", status="working")

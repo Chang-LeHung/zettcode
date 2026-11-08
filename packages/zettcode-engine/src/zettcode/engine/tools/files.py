@@ -61,6 +61,10 @@ def read(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> ReadRes
         offset: One-based line number to start reading from; ignored for images.
         limit: Maximum number of lines to return; ignored for images.
 
+    Returns:
+        The requested line range, or the image and a one-line description of it; a trailing hint says how to
+        continue when more lines remain.
+
     Snippet:
         read(file_path="docs/diagram.png")
 
@@ -95,6 +99,9 @@ def read_file(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> st
         offset: One-based line number to start reading from.
         limit: Maximum number of lines to return.
 
+    Returns:
+        The requested line range; a trailing hint says how to continue when more lines remain.
+
     Snippet:
         read_file(file_path="src/app.py", offset=1, limit=200)
 
@@ -116,6 +123,9 @@ def glob(pattern: Expression, max_results: MaxResults = 200) -> str:
     Args:
         pattern: Glob pattern such as **/*.py, ../tests/*.py, or /work/src/**/*.py.
         max_results: Maximum number of sorted paths to return.
+
+    Returns:
+        Matching paths, one per line and sorted, with a trailing note when the result was truncated.
 
     Snippet:
         glob(pattern="src/**/*.py", max_results=200)
@@ -157,6 +167,9 @@ def grep(
         file_pattern: Relative or absolute glob selecting files to search.
         case_sensitive: Whether letter case must match exactly.
         max_results: Maximum number of matching lines to return.
+
+    Returns:
+        Matching lines as ``path:line:text``, one per line, with a trailing note when the result was truncated.
 
     Snippet:
         grep(pattern="class\\s+Agent", file_pattern="src/**/*.py", max_results=200)
@@ -214,6 +227,9 @@ def write_file(file_path: FilePath, content: str, overwrite: bool = True) -> str
         content: Complete UTF-8 text to write.
         overwrite: Whether an existing file may be replaced.
 
+    Returns:
+        One line saying whether the file was created or replaced, and its path.
+
     Snippet:
         write_file(file_path="notes/plan.md", content="# Plan\\n")
 
@@ -240,6 +256,9 @@ def edit(file_path: FilePath, old_string: OldString, new_string: str, replace_al
         old_string: The exact text to replace, copied from the file as it is now.
         new_string: The text to put in its place; an empty string deletes the match.
         replace_all: Replace every occurrence of old_string instead of insisting it appears once.
+
+    Returns:
+        One line saying how many occurrences were replaced, and in which file.
 
     Snippet:
         edit(file_path="notes/plan.md", old_string="Draft", new_string="Final")

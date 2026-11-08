@@ -218,6 +218,10 @@ class OnDemandCompaction(CompactionExtension):
             and results, exactly as it is; nothing happens if there are no older turns or the summary would not be
             smaller.
 
+            Returns:
+                A sentence saying whether compaction was requested for the next model call; the current turn is kept
+                intact.
+
             Guidelines:
                 - Call it when earlier work is settled and its detail no longer needs to stay in context, for
                   example after a finished subtask, or before a long unrelated one.
