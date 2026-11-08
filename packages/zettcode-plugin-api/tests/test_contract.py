@@ -165,3 +165,16 @@ def test_nothing_in_the_contract_evaluates_an_annotation():
                 offenders.append(f"{file.name}:{node.lineno} uses {name}")
 
     assert offenders == []
+
+
+def test_every_facade_name_is_imported_for_the_type_checker():
+    """A name only in the lazy map is ``Any`` to mypy; the TYPE_CHECKING block is what types it."""
+    tree = ast.parse(Path(api.__file__).read_text(encoding="utf-8"))
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING"):
+            continue
+        for child in ast.walk(node):
+            if isinstance(child, ast.ImportFrom):
+                imported.update(alias.asname or alias.name for alias in child.names)
+    assert set(api._EXPORTS) <= imported, sorted(set(api._EXPORTS) - imported)

@@ -29,6 +29,10 @@ _EXPORTS = {
     "AgentBuild": "zettcode.engine.plugins",
     "BusyPolicy": ".commands",
     "CONTENT_INDENT": ".presenters",
+    "ContextReport": "zettcode.engine.extensions.context",
+    "ContextShare": "zettcode.engine.extensions.context",
+    "Ledger": "zettcode.engine.storage.ledger",
+    "SessionInfo": "zettcode.engine.storage.metadata",
     "ContextReportService": ".services",
     "SessionStoreService": ".services",
     "UsageLedgerService": ".services",
@@ -138,6 +142,7 @@ _EXPORTS = {
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine.extensions.context import ContextReport, ContextShare
     from zettcode.engine.inbox import INBOX, Inbox, Waiting
     from zettcode.engine.plugins import (
         AgentBuild,
@@ -167,6 +172,16 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         TextCommandResult,
         TurnCommandResult,
     )
+    from zettcode.engine.service_contracts import (
+        CONTEXT_REPORT,
+        SESSION_STORE,
+        USAGE_LEDGER,
+        ContextReportService,
+        SessionStoreService,
+        UsageLedgerService,
+    )
+    from zettcode.engine.storage.ledger import Ledger
+    from zettcode.engine.storage.metadata import SessionInfo
     from zettcode.mention import Mention, MentionProvider
     from zettcode.plugin_tui import TuiGroup
     from zettcode.providers import Provider
@@ -261,6 +276,10 @@ __all__ = [
     "CONTEXT_REPORT",
     "SESSION_STORE",
     "USAGE_LEDGER",
+    "ContextReport",
+    "ContextShare",
+    "Ledger",
+    "SessionInfo",
     "ContextReportService",
     "SessionStoreService",
     "UsageLedgerService",
