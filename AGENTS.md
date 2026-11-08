@@ -76,6 +76,15 @@ from the root.
   live in the extension host; the webview posts messages and receives state. It also must not re-implement the event
   translation, sessions, or models — a missing capability is a server endpoint, then a TypeScript client method.
   `docs/internal/vscode.md` has the map and the rules its tests pin.
+- `clients/desktop/` is the gateway's page in an Electron shell, and only a client: it builds `clients/gateway` in
+  its app mode and adds a server list and a token kept in the platform's key store (Electron `safeStorage` where it is
+  a real key store; a desktop platform with no key store gets a `0600` file). It carries the token as a bearer and the
+  socket's token as a subprotocol; the gateway side is only the `app://-` origin (`Settings.allowed_origins`,
+  `--client-origin`, only with a token), CORS and the WebSocket token.
+- `clients/mobile/` is a thin Capacitor WebView shell, and only a client: `web/index.html` is a server list, and
+  opening one loads the gateway's own page at the gateway's origin, so its sign-in cookie and same-origin fetches and
+  socket need no native token store, no CORS and no WebSocket token. It keeps `{url, name}` only, never a token, and
+  its only native code is `MainActivity`'s Back-to-the-list. `docs/internal/clients-app.md` has both maps and rules.
 - Keep Zett application vocabulary (artifacts, tags, cards, channels, scheduled
   tasks) out of this repository. ZettCode is a coding agent, not a host app.
 
@@ -89,8 +98,8 @@ from the root.
   `packages/zettcode-engine/src/zettcode/_compat.py`.
 - Run `make check` while working: it compares the tree with where the branch left `main` (`BASE=…` picks another
   ref) and runs only what the change touches — Ruff, mypy and the Python suites for `packages/`, the
-  TypeScript client for `clients/typescript/`, the extension for either JavaScript client, and nothing for a
-  guide-only edit.
+  TypeScript client for `clients/typescript/`, the extension for either JavaScript client, the two shells for their
+  own directories (a page-only change is caught by `gateway-ui`'s app build), and nothing for a guide-only edit.
   `make test` runs every distribution's suite at once, each in its own process with that package's pytest
   configuration; the largest suites also split their tests across xdist workers, and `TEST_JOBS=1` restores the
   one-at-a-time run. A bare `pytest`
@@ -103,8 +112,13 @@ from the root.
   does not have to happen on every edit. Run `make smoke` when packaging changes so both console scripts are exercised
   from the built wheel. `make vscode`
   runs the extension's type-check, jsdom tests and build on its own, and `make vscode-package` writes a `.vsix`.
-- Node 20+ builds both JavaScript clients. `clients/typescript` is dependency-free at runtime; `clients/vscode`
-  has dev dependencies only (esbuild, TypeScript, jsdom) and bundles everything it runs into `dist/`.
+  `make desktop` and `make mobile` do the same for the two apps; `make desktop-package` writes the installers,
+  `make mobile-apk` builds the debug APK (needs the Android SDK), and `make package` does both.
+- Node 20+ builds every JavaScript client. `clients/typescript` is dependency-free at runtime; `clients/vscode`
+  has dev dependencies only (esbuild, TypeScript, jsdom) and bundles everything it runs into `dist/`;
+  `clients/desktop` adds Electron and electron-builder, and `clients/mobile` Capacitor and the Android project. The
+  Android APK is not built in CI: it needs an SDK, and `make mobile` only checks the Capacitor config and copies
+  `web/` into the native project.
 - Run `make hooks` once per checkout: the installed pre-commit hook runs mypy
   and refuses a commit that does not type-check. Keep `make check-all` green rather
   than bypassing the hook.

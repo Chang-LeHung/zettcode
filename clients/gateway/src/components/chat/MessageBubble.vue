@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
+import { picturePath, pictureUrl } from "../../api/pictures";
 import { t } from "../../i18n";
+import type { ChatImage } from "../../types";
 import type { Row } from "../../lib/rows";
 import { dismiss, retry, wantsReply } from "../../stores/chat";
 import { threadOf } from "../../stores/threads";
@@ -20,13 +22,43 @@ const who = computed(() => {
 });
 const state = computed(() => props.row.pending?.state ?? "stored");
 const failure = computed(() => props.row.pending?.error);
-/** Where each picture of the message is drawn from: this page's own copy until the gateway has it, then the gateway. */
-const pictures = computed(() =>
-  (props.row.item.images ?? []).map((image) => ({
-    ...image,
-    src: image.src ?? `/api/threads/${encodeURIComponent(props.thread)}/pictures/${encodeURIComponent(image.id)}`,
-  })),
+/**
+ * Where each picture of the message is drawn from: this page's own copy until the gateway has it, then the gateway.
+ * An app reads the bytes with its token and draws a blob; the page draws the gateway's address directly.
+ */
+const pictures = ref<Array<ChatImage & { src: string }>>([]);
+let generation = 0;
+const blobs: string[] = [];
+watch(
+  () => props.row.item.images,
+  async (images) => {
+    const mine = ++generation;
+    for (const url of blobs.splice(0)) URL.revokeObjectURL(url);
+    const next: Array<ChatImage & { src: string }> = [];
+    for (const image of images ?? []) {
+      let src = image.src ?? "";
+      if (!src) {
+        try {
+          src = await pictureUrl(picturePath(props.thread, image.id));
+          if (src.startsWith("blob:")) blobs.push(src);
+        } catch {
+          src = "";
+        }
+      }
+      if (mine !== generation) {
+        if (src.startsWith("blob:")) URL.revokeObjectURL(src);
+        return;
+      }
+      if (src) next.push({ ...image, src });
+    }
+    if (mine === generation) pictures.value = next;
+  },
+  { immediate: true, deep: true },
 );
+onUnmounted(() => {
+  generation += 1;
+  for (const url of blobs.splice(0)) URL.revokeObjectURL(url);
+});
 const zoomed = ref("");
 
 function again(): void {

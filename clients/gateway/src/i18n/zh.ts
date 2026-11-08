@@ -109,6 +109,7 @@ export const ZH: Record<string, string> = {
   Search: "搜索",
   Back: "返回",
   Cancel: "取消",
+  Test: "测试",
   Clear: "清除",
   Copy: "复制",
   Copied: "已复制",
@@ -411,8 +412,44 @@ export const ZH: Record<string, string> = {
   "Clear browser data": "清除浏览器数据",
   "Clear what this browser remembers?": "清除此浏览器记住的内容?",
   Cleared: "已清除",
-  "Drafts, templates, recent folders and preferences are removed from this browser. Sessions and daemons are not touched.":
-    "草稿、模板、最近使用的文件夹和偏好设置会从此浏览器中移除。会话和守护进程不受影响。",
+  "Drafts, templates, recent folders and preferences are removed from this device, for every server. Sessions and daemons are not touched.":
+    "草稿、模板、最近使用的文件夹和偏好设置会从此设备中移除,所有服务器都一样。会话和守护进程不受影响。",
   "The gateway itself keeps only which messages you have read. Everything else here lives in this browser.":
     "网关本身只记录你读过哪些消息,这里的其他内容都保存在此浏览器中。",
+  "Choose the gateway this device talks to": "选择此设备要连接的网关",
+  "New server": "新服务器",
+  "Edit server": "编辑服务器",
+  Address: "地址",
+  "The token the gateway printed": "网关启动时打印的令牌",
+  Optional: "可选",
+  "Plain HTTP sends the token in the clear. Use HTTPS beyond the machine's own network.":
+    "明文 HTTP 会以明文发送令牌。离开本机网络时请使用 HTTPS。",
+  "Save and connect": "保存并连接",
+  "Remove {name}": "移除 {name}",
+  "Add a server": "添加服务器",
+  "The token stays on this device and is never written to the page. Every server keeps its own token.":
+    "令牌保存在此设备上,不会写进页面。每个服务器各自保存自己的令牌。",
+  "Remove {name} from this device?": "从此设备移除 {name}?",
+  "The server refused the token; it may have been changed": "服务器拒绝了这个令牌,它可能已经改变",
+  "This gateway has no token; start it with --token to use the app": "此网关没有令牌;请用 --token 启动它再连接",
+  "Cannot reach that server": "无法连接该服务器",
+  "That is not the token": "令牌不正确",
+  "The gateway answered {status}": "网关返回了 {status}",
+  "The saved server list could not be read": "无法读取已保存的服务器列表",
+  "Write the address as http://host:port": "地址请写成 http://host:port",
+  "The address starts with http:// or https://": "地址必须以 http:// 或 https:// 开头",
+  "The address cannot carry a user name or a password": "地址不能包含用户名或密码",
+  "The gateway is served at the root of its address, without a path": "网关服务在其地址的根路径下,不能带路径",
+  "Leave the #token=... off the address; the token goes in the Token field":
+    "地址里不要带 #token=...,令牌填在 Token 一栏",
+  "The address cannot carry a query": "地址不能包含查询参数",
+  "The gateway's token is required": "必须填写网关令牌",
+  Connected: "已连接",
+  Server: "服务器",
+  Servers: "服务器",
+  "Switch server": "切换服务器",
+  "This page was served by one gateway. The desktop and mobile apps keep a list of them.":
+    "此页面由单个网关提供。桌面端和手机端应用可以保存多个网关。",
+  "The token stays on this device. Switching reloads the page, so nothing from one gateway is drawn beside another's.":
+    "令牌保存在此设备上。切换服务器会重新加载页面,因此不会把一个网关的内容画在另一个网关旁边。",
 };

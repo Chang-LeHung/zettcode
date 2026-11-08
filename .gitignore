@@ -35,3 +35,8 @@ docs/internal/palettes.html
 
 # The release order is generated from the pyproject.toml files (`make order`); it is not kept in git.
 packages/order.txt
+
+# The desktop and phone apps build the gateway's page into their own folders, and electron-builder writes its
+# installers under release/.
+clients/desktop/renderer/
+clients/desktop/release/

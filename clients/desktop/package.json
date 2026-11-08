@@ -1,0 +1,53 @@
+{
+  "name": "zettcode-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The ZettCode desktop app: the gateway's page in a window, with a list of servers",
+  "author": "Chang-LeHung",
+  "type": "module",
+  "license": "MIT",
+  "main": "dist/main.cjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && electron .",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "node scripts/test.mjs",
+    "package": "npm run build && electron-builder"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  },
+  "build": {
+    "appId": "dev.zettcode.desktop",
+    "productName": "ZettCode",
+    "icon": "assets/icon.png",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "renderer/**/*",
+      "assets/icon.png",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": ["dmg", "zip"]
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "linux": {
+      "category": "Development",
+      "target": ["AppImage", "deb"]
+    }
+  }
+}

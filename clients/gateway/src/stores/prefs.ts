@@ -46,11 +46,12 @@ const DEFAULTS: Prefs = {
   recent: [],
 };
 
-const saved = storage.get<Partial<Prefs>>("prefs", {});
-
-export const prefs: Prefs = reactive({ ...DEFAULTS, ...saved, defaults: { ...DEFAULTS.defaults, ...saved.defaults } });
-// English is the default and Chinese is a choice. A device that saved the old "auto" (follow the browser) gets English.
-if (prefs.language !== "zh") prefs.language = "en";
+export const prefs: Prefs = reactive({
+  ...DEFAULTS,
+  defaults: { ...DEFAULTS.defaults },
+  templates: [],
+  recent: [],
+});
 
 export function applyPrefs(): void {
   const root = document.documentElement;
@@ -61,13 +62,41 @@ export function applyPrefs(): void {
   setLanguage(prefs.language);
 }
 
-/** Keep the preferences and apply them whenever one changes. Called once, at start. */
+/** Load the device's look and this server's defaults/drafts and keep both, applying the look whenever one changes. */
 export function watchPrefs(): void {
+  const global = storage.getGlobal<Partial<Prefs>>("prefs", {});
+  // Before the split this page kept one flat blob; take a server's part from it until its own key exists.
+  const saved = storage.get<Partial<Prefs>>("server", {
+    defaults: global.defaults,
+    templates: global.templates,
+    recent: global.recent,
+  });
+  Object.assign(prefs, structuredClone(DEFAULTS), global, saved, {
+    defaults: { ...DEFAULTS.defaults, ...(saved.defaults ?? {}) },
+    templates: saved.templates ?? [],
+    recent: saved.recent ?? [],
+  });
+  // English is the default and Chinese is a choice. A device that saved the old "auto" (follow the browser) gets English.
+  if (prefs.language !== "zh") prefs.language = "en";
   applyPrefs();
   watch(
     prefs,
     () => {
-      storage.set("prefs", prefs);
+      storage.setGlobal("prefs", {
+        theme: prefs.theme,
+        size: prefs.size,
+        language: prefs.language,
+        render: prefs.render,
+        avatar: prefs.avatar,
+        notify: prefs.notify,
+        askReply: prefs.askReply,
+        confirmSession: prefs.confirmSession,
+      });
+      storage.set("server", {
+        defaults: prefs.defaults,
+        templates: prefs.templates,
+        recent: prefs.recent,
+      });
       applyPrefs();
     },
     { deep: true },

@@ -17,6 +17,7 @@ export const CONFIG_SECTIONS: Section[] = [
 ];
 
 export const SETTINGS_SECTIONS: Section[] = [
+  { id: "servers", label: "Servers", icon: "plug" },
   { id: "connection", label: "Connection", icon: "info" },
   { id: "appearance", label: "Appearance", icon: "settings" },
   { id: "notifications", label: "Notifications", icon: "bell" },

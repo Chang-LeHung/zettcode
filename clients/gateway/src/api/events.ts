@@ -2,6 +2,7 @@
 // so, because a page that is not hearing anything must not look as if nothing is happening.
 
 import type { GatewayEvent } from "../types";
+import { connection, tokenProtocol } from "./connection";
 
 export interface EventHandlers {
   event(event: GatewayEvent): void;
@@ -12,6 +13,19 @@ export interface EventHandlers {
 }
 
 const UNAUTHORIZED = 4401;
+
+/** The address of the one socket: the gateway's own for the page, the chosen server's for an app. */
+export function socketUrl(): string {
+  const base = connection.baseUrl || `${location.protocol}//${location.host}`;
+  const url = new URL(`${base}/api/events`);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}
+
+/** The protocols a socket offers: the app's token, which a browser cannot put in an ``Authorization`` header. */
+export function socketProtocols(): string[] {
+  return connection.token ? ["zettcode", tokenProtocol(connection.token)] : [];
+}
 
 export class EventSocket {
   private socket: WebSocket | null = null;
@@ -24,8 +38,10 @@ export class EventSocket {
   start(): void {
     this.wanted = true;
     if (this.socket) return;
-    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${scheme}//${location.host}/api/events`);
+    const protocols = socketProtocols();
+    const socket = protocols.length
+      ? new WebSocket(socketUrl(), protocols)
+      : new WebSocket(socketUrl());
     this.socket = socket;
     socket.onopen = () => {
       this.attempts = 0;

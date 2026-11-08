@@ -49,15 +49,22 @@ RUFFED := $(if $(PYTHON),1,$(filter docs/scripts/%,$(CHANGED)))
 CLIENT := $(if $(EVERYTHING),1,$(filter clients/typescript/%,$(CHANGED)))
 GATEWAY := $(if $(EVERYTHING),1,$(filter clients/gateway/%,$(CHANGED)))
 EXTENSION := $(if $(EVERYTHING),1,$(filter clients/vscode/% clients/typescript/%,$(CHANGED)))
+DESKTOP := $(if $(EVERYTHING),1,$(filter clients/desktop/%,$(CHANGED)))
+MOBILE := $(if $(EVERYTHING),1,$(filter clients/mobile/%,$(CHANGED)))
 #: What `make check` runs: the Python side first (lint, typecheck and the suites together), then the clients the
 #: change touches at once. The editor's jsdom suite is timing-sensitive, so it does not run beside the whole Python
 #: suite; the clients are only a few seconds of the total.
 PYTHON_TARGET = $(if $(PYTHON),python,$(if $(RUFFED),lint))
-CLIENT_TARGETS = $(strip $(if $(CLIENT),client) $(if $(EXTENSION),vscode) $(if $(GATEWAY),gateway-ui))
+CLIENT_TARGETS = $(strip $(if $(CLIENT),client) $(if $(EXTENSION),vscode) $(if $(GATEWAY),gateway-ui) $(if $(DESKTOP),desktop) $(if $(MOBILE),mobile))
 #: A sub-make inherits a jobserver when the caller started one; forcing -j then only replaces it with a warning.
 CLIENT_JOBS = $(if $(findstring j,$(MAKEFLAGS)),,$(CHECK_JOBS))
+#: `npm ci` leaves this stamp when its folder matches the lockfile; a repeat run is up to date, and a changed lock
+#: installs once even under `make -j`. The file lives in the ignored node_modules, so deleting it reinstalls.
+GATEWAY_DEPS = clients/gateway/node_modules/.package-lock.json
+DESKTOP_DEPS = clients/desktop/node_modules/.package-lock.json
+MOBILE_DEPS = clients/mobile/node_modules/.package-lock.json
 
-.PHONY: help install lint typecheck test order python client gateway-page gateway-ui vscode vscode-package install-vscode build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
+.PHONY: help install lint typecheck test order python client gateway-deps gateway-page gateway-ui vscode vscode-package install-vscode desktop desktop-package mobile mobile-apk package build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -74,6 +81,11 @@ help:
 	@echo "  make vscode   Type-check, test and build the VS Code extension"
 	@echo "  make vscode-package   Also package the extension as a .vsix"
 	@echo "  make install-vscode  Package it and install it into the editor $(CODE); reinstall is forced"
+	@echo "  make desktop  Type-check, test and build the Electron app"
+	@echo "  make desktop-package  Also write the desktop installers with electron-builder"
+	@echo "  make mobile   Type-check and sync the Capacitor Android project"
+	@echo "  make mobile-apk   Also build the debug APK (needs the Android SDK)"
+	@echo "  make package  Package both apps (desktop installers + debug APK)"
 	@echo "  make build    Build the sdist and wheel into dist/"
 	@echo "  make smoke    Build the wheel into $(SMOKE_DIR)/ and run both programs' --help from it"
 	@echo "  make check    Run what the change needs (BASE=main to compare with another ref)"
@@ -121,15 +133,52 @@ client:
 	cd clients/typescript && npm install --no-audit --no-fund && npm test
 
 # The gateway's page is a Vue and TypeScript app that is built into its distribution
-# (packages/zettcode-gateway/src/zettcode/gateway/static).
+# (packages/zettcode-gateway/src/zettcode/gateway/static), and into both shells' bundles.
 # The build output is not in git: it is made here, and in CI and the release workflow before a wheel is built, and
 # pyproject's `artifacts` puts it in the wheel. Rebuild it after any change under clients/gateway.
-gateway-page:
-	cd clients/gateway && npm install --no-audit --no-fund
+# The page's toolchain is shared by its own build and by both shells' builds. One stamp, so `make -j` runs `npm ci`
+# once however many of the three are being built, and a repeat run does not touch the network.
+$(GATEWAY_DEPS): clients/gateway/package-lock.json clients/gateway/package.json
+	cd clients/gateway && npm ci --no-audit --no-fund
+
+gateway-deps: $(GATEWAY_DEPS)
+
+gateway-page: gateway-deps
 	cd clients/gateway && npm run build
 
+# `build:app` checks that the page still compiles in app mode; its output under clients/gateway/dist is not consumed
+# here (the desktop builds its own renderer).
 gateway-ui: gateway-page
-	cd clients/gateway && npm run check && npm test
+	cd clients/gateway && npm run check && npm test && npm run build:app
+
+# The desktop app is the gateway page in an Electron shell. Its build makes the page's app bundle first, so a change
+# to a Vue component is checked here in the same run. `make desktop-package` also writes the installers.
+$(DESKTOP_DEPS): clients/desktop/package-lock.json clients/desktop/package.json
+	cd clients/desktop && npm ci --no-audit --no-fund
+
+desktop: gateway-deps $(DESKTOP_DEPS)
+	cd clients/desktop && npm run check && npm test && npm run build
+
+desktop-package: desktop
+	cd clients/desktop && npm run package
+	@echo "installers: clients/desktop/release/"
+
+# The phone app is a Capacitor WebView shell: `web/` is a server list, and opening one loads the gateway's own page.
+# Sync copies `web/` into the Gradle project; the APK itself needs the Android SDK and is built by `make mobile-apk`.
+$(MOBILE_DEPS): clients/mobile/package-lock.json clients/mobile/package.json
+	cd clients/mobile && npm ci --no-audit --no-fund
+
+mobile: $(MOBILE_DEPS)
+	cd clients/mobile && npm run check && npm run sync
+
+mobile-apk: mobile
+	@test -n "$$ANDROID_HOME" -o -n "$$ANDROID_SDK_ROOT" -o -f clients/mobile/android/local.properties || { \
+		echo "set ANDROID_HOME (or write clients/mobile/android/local.properties with sdk.dir=...)"; exit 1; }
+	cd clients/mobile/android && ./gradlew assembleDebug
+	@echo "APK: clients/mobile/android/app/build/outputs/apk/debug/app-debug.apk"
+
+# Both apps in one command. The Android half needs the SDK; the desktop half needs electron-builder's download.
+package: desktop-package mobile-apk
 
 # The VS Code extension is a webview client for the server. Its test runner bundles the
 # webview into a temporary directory and drives it in jsdom, so no editor is needed to run the suite.
@@ -188,6 +237,8 @@ check:
 	@$(if $(CLIENT),:,echo "  typescript client: untouched, skipped")
 	@$(if $(EXTENSION),:,echo "  vscode extension: untouched, skipped")
 	@$(if $(GATEWAY),:,echo "  gateway page: untouched, skipped")
+	@$(if $(DESKTOP),:,echo "  desktop app: untouched, skipped")
+	@$(if $(MOBILE),:,echo "  phone app: untouched, skipped")
 	@$(if $(PYTHON_TARGET),$(MAKE) --no-print-directory $(PYTHON_TARGET),:)
 	@$(if $(CLIENT_TARGETS),$(MAKE) --no-print-directory $(if $(CLIENT_JOBS),-j$(CLIENT_JOBS)) $(CLIENT_TARGETS),:)
 
@@ -195,7 +246,7 @@ check:
 # work over.
 check-all:
 	@$(MAKE) --no-print-directory python
-	@$(MAKE) --no-print-directory $(if $(CLIENT_JOBS),-j$(CLIENT_JOBS)) client vscode gateway-ui
+	@$(MAKE) --no-print-directory $(if $(CLIENT_JOBS),-j$(CLIENT_JOBS)) client vscode gateway-ui desktop mobile
 
 # The guide is a VitePress site in docs/; its own package.json pins it.
 docs:
