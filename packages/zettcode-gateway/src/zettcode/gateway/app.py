@@ -12,6 +12,8 @@ carry the gateway's own.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import contextlib
 import hmac
 import json
@@ -29,6 +31,7 @@ from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import HTTPConnection, Request
 from starlette.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from starlette.routing import Mount, Route, WebSocketRoute
@@ -69,6 +72,12 @@ LOGIN_WINDOW = 600.0
 
 #: What a WebSocket is closed with when it is not signed in.
 UNAUTHORIZED = 4401
+
+#: The subprotocol a native client asks for, and the prefix under which it offers its token. A browser cannot put an
+#: ``Authorization`` header on a WebSocket, so the token goes beside the subprotocol, base64url-encoded: a protocol
+#: name is a token and base64url is made of token characters.
+WS_PROTOCOL = "zettcode"
+WS_TOKEN_PREFIX = "zettcode.token."
 
 #: The names a browser on this machine reaches it by.
 LOOPBACK_NAMES = frozenset({"127.0.0.1", "::1", "localhost"})
@@ -149,17 +158,41 @@ class Auth:
         return scheme.lower() == "bearer" and self.token_ok(given.strip())
 
 
-def same_origin(connection: HTTPConnection, *, required: bool = False) -> bool:
+def same_origin(connection: HTTPConnection, *, required: bool = False, allowed: tuple[str, ...] = ()) -> bool:
     """Return whether a request did not come from another site: it names this host in ``Origin``.
 
     A request with no ``Origin`` is let through unless ``required``: a browser sends one on every write and every socket,
     and with no token (nothing but this check stands between a page on another site and a gateway that runs commands) a
     program that writes to the gateway says where it is from too.
+
+    ``allowed`` names the origins of a native client (see :attr:`Settings.allowed_origins`); they are let through as
+    the gateway's own, and every request from them still has to carry the token.
     """
     origin = connection.headers.get("origin")
     if not origin:
         return not required
+    if origin in allowed:
+        return True
     return urlsplit(origin).netloc == connection.headers.get("host", "")
+
+
+def offered(connection: HTTPConnection) -> list[str]:
+    """Return the WebSocket subprotocols the client offered, trimmed."""
+    header = connection.headers.get("sec-websocket-protocol", "")
+    return [item.strip() for item in header.split(",") if item.strip()]
+
+
+def websocket_token(connection: HTTPConnection) -> str:
+    """Return the token a native client offered as a subprotocol, or ``""`` when it offered none it can be read from."""
+    for protocol in offered(connection):
+        if not protocol.startswith(WS_TOKEN_PREFIX):
+            continue
+        encoded = protocol[len(WS_TOKEN_PREFIX) :]
+        try:
+            return base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)).decode()
+        except (binascii.Error, UnicodeDecodeError, ValueError):
+            return ""
+    return ""
 
 
 class Headers:
@@ -205,6 +238,7 @@ Handler = Callable[[Request], Awaitable[Any]]
 def create_app(settings: Settings, backend: Backend | None = None, *, static: Path = STATIC) -> Starlette:
     """Return the application for these settings; a test gives a backend of its own, and the folder the page is in."""
     auth = Auth(settings.token)
+    allowed = settings.allowed_origins
     gateway = Gateway(backend if backend is not None else SdkBackend(settings.workspace, settings.directory), settings)
 
     @asynccontextmanager
@@ -235,7 +269,9 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
             try:
                 if not public and not auth.allowed(request):
                     raise GatewayError(401, "unauthorized", "Sign in first")
-                if request.method not in ("GET", "HEAD") and not same_origin(request, required=auth.open):
+                if request.method not in ("GET", "HEAD") and not same_origin(
+                    request, required=auth.open, allowed=allowed
+                ):
                     raise GatewayError(403, "forbidden", "This request came from another site")
                 result = await handler(request)
                 return result if isinstance(result, Response) else JSONResponse(result)
@@ -394,10 +430,19 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
 
     # -- the event socket -------------------------------------------------------------------------
     async def events(websocket: WebSocket) -> None:
-        if not auth.allowed(websocket) or not same_origin(websocket, required=auth.open):
+        protocols = offered(websocket)
+        subprotocol = WS_PROTOCOL if WS_PROTOCOL in protocols else None
+        if not (auth.allowed(websocket) or auth.token_ok(websocket_token(websocket))) or not same_origin(
+            websocket, required=auth.open, allowed=allowed
+        ):
+            # Accept first: a close before the handshake is an HTTP refusal, which a browser reports as 1006, and the
+            # page could not tell a refused token from a dropped network. Echo the offered subprotocol as well: a
+            # browser that negotiated one refuses a handshake that comes back without it.
+            await websocket.accept(subprotocol=subprotocol)
             await websocket.close(UNAUTHORIZED)
             return
-        await websocket.accept()
+        # A native client offers ``zettcode`` beside its token; echo it, or the browser would refuse the socket.
+        await websocket.accept(subprotocol=subprotocol)
         queue = gateway.subscribe()
 
         async def pump() -> None:
@@ -441,6 +486,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/threads/{id}/recheck", api(recheck), methods=["POST"]),
         Route("/api/threads/{id}/send", api(send), methods=["POST"]),
         Route("/api/threads/{id}/pictures/{picture}", api(picture)),
+        Route("/api/groups/{name}/send", api(send_group), methods=["POST"]),
         Route("/api/daemons", api(spawn), methods=["POST"]),
         Route("/api/daemons/{id}", api(delete), methods=["DELETE"]),
         Route("/api/daemons/{id}/stop", api(stop), methods=["POST"]),
@@ -448,7 +494,25 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         WebSocketRoute("/api/events", events),
         Mount("/static", Files(directory=static, check_dir=False), name="static"),
     ]
-    app = Starlette(routes=routes, lifespan=lifespan, middleware=[Middleware(Headers)])
+    app = Starlette(
+        routes=routes,
+        lifespan=lifespan,
+        middleware=[
+            # Outermost, so a refusal from the routes below still carries the headers a native client's browser
+            # needs to read it, and a preflight is answered before it can be mistaken for a write that needs the token.
+            Middleware(
+                CORSMiddleware,
+                allow_origins=list(allowed),
+                allow_methods=["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
+                allow_headers=["authorization", "content-type"],
+                # The desktop page, or an operator's --client-origin page, can be reached over a private network;
+                # the allowlist is what keeps a public page out, and the token is still required.
+                allow_private_network=True,
+                max_age=600,
+            ),
+            Middleware(Headers),
+        ],
+    )
     app.state.gateway = gateway
     app.state.auth = auth
     return app

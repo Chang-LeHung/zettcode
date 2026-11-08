@@ -27,6 +27,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from zettcode import logging_setup
 from zettcode.processes import command_line, is_module_command, still_there
@@ -54,6 +55,40 @@ POLL = 0.2
 
 EXIT_OK = 0
 EXIT_FAILED = 1
+
+
+def origin(value: str) -> str:
+    """Return ``value`` as an origin, or stop: a scheme and a host, and nothing after a port.
+
+    A browser sends ``Origin`` as ``scheme://host[:port]`` and never with a trailing slash, so a flag that accepts one
+    would never match anything. Only schemes a page or a native shell can run under are accepted: ``ws://`` is a
+    socket, not an origin a browser ever sends.
+    """
+    text = value.strip().rstrip("/")
+    parts = urlsplit(text)
+    try:
+        port = parts.port
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not an origin: {value!r} (the port is out of range)") from None
+    scheme = parts.scheme.lower()
+    host = parts.hostname
+    if (
+        scheme not in ("http", "https", "app")
+        or not host
+        or parts.path
+        or parts.query
+        or parts.fragment
+        or "@" in parts.netloc
+        or parts.netloc.endswith(":")
+        or (port is not None and not 0 < port < 65536)
+    ):
+        raise argparse.ArgumentTypeError(f"not an origin: {value!r} (write scheme://host[:port])")
+    # A browser omits a scheme's default port; strip it here or the flag would never match.
+    if port is None or (scheme == "http" and port == 80) or (scheme == "https" and port == 443):
+        authority = f"[{host}]" if ":" in host else host
+    else:
+        authority = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+    return f"{scheme}://{authority}"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -111,6 +146,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         default=argparse.SUPPRESS,
         help="let the page start daemons with the full shell level again, undoing a recorded --no-full",
+    )
+    parser.add_argument(
+        "--client-origin",
+        metavar="ORIGIN",
+        action="append",
+        type=origin,
+        default=argparse.SUPPRESS,
+        help=(
+            "let a page served from this origin call the gateway, on top of the built-in native client origins "
+            "(repeatable; needs a token). An origin is scheme://host[:port], without a path"
+        ),
     )
     parser.add_argument(
         "--directory",
@@ -171,6 +217,11 @@ def settings_from(argv: list[str] | None = None, *, base: Settings | None = None
     else:
         directory = base.directory if base is not None else default_directory()
     log_level = getattr(args, "log_level", None) or (base.log_level if base is not None else "info")
+    origins_given = getattr(args, "client_origin", None)
+    if origins_given is None:
+        client_origins = base.client_origins if base is not None else ()
+    else:
+        client_origins = tuple(dict.fromkeys(origins_given))
 
     if not 0 < port < 65536:
         raise SystemExit(f"zettcode gateway: --port must be between 1 and 65535, not {port}")
@@ -182,6 +233,10 @@ def settings_from(argv: list[str] | None = None, *, base: Settings | None = None
             f"zettcode gateway: listening on {host} needs a token (--token or ${TOKEN_VARIABLE}): "
             "without one anybody on the network could run commands as you"
         )
+    if client_origins and not token:
+        raise SystemExit(
+            "zettcode gateway: --client-origin needs a token: without one another site could drive the gateway"
+        )
     return Settings(
         token=token,
         host=host,
@@ -190,6 +245,7 @@ def settings_from(argv: list[str] | None = None, *, base: Settings | None = None
         allow_full=allow_full,
         directory=directory,
         log_level=log_level,
+        client_origins=client_origins,
     )
 
 
@@ -351,6 +407,8 @@ def spawn(settings: Settings) -> subprocess.Popen[bytes]:
         arguments.append("--no-full")
     for root in settings.roots:
         arguments.extend(("--root", str(root)))
+    for source in settings.client_origins:
+        arguments.extend(("--client-origin", source))
     environment = {**os.environ, TOKEN_VARIABLE: settings.token}
     options: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,

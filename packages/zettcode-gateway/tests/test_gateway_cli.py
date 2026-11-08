@@ -63,6 +63,63 @@ def test_help_and_version_answer_without_loading_the_app(capsys):
     assert "--no-full" in build_parser().format_help()
 
 
+def test_a_client_origin_is_normalised_and_needs_a_token(tmp_path, monkeypatch):
+    monkeypatch.delenv(TOKEN_VARIABLE, raising=False)
+
+    with pytest.raises(SystemExit) as refused:
+        settings_from(["-r", str(tmp_path), "--client-origin", "https://client.example"])
+    made = settings_from(
+        [
+            "-r",
+            str(tmp_path),
+            "--token",
+            "t",
+            "--client-origin",
+            "HTTPS://Client.Example/",
+            "--client-origin",
+            "https://client.example:443",
+            "--client-origin",
+            "http://other.example:80",
+            "--client-origin",
+            "app://-",
+        ]
+    )
+
+    assert "needs a token" in str(refused.value)
+    assert made.client_origins == (
+        "https://client.example",
+        "http://other.example",
+        "app://-",
+    )
+    assert made.allowed_origins[:1] == ("app://-",), "the desktop origin comes first"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "client.example",
+        "ws://client.example",
+        "https://client.example/path",
+        "https://client.example?x=1",
+        "https://client.example:99999",
+        "https://:8765",
+        "https://user@host",
+        "*",
+    ],
+)
+def test_an_origin_that_is_not_one_is_refused(value):
+    with pytest.raises(SystemExit):
+        settings_from(["--token", "t", "--client-origin", value])
+
+
+def test_the_origin_of_the_native_clients_is_what_a_token_enables(tmp_path):
+    with_token = settings_from(["-r", str(tmp_path), "--token", "t"])
+    open_gateway = settings_from(["-r", str(tmp_path)])
+
+    assert with_token.allowed_origins == ("app://-",)
+    assert open_gateway.allowed_origins == ()
+
+
 # -- what start, stop and restart keep from the gateway that is running ------------------------------------
 
 
@@ -101,8 +158,19 @@ def test_a_flag_given_to_a_restart_wins_over_the_recorded_one(tmp_path, monkeypa
     assert changed.allow_full is False
 
 
+def test_a_restart_keeps_the_client_origins_and_a_flag_given_wins(tmp_path, monkeypatch):
+    monkeypatch.delenv(TOKEN_VARIABLE, raising=False)
+    recorded = settings(tmp_path, client_origins=("https://client.example",))
+
+    kept = settings_from([], base=recorded)
+    changed = settings_from(["--client-origin", "https://other.example"], base=recorded)
+
+    assert kept.client_origins == ("https://client.example",)
+    assert changed.client_origins == ("https://other.example",)
+
+
 def test_a_background_start_keeps_the_token_in_the_environment_not_on_the_command_line(tmp_path, monkeypatch):
-    recorded = settings(tmp_path, token="secret")
+    recorded = settings(tmp_path, token="secret", client_origins=("https://client.example",))
     spawned: list[tuple[list[str], dict[str, object]]] = []
 
     class Child:
@@ -120,6 +188,7 @@ def test_a_background_start_keeps_the_token_in_the_environment_not_on_the_comman
     assert "--token" not in arguments and "secret" not in " ".join(arguments)
     assert options["env"][TOKEN_VARIABLE] == "secret"  # type: ignore[index]
     assert arguments[:4] == [cli.sys.executable, "-m", cli.GATEWAY_MODULE, "serve"]
+    assert arguments[-2:] == ["--client-origin", "https://client.example"]
 
 
 def test_start_does_not_start_a_second_gateway(tmp_path, monkeypatch, capsys):
