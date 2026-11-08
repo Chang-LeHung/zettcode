@@ -37,6 +37,7 @@ from zettcode.config import (
     ZettCodeConfig,
     model_index,
 )
+from zettcode.engine.extensions.context import ContextReport
 from zettcode.engine.plugins import AgentBuild, Plugins, TriggerHost, TriggerStatus, load_plugins
 from zettcode.engine.plugins.services import (
     APPROVAL,
@@ -54,6 +55,7 @@ from zettcode.engine.plugins.services import (
     USAGE,
     USAGE_LEDGER,
 )
+from zettcode.engine.service_contracts import CONTEXT_REPORT, ContextReportService
 
 from .delivery import DELIVERY
 from .delivery_runtime import RuntimeDelivery
@@ -205,6 +207,24 @@ def _build_provider(selected: ModelConfig) -> Adapter:
     )
 
 
+class _ContextReportAdapter(ContextReportService):
+    """A context report service bound to the runtime after its plugins have loaded."""
+
+    def __init__(self) -> None:
+        self._runtime: ZettCodeEngine | None = None
+
+    def bind(self, runtime: ZettCodeEngine) -> None:
+        self._runtime = runtime
+
+    async def report(self, session_id: str) -> ContextReport | None:
+        """Return the runtime's report for one session, or ``None`` before it is bound."""
+        if self._runtime is None:
+            return None
+        from zettcode.engine.agent.context import report_of
+
+        return await report_of(self._runtime, session_id)
+
+
 @dataclass(slots=True)
 class ZettCodeEngine:
     """Own the model, the persistence and approval extensions, the client, and the active session.
@@ -295,6 +315,7 @@ class ZettCodeEngine:
             SELECTED_MODEL,
             SESSION_STORE,
             USAGE_LEDGER,
+            CONTEXT_REPORT,
         }
         taken = sorted(name for name in (shared or {}) if name in reserved)
         if taken:
@@ -321,6 +342,7 @@ class ZettCodeEngine:
         # The runtime's own delivery of external events: made empty here because a plugin activates before the runtime
         # exists, bound the moment it does, so what a plugin keeps is the live one.
         delivery = RuntimeDelivery()
+        context_reports = _ContextReportAdapter()
         provided: dict[str, object] = {
             POLICY: policy,
             HARNESS: harness,
@@ -330,6 +352,7 @@ class ZettCodeEngine:
             MODELS: models,
             COMPACTION_COUNTER: counter,
             DELIVERY: delivery,
+            CONTEXT_REPORT: context_reports,
         }
         if selected is not None:
             # A plugin that sizes something for the model asks for this one; a machine with no model provides
@@ -351,6 +374,7 @@ class ZettCodeEngine:
             plugins=(load or _load_engine_plugins)(config, provided),
             _models=models,
         )
+        context_reports.bind(runtime)
         # The session a launch starts in is a new one, so this always succeeds; a launch that resumes
         # another moves the lock when it installs it.
         runtime.session_locks.claim(runtime.session_id)

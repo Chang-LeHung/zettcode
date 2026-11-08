@@ -14,12 +14,29 @@ from zett_agent.extensions.events import CompactionEvent
 from zett_agent.messages import AnyMessage, SystemMessage
 from zett_agent.model import ToolDefinition
 
-from zettcode.engine.core import build_system_prompt
+from zettcode.engine.core import ZettCodeEngine, build_system_prompt
 from zettcode.engine.extensions.context import ContextReport
 from zettcode.engine.extensions.usage import UsageSnapshot
 from zettcode.engine.storage import Session
 
 from .base import AgentBase
+
+
+async def report_of(runtime: ZettCodeEngine, session_id: str) -> ContextReport | None:
+    """Return what the next request carries, or ``None`` before it was assembled.
+
+    The tokenizer is prepared first; the total is the provider's count of this request, clamped out when it reaches
+    the window, because a window-sized figure is about something else. A rebuilt request is not counted locally:
+    its list carries messages the live request no longer does, so the provider's count is the only honest total.
+    ``window = 0`` means no model is configured; nothing is measured and no share is computed from it.
+    """
+    tokenizer = runtime.tokenizer
+    await tokenizer.prepare()
+    model = runtime.active_model
+    window = 0 if model is None else model.context_window
+    counted = runtime.usage.snapshot(session_id).context_tokens
+    reported = counted if 0 < counted < window else None
+    return runtime.context.report(session_id, window=window, tokenizer=tokenizer, reported=reported)
 
 
 class ContextMixin(AgentBase):
@@ -36,42 +53,8 @@ class ContextMixin(AgentBase):
         return self.runtime.usage.snapshot(self.session_id)
 
     async def context_report(self) -> ContextReport | None:
-        """Return what the next request carries by source, or None before the first call.
-
-        The shares come from the tokenizer, which is prepared first: it prefers
-        tiktoken and falls back to a character estimate when that vocabulary
-        cannot be opened, which the report names so the numbers are not mistaken
-        for exact ones. The total comes from the provider when it counted this
-        very request — it counts what it bills — and from the tokenizer when the
-        request was primed from the store, whose stored figure belongs to a call
-        the dialogue may have outgrown.
-        """
-        tokenizer = self.runtime.tokenizer
-        await tokenizer.prepare()
-        model = self.runtime.active_model
-        # No model configured means no window to measure against. Nothing is reported either way: a request is
-        # refused before one is assembled, so the report is None and no share is ever computed from this 0.
-        window = 0 if model is None else model.context_window
-        counted = self.runtime.usage.snapshot(self.session_id).context_tokens
-        # The provider's own count of this conversation is the total: what it
-        # billed for the request this process assembled, or — for a session
-        # rebuilt from the store, which has no call of its own yet — what it
-        # billed for the last call that session made. Locally counting a rebuilt
-        # request is not a substitute: on this machine's own session the rebuilt
-        # list measured 1.65 M tokens against a provider's 326 k, because a
-        # rebuilt list holds messages the live request no longer carries.
-        #
-        # A count that reaches the window is refused instead: a request cannot
-        # carry more than the window it is measured against, so a figure that does
-        # is about something else, and a share pinned at a hundred is worse than
-        # the measurement.
-        reported = counted if 0 < counted < window else None
-        return self.runtime.context.report(
-            self.session_id,
-            window=window,
-            tokenizer=tokenizer,
-            reported=reported,
-        )
+        """Return what the next request carries, or ``None`` before it was assembled."""
+        return await report_of(self.runtime, self.session_id)
 
     async def ensure_compactable(self) -> None:
         """Refuse a compaction that would do nothing, before a row is put up for it.
