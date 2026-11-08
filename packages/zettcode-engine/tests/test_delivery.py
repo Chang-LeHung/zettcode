@@ -89,3 +89,49 @@ def test_a_callback_registered_before_the_runtime_was_bound_is_called_at_once(tm
     ZettCodeEngine.preview(config, load)
 
     assert len(seen) == 1
+
+
+async def test_the_runtime_provides_the_context_report_service(tmp_path: Path):
+    """The adapter is installed before the plugins load and answers through the runtime after binding."""
+    from zettcode.engine.extensions.context import ContextExtension
+    from zettcode.engine.extensions.usage import UsageExtension, UsageSnapshot
+    from zettcode.engine.plugins.services import CONTEXT, USAGE
+    from zettcode.engine.service_contracts import CONTEXT_REPORT, ContextReportService
+
+    calls: list[dict[str, object]] = []
+    context = ContextExtension()
+
+    def report(session_id: str, **kwargs: object) -> object:
+        calls.append({"session_id": session_id, **kwargs})
+        return "report"
+
+    context.report = report  # type: ignore[method-assign]
+    usage = UsageExtension()
+    usage.snapshot = lambda session_id: UsageSnapshot(context_tokens=10)  # type: ignore[method-assign]
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        store=tmp_path / "sessions",
+        models=(ModelConfig(model="m", token="t"),),
+        harness_dir=tmp_path / "harness",
+    )
+
+    def load(config: ZettCodeConfig, shared: dict[str, object]) -> Plugins:
+        return Plugins(services={**shared, COMPACTION: OnDemandCompaction(None), CONTEXT: context, USAGE: usage})
+
+    runtime = ZettCodeEngine.preview(config, load)
+    service = runtime.plugins.service(CONTEXT_REPORT, ContextReportService)
+
+    assert await service.report("s") == "report"
+    (call,) = calls
+    assert call["window"] == runtime.active_model.context_window
+    assert call["session_id"] == "s"
+    assert call["reported"] == 10
+
+    usage.snapshot = lambda session_id: UsageSnapshot(context_tokens=runtime.active_model.context_window)  # type: ignore[method-assign]
+    assert await service.report("s") == "report"
+    assert calls[-1]["reported"] is None, "a count at the window is not this request's size"
+
+    import pytest
+
+    with pytest.raises(ValueError, match="may not replace"):
+        ZettCodeEngine.preview(config, load, shared={CONTEXT_REPORT: object()})
