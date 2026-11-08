@@ -20,7 +20,7 @@ from zettcode.commands.hub import (
     Peer,
 )
 from zettcode.commands.hub_graph import Link, Node
-from zettcode.tui import KeyEvent, Rect
+from zettcode.tui import KeyEvent, Rect, Theme
 
 
 def data(**changes: object) -> HubData:
@@ -485,12 +485,88 @@ def test_the_sessions_tab_is_the_roster_and_no_stored_session_is_added_to_it(tmp
     assert not hasattr(reading, "offline")
 
 
-def test_the_daemons_tab_lists_every_daemon_including_those_whose_process_is_gone(tmp_path, daemons_on_disk):
+def test_the_daemons_tab_lists_running_stopped_and_offline_ones(tmp_path, daemons_on_disk):
+    """Offline: stored in this workspace, and nothing runs it. The reader's own session, a registered peer and the
+    session of a daemon record (`run-1`, `dead-1`, whatever its status) are each accounted for already."""
     reading = _read(_FakeClient(tmp_path))
 
     by_id = {daemon.session_id: daemon.status for daemon in reading.daemons}
 
-    assert by_id == {"run-1": "idle", "dead-1": "dead", "dead-9": "dead"}, "running and stopped, every workspace"
+    assert by_id == {
+        "run-1": "idle",
+        "dead-1": "dead",
+        "dead-9": "dead",
+        "old-9": "offline",
+    }, "running and stopped (every workspace), then the stored session nothing runs"
+    assert list(by_id)[-1] == "old-9", "offline ones follow the daemons"
+    assert [daemon.workspace for daemon in reading.daemons if daemon.status == "offline"] == [str(tmp_path.resolve())]
+
+
+def test_a_stored_session_that_a_daemon_record_has_is_listed_once_not_as_offline_too(tmp_path, daemons_on_disk):
+    client = _FakeClient(tmp_path)
+    client.sessions = _FakeSessions(["dead-1", "run-1", "p-1", "self-1"])  # every one has a row already
+
+    reading = _read(client)
+
+    assert [daemon.session_id for daemon in reading.daemons] == ["run-1", "dead-1", "dead-9"]
+    assert all(daemon.status != "offline" for daemon in reading.daemons)
+
+
+def test_a_session_in_the_brokers_roster_is_not_offline_even_when_the_cached_peers_miss_it(tmp_path, daemons_on_disk):
+    graph = {"sessions": [{"session_id": "old-9", "handle": "old", "status": "idle"}], "edges": []}
+
+    reading = _read(_FakeClient(tmp_path, graph))
+
+    assert "old-9" not in {daemon.session_id for daemon in reading.daemons}, "the broker's roster says it runs"
+
+
+def test_an_offline_row_is_muted_and_enter_on_it_starts_a_daemon_on_that_session():
+    started: list[str] = []
+    opened = HubPage(
+        data(
+            daemons=(
+                Daemon("run", "live", "idle"),
+                Daemon("off", "an old conversation", "offline", workspace="/work"),
+            )
+        ),
+        on_close=lambda: None,
+        on_start=started.append,
+    )
+    opened._show(DAEMONS)
+
+    rows = {item.label: item for item in opened.list.items}
+    assert (
+        "offline" in rows["an old conversation"].description
+        and "stopped" not in rows["an old conversation"].description
+    )
+    assert rows["an old conversation"].parts(Theme())[0][1] == graph_colours()["offline"], "in the offline colour"
+    assert "stopped or offline" in opened.footer
+
+    opened.list.selected = 0
+    opened.capture_event(_key("enter"), None)
+    assert started == [] and "is running" in (opened.subtitle or "")
+
+    opened.list.selected = 1
+    opened.capture_event(_key("enter"), None)
+    assert started == ["off"] and opened.subtitle == "starting\u2026"
+
+
+def test_starting_an_offline_session_resumes_it_in_the_readers_workspace_on_the_first_model(monkeypatch, tmp_path):
+    calls: list[tuple[object, dict[str, object]]] = []
+    _fake_spawn(monkeypatch, calls)
+    client = type("Client", (), {"workspace": tmp_path / "project"})()
+    opened = page(daemons=(Daemon("off", "an old conversation", "offline", workspace=str(tmp_path / "project")),))
+
+    asyncio.run(HubCommand()._resume(opened, client, "off"))
+
+    assert calls == [(str(tmp_path / "project"), {"model": None, "resume": "off"})]
+    assert opened.subtitle == "started abcdef12"
+
+
+def graph_colours() -> dict[str, str]:
+    from zettcode.commands.hub_graph import colours
+
+    return colours(Theme())
 
 
 def test_a_stopped_daemon_stays_on_the_daemons_tab_as_stopped_and_can_be_started():
