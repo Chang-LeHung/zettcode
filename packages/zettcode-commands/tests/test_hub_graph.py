@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from zettcode.commands import hub_graph as graph
-from zettcode.commands.hub import HubData, HubPage
+from zettcode.commands.hub import HubData, HubPage, Stored
 from zettcode.tui import Canvas
 from zettcode.tui.core.theme import Theme
 
@@ -114,7 +114,7 @@ def test_the_lists_colour_a_state_the_way_the_graph_does():
                 Peer("c", "t", "idle", "/w", "external"),
             ),
             daemons=(Daemon("d", "dead one", "dead"), Daemon("e", "live", "working")),
-            offline=("old",),
+            offline=(Stored("old-id", "old"),),
         ),
         on_close=lambda: None,
     )
