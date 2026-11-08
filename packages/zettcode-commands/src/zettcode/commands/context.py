@@ -48,7 +48,6 @@ class ContextPagePlugin(TuiPlugin):
             page_service = ctx.agent.context_page_service()
             if page_service is None:
                 model = host.client.model
-                snapshot = None
                 model_name, path = model.name, host.client.session.path
                 trigger, compact = model.compaction_max_tokens, model.compact_percent
                 window = model.context_window
