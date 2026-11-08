@@ -239,11 +239,11 @@ def _daemon_table(data: HubData) -> Table:
                 daemon.session_id,
                 daemon.label or daemon.session_id,
                 state,
-                (said, daemon.model or "no model", daemon.workspace),
+                (said, daemon.title or "untitled", daemon.model or "no model", daemon.workspace),
                 f"{daemon.label} {daemon.name} {daemon.title} {daemon.session_id}",
             )
         )
-    table = _table(("NAME", "STATE", "MODEL", "WORKSPACE"), rows)
+    table = _table(("NAME", "STATE", "TITLE", "MODEL", "WORKSPACE"), rows)
     if data.offline_cut:
         # A row of words, not a session: it cannot be marked, so no key acts on it, and it has no `find`, so no search
         # keeps it. The two lists stay the same length.
