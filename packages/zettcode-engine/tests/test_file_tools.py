@@ -73,6 +73,12 @@ def test_every_tool_is_one_of_ours_and_is_typed_as_one():
     assert CodingBundle().tools[-1].handler.__module__ == "zettcode.engine.tools.shell"
 
 
+def test_every_bundled_tool_says_what_it_returns():
+    """The model gets a sentence about the result, not only its JSON shape, because ``returns=True`` is on."""
+    for tool in (read, read_file, glob, grep, write_file, edit, *CodingBundle().tools):
+        assert tool.returns_description, tool.name
+
+
 def test_reading_is_one_tool_and_it_does_not_send_the_model_to_one_that_is_gone():
     assert not any("view_image" in rule for rule in read.guidelines)
     assert any("image" in rule for rule in read.guidelines), "it still says it reads pictures"

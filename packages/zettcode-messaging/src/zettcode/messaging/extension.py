@@ -86,6 +86,10 @@ class SessionMessagingExtension(AgentExtension):
             and the directory it works in; each group line gives #name and its members. Sessions come and go, so the
             list is only true now.
 
+            Returns:
+                A short overview: one line per session with its handle, id, title, status and workspace, and one
+                line per group with its name and members; a sentence when nothing is running.
+
             Snippet:
                 list_sessions()
 
@@ -138,6 +142,9 @@ class SessionMessagingExtension(AgentExtension):
                 mode: What a busy receiver should do. "steer" (the default) hands the message to the request it is
                     running, so it changes course now; "followup" waits until that request ends. A session that is
                     idle starts on the message either way.
+
+            Returns:
+                A confirmation saying where the message went and its id, and whether the receiver started a turn.
 
             Snippet:
                 send_message(to="fix-parser", message="The tokenizer change is merged; please rerun your tests.")
@@ -197,6 +204,10 @@ class SessionMessagingExtension(AgentExtension):
                 group: A group chat you are in, such as "review".
                 limit: How many of the newest messages to show, 1 to 100 (default 20).
 
+            Returns:
+                The newest messages, oldest first, each with its time, sender, recipient and text; a sentence when
+                there are none.
+
             Snippet:
                 message_history(session="fix-parser")
                 message_history(group="review", limit=50)
@@ -247,6 +258,10 @@ class SessionMessagingExtension(AgentExtension):
                     "leave" (take yourself out), or "delete" (remove the group; what was said stays in the history).
                 group: The group's name: letters, digits, '-' or '_', such as "review".
                 members: For create, add and remove: session names or ids from list_sessions, separated by commas.
+
+            Returns:
+                A confirmation describing the group and its members after the change, or a sentence when the group
+                no longer exists.
 
             Snippet:
                 manage_group(action="create", group="review", members="fix-parser, docs")

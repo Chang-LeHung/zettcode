@@ -141,6 +141,10 @@ def shell_tool(boundary: Boundary | None = None) -> AgentTool:
             work_dir: Directory to run in: absolute, a `~` path, or relative to the workspace. Omit it to run in the workspace.
             timeout_seconds: Maximum command runtime in seconds; the default is 60.
 
+        Returns:
+            The command's captured output, with startup and final results kept within the byte and line limits; a
+            truncation hint names the retained files.
+
         Snippet:
             bash(command="git status --short", timeout_seconds=60)
             bash(command="npm test", work_dir="clients/vscode")
