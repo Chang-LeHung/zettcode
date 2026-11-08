@@ -607,10 +607,11 @@ A plugin names the plugins it needs, and ZettCode activates them first:
 ```python
 class Statistics(Plugin[PluginContext]):
     name = "statistics"
-    deps = ("usage-ledger",)
 
     def activate(self, ctx: PluginContext) -> None:
-        ledger = ctx.service("usage-ledger", object)  # the type the other plugin published; `object` accepts any
+        service = ctx.agent.usage_ledger_service()  # the published ABC, already typed
+        if service is None:
+            return
 ```
 
 `deps` holds plugin **names**: the `name` each plugin declares, or its distribution's entry-point name when it declares
@@ -620,9 +621,11 @@ no `deps` between them load in the order they were found. The name is the plugin
 share one. A distribution or a file cannot take an entry-point name another plugin already has either; the first one
 found keeps it and the other is left out, with a line in the log.
 
-A plugin publishes an object for the ones that need it with `ctx.inject(name, service)` and reads one with
-`ctx.service(name, kind)` (or `ctx.find`, which returns `None` when nobody provides it). What the object is, and how it
-is used, is for the plugins involved to agree on; ZettCode only keeps the name unique and the order right.
+A plugin publishes an object for the ones that need it with `ctx.inject(name, service)`. The runtime's page services
+are reached through the typed readers `ctx.agent.usage_ledger_service()` and `ctx.agent.context_report_service()`;
+anything else is read with `ctx.service(name, kind)` (or `ctx.find`, which returns `None` when nobody provides it).
+What the object is, and how it is used, is for the plugins involved to agree on; ZettCode only keeps the name unique
+and the order right.
 
 ## Starting work when something happens {#triggers}
 
