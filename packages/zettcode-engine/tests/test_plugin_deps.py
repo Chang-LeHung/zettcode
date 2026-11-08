@@ -72,12 +72,16 @@ class Base(Plugin[PluginContext]):
         Base.seen.append(self.name)
 
 
-def plugin(name: str, *deps: str, broken: bool = False) -> Plugin[PluginContext]:
+def plugin(name: str, *deps: str, broken: bool = False, default: bool = True) -> Plugin[PluginContext]:
     class Made(Base):
         def activate(self, container: PluginContext) -> None:
             if broken:
                 raise RuntimeError("boom")
             super().activate(container)
+
+        @classmethod
+        def default_enabled(cls) -> bool:
+            return default
 
     Made.name = name
     Made.deps = deps
@@ -128,6 +132,28 @@ def test_a_disabled_plugin_takes_its_dependents_with_it(tmp_path: Path):
     assert [p.name for p in bundle.plugins] == []
     assert [origin for origin, _ in bundle.failed] == ["a"]
     assert "'b'" in bundle.failed[0][1]
+
+
+def test_a_default_off_plugin_is_left_out_until_the_configuration_names_it(tmp_path: Path):
+    points = [Point("quiet", plugin("quiet", default=False)), Point("loud", plugin("loud"))]
+
+    assert [p.name for p in load_plugins(config(tmp_path), builtins=(), entry_points=points).plugins] == ["loud"]
+    assert [
+        p.name
+        for p in load_plugins(config(tmp_path, enabled_plugins=("quiet",)), builtins=(), entry_points=points).plugins
+    ] == ["quiet", "loud"]
+
+
+def test_a_default_off_dependency_of_a_required_plugin_is_pulled_in(tmp_path: Path):
+    points = [
+        Point("provider", plugin("provider", default=False)),
+        Point("consumer", plugin("consumer", "provider")),
+    ]
+
+    bundle = load_plugins(config(tmp_path), builtins=(), entry_points=points, required=("consumer",))
+
+    assert [p.name for p in bundle.plugins] == ["provider", "consumer"]
+    assert bundle.failed == ()
 
 
 def test_a_plugin_whose_need_fails_to_activate_is_not_activated(tmp_path: Path):

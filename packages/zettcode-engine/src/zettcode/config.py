@@ -112,7 +112,7 @@ SCOPES = frozenset({"global", "workspace", "both"})
 DEFAULT_SCOPE = "both"
 
 #: Keys the ``[plugins]`` table may set.
-PLUGIN_KEYS = frozenset({"enabled", "disable"})
+PLUGIN_KEYS = frozenset({"enabled", "disable", "enable"})
 
 #: Keys the ``[update]`` table may set.
 UPDATE_KEYS = frozenset({"enabled"})
@@ -458,6 +458,8 @@ class ZettCodeConfig:
             without uninstalling it. This is the configuration file's own
             ``[plugins] disable`` list; the names the older switch file adds are merged in by
             :attr:`off_names`, so a switch can tell the two apart.
+        enabled_plugins: Entry-point names to load although the plugin itself says it is off by default
+            (``Plugin.default_enabled``); this is the configuration file's ``[plugins] enable`` list.
         plugin_settings: The ``[plugins.<name>]`` tables, by plugin name, exactly as written. A plugin declares
             what its own keys mean and what they default to (``ctx.settings``); the configuration only carries the
             reader's values, so a key no plugin knows is harmless and a plugin that ships later needs no change
@@ -517,6 +519,8 @@ class ZettCodeConfig:
     statusline_hidden: tuple[str, ...] = ()
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
+    #: Default-off plugins the reader asked to load; this is ``[plugins] enable``.
+    enabled_plugins: tuple[str, ...] = ()
     #: The reader's own keys for a plugin, from its ``[plugins.<name>]`` table; the plugin supplies the defaults.
     plugin_settings: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     subagent_enabled: bool = True
@@ -917,17 +921,19 @@ def read_disabled_plugins(path: Path | None = None) -> tuple[str, ...]:
     return tuple(name.strip() for name in names if isinstance(name, str) and name.strip())
 
 
-def _read_disabled_plugins(raw: object, source: Path) -> tuple[str, ...]:
-    """Return the entry-point names the ``[plugins]`` table switches off."""
+def _read_plugin_names(raw: object, source: Path, key: str) -> tuple[str, ...]:
+    """Return the entry-point names a ``[plugins]`` list holds, validating the shape."""
     if raw is None:
         return ()
     if not isinstance(raw, list) or any(not isinstance(entry, str) or not entry.strip() for entry in raw):
-        raise ValueError(f"Config key 'plugins.disable' in {source} must be an array of non-empty strings")
+        raise ValueError(f"Config key 'plugins.{key}' in {source} must be an array of non-empty strings")
     return tuple(entry.strip() for entry in raw)
 
 
-def read_plugins_table(raw: object, source: Path) -> tuple[bool, tuple[str, ...], dict[str, dict[str, object]]]:
-    """Return ``[plugins]`` as ``(enabled, disable, settings)``: the one reading of that table.
+def read_plugins_table(
+    raw: object, source: Path
+) -> tuple[bool, tuple[str, ...], tuple[str, ...], dict[str, dict[str, object]]]:
+    """Return ``[plugins]`` as ``(enabled, disable, enable, settings)``: the one reading of that table.
 
     The configuration and ``zettcode plugin`` both need it, and the second must not build the whole settings object
     (that insists on a model). They used to each write the rules down, and the copies drifted: the command refused a
@@ -938,15 +944,20 @@ def read_plugins_table(raw: object, source: Path) -> tuple[bool, tuple[str, ...]
         source: The file, for messages.
 
     Returns:
-        Whether installed plugins load at all, the entry-point names left out, and each plugin's own settings table by
-        name.
+        Whether installed plugins load at all, the entry-point names left out, the default-off names asked for, and
+        each plugin's own settings table by name.
 
     Raises:
         ValueError: The table, a plugin's table, or a value in one is not what it must be.
     """
     own, settings = _read_plugins(raw, source)
     enabled = _typed(own.get("enabled", True), f"Config key 'plugins.enabled' in {source}", bool)
-    return enabled, _read_disabled_plugins(own.get("disable"), source), settings
+    return (
+        enabled,
+        _read_plugin_names(own.get("disable"), source, "disable"),
+        _read_plugin_names(own.get("enable"), source, "enable"),
+        settings,
+    )
 
 
 def _read_theme_name(raw: object, source: Path) -> str | None:
@@ -1016,7 +1027,9 @@ def load_config(
     ask_user = _read_table(data.get("ask_user"), "ask_user", source, ASK_USER_KEYS)
     skills = _read_table(data.get("skills"), "skills", source, SKILL_KEYS)
     mcp = _read_table(data.get("mcp"), "mcp", source, MCP_KEYS)
-    plugins_enabled, disabled_plugins, plugin_settings = read_plugins_table(data.get("plugins"), source)
+    plugins_enabled, disabled_plugins, enabled_plugins, plugin_settings = read_plugins_table(
+        data.get("plugins"), source
+    )
     transcript = _read_table(data.get("transcript"), "transcript", source, TRANSCRIPT_KEYS)
     update = _read_table(data.get("update"), "update", source, UPDATE_KEYS)
     harness = _read_table(data.get("harness"), "harness", source, HARNESS_KEYS)
@@ -1072,6 +1085,7 @@ def load_config(
         # The configuration file's own list. The legacy switch file's names are read where they are needed
         # (`zettcode.engine.plugins.switches`), so a switch can tell which list it may write.
         disabled_plugins=disabled_plugins,
+        enabled_plugins=enabled_plugins,
         plugin_settings=plugin_settings,
         subagent_enabled=bool(_setting(harness, "subagent", bool, True)),
         subagent_max_iterations=_typed(

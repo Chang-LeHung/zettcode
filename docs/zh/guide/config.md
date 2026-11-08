@@ -518,6 +518,7 @@ jit = false                    # 模型可以写并运行小的 Python 工具；
 | `statusline.<部分>` | `true` | 把头部或状态行的某一部分设为 `false` 即隐藏；没写的部分都显示，只有 `pet`、`turn-calls` 和 `turn-tools` 例外，它们默认隐藏，设为 `true` 才出现。部分有 `app`、`session`、`handle`、`workspace`、`model`、`effort`、`state`、`mode`、`self-compact`、`tokens`、`cache`、`speed`、`ctx`、`keys`、请求结束行的各项（`turn-time`、`turn-clock`、`turn-tokens`、`turn-cache`、`turn-calls`、`turn-speed`、`turn-tools`；插件可以加名为 `turn-<something>` 的其他项）、`pet`（对话上方的宠物，见[宠物](/zh/guide/interface#the-pet)）；不认识的名字会报错。`/statusline` 会替你改这张表。见[选择显示哪些部分](/zh/guide/interface#choosing-what-is-shown)。 |
 | `plugins.enabled` | `true` | 加载已安装的第三方插件；关闭后内置 UI 功能仍可使用。 |
 | `plugins.disable` | `[]` | 要跳过的插件 **entry-point 名称**数组，不一定等于 pip 包名。 |
+| `plugins.enable` | `[]` | 默认关闭、但这次要加载的插件 **entry-point 名称**；插件自己决定默认值（`memory` 默认关闭）。 |
 | `update.enabled` | `true` | 后台检查 PyPI，并在之后启动时提示新版本，不会自动安装。 |
 | `sessions.enabled` | `true` | 向后台会话 broker 登记，使本会话可以被 `@名字` 发消息，也可以给其他会话发消息；模型会多出 `list_sessions` 和 `send_message` 两个工具。见[会话之间互发消息](/zh/guide/messaging)。 |
 | `harness.subagent` | `true` | 提供 `task` 工具：模型可以把任务交给带独立上下文和会话日志的子 agent。 |

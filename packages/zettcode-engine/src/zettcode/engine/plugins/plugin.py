@@ -112,6 +112,15 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
     #: a plugin the reader cannot turn off is left out of the list rather than shown without a switch.
     setting: ClassVar[PluginSetting | None] = None
 
+    @classmethod
+    def default_enabled(cls) -> bool:
+        """Return whether the loader activates this plugin when no configuration names it.
+
+        Override and return ``False`` for a plugin that should be off until the reader asks for it; the name then
+        belongs in ``[plugins] enable``. The default is on.
+        """
+        return True
+
     def activate(self, container: _C) -> None:
         """Run once at startup, before any agent client is built.
 

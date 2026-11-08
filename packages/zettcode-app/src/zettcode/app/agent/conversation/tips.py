@@ -50,6 +50,13 @@ TIPS: tuple[str, ...] = (
     "zettcode --full skips every shell question and the sandbox for that run; /permission can change it later.",
     "Press Esc to stop a request; /continue picks it up again where it left off.",
     "A plugin is a Python package: install it and ZettCode gains its commands, tools, themes or pets.",
+    "zettcode plugin install owner/repo adds a plugin; restart ZettCode to load it.",
+    "/hub shows the session graph, the running sessions, and every daemon on this machine.",
+    "zettcode daemon spawn starts a background agent; /hub lists it and send_message reaches it.",
+    "zettcode gateway opens a web page for this machine's sessions and daemons.",
+    "/code-review asks for a review of the current change before you hand it over.",
+    'Memory is off by default; [plugins] enable = ["memory"] turns it on.',
+    "When memory is on, tell the agent what to remember; it keeps personal and project notes current.",
     "These tips can be turned off: tips = false under [transcript] in the configuration.",
 )
 

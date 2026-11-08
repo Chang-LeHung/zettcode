@@ -91,6 +91,7 @@ PROGRAM_DISTRIBUTIONS: dict[str, frozenset[str]] = {
             "zettcode-jit-harness",
             "zettcode-ask-user",
             "zettcode-instructions",
+            "zettcode-memory",
             "zettcode-todos",
             "zettcode-tool-output",
             "zettcode-truncation",
@@ -326,6 +327,7 @@ def run(
     # module cannot be imported here (it imports this one), so the union is written out; `off_names` is the same
     # rule for the front ends.
     disabled = set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file))
+    enabled = set(config.enabled_plugins)
     #: Who has each name, and who asked for a name that was taken, so the second can be told why it did not load.
     owners: dict[str, str] = {}
     owners_dist: dict[str, str | None] = {}
@@ -384,15 +386,21 @@ def run(
             break
         for origin in pulled:
             held.discard(origin)
+            added = sources[origin]()
             if origin in disabled:
-                logger.warning(
-                    "plugins.required",
-                    extra={
-                        "plugin": origin,
-                        "reason": "the program cannot run without it; [plugins] disable does not reach it",
-                    },
-                )
-            candidates.extend(sources[origin]())
+                disabled_plugins = [candidate.plugin for candidate in added if candidate.plugin is not None]
+                off_plugin = disabled_plugins[0] if disabled_plugins else None
+                if origin in required:
+                    event = "plugins.required"
+                    reason = "the program cannot run without it; [plugins] disable does not reach it"
+                elif off_plugin is not None and not off_plugin.default_enabled():
+                    event = "plugins.default_off"
+                    reason = "off by default; [plugins] enable turns it on"
+                else:
+                    event = "plugins.required"
+                    reason = "part of the program; [plugins] disable does not reach it"
+                logger.warning(event, extra={"plugin": origin, "reason": reason})
+            candidates.extend(added)
     # A name that was taken is reported only when the one that has it was actually offered: a part the reader switched
     # off refused nothing, and its row on the plugins page says "off", not "failed".
     for name, losers in taken.items():
@@ -410,6 +418,34 @@ def run(
     # A plugin of the program is the program's own whether or not it loads, and whether or not it is ever activated: one
     # refused for a need that failed still goes on the list a switch is refused against.
     loader.builtins.extend(c.origin for c in candidates if c.builtin and c.origin not in loader.builtins)
+    # A plugin that says it is off by default is loaded only when the configuration enables it, the program
+    # requires it, or a loader that survives needs it. The last part is the closure the pull loop above already
+    # protects for a required plugin; it is repeated here because the default-off choice is per plugin and can
+    # otherwise strand a required plugin's dependency.
+    kept = [
+        candidate
+        for candidate in candidates
+        if candidate.plugin is None
+        or candidate.plugin.default_enabled()
+        or candidate.name in enabled
+        or candidate.origin in enabled
+        or candidate.name in required
+        or candidate.origin in required
+    ]
+    kept_ids = {id(candidate) for candidate in kept}
+    needed = {dep for candidate in kept for dep in candidate.deps}
+    while True:
+        extra = [
+            candidate
+            for candidate in candidates
+            if id(candidate) not in kept_ids and (candidate.name in needed or candidate.origin in needed)
+        ]
+        if not extra:
+            break
+        kept.extend(extra)
+        kept_ids.update(id(candidate) for candidate in extra)
+        needed.update(dep for candidate in extra for dep in candidate.deps)
+    candidates = kept
     # Within the program's own groups the stated rank decides, then the name; the stable sort keeps everything else.
     at = [i for i, c in enumerate(candidates) if c.agent]
     for slot, candidate in zip(at, sorted((candidates[i] for i in at), key=_rank), strict=True):

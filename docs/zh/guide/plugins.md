@@ -206,6 +206,27 @@ class WorkspaceLabel(TuiPlugin):
 还没配置模型时，`context.model.name` 是空串，`context.model.efforts` 是空元组，
 `context.model.config`（那一项本身）是 `None`。读这一项的片段应该说自己没有模型，而不是假定它一定在。
 
+## 默认关闭
+
+插件自己决定读者没要求时是否加载。重写 `default_enabled` 并返回 `False`，加载器就会跳过它，直到
+`[plugins] enable` 列出它的 entry-point 名称：
+
+```python
+class Quiet(TuiPlugin):
+    name = "quiet"
+
+    @classmethod
+    def default_enabled(cls) -> bool:
+        return False
+```
+
+```toml
+[plugins]
+enable = ["quiet"]
+```
+
+默认值是 `True`，所以不写这个方法的插件和以前一样加载。
+
 ## 读配置
 
 有配置项的插件自己声明这些项，以及读者没写时它们取什么值。配置文件不可能知道装了哪些插件，所以它把每个

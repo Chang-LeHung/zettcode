@@ -1472,6 +1472,7 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
         "zettcode-jit-harness",
         "zettcode-ask-user",
         "zettcode-instructions",
+        "zettcode-memory",
         "zettcode-todos",
         "zettcode-tool-output",
         "zettcode-truncation",
