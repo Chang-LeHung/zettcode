@@ -1072,7 +1072,16 @@ def test_the_tables_have_titles_lined_up_with_their_columns():
     opened = HubPage(
         data(
             peers=(Peer("main", "the parser", "working", "/work"), Peer("a-longer-handle", "t", "idle", "/elsewhere")),
-            daemons=(Daemon("d-1", "watcher", "idle", model="the-model", workspace="/work"),),
+            daemons=(
+                Daemon(
+                    "d-1",
+                    "watcher",
+                    "idle",
+                    model="the-model",
+                    workspace="/work",
+                    title="the-daemon-title",
+                ),
+            ),
         ),
         on_close=lambda: None,
     )
@@ -1088,8 +1097,10 @@ def test_the_tables_have_titles_lined_up_with_their_columns():
 
     opened._show(DAEMONS)
     rows = _rendered(opened, 110, 24)
-    assert rows[3].split() == ["NAME", "STATE", "MODEL", "WORKSPACE"]
+    assert rows[3].split() == ["NAME", "STATE", "TITLE", "MODEL", "WORKSPACE"]
+    assert rows[3].index("TITLE") == rows[4].index("the-daemon-title")
     assert rows[3].index("MODEL") == rows[4].index("the-model")
+    assert rows[3].index("WORKSPACE") == rows[4].index("/work")
 
 
 def test_a_note_does_not_overwrite_the_titles_and_the_graph_has_none():
