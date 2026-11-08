@@ -486,6 +486,7 @@ class Client:
         # sends through it. Read after preview, because that is when the plugins activate.
         self._messenger = runtime.plugins.find(SESSION_LINK, Messenger)
         self._agent = ZettCodeAgent(runtime)
+        self._bind_context_page(runtime)
         self._bridge = AgentBridge(self._agent)
         #: The turns this client started from the inbox, kept so a task is not collected while it runs.
         self._delivering: set[asyncio.Task[object]] = set()
@@ -513,6 +514,22 @@ class Client:
         self._ledger_reader: Any = None
 
     # -- process-wide bookkeeping --
+    def _bind_context_page(self, runtime: Any) -> None:
+        """Give the page service the client's own compact-percent write, so it shares the open check and errors."""
+        from zettcode.engine.service_contracts import CONTEXT_PAGE, ContextPageService
+
+        bundle = getattr(runtime, "plugins", None)
+        if bundle is None:
+            return
+        page = bundle.find(CONTEXT_PAGE, ContextPageService)
+
+        def writer(percent: float) -> tuple[str, str | None]:
+            model, reason = self.use_compact_percent(percent)
+            return model.name, reason
+
+        if page is not None:
+            page.bind_writer(writer)
+
     @classmethod
     def _around(cls, agent: ZettCodeAgent) -> Client:
         """Return a client over an agent that a front end built itself, a subclass with parts of its own.
@@ -537,6 +554,7 @@ class Client:
         client._messenger = None if bundle is None else bundle.find(SESSION_LINK, Messenger)
         client.workspace = agent.runtime.config.workspace
         client._agent = agent
+        client._bind_context_page(agent.runtime)
         client._bridge = AgentBridge(agent)
         client._fresh = {agent.runtime.session_id}
         client.sessions = Sessions(client)

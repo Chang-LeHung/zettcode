@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from zettcode.app.plugins.groups import require_tui
@@ -44,30 +45,49 @@ class ContextPagePlugin(TuiPlugin):
                     message="No request yet \u2014 send one (or resume a session), then `/context` shows the breakdown."
                 )
 
+            page_service = ctx.agent.context_page_service()
+            if page_service is None:
+                model = host.client.model
+                snapshot = None
+                model_name, path = model.name, host.client.session.path
+                trigger, compact = model.compaction_max_tokens, model.compact_percent
+                window = model.context_window
+            else:
+                snapshot = await page_service.snapshot(host.agent.session_id)
+                model_name, path = snapshot.model_name, Path(snapshot.session_path)
+                trigger, compact, window = (
+                    snapshot.compaction_max_tokens,
+                    snapshot.compact_percent,
+                    snapshot.context_window,
+                )
+
             def apply(percent: float) -> None:
                 """Write the chosen compaction point and report what happened."""
                 host.close_page()
                 try:
-                    model, unwritten = host.client.use_compact_percent(percent)
+                    if page_service is None:
+                        model, unwritten = host.client.use_compact_percent(percent)
+                        name = model.name
+                    else:
+                        name, unwritten = page_service.set_compact_percent(percent)
                 except COMMAND_ERRORS as error:
                     host.transcript.error(str(error))
                     return
-                said = f"{model.name}: compacts at {whole_if_whole(model.compact_percent)}% of the window"
-                said += f" ({round(model.context_window * model.compact_percent / 100):,} tokens)"
+                said = f"{name}: compacts at {whole_if_whole(percent)}% of the window"
+                said += f" ({round(window * percent / 100):,} tokens)"
                 if unwritten is None:
                     host.transcript.notice(said)
                 else:
                     host.transcript.notice(f"{said} for this run; not remembered: {unwritten}")
                 host.request_layout()
 
-            model = host.client.model
             return CommandResult(
                 widget=ContextPage(
                     report,
-                    path=host.client.session.path,
-                    model=model.name,
-                    trigger=model.compaction_max_tokens,
-                    compact_percent=model.compact_percent,
+                    path=path,
+                    model=model_name,
+                    trigger=trigger,
+                    compact_percent=compact,
                     on_apply=apply,
                     on_cancel=host.close_page,
                 )

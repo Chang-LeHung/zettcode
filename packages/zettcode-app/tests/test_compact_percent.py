@@ -19,6 +19,7 @@ BASE = """\
 # my config
 [[models]]
 model = "gpt-5-mini"
+display_model = "Fast"
 token = "sk-one"
 compact_percent = 75
 
@@ -319,3 +320,19 @@ def test_a_file_that_cannot_be_edited_still_changes_this_run_and_says_why(agent)
 
     assert unwritten is not None and shell.active_model.compact_percent == 50
     assert shell.runtime.compaction.max_tokens == round(model.context_window * 0.5)
+
+
+async def test_the_terminal_client_binds_the_context_page_writer(agent):
+    """The terminal builds its client through ``_around``; the /context knob must write there too."""
+    from zettcode.engine.service_contracts import CONTEXT_PAGE, ContextPageService
+
+    shell, path = agent
+    assert shell.client is not None  # the terminal's client is what binds the writer
+    service = shell.runtime.plugins.find(CONTEXT_PAGE, ContextPageService)
+
+    snapshot = await service.snapshot(shell.session_id)
+    assert snapshot.model_name == "Fast", "the page shows the display name, not the model id"
+
+    name, reason = service.set_compact_percent(60)
+    assert name == "Fast"
+    assert tomllib.loads(path.read_text(encoding="utf-8"))["models"][0]["compact_percent"] == 60, reason

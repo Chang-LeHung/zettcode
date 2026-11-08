@@ -7,18 +7,24 @@ package); this module is the one a plugin imports, so a page depends on the cont
 from __future__ import annotations
 
 from zettcode.engine.service_contracts import (
+    CONTEXT_PAGE,
     CONTEXT_REPORT,
     SESSION_STORE,
     USAGE_LEDGER,
+    ContextPageService,
+    ContextPageSnapshot,
     ContextReportService,
     SessionStoreService,
     UsageLedgerService,
 )
 
 __all__ = [
+    "CONTEXT_PAGE",
     "CONTEXT_REPORT",
     "SESSION_STORE",
     "USAGE_LEDGER",
+    "ContextPageService",
+    "ContextPageSnapshot",
     "ContextReportService",
     "SessionStoreService",
     "UsageLedgerService",

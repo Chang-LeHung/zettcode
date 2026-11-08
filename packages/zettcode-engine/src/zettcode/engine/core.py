@@ -55,7 +55,14 @@ from zettcode.engine.plugins.services import (
     USAGE,
     USAGE_LEDGER,
 )
-from zettcode.engine.service_contracts import CONTEXT_REPORT, ContextReportService
+from zettcode.engine.service_contracts import (
+    CONTEXT_PAGE,
+    CONTEXT_REPORT,
+    ContextPageService,
+    ContextPageSnapshot,
+    ContextPageWriter,
+    ContextReportService,
+)
 
 from .delivery import DELIVERY
 from .delivery_runtime import RuntimeDelivery
@@ -225,6 +232,39 @@ class _ContextReportAdapter(ContextReportService):
         return await report_of(self._runtime, session_id)
 
 
+class _ContextPageAdapter(ContextPageService):
+    """The /context page's model/session values, bound to the runtime and its config writer after construction."""
+
+    def __init__(self) -> None:
+        self._runtime: ZettCodeEngine | None = None
+        self._writer: ContextPageWriter | None = None
+
+    def bind(self, runtime: ZettCodeEngine) -> None:
+        self._runtime = runtime
+
+    def bind_writer(self, writer: ContextPageWriter) -> None:
+        self._writer = writer
+
+    async def snapshot(self, session_id: str) -> ContextPageSnapshot:
+        runtime = self._runtime
+        if runtime is None or runtime.active_model is None:
+            raise ValueError("No model is configured")
+        model = runtime.active_model
+        return ContextPageSnapshot(
+            model_name=model.shown_name,
+            context_window=model.context_window,
+            compaction_max_tokens=model.compaction_max_tokens,
+            compact_percent=model.compact_percent,
+            session_path=str(runtime.persistence.session_path(session_id)),
+        )
+
+    def set_compact_percent(self, percent: float) -> tuple[str, str | None]:
+        if self._writer is None:
+            raise RuntimeError("The context page service is not bound to a config writer")
+        name, reason = self._writer(percent)
+        return name, reason
+
+
 @dataclass(slots=True)
 class ZettCodeEngine:
     """Own the model, the persistence and approval extensions, the client, and the active session.
@@ -316,6 +356,7 @@ class ZettCodeEngine:
             SESSION_STORE,
             USAGE_LEDGER,
             CONTEXT_REPORT,
+            CONTEXT_PAGE,
         }
         taken = sorted(name for name in (shared or {}) if name in reserved)
         if taken:
@@ -343,6 +384,7 @@ class ZettCodeEngine:
         # exists, bound the moment it does, so what a plugin keeps is the live one.
         delivery = RuntimeDelivery()
         context_reports = _ContextReportAdapter()
+        context_page = _ContextPageAdapter()
         provided: dict[str, object] = {
             POLICY: policy,
             HARNESS: harness,
@@ -353,6 +395,7 @@ class ZettCodeEngine:
             COMPACTION_COUNTER: counter,
             DELIVERY: delivery,
             CONTEXT_REPORT: context_reports,
+            CONTEXT_PAGE: context_page,
         }
         if selected is not None:
             # A plugin that sizes something for the model asks for this one; a machine with no model provides
@@ -375,6 +418,7 @@ class ZettCodeEngine:
             _models=models,
         )
         context_reports.bind(runtime)
+        context_page.bind(runtime)
         # The session a launch starts in is a new one, so this always succeeds; a launch that resumes
         # another moves the lock when it installs it.
         runtime.session_locks.claim(runtime.session_id)
