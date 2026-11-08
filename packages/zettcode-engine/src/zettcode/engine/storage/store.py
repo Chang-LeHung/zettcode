@@ -53,9 +53,11 @@ from zett_agent.ids import new_uuid7
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage
 from zett_agent.model import ModelUsage
 
+from zettcode.engine.service_contracts import SessionStoreService, UsageLedgerService
+
 from ..dialogue.side import ORIGIN, READER, SIDE, WATCHED, is_side, is_watched_side
 from .layout import claim_workspace, open_workspace
-from .ledger import LedgerReader, SessionStats
+from .ledger import Ledger, LedgerReader, SessionStats
 from .locks import prune_empty
 from .metadata import (
     MAX_MODEL,
@@ -871,7 +873,7 @@ class SessionPersistenceMixin:
         return created_at
 
 
-class SessionStore(SessionPersistenceMixin, AgentExtension):
+class SessionStore(SessionPersistenceMixin, AgentExtension, SessionStoreService, UsageLedgerService):
     """The agent plugin: restore and save a conversation through the mixin.
 
     ``SessionPersistenceMixin`` owns the files. This class adds the framework
@@ -889,6 +891,12 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
     def __init__(self, root: str | Path | None = None, workspace: str | Path | None = None) -> None:
         self._requests: WeakKeyDictionary[AgentRunContext, _Request] = WeakKeyDictionary()
         super().__init__(root, workspace)
+
+    async def ledger(self) -> Ledger:
+        """Return the workspace ledger, read off the event loop."""
+        if self._ledger is None:
+            self._ledger = LedgerReader(self.root, self.workspace)
+        return await asyncio.to_thread(self._ledger.read)
 
     async def on_state(self, context: AgentRunContext) -> None:
         """Restore the conversation and map every context position to a message id."""
