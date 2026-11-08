@@ -108,8 +108,6 @@ def read_file(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> st
     Guidelines:
         - Use line ranges for large files.
         - Inspect the current content before editing a file.
-        - A trailing hint says how to go on: the next offset when more lines remain, or the shell when one line is
-          longer than the output limit.
     """
     located = Located.of(file_path)
     located.require_file()
@@ -125,7 +123,8 @@ def glob(pattern: Expression, max_results: MaxResults = 200) -> str:
         max_results: Maximum number of sorted paths to return.
 
     Returns:
-        Matching paths, one per line and sorted, with a trailing note when the result was truncated.
+        Matching paths, one per line and sorted, empty when nothing matches, with a trailing note when the result was
+        truncated.
 
     Snippet:
         glob(pattern="src/**/*.py", max_results=200)
@@ -133,7 +132,6 @@ def glob(pattern: Expression, max_results: MaxResults = 200) -> str:
     Guidelines:
         - Use glob to discover files before reading or searching them.
         - Narrow the pattern when the result is truncated.
-        - The result lists one path per line and is empty when nothing matches.
     """
     spec = Pattern.parse(pattern)
     paths: list[str] = []
@@ -169,7 +167,7 @@ def grep(
         max_results: Maximum number of matching lines to return.
 
     Returns:
-        Matching lines as ``path:line:text``, one per line, with a trailing note when the result was truncated.
+        Matching lines as ``path:line: text``, one per line, with a trailing note when the result was truncated.
 
     Snippet:
         grep(pattern="class\\s+Agent", file_pattern="src/**/*.py", max_results=200)
@@ -177,7 +175,7 @@ def grep(
     Guidelines:
         - Use a narrow file_pattern to avoid scanning unrelated files.
         - Escape regular-expression characters when searching for literal text.
-        - Each match is one path:line:text line; use the read tool for surrounding context.
+        - Use the read tool for surrounding context.
     """
     spec = Pattern.parse(file_pattern)
     try:
