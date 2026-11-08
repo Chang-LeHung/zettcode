@@ -2902,7 +2902,7 @@ wheels = [
 
 [[package]]
 name = "zett-agent"
-version = "0.2.7"
+version = "0.2.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiosqlite" },
@@ -2928,9 +2928,9 @@ dependencies = [
     { name = "typing-extensions", marker = "python_full_version < '3.12'" },
     { name = "uuid6" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/ec/fbdbca5d729ab2940db0ccf471edd732e29c74fe5b5e49ecc963eeed2da7/zett_agent-0.2.7.tar.gz", hash = "sha256:97582141de7adf74eef291563644dad4898e70d7b72613327b3258591d301c4d", size = 730813, upload-time = "2026-11-02T14:58:30.848Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/cd/415995d604a916ca42bd97fc398fc2251a4d89d1779d82ffd4a6e8ae4b6f/zett_agent-0.2.10.tar.gz", hash = "sha256:5837e758b4188ee5f1ef5df4cac7795b2efda06b494d4f1060ef06f226cc4a67", size = 734113, upload-time = "2026-11-06T14:44:36.991Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/3f/46d6f3f956f9f27e005e32f10cc9acf146aaa65900d85a92a85fbeb66fb5/zett_agent-0.2.7-py3-none-any.whl", hash = "sha256:5606355621382497ce5f256bbd357583e2bdc2b68093b63d1195955c5a681cdd", size = 816123, upload-time = "2026-11-02T14:58:28.962Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/fb/71cbdd8f77fd81e29ddbfe60595fa3041b87c308c9843103f1fc6a712d3f/zett_agent-0.2.10-py3-none-any.whl", hash = "sha256:2a1e1078b29b6e333048a53deff351b7e75256080b72582a22b09912f84db5e0", size = 819381, upload-time = "2026-11-06T14:44:35.585Z" },
 ]
 
 [[package]]
@@ -3024,7 +3024,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "truststore", specifier = ">=0.10,<1" },
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-broker", editable = "packages/zettcode-broker" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
     { name = "zettcode-messaging", editable = "packages/zettcode-messaging" },
@@ -3044,7 +3044,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
 ]
 
@@ -3112,7 +3112,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "tiktoken", marker = "extra == 'tiktoken'", specifier = ">=0.12,<1" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2,<3" },
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
 ]
 provides-extras = ["tiktoken"]
 
@@ -3155,7 +3155,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
 ]
 
@@ -3169,7 +3169,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
 ]
 
@@ -3185,7 +3185,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
     { name = "zettcode-plugin-api", editable = "packages/zettcode-plugin-api" },
     { name = "zettcode-tui", editable = "packages/zettcode-tui" },
@@ -3201,7 +3201,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
 ]
 
@@ -3216,7 +3216,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-broker", editable = "packages/zettcode-broker" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
 ]
@@ -3238,7 +3238,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "zett-agent", specifier = ">=0.2.1,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-plugin-api", editable = "packages/zettcode-plugin-api" },
 ]
 
@@ -3351,7 +3351,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27,<1" },
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-ask-user", editable = "packages/zettcode-ask-user" },
     { name = "zettcode-broker", editable = "packages/zettcode-broker" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
@@ -3400,7 +3400,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
 ]
 
@@ -3414,7 +3414,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
 ]
 
@@ -3428,7 +3428,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
 ]
 
@@ -3442,7 +3442,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
 ]
 
