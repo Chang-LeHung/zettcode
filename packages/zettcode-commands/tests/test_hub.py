@@ -1101,3 +1101,18 @@ def test_a_late_failure_does_not_land_on_the_page_that_was_opened_in_place_of_th
 
     assert second.subtitle is None, "the new page is not told about the old one's failure"
     assert first.subtitle is None, "and the old one is not in front, so nothing is written there either"
+
+
+def test_a_mark_that_a_refresh_leaves_on_the_cut_row_moves_to_the_last_session_before_it():
+    five = tuple(Daemon(f"d{i}", f"daemon {i}", "idle") for i in range(5))
+    opened = HubPage(data(daemons=five, offline_cut=True), on_close=lambda: None)
+    opened._show(DAEMONS)
+    opened.list.selected = 4
+    opened.marks[DAEMONS] = 4
+
+    opened.set_data(data(daemons=five[:4], offline_cut=True))  # 4 daemons and the cut row: index 4 is the words
+
+    assert opened.list.items[-1].disabled
+    assert opened.list.selected == 3, "the band is not drawn on the row nothing can act on"
+    opened.capture_event(_key("enter"), None)
+    assert "no daemon under the mark" not in (opened.subtitle or "")
