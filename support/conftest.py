@@ -27,6 +27,7 @@ atexit.register(shutil.rmtree, _HOME, ignore_errors=True)
 #: the way the loader sorts them. Each distribution's `pyproject.toml` says the same; `test_structure.py` compares.
 PROGRAM_PARTS = (
     ("commands", "zettcode.commands.plugin:CommandsPlugin"),
+    ("context", "zettcode.commands.context:ContextPagePlugin"),
     ("pets", "zettcode.pets.plugin:PetsPlugin"),
     ("presenters", "zettcode.presenters.plugin:PresentersPlugin"),
     ("shell", "zettcode.presenters.rows:ShellRows"),
@@ -162,6 +163,7 @@ _OWNER = {
     "shell": "zettcode-presenters",
     "turn-line": "zettcode-presenters",
     "usage": "zettcode-commands",
+    "context": "zettcode-commands",
     "skills": "zettcode-skills",
     "skill-tool": "zettcode-skills",
     "ask-user": "zettcode-ask-user",

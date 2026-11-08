@@ -71,6 +71,7 @@ from zettcode.app.ui.widgets import (
     help_text,
 )
 from zettcode.app.ui.widgets.follow_up import OPTION
+from zettcode.commands.context import ContextPagePlugin
 from zettcode.commands.handlers import CodeReview
 from zettcode.commands.plugin import CommandsPlugin
 from zettcode.commands.usage import UsageCommand
@@ -520,6 +521,7 @@ def rows_and_commands(
         TurnLine(),
         CommandsPlugin(),
         UsageCommand(),
+        ContextPagePlugin(),
         HarnessCommand(),
         BuiltinThemes(),
         PetsPlugin(),
