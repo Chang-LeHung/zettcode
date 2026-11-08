@@ -45,9 +45,14 @@ GRAPH, SESSIONS, DAEMONS = range(len(TABS))
 #: What a daemon's status says when its process is gone, or when nothing says it is running.
 GONE = ("dead", "unknown")
 
-#: The smallest area the picture is drawn in; below it the page says so rather than draw boxes on top of each other.
+#: The smallest area the picture is drawn in: room for two rows of boxes and a number between them, and for a box and
+#: its neighbour side by side. Below it the page says so rather than draw a chain of two boxes.
 MIN_GRAPH_WIDTH = 40
-MIN_GRAPH_HEIGHT = 7
+MIN_GRAPH_HEIGHT = 10
+
+#: The largest rectangle lines are routed in; on a bigger screen the picture is centred in it.
+MAX_ROUTED_WIDTH = 150
+MAX_ROUTED_HEIGHT = 44
 
 #: Rows above the picture (blank, tabs, summary, note) and below it (legend, keys), and the page height from which
 #: the legend is drawn at all.
@@ -299,6 +304,10 @@ class HubPage(ListPage):
                 self.selected = None
         return self._picture
 
+    def _forget_picture(self) -> None:
+        """Drop the picture and the selection when nothing is drawn, so no key moves a node that is not there."""
+        self._picture, self._picture_key, self.selected = Picture(), None, None
+
     def _draw_graph(self, canvas: Canvas, hint: Style, room: int) -> None:
         """Draw the summary, the note, the picture and the legend, or say why there is no picture."""
         theme = self.theme
@@ -310,22 +319,29 @@ class HubPage(ListPage):
             notice = Style(foreground=theme.accent_bright, background=theme.surface_alt, bold=True)
             canvas.draw_text(left, self.rect.y + 3, data.note, notice, max_width=room)
         picture = Picture()
+        offset = (0, 0)
         if not data.nodes:
             said = "no session has talked to another yet" if data.graph_ok else "the message graph cannot be read"
         elif height < MIN_GRAPH_HEIGHT or room < MIN_GRAPH_WIDTH:
             said = "too small for the graph"
         else:
             said = ""
-            picture = self._picture_for(room, height)
+            # Routing costs more the bigger the area and stops improving past a point, so a big screen is routed in
+            # a bounded rectangle and that is drawn in the middle of it.
+            wide, high = min(room, MAX_ROUTED_WIDTH), min(height, MAX_ROUTED_HEIGHT)
+            picture = self._picture_for(wide, high)
+            offset = ((room - wide) // 2, (height - high) // 2)
+        if not picture.nodes:
+            self._forget_picture()
         if data.nodes:
             line = hub_graph.summary(data.nodes, data.links, picture, self.selected)
             canvas.draw_text(left, self.rect.y + 2, line, hint, max_width=room)
         if said:
-            row = min(max(top + max(height, 1) // 2, top), self.rect.bottom - 2)
-            column = self.rect.x + max(2, (self.rect.width - display_width(said)) // 2)
-            canvas.draw_text(column, row, said, hint, max_width=room)
+            if height > 0:
+                column = self.rect.x + max(2, (self.rect.width - display_width(said)) // 2)
+                canvas.draw_text(column, top + height // 2, said, hint, max_width=room)
         else:
-            hub_graph.paint(canvas, theme, left, top, picture, self.selected)
+            hub_graph.paint(canvas, theme, left + offset[0], top + offset[1], picture, self.selected)
         if self.rect.height >= LEGEND_FROM:
             x = left
             for group in hub_graph.legend(theme):
@@ -522,10 +538,12 @@ class HubCommand(TuiPlugin):
         page.note(said)
 
     async def _resume(self, page: HubPage, client: object, session_id: str) -> None:
-        """Start a daemon whose process is gone, resuming the session it had on the workspace and model it had.
+        """Start a daemon whose process is gone, resuming the session it had.
 
-        One start per daemon at a time: a second ``Enter`` while the first is waiting is told so, since two
-        processes would share one record and one session lock. A daemon that is running is not started again.
+        It starts on the workspace and model its record names; a record with no workspace falls back to the reader's
+        own, and one with no model to the first configured. One start per daemon at a time, until the page shows the
+        daemon running: a second ``Enter`` while the first is starting or the page is being read again is told so,
+        since two processes would share one record and one session lock. A running daemon is not started again.
         """
         from zettcode.sdk.daemons import spawn_daemon
 
@@ -541,15 +559,16 @@ class HubCommand(TuiPlugin):
         self._starting.add(session_id)
         page.note("starting\u2026")
         try:
-            workspace = chosen.workspace or str(client.workspace)  # type: ignore[attr-defined]
-            started = await spawn_daemon(workspace, model=chosen.model or None, resume=session_id)
-        except Exception as error:  # noqa: BLE001 - the page says what happened, whatever it was
-            note = str(error)
-        else:
-            note = f"started {started.session_id[:8]}"
+            try:
+                workspace = chosen.workspace or str(client.workspace)  # type: ignore[attr-defined]
+                started = await spawn_daemon(workspace, model=chosen.model or None, resume=session_id)
+            except Exception as error:  # noqa: BLE001 - the page says what happened, whatever it was
+                note = str(error)
+            else:
+                note = f"started {started.session_id[:8]}"
+            await self._refresh(page, client)
         finally:
             self._starting.discard(session_id)
-        await self._refresh(page, client)
         page.note(note)
 
     async def _read(self, client: object) -> HubData:
@@ -604,7 +623,10 @@ class HubCommand(TuiPlugin):
         offline = tuple(StoredSession(info.id, info.title or info.id[:8]) for info in listed if info.id not in present)
         # The picture is of this workspace: another project's dead daemons are on the Daemons tab, not in it, and a
         # session's own title wins over its daemon's name.
-        here = Path(client.workspace).resolve()  # type: ignore[attr-defined]
+        try:
+            here = Path(client.workspace).resolve()  # type: ignore[attr-defined]
+        except (AttributeError, OSError, RuntimeError):  # a client with no workspace still has a roster to show
+            here = Path.cwd()
         ours = [daemon for daemon in daemons if _is_in(daemon.workspace, here)]
         titles = {info.id: info.title or info.id[:8] for info in listed}
         for daemon in ours:
@@ -624,5 +646,5 @@ def _is_in(workspace: str, here: Path) -> bool:
     """Return whether a daemon's workspace is the reader's."""
     try:
         return bool(workspace) and Path(workspace).expanduser().resolve() == here
-    except OSError:
+    except (OSError, RuntimeError):
         return False
