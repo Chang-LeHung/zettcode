@@ -81,7 +81,7 @@ class TuiGroup(ABC):
 
     @abstractmethod
     def register_presenter(self, presenter: Any) -> Any:
-        """Draw a kind of entry, or one family inside a kind, instead of the way it is drawn now."""
+        """Draw a kind, one family inside a kind, or the fallback for rows nobody else claims."""
 
     @abstractmethod
     def register_header_left(self, builder: Any, *, name: str = "", override: bool = False) -> tuple[Any, bool]:

@@ -484,8 +484,9 @@ class TuiGroups(TuiGroup):
     def register_presenter(self, presenter: Presenter[Any]) -> Presenter[Any]:
         """Draw a kind of entry, or one family inside a kind, instead of the way it is drawn now.
 
-        A presenter names a ``kind`` (one member of :class:`EntryKind`), or an ``entry_type`` when it
-        draws one family of a kind — the edit row inside the tool rows, say. It is placed by its own
+        A presenter names a ``kind`` (one member of :class:`EntryKind`), an ``entry_type`` when it draws one family
+        of a kind — the edit row inside the tool rows, say — or neither, which makes it the fallback for rows no
+        earlier handler claims. It is placed by its own
         :attr:`Presenter.priority`: the highest wins, and an equal priority goes to the later
         registration, so the built-in presenters (priority 0, registered first) are the default any
         plugin's presenter replaces. A plugin that wants to beat another plugin raises the
@@ -499,12 +500,16 @@ class TuiGroups(TuiGroup):
             The presenter, in case the plugin wants to keep it.
 
         Raises:
-            ValueError: When the object is not a presenter, or names neither a kind nor an entry
-                class.
+            ValueError: When the object is not a presenter, or names a kind that is not an `EntryKind` or an
+                entry type that is not a class.
         """
         if not isinstance(presenter, Presenter):
             raise ValueError("A presenter must be a zettcode.presenters.presenters.Presenter")
-        if not isinstance(presenter.kind, EntryKind):
+        if presenter.kind is None and presenter.entry_type is None:
+            pass  # the fallback: it claims whatever no handler before it claimed
+        elif presenter.kind is None and not isinstance(presenter.entry_type, type):
+            raise ValueError("A presenter must name a kind, an entry class, or neither for the fallback")
+        elif presenter.kind is not None and not isinstance(presenter.kind, EntryKind):
             raise ValueError("A presenter must name the kind of entry it draws")
         self._presenters.append(presenter)
         return presenter

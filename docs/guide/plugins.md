@@ -562,7 +562,8 @@ class QuietNotices(TuiPlugin):
 ```
 
 A presenter names a `kind` (one member of `EntryKind`), or an `entry_type` when it draws one family
-inside a kind — the edit row among the tool rows, say. `lines` receives the entry, the columns
+inside a kind — the edit row among the tool rows, say — or neither, which makes it the fallback for rows no earlier
+handler claims. `lines` receives the entry, the columns
 available, the palette, and an animation step, and returns `TextLine`s; a width is a budget, so wrap
 or cut. A presenter that animates reads `frame`; one that does not should give the same rows for it.
 

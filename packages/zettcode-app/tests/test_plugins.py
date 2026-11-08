@@ -1393,3 +1393,29 @@ def test_the_terminal_s_contract_bases_are_concrete():
     assert not TerminalAgent.__abstractmethods__
     assert not Transcript.__abstractmethods__
     assert not ZettCodeApp.__abstractmethods__
+
+
+def test_a_plugin_can_register_a_fallback_presenter(tmp_path: Path):
+    class Fallback(TuiPlugin):
+        name = "fallback-rows"
+        deps = ("presenters",)
+
+        def activate(self, ctx: PluginContext) -> None:
+            from zettcode.plugin_api.entries import Entry
+            from zettcode.plugin_api.presenters import Presenter
+            from zettcode.tui import TextLine
+
+            class AnyRow(Presenter[Entry]):
+                kind = None
+
+                def lines(self, entry, width, theme, frame):
+                    return [TextLine()]
+
+            ctx.tui.register_presenter(AnyRow())
+
+    plugins = load_terminal_plugins(
+        make_config(tmp_path),
+        entry_points=with_parts(FakeEntryPoint("fallback", Fallback)),
+    )
+
+    assert any(presenter.kind is None for presenter in plugins.presenters)
