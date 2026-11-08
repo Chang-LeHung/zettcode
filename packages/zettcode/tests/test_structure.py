@@ -709,6 +709,7 @@ def test_the_engine_imports_only_the_tools_and_the_leaves_it_ships():
     assert sorted(offenders) == []
     missing = sorted(name for name in ENGINE_LEAVES if not (source / f"{name}.py").is_file())
     assert missing == [], f"the engine's leaves are all present; missing {missing}"
+    assert _shipped_distributions()["zettcode-tools"].declared == set(), "the tools are the root: nothing of ours above"
 
 
 def test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it():
