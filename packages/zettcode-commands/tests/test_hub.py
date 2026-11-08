@@ -714,9 +714,12 @@ def test_every_key_that_acts_says_so_on_the_page_at_once():
     assert asked == ["r", "s d-1", "enter d-2"]
 
 
+STEPS = (("peers", 0), ("daemons", 3), ("sessions", 1), ("graph", 19), ("picture", 0))
+
+
 def test_a_refresh_replaces_refreshing_with_the_new_readings_time_and_keeps_a_failure(monkeypatch):
     async def read_ok(self, client):
-        return data(read="read 12:34:56 \u00b7 23 ms (daemons 3, sessions 1, graph 19)")
+        return data(began="12:34:56", took=23, steps=STEPS)
 
     async def read_bad(self, client):
         return data(note="the message graph cannot be read: no broker")
@@ -734,24 +737,45 @@ def test_a_refresh_replaces_refreshing_with_the_new_readings_time_and_keeps_a_fa
     assert opened.subtitle == "the message graph cannot be read: no broker"
 
 
-def test_the_stamp_sits_at_the_right_end_of_the_tab_line_and_only_where_it_fits():
-    stamp = "read 12:34:56 \u00b7 23 ms (daemons 3, sessions 1, graph 19)"
-    opened = HubPage(data(read=stamp), on_close=lambda: None)
+def test_the_stamp_is_the_fullest_account_that_fits_and_an_80_column_page_shows_one():
+    opened = HubPage(data(began="12:34:56", took=23, steps=STEPS), on_close=lambda: None)
 
-    wide = _rendered(opened, 110, 32)[1]
-    narrow = _rendered(opened, 50, 32)[1]
+    def tab_line(width: int) -> str:
+        return _rendered(opened, width, 32)[1]
 
-    assert wide.rstrip().endswith("graph 19)") and wide.index("read") > wide.index("Daemons")
-    assert "read 12" not in narrow, "a page too narrow for it leaves it out rather than cut it"
-    assert "Daemons" in narrow
+    full = tab_line(130)
+    assert full.rstrip().endswith("graph 19, picture 0 ms)") and "peers 0" in full, "with the unit after the steps"
+    assert full.index("read") > full.index("Daemons")
+    assert "read 12:34:56 \u00b7 23 ms" in tab_line(80) or "read 23 ms" in tab_line(80)
+    assert tab_line(80).rstrip().endswith("23 ms"), "an 80-column terminal still sees how long it took"
+    assert tab_line(60).rstrip().endswith("read 23 ms"), "narrower: the total alone"
+    assert "read" not in tab_line(44) and "Daemons" in tab_line(44), "too narrow for any: left out, not cut"
 
 
-def test_a_real_reading_says_when_it_was_made_and_how_long_each_step_took(tmp_path, daemons_on_disk):
+def test_a_real_reading_says_when_it_began_and_where_the_time_went_and_the_steps_add_up(tmp_path, daemons_on_disk):
     reading = _read(_FakeClient(tmp_path))
 
-    assert reading.read.startswith("read ") and " ms (" in reading.read
-    for step in ("daemons", "sessions", "graph"):
-        assert step in reading.read
+    assert [name for name, _ in reading.steps] == ["peers", "daemons", "sessions", "graph", "picture"]
+    assert len(reading.began) == 8 and reading.began.count(":") == 2
+    assert abs(sum(ms for _, ms in reading.steps) - reading.took) <= len(reading.steps), "no part of it is untimed"
+
+
+def test_a_slow_roster_is_blamed_on_the_roster_not_on_the_daemons(tmp_path, daemons_on_disk):
+    import time
+
+    client = _FakeClient(tmp_path)
+    cached = client.peers
+
+    def slow() -> list[object]:
+        time.sleep(0.06)
+        return cached()
+
+    client.peers = slow  # type: ignore[method-assign]
+
+    reading = _read(client)
+
+    steps = dict(reading.steps)
+    assert steps["peers"] >= 55 and steps["daemons"] < 40, steps
 
 
 def test_the_tables_have_titles_lined_up_with_their_columns():

@@ -194,7 +194,7 @@ def build(
             continue
         label = str(entry.get("handle") or entry.get("title") or key[:8])
         nodes[key] = Node(key, label, state_of(str(entry.get("status", "idle")), str(entry.get("kind", ""))), key == me)
-    links = []
+    pairs: dict[frozenset[str], Link] = {}
     for edge in graph.get("edges", ()):
         a, b = str(edge.get("a", "")), str(edge.get("b", ""))
         if not a or not b or a == b:
@@ -203,7 +203,11 @@ def build(
             if key not in nodes:
                 state: State = "stopped" if key in gone else "offline"
                 nodes[key] = Node(key, names.get(key) or key[:8], state, key == me)
-        links.append(Link(a, b, int(edge.get("count", 1))))
+        # A pair is one line whichever way the messages went: two entries for it are added, not drawn twice.
+        count = int(edge.get("count", 1))
+        seen = pairs.get(frozenset((a, b)))
+        pairs[frozenset((a, b))] = Link(a, b, count + (seen.count if seen else 0))
+    links = list(pairs.values())
     for key in gone:
         if key not in nodes and key in names:
             nodes[key] = Node(key, names[key], "stopped", key == me)
