@@ -2,22 +2,40 @@
 
 import { reactive } from "vue";
 import { gateway } from "../api/gateway";
-import { onUnauthorized } from "../api/http";
+import { ApiError, onUnauthorized } from "../api/http";
+import { disconnectServer, servers } from "./servers";
 
 /** `open` is a gateway with no token: nobody signs in, so there is nothing to sign out of either. */
 export const auth = reactive({ checked: false, signedIn: false, open: false });
 
 onUnauthorized(() => {
   auth.signedIn = false;
+  if (servers.mode === "app") servers.problem = "The server refused the token; it may have been changed";
 });
 
 export async function checkSession(): Promise<void> {
+  if (servers.mode === "app" && !servers.active) {
+    auth.signedIn = false;
+    auth.checked = true;
+    return;
+  }
   try {
     const session = await gateway.session();
+    if (servers.mode === "app" && session.open === true) {
+      // An app origin cannot write to an open gateway; an old profile may still point at one.
+      auth.signedIn = false;
+      servers.problem = "This gateway has no token; start it with --token to use the app";
+      auth.checked = true;
+      return;
+    }
     auth.signedIn = session.authenticated;
     auth.open = session.open === true;
-  } catch {
+    if (session.authenticated) servers.problem = "";
+  } catch (failure) {
     auth.signedIn = false;
+    if (servers.mode === "app" && !servers.problem) {
+      servers.problem = failure instanceof ApiError ? failure.message : String(failure);
+    }
   }
   auth.checked = true;
 }
@@ -28,6 +46,10 @@ export async function signIn(token: string): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
+  if (servers.mode === "app") {
+    await disconnectServer();
+    return;
+  }
   try {
     await gateway.logout();
   } finally {

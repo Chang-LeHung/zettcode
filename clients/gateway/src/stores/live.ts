@@ -3,6 +3,7 @@
 
 import { EventSocket } from "../api/events";
 import { t } from "../i18n";
+import { nativeBridge } from "../lib/native";
 import type { GatewayEvent } from "../types";
 import { applyTraffic, loadGraph } from "./graph";
 import { applyGroupTraffic } from "./groups";
@@ -11,14 +12,23 @@ import { prefs } from "./prefs";
 import { auth } from "./auth";
 import { route } from "./route";
 import { applyStream, resetStreams } from "./stream";
+import { servers } from "./servers";
 import { applyThreads, lobby, loadThreads } from "./threads";
 
 let socket: EventSocket | null = null;
 
 function notify(event: Extract<GatewayEvent, { type: "inbound" }>): void {
-  if (!prefs.notify || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  if (!prefs.notify) return;
   const watching = !document.hidden && route.nav === "chats" && route.arg === event.id;
   if (watching) return;
+  // The shell's notice is the one that works while the page is not the front window; a browser falls back to the
+  // Web Notification API, which the gateway page has always used.
+  const shell = nativeBridge();
+  if (shell?.notify) {
+    shell.notify(event.sender, event.text);
+    return;
+  }
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
   const shown = new Notification(event.sender, { body: event.text, tag: event.id });
   shown.onclick = () => {
     window.focus();
@@ -61,6 +71,7 @@ export function connect(): void {
     },
     unauthorized() {
       auth.signedIn = false;
+      if (servers.mode === "app") servers.problem = "The server refused the token; it may have been changed";
     },
   });
   socket.start();
@@ -74,11 +85,13 @@ export function disconnect(): void {
 
 /** The text a notification permission request leaves behind, for the settings page. */
 export function notificationState(): string {
+  if (nativeBridge()?.notify) return "granted";
   if (typeof Notification === "undefined") return t("Not supported by this browser");
   return Notification.permission;
 }
 
 export async function enableNotifications(): Promise<boolean> {
+  if (nativeBridge()?.notify) return true;
   if (typeof Notification === "undefined") return false;
   const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
   return permission === "granted";

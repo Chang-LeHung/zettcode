@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { t } from "../../i18n";
 import { auth, signOut } from "../../stores/auth";
+import { servers } from "../../stores/servers";
 import { lobby } from "../../stores/threads";
 </script>
 
@@ -14,5 +15,7 @@ import { lobby } from "../../stores/threads";
   </div>
   <p v-if="auth.open" class="card-hint">{{ t("This gateway has no token: anyone on this machine can start agents that run commands as you.") }}</p>
   <p v-else class="card-hint">{{ t("Anyone signed in here can start agents that run commands as you. Keep the token private.") }}</p>
-  <div v-if="!auth.open" class="actions"><button class="btn danger" @click="signOut">{{ t("Sign out") }}</button></div>
+  <div v-if="!auth.open" class="actions">
+    <button class="btn danger" @click="signOut">{{ servers.mode === "app" ? t("Switch server") : t("Sign out") }}</button>
+  </div>
 </template>

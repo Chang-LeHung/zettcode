@@ -1,6 +1,7 @@
 // JSON over HTTP. Every failure is an ApiError that carries the code a view can branch on and a sentence to show.
 
 import { t } from "../i18n";
+import { apiUrl, authorization, connection } from "./connection";
 
 export interface ErrorBody {
   code: string;
@@ -31,12 +32,15 @@ export function onUnauthorized(handler: () => void): void {
 }
 
 export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { ...authorization() };
+  if (body !== undefined) headers["content-type"] = "application/json";
   let response: Response;
   try {
-    response = await fetch(path, {
+    response = await fetch(apiUrl(path), {
       method,
-      credentials: "same-origin",
-      headers: body === undefined ? {} : { "content-type": "application/json" },
+      // A page served by the gateway is signed in by its cookie; an app carries the token and has no cookie to send.
+      credentials: connection.baseUrl ? "omit" : "same-origin",
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {

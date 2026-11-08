@@ -13,6 +13,7 @@ const translations = {
       messaging: "Talking between sessions",
       daemons: "Background agents",
       gateway: "Web gateway",
+      app: "Desktop & phone apps",
       context: "The context window",
       usage: "Token usage",
       config: "Configuration",
@@ -71,6 +72,7 @@ const translations = {
       messaging: "会话之间互发消息",
       daemons: "后台 agent",
       gateway: "网页网关",
+      app: "桌面端与手机端",
       context: "上下文窗口",
       usage: "Token 用量",
       config: "配置参考",
@@ -124,7 +126,7 @@ const translations = {
 // nested under it rather than as three siblings that a reader has to guess belong together.
 const layout = [
   { group: 0, pages: ["overview", "getting-started"] },
-  { group: 1, pages: ["interface", "keys", "commands", "sessions", "messaging", "daemons", "gateway"] },
+  { group: 1, pages: ["interface", "keys", "commands", "sessions", "messaging", "daemons", "gateway", "app"] },
   {
     group: 2,
     pages: [

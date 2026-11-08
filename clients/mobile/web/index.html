@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#17212b">
+<title>ZettCode</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f4f5; --surface: #fff; --text: #0f1419; --muted: #707579; --divider: #e3e5e8;
+    --accent: #3390ec; --accent-text: #fff; --accent-soft: rgba(51, 144, 236, .12);
+    --bad: #e53935; --bad-soft: rgba(229, 57, 53, .13); --ok: #4fae4e;
+    --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1621; --surface: #17212b; --text: #f5f5f5; --muted: #7f91a4; --divider: #0e1621;
+      --accent: #5eb5f7; --accent-text: #0b1620; --accent-soft: rgba(94, 181, 247, .16); --bad-soft: rgba(229, 57, 53, .2); }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif; }
+  body { padding: calc(20px + var(--safe-top)) 14px calc(24px + var(--safe-bottom)); }
+  .wrap { max-width: 34rem; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  header { display: flex; align-items: center; gap: 14px; padding: 6px 4px; }
+  header img { width: 58px; height: 58px; object-fit: contain; flex: none; }
+  h1 { margin: 0; font-size: 1.45rem; line-height: 1.15; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: .92rem; }
+  .card { background: var(--surface); border-radius: 16px; overflow: hidden; }
+  form { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  label { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: .78rem;
+    font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+  input { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid var(--divider);
+    border-radius: 11px; background: var(--bg); color: var(--text); font: inherit; text-transform: none; }
+  button { font: inherit; border: 0; cursor: pointer; }
+  .btn { min-height: 46px; padding: 0 18px; border-radius: 12px; background: var(--accent);
+    color: var(--accent-text); font-weight: 650; }
+  .btn:disabled { opacity: .5; }
+  .err { color: var(--bad); font-size: .88rem; min-height: 1.1em; }
+  .hint { margin: 0; padding: 0 4px; color: var(--muted); font-size: .82rem; line-height: 1.45; text-align: center; }
+  .hint.warn { color: var(--bad); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: stretch; border-top: 1px solid var(--divider); }
+  li:first-child { border-top: 0; }
+  .open { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 14px 16px;
+    background: none; color: inherit; text-align: left; }
+  .open b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .open small { color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: .76rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .remove { width: 52px; color: var(--bad); font-size: 1.2rem; background: none; }
+  .empty { padding: 24px 16px; text-align: center; color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="logo.svg" alt="">
+    <div><h1>ZettCode</h1><p>Choose the gateway this phone talks to</p></div>
+  </header>
+
+  <div class="card">
+    <form id="add">
+      <label>Address
+        <input id="url" type="text" inputmode="url" autocapitalize="off" spellcheck="false"
+               placeholder="http://192.168.1.20:8765" required>
+      </label>
+      <div class="err" id="err" role="alert"></div>
+      <button class="btn" type="submit">Add a server</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <ul id="list"></ul>
+  </div>
+  <p class="hint">The gateway asks for its token on its own sign-in page. This app keeps the address list, not the token;
+    the page keeps its cookie.</p>
+  <p class="hint warn">A plain HTTP address sends the token in the clear; use HTTPS beyond your own network.</p>
+</div>
+<script>
+  const KEY = "zettcode.servers";
+  const $ = (id) => document.getElementById(id);
+  let servers = load();
+
+  function load() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(KEY) || "[]");
+      return Array.isArray(saved) ? saved.filter((item) => item && typeof item.url === "string") : [];
+    } catch {
+      return [];
+    }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(servers)); } catch { /* a full store costs only the list */ }
+  }
+  function normalize(raw) {
+    let url;
+    try { url = new URL(raw.trim()); } catch { throw new Error("Write the address as http://host:port"); }
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("The address starts with http:// or https://");
+    if (!/^\/+$/.test(url.pathname)) throw new Error("The gateway is served at the root of its address");
+    if (url.username || url.password) throw new Error("The address cannot carry a user name or a password");
+    if (url.search || url.hash) throw new Error("The address cannot carry a query or a token");
+    return url.origin;
+  }
+  function openServer(url) { location.href = url + "/"; }
+
+  function render() {
+    const list = $("list");
+    list.textContent = "";
+    if (!servers.length) {
+      const empty = document.createElement("li");
+      empty.className = "empty";
+      empty.textContent = "No servers yet.";
+      list.append(empty);
+      return;
+    }
+    for (const server of servers) {
+      const row = document.createElement("li");
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "open";
+      const name = document.createElement("b");
+      name.textContent = server.name || server.url;
+      const address = document.createElement("small");
+      address.textContent = server.url;
+      open.append(name, address);
+      open.addEventListener("click", () => openServer(server.url));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "remove";
+      remove.setAttribute("aria-label", "Remove this server");
+      remove.textContent = "×";
+      remove.addEventListener("click", () => {
+        if (!confirm("Remove " + server.url + "?")) return;
+        servers = servers.filter((item) => item.url !== server.url);
+        save();
+        render();
+      });
+      row.append(open, remove);
+      list.append(row);
+    }
+  }
+
+  $("add").addEventListener("submit", (event) => {
+    event.preventDefault();
+    try {
+      const url = normalize($("url").value);
+      if (!servers.some((item) => item.url === url)) {
+        servers.push({ url, name: new URL(url).host });
+        save();
+        render();
+      }
+      $("url").value = "";
+      $("err").textContent = "";
+      openServer(url);
+    } catch (error) {
+      $("err").textContent = error.message;
+    }
+  });
+
+  window.addEventListener("pageshow", render);
+  render();
+</script>
+</body>
+</html>

@@ -4,12 +4,10 @@ import { connect, disconnect } from "./stores/live";
 import { auth, checkSession } from "./stores/auth";
 import { watchPrefs } from "./stores/prefs";
 import { watchRoute } from "./stores/route";
+import { loadServers } from "./stores/servers";
 import "katex/dist/katex.min.css";
 import "./styles/theme.css";
 import "./styles/base.css";
-
-watchPrefs();
-watchRoute();
 
 // The visual viewport, not the layout one, is what is left when a phone's keyboard is up. iOS Safari does not resize the
 // page for the keyboard: it slides the layout viewport up under the address bar instead, which is what makes a fixed
@@ -31,10 +29,19 @@ window.visualViewport?.addEventListener("scroll", fitViewport);
 window.addEventListener("scroll", fitViewport, { passive: true });
 window.addEventListener("orientationchange", fitViewport);
 
-createApp(App).mount("#app");
+async function start(): Promise<void> {
+  // The app's server list is read before anything is drawn: a page that guessed would ask the wrong gateway for a
+  // session, and the answer would be drawn as if it were this server's.
+  await loadServers();
+  // Preferences and drafts are scoped to the active server; they can only be read after that is known.
+  watchPrefs();
+  watchRoute();
+  createApp(App).mount("#app");
+  watch(
+    () => auth.signedIn,
+    (signedIn) => (signedIn ? connect() : disconnect()),
+  );
+  void checkSession();
+}
 
-watch(
-  () => auth.signedIn,
-  (signedIn) => (signedIn ? connect() : disconnect()),
-);
-void checkSession();
+void start();

@@ -23,6 +23,8 @@ jobs:
       typescript: ${{ steps.files.outputs.typescript }}
       vscode: ${{ steps.files.outputs.vscode }}
       gateway: ${{ steps.files.outputs.gateway }}
+      desktop: ${{ steps.files.outputs.desktop }}
+      mobile: ${{ steps.files.outputs.mobile }}
       package: ${{ steps.files.outputs.package }}
     steps:
       - uses: actions/checkout@v7
@@ -73,6 +75,8 @@ jobs:
           typescript=false; matches '^clients/typescript/' && typescript=true
           vscode=false;     [ "$typescript" = true ] && vscode=true;  matches '^clients/vscode/' && vscode=true
           gateway=false;    matches '^clients/gateway/' && gateway=true
+          desktop=false;    matches '^clients/(desktop|gateway)/' && desktop=true
+          mobile=false;     matches '^clients/mobile/' && mobile=true
           package=false;    [ "$python" = true ] && package=true;  [ "$gateway" = true ] && package=true
 
           echo "Reading the change against ${base:-nothing}:"
@@ -83,6 +87,8 @@ jobs:
             echo "typescript=$typescript"
             echo "vscode=$vscode"
             echo "gateway=$gateway"
+            echo "desktop=$desktop"
+            echo "mobile=$mobile"
             echo "package=$package"
           } >> "$GITHUB_OUTPUT"
 
@@ -227,9 +233,64 @@ jobs:
         working-directory: clients/gateway
         run: npm run check && npm test
 
-      - name: Build
+      - name: Build the page and its app bundle
         working-directory: clients/gateway
-        run: npm run build
+        run: npm run build && npm run build:app
+
+  desktop:
+    name: Desktop app
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    env:
+      # The tests and the build do not start Electron; downloading its runtime here would only cost a minute.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            clients/gateway/package-lock.json
+            clients/desktop/package-lock.json
+
+      - name: Install the page's build toolchain
+        working-directory: clients/gateway
+        run: npm ci --no-audit --no-fund
+
+      - name: Install
+        working-directory: clients/desktop
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check, test and build
+        working-directory: clients/desktop
+        run: npm run check && npm test && npm run build
+
+  mobile:
+    name: Phone app
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: clients/mobile/package-lock.json
+
+      - name: Install
+        working-directory: clients/mobile
+        run: npm ci --no-audit --no-fund
+
+      # No Android SDK is needed to copy `web/` into the Gradle project; `make mobile-apk` is the one that needs a
+      # device toolchain, and this job says the native project is still in sync.
+      - name: Type-check and sync
+        working-directory: clients/mobile
+        run: npm run check && npm run sync
 
   vscode:
     name: VS Code extension

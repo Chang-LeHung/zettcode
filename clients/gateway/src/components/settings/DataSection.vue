@@ -8,7 +8,7 @@ import { confirmAction } from "../sheets/sheets";
 async function wipe(): Promise<void> {
   const sure = await confirmAction({
     title: t("Clear what this browser remembers?"),
-    text: t("Drafts, templates, recent folders and preferences are removed from this browser. Sessions and daemons are not touched."),
+    text: t("Drafts, templates, recent folders and preferences are removed from this device, for every server. Sessions and daemons are not touched."),
     ok: t("Clear"),
     danger: true,
   });

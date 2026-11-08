@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light dark">
+<!-- The page the gateway serves answers with a stricter policy of its own; this one is what an app bundle, served from
+     its own origin, needs to reach the server it was configured with and to draw the pictures it reads with a token. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; object-src 'none'; base-uri 'none'">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#17212b" media="(prefers-color-scheme: dark)">
 <meta name="mobile-web-app-capable" content="yes">

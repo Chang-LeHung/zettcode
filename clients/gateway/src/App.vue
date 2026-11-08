@@ -17,11 +17,17 @@ import SettingsPage from "./components/settings/SettingsPage.vue";
 import LoginScreen from "./components/shell/LoginScreen.vue";
 import Rail from "./components/shell/Rail.vue";
 import SectionPane from "./components/shell/SectionPane.vue";
+import ServerGate from "./components/shell/ServerGate.vue";
 import WelcomeMain from "./components/shell/WelcomeMain.vue";
 import { CONFIG_SECTIONS, SETTINGS_SECTIONS } from "./sections";
 import { t } from "./i18n";
 import { auth } from "./stores/auth";
 import { route } from "./stores/route";
+import { servers } from "./stores/servers";
+
+const settingsSections = computed(() =>
+  SETTINGS_SECTIONS.filter((section) => section.id !== "servers" || servers.mode === "app"),
+);
 
 const pane = computed<{ component: Component; props: Record<string, unknown> }>(() => {
   switch (route.nav) {
@@ -34,7 +40,10 @@ const pane = computed<{ component: Component; props: Record<string, unknown> }>(
     case "graph":
       return { component: GraphPane, props: {} };
     case "settings":
-      return { component: SectionPane, props: { nav: "settings", title: t("Settings"), sections: SETTINGS_SECTIONS } };
+      return {
+        component: SectionPane,
+        props: { nav: "settings", title: t("Settings"), sections: settingsSections.value },
+      };
     default:
       return { component: ChatPane, props: {} };
   }
@@ -69,7 +78,8 @@ const fullscreen = computed(() => route.nav === "chats" && route.arg !== "");
 
 <template>
   <div id="root">
-    <LoginScreen v-if="auth.checked && !auth.signedIn" />
+    <ServerGate v-if="servers.mode === 'app' && (!servers.active || (auth.checked && !auth.signedIn))" />
+    <LoginScreen v-else-if="auth.checked && !auth.signedIn" />
     <div v-else-if="auth.checked" class="app" :data-view="view" :data-fullscreen="fullscreen">
       <Rail />
       <section class="pane"><component :is="pane.component" v-bind="pane.props" /></section>

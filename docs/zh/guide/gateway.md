@@ -34,6 +34,9 @@ zettcode gateway restart            # 先停，再按原来的设置启动
   页面是明文 HTTP，离开本机时请放在 TLS 后面。
 - `-r`/`--root` 限定 daemon 可以在哪些目录里启动；默认任何目录都可以。`--no-full` 不允许页面以
   full shell 级别（没有沙箱、不询问）启动 daemon；记录过 `--no-full` 之后，可以用 `--full` 再打开。
+- [桌面端](app.md) 从自己的 origin 连接。带 token 的网关会放行它；没有 token 时会被拒绝，因为
+  origin 不是凭据。`--client-origin https://client.example` 可以为自己的页面再加一个 origin，同样需要 token。
+  安卓端直接加载网关自己的页面，不需要在这里登记。
 
 ## 页面能做什么
 
