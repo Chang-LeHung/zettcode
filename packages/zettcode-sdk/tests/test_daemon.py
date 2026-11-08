@@ -365,6 +365,64 @@ async def test_only_the_stop_that_this_process_was_sent_decides_that_its_record_
     assert daemon.record.state is not None and daemon.record.state.keep is True
 
 
+class _OpeningClient:
+    """The slice of a client `serve` uses to open a session: whether another process holds it is the one variable."""
+
+    def __init__(self, locked: bool) -> None:
+        self.session = type("Session", (), {"locked": locked, "id": "01a1"})()
+        self.sessions = self
+        self.opened: list[str] = []
+
+    async def __aenter__(self) -> _OpeningClient:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def open(self, session_id: str) -> None:
+        self.opened.append(session_id)
+
+
+async def test_a_daemon_asked_to_resume_a_session_another_process_holds_refuses_instead_of_running_read_only(
+    home, monkeypatch, capsys
+):
+    """`sessions.open` does not refuse a held session, it selects it to be read; a daemon would then sit idle in the
+    list while every turn failed at its first write, and the page that started it said "started"."""
+    from zettcode.daemon import run
+
+    held = _OpeningClient(locked=True)
+    monkeypatch.setattr(run, "_client", lambda options: held)
+    served: list[bool] = []
+
+    async def never(self) -> int:
+        served.append(True)
+        return run.EXIT_OK
+
+    monkeypatch.setattr(run.Daemon, "serve", never)
+
+    status = await run.serve(Options(workspace=home, token="t", session="01a1"))
+
+    assert status == run.EXIT_UNUSABLE and held.opened == ["01a1"] and served == []
+    assert "open in another ZettCode process" in capsys.readouterr().err
+
+
+async def test_a_daemon_asked_to_resume_a_free_session_serves_it(home, monkeypatch):
+    from zettcode.daemon import run
+
+    free = _OpeningClient(locked=False)
+    monkeypatch.setattr(run, "_client", lambda options: free)
+    served: list[bool] = []
+
+    async def serving(self) -> int:
+        served.append(True)
+        return run.EXIT_OK
+
+    monkeypatch.setattr(run.Daemon, "serve", serving)
+
+    assert await run.serve(Options(workspace=home, token="t", session="01a1")) == run.EXIT_OK
+    assert served == [True]
+
+
 def test_a_daemon_that_cannot_start_says_why_and_leaves_no_record(home, monkeypatch, tmp_path):
     broken = tmp_path / "broken.toml"
     broken.write_text("[[models]]\nmodel = 3\n", encoding="utf-8")
