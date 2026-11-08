@@ -35,6 +35,7 @@ members = [
     "zettcode-skills",
     "zettcode-todos",
     "zettcode-tool-output",
+    "zettcode-tools",
     "zettcode-truncation",
     "zettcode-tui",
     "zettcode-workspace",
@@ -2958,6 +2959,7 @@ dependencies = [
     { name = "zettcode-skills" },
     { name = "zettcode-todos" },
     { name = "zettcode-tool-output" },
+    { name = "zettcode-tools" },
     { name = "zettcode-truncation" },
     { name = "zettcode-tui" },
 ]
@@ -3001,6 +3003,7 @@ requires-dist = [
     { name = "zettcode-skills", editable = "packages/zettcode-skills" },
     { name = "zettcode-todos", editable = "packages/zettcode-todos" },
     { name = "zettcode-tool-output", editable = "packages/zettcode-tool-output" },
+    { name = "zettcode-tools", editable = "packages/zettcode-tools" },
     { name = "zettcode-truncation", editable = "packages/zettcode-truncation" },
     { name = "zettcode-tui", editable = "packages/zettcode-tui" },
 ]
@@ -3099,6 +3102,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "zett-agent" },
+    { name = "zettcode-tools" },
 ]
 
 [package.optional-dependencies]
@@ -3113,6 +3117,7 @@ requires-dist = [
     { name = "tiktoken", marker = "extra == 'tiktoken'", specifier = ">=0.12,<1" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2,<3" },
     { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
+    { name = "zettcode-tools", editable = "packages/zettcode-tools" },
 ]
 provides-extras = ["tiktoken"]
 
@@ -3433,17 +3438,33 @@ requires-dist = [
 ]
 
 [[package]]
+name = "zettcode-tools"
+source = { editable = "packages/zettcode-tools" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "zett-agent" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2,<3" },
+    { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
+]
+
+[[package]]
 name = "zettcode-truncation"
 source = { editable = "packages/zettcode-truncation" }
 dependencies = [
     { name = "zett-agent" },
     { name = "zettcode-engine" },
+    { name = "zettcode-tools" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "zett-agent", specifier = ">=0.2.10,<0.3" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
+    { name = "zettcode-tools", editable = "packages/zettcode-tools" },
 ]
 
 [[package]]

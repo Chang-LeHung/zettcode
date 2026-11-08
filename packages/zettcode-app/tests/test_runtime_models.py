@@ -558,7 +558,7 @@ async def test_a_text_only_model_reads_with_the_text_reader_and_a_model_with_sea
 
     from zettcode.engine.extensions.capabilities import ModelCapabilities
     from zettcode.engine.extensions.files import CodingBundle
-    from zettcode.engine.tools.files import read, read_file
+    from zettcode.tools.files import read, read_file
 
     class Context:
         """The things the filter reads and changes."""

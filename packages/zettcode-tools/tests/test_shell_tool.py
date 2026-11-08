@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.engine.tools.output import (
+from zettcode.tools.output import (
     MAX_OUTPUT_BYTES,
     MAX_OUTPUT_LINES,
     OMISSION,
@@ -16,7 +16,7 @@ from zettcode.engine.tools.output import (
     stream_preview,
     utf8_prefix,
 )
-from zettcode.engine.tools.shell import (
+from zettcode.tools.shell import (
     DEFAULT_TIMEOUT_SECONDS,
     OUTPUT_ROOT,
     CommandFailed,

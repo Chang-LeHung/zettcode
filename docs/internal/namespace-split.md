@@ -16,9 +16,9 @@ Two goals, and the second is what fixes the shape:
    `zettcode.config` and `zettcode.engine`, so `pip install zettcode` is its only option — the whole program, with
    every face and every UI widget.
 
-The engine has no dependencies of ours, so it is the root of the dependency graph: everything else may depend on it,
-it depends on nothing but `zett-agent` and `pydantic`. A plugin that adds an agent extension needs that and nothing
-more; a plugin that draws needs the TUI side too, which is why `zettcode-plugin-api` exists (below).
+`zettcode-tools` has no dependencies of ours, so it is the root of the dependency graph: the engine sits above it and
+depends on nothing else of ours but `zett-agent` and `pydantic`. A plugin that adds an agent extension needs the engine
+and nothing more; a plugin that draws needs the TUI side too, which is why `zettcode-plugin-api` exists (below).
 
 ## The namespace
 
@@ -39,7 +39,8 @@ union of what is installed and every distribution contributes its own parts to i
 
 | Distribution | Ships | Depends on |
 | --- | --- | --- |
-| `zettcode-engine` | `zettcode/engine/**`, and the leaves the runtime needs: `config`, `config_edit`, `paths`, `providers`, `prompt`, `relay` (the marker), `wire`, `wording`, `filelock`, `error_text`, `budget`, `modes`, `logging_setup`, `processes`, `registry`, `statusline_parts`, `_compat`, `plugin_tui`, `mention` (the protocol and the registry), `version` | `zett-agent`, `pydantic` |
+| `zettcode-tools` | `zettcode/tools/**`: the coding tools — `read`, `read_file`, `glob`, `grep`, `write_file`, `edit` and `bash` (`files`, `shell`), what they are built from (`workspace`, `output`, `images`), and the sandbox contract the shell tool asks the permission level for (`boundary`) | `zett-agent`, `pydantic` |
+| `zettcode-engine` | `zettcode/engine/**`, and the leaves the runtime needs: `config`, `config_edit`, `paths`, `providers`, `prompt`, `relay` (the marker), `wire`, `wording`, `filelock`, `error_text`, `budget`, `modes`, `logging_setup`, `processes`, `registry`, `statusline_parts`, `_compat`, `plugin_tui`, `mention` (the protocol and the registry), `version` | `zettcode-tools`, `zett-agent`, `pydantic` |
 | `zettcode-tui` | `zettcode/tui/**` and a local `tui/_compat.py` | — (no distribution of ours) |
 | `zettcode-broker` | `zettcode/broker/**` | `zettcode-engine` (filelock, logging_setup, modes, processes) |
 | `zettcode-sdk` | `zettcode/sdk/**`, `zettcode/daemon/**`, `zettcode/doctor.py`, `zettcode/mentions.py` (the implementations), `zettcode/table.py`, and the composition root `zettcode/sdk/builtins.py` | `zettcode-engine`, `zettcode-broker` |
@@ -58,7 +59,7 @@ union of what is installed and every distribution contributes its own parts to i
 | `zettcode-instructions` | `zettcode/instructions/**`: the plugin `project-instructions`, which hands the agent the workspace's `AGENTS.md` files as it reads them for every request; found through the `zettcode.plugin` entry point, switched off by `[agents_md] enabled`; the SDK and `zettcode` depend on it | `zettcode-engine`, `zett-agent` |
 | `zettcode-todos` | `zettcode/todos/**`: the plugin `todos`, which provides the plan as a service and hands the agent the `todo_write` tool when the tool is on; found through the `zettcode.plugin` entry point, switched by `[harness] todowrite`; the SDK and `zettcode` depend on it | `zettcode-engine`, `zett-agent` |
 | `zettcode-tool-output` | `zettcode/tool_output/**`: the plugin `tool-output`, which moves a `bash` command's kept streams out of the reader's project and into the session's folder (`tool-output/`), with the extension it hands the agent (`extension`, over the store the runtime provides); found through the `zettcode.plugin` entry point and nothing turns it off; the SDK and `zettcode` depend on it | `zettcode-engine`, `zett-agent` |
-| `zettcode-truncation` | `zettcode/truncation/**`: the plugin `long-output`, the backstop for a result no tool of ours bounded — it keeps the whole result in the session's folder and sends its start and its end; found through the `zettcode.plugin` entry point and nothing turns it off; the SDK and `zettcode` depend on it. The folder's name is the engine's (`storage.KEPT_OUTPUT`), so the two parts write to one place without importing each other | `zettcode-engine`, `zett-agent` |
+| `zettcode-truncation` | `zettcode/truncation/**`: the plugin `long-output`, the backstop for a result no tool of ours bounded — it keeps the whole result in the session's folder and sends its start and its end; found through the `zettcode.plugin` entry point and nothing turns it off; the SDK and `zettcode` depend on it. The folder's name is the engine's (`storage.KEPT_OUTPUT`), so the two parts write to one place without importing each other | `zettcode-engine`, `zettcode-tools`, `zett-agent` |
 | `zettcode-guidance` | `zettcode/guidance/**`: the plugin `tool-guidelines`, which registers the per-tool guidance extension as a factory, so a tool's call shapes, guidelines and return type are in its own description; found through the `zettcode.plugin` entry point and nothing turns it off; the SDK and `zettcode` depend on it. The extension stays in the engine (`engine/extensions/guidance.py`), because the `task` tool builds every child agent with it | `zettcode-engine`, `zett-agent` (the type the factory returns, imported by the type checker) |
 | `zettcode-app` | `zettcode/app/**`, `zettcode/collector.py`, `zettcode/update.py` | `zettcode-engine`, `zettcode-tui`, `zettcode-sdk`, `zettcode-broker`, `zettcode-plugin-api`, `zettcode-presenters` |
 | `zettcode` | `zettcode/cli.py`, `plugin_cli.py`, `oneshot.py`, the console scripts | all of the above |
@@ -92,9 +93,9 @@ its own. A test holds that: `test_every_distribution_ships_under_the_zettcode_na
 
 ## What leaves the engine
 
-The engine keeps the runtime: dialogue, storage, permission, tools, the extension machinery, the plugin machinery and
-their data types. What is *composition* or *config-file writing* moves up, because it needs a broker, a config file or
-a third-party library the engine must not carry:
+The engine keeps the runtime: dialogue, storage, permission, the extension machinery, the plugin machinery and their
+data types; the coding tools are the distribution below it. What is *composition* or *config-file writing* moves up,
+because it needs a broker, a config file or a third-party library the engine must not carry:
 
 | Today | Moves to | Because |
 | --- | --- | --- |

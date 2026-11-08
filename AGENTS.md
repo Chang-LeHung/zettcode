@@ -14,12 +14,14 @@ from the root.
     `pyproject.toml` files; `make order` writes the list to the ignored `packages/order.txt`), and `release.yml`
     builds and publishes them in that order — one version, one `v<version>` tag, read from
     `packages/zettcode-engine/src/zettcode/version.py`.
-  - `zettcode-engine` is the root of the graph: the runtime over `zett-agent` (`core.py`, and the `dialogue/`,
-    `extensions/`, `permission/`, `storage/`, `tools/`, `export/` it is built from) and the leaves it is written on
-    (`config`, `config_edit`, `paths`, `prompt`, `relay`, `wire`, ...). It imports nothing else of ours — not the
-    terminal, the SDK, the server, the broker, nor the built-in plugin set, which is `sdk/builtins.py` and is passed
-    in by whoever builds the runtime — and `packages/zettcode/tests/test_structure.py` holds that closure. `docs/internal/engine.md` has
-    the design.
+  - `zettcode-tools` is the root of the graph: the coding tools (`read`, `read_file`, `glob`, `grep`, `write_file`,
+    `edit`, `bash`) with what they are built from and the sandbox contract the shell asks the permission level for. It
+    depends on `zett-agent` and `pydantic` only.
+  - `zettcode-engine` sits above the tools: the runtime over `zett-agent` (`core.py`, and the `dialogue/`,
+    `extensions/`, `permission/`, `storage/`, `export/` it is built from) and the leaves it is written on
+    (`config`, `config_edit`, `paths`, `prompt`, `relay`, `wire`, ...). It imports no terminal, SDK, server, broker or
+    built-in plugin set — `sdk/builtins.py` is passed in by whoever builds the runtime — and
+    `packages/zettcode/tests/test_structure.py` holds that closure. `docs/internal/engine.md` has the design.
   - `zettcode-tui` is the widget framework and imports nothing of ours; `zettcode-broker` is the session broker (one
     small Starlette application served by uvicorn on loopback; sessions are WebSockets, sending is `POST /messages`,
     any process with the token may use it; there is no RPC layer of our own in it, and none should be added);
@@ -52,7 +54,7 @@ from the root.
   it, built only on the released hook contract and context/event types, so
   storage policy moves with this repository. And the coding tools (`read`,
   `read_file`, `glob`, `grep`, `write_file`, `edit`, `bash`), which are
-  `engine/tools`: ours, fully type-hinted, registered through the framework's
+  `zettcode-tools`: ours, fully type-hinted, registered through the framework's
   `@tool` and `AgentTool` contract but run by nothing from the framework. Do not
   import a tool from `zett_agent.tools.coding` or a file-system extension.
 - A new interface between our own parts is an abstract base class, not a

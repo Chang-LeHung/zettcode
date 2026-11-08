@@ -13,9 +13,9 @@ from zettcode.config import load_config
 from zettcode.engine.extensions.files import CodingBundle
 from zettcode.engine.permission import Permission, ShellPolicy
 from zettcode.engine.permission.sandbox import ShellSandbox, temporary_roots
-from zettcode.engine.tools.boundary import Boundary, Sandboxer
-from zettcode.engine.tools.shell import shell_tool
 from zettcode.sdk.builtins import load_agent_plugins
+from zettcode.tools.boundary import Boundary, Sandboxer
+from zettcode.tools.shell import shell_tool
 
 #: Real probes need the platform's sandbox. They are skipped, not faked, where there is none (Windows, or a Linux
 #: machine without bubblewrap): what the fallback does there is tested separately, with a stand-in.

@@ -60,7 +60,7 @@ class ModelCapabilities(AgentExtension):
         if model is None:
             return
         # Imported here: the file tools pull in the schema library, which the first frame never needs.
-        from ..tools.files import read, read_file
+        from zettcode.tools.files import read, read_file
 
         if not model.multimodal and context.tools.pop(read.name, None) is not None:
             context.register_tool(read_file)

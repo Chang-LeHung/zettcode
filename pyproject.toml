@@ -50,6 +50,7 @@ zettcode = { workspace = true }
 zettcode-app = { workspace = true }
 zettcode-broker = { workspace = true }
 zettcode-engine = { workspace = true }
+zettcode-tools = { workspace = true }
 zettcode-gateway = { workspace = true }
 zettcode-sdk = { workspace = true }
 zettcode-server = { workspace = true }
@@ -79,6 +80,7 @@ python_version = "3.10"
 explicit_package_bases = true
 mypy_path = [
   "packages/zettcode-engine/src",
+  "packages/zettcode-tools/src",
   "packages/zettcode-tui/src",
   "packages/zettcode-broker/src",
   "packages/zettcode-sdk/src",
@@ -106,6 +108,7 @@ mypy_path = [
 ]
 files = [
   "packages/zettcode-engine/src",
+  "packages/zettcode-tools/src",
   "packages/zettcode-tui/src",
   "packages/zettcode-broker/src",
   "packages/zettcode-sdk/src",

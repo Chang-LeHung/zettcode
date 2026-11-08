@@ -17,6 +17,8 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
+  # The coding tools the runtime hands the model, a leaf of its own beneath the engine.
+  "zettcode-tools",
   # The runtime this is a core over. Imported directly: the agent, the message types, the approval mode.
   "zett-agent>=0.2.10,<0.3",
   # The session store's records are pydantic models.

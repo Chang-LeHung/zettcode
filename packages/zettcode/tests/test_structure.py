@@ -650,7 +650,7 @@ def test_the_hub_and_the_roster_know_nothing_of_the_web():
 
 
 #: What the engine's distribution ships besides its own tree: the leaves the runtime is written on. They are the
-#: engine's because it may not import anything of ours, which is what lets a plugin depend on the engine alone.
+#: engine's because it may not import anything above it, which is what lets a plugin depend on the engine alone.
 ENGINE_LEAVES = frozenset(
     {
         "_compat",
@@ -675,9 +675,13 @@ ENGINE_LEAVES = frozenset(
     }
 )
 
+#: The engine also imports the coding tools, a distribution below it. They are not leaves it ships: the shells, the
+#: schemas and the sandbox contract live in ``zettcode-tools`` so a reader can take them without the runtime.
+ENGINE_IMPORTS = ENGINE_LEAVES | {"tools"}
 
-def test_the_engine_imports_only_what_its_package_ships():
-    """The engine is the root of the split: the only things it imports of ours are the leaves it ships.
+
+def test_the_engine_imports_only_the_tools_and_the_leaves_it_ships():
+    """The engine sits above the tool distribution and below everything else: those are the only things it imports.
 
     An import of anything above it — the SDK, the terminal, the broker, the server — is a dependency a plugin would
     have to carry to use the engine, and one the namespace split cannot express without a cycle. `docs/internal/
@@ -699,7 +703,7 @@ def test_the_engine_imports_only_what_its_package_ships():
                 parts = target.split(".")
                 if len(parts) < 2 or parts[0] != "zettcode" or parts[1] == "engine":
                     continue
-                if parts[1] not in ENGINE_LEAVES:
+                if parts[1] not in ENGINE_IMPORTS:
                     offenders.append(f"{path.relative_to(source)}: {target}")
 
     assert sorted(offenders) == []

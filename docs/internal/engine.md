@@ -8,7 +8,9 @@ model can be put in (`HarnessSwitch`, `/harness`, `Client.use_harness`) — and 
 ## Layers
 
 ```
-engine   the agent core; internal, free to change; imports no app, no sdk, no server
+tools   the coding tools; imports zett-agent and pydantic only
+  ▲
+engine   the agent core; internal, free to change; imports the tools, no app, no sdk, no server
   ▲
 sdk      the public face: Client, Session, events, value types, errors; imports the engine only
   ▲        ▲
@@ -37,11 +39,11 @@ The engine is not part of the contract. There are no third-party plugins either,
 
 In `zettcode/engine/`: `core.py` (`ZettCodeEngine`), `agent/` (`ZettCodeAgent`, built from the mixins `base`,
 `settings`, `context`, `sessions`, `turns`, `interaction`, `exports`, plus `prompt`), `dialogue/`, `extensions/`,
-`permission/`, `storage/`, `tools/`, `export/`, `plugins/`, `inbox.py` (the queue contract), `pipeline.py` and
-`server_tools.py`.
+`permission/`, `storage/`, `export/`, `plugins/`, `inbox.py` (the queue contract), `pipeline.py` and
+`server_tools.py`. The coding tools are the distribution below it, in `zettcode/tools/`.
 
-The engine imports nothing else of ours. What it needs from the rest of the program is either a leaf it ships itself
-(the settings, the paths, the prompt parts) or is passed in by whoever builds the runtime: the plugin set that
+The engine imports the tool distribution and the leaves it ships (the settings, the paths, the prompt parts); what it
+needs from the rest of the program is passed in by whoever builds the runtime: the plugin set that
 composes the agent (the tools, the store, the permission, the compaction, the MCP client) is
 `zettcode/sdk/builtins.py`, and the line to the other sessions is built by the `messaging` plugin itself
 (`zettcode/messaging/messenger.py`) and provided to the rest of the program by name. That is what lets a

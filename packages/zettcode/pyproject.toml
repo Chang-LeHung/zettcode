@@ -28,6 +28,7 @@ dependencies = [
   # broker, the SDK, the server, the gateway, the terminal application -- and `pip install zettcode` still installs all
   # of them with one version, because this distribution is the one a reader asks for.
   "zettcode-engine[tiktoken]",
+  "zettcode-tools",
   "zettcode-tui",
   "zettcode-broker",
   "zettcode-sdk",

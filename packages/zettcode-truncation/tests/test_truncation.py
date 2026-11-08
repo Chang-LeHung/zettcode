@@ -20,7 +20,7 @@ from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import AgentBuild, load_plugins
 from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
 from zettcode.engine.storage import SessionStore
-from zettcode.engine.tools.files import read
+from zettcode.tools.files import read
 from zettcode.truncation import LongOutput
 from zettcode.truncation.extension import (
     MAX_RESULT_BYTES,
@@ -123,7 +123,7 @@ async def test_a_result_within_the_budget_is_left_exactly_as_it_was(store: Sessi
 
 def test_the_budget_leaves_room_for_every_note_a_tool_of_ours_ends_with():
     """A result our tools bounded is never taken apart here: the room for their note is the margin."""
-    from zettcode.engine.tools.output import MAX_OUTPUT_BYTES, MAX_OUTPUT_LINES
+    from zettcode.tools.output import MAX_OUTPUT_BYTES, MAX_OUTPUT_LINES
 
     assert MAX_RESULT_BYTES > MAX_OUTPUT_BYTES and MAX_RESULT_LINES > MAX_OUTPUT_LINES
     assert MAX_RESULT_BYTES - MAX_OUTPUT_BYTES >= 1024, "a path and a sentence fit the margin"
@@ -133,7 +133,7 @@ async def test_a_result_of_our_own_read_tool_at_its_budget_is_left_exactly_as_it
     store: SessionStore, workspace: Path
 ):
     """The margin above is real: a read that fills the budget comes back untouched and makes no file."""
-    from zettcode.engine.tools.output import MAX_OUTPUT_BYTES
+    from zettcode.tools.output import MAX_OUTPUT_BYTES
 
     (workspace / "wide.txt").write_text("z" * (MAX_OUTPUT_BYTES - 100) + "\n")
     text = await read.handler(file_path="wide.txt")
@@ -146,7 +146,7 @@ async def test_a_result_of_our_own_read_tool_at_its_budget_is_left_exactly_as_it
 
 async def test_the_marker_is_written_once_where_the_cut_is_even_if_the_text_quotes_it(store: SessionStore):
     """A tool result can contain the generic marker; the note that names the file belongs at the cut."""
-    from zettcode.engine.tools.output import OMISSION
+    from zettcode.tools.output import OMISSION
 
     body = "head\n" + OMISSION + "middle\n" + "row\n" * 6000
     message = ToolMessage(tool_call_id="c1", name="docs__search", content=body)

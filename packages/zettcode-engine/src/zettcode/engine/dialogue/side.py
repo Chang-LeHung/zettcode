@@ -187,7 +187,7 @@ class SideQuestions(AgentExtension):
     def _read_only(context: AgentRunContext) -> None:
         """Drop every registered tool that is not one of the reading ones, and make sure the two search tools are there."""
         # Imported here: the tools bring the schema library, which a request that is not a side question never needs.
-        from ..tools.files import glob, grep
+        from zettcode.tools.files import glob, grep
 
         for name in tuple(context.tools):
             if name not in READ_ONLY_TOOLS:

@@ -30,7 +30,7 @@ from pathlib import Path
 from zett_agent.sandbox import NetworkMode, SandboxPolicy, SandboxUnavailableError, create_sandbox
 from zett_agent.sandbox.base import Sandbox
 
-from ..tools.boundary import Sandboxer
+from zettcode.tools.boundary import Sandboxer
 
 __all__ = ["ShellSandbox", "SANDBOX_HINT", "temporary_roots"]
 

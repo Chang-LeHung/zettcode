@@ -37,8 +37,8 @@ from zett_agent.sandbox.base import Sandbox
 from zett_agent.tools.base import ToolResult
 
 from zettcode._compat import StrEnum
+from zettcode.tools.boundary import Boundary, Sandboxer
 
-from ..tools.boundary import Boundary, Sandboxer
 from .readonly import is_read_only
 from .sandbox import ShellSandbox
 

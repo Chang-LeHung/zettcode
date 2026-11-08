@@ -20,11 +20,11 @@ from zettcode.engine.extensions.files import CodingBundle
 from zettcode.engine.plugins import AgentBuild, load_plugins
 from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
 from zettcode.engine.storage import SessionStore
-from zettcode.engine.tools.shell import OUTPUT_ROOT as SHELL_OUTPUT_ROOT
-from zettcode.engine.tools.shell import shell_tool
 from zettcode.tool_output import ToolOutput
 from zettcode.tool_output import extension as tool_output_module
 from zettcode.tool_output.extension import OUTPUT_ROOT, ToolOutputExtension
+from zettcode.tools.shell import OUTPUT_ROOT as SHELL_OUTPUT_ROOT
+from zettcode.tools.shell import shell_tool
 
 bash = shell_tool()
 
@@ -504,7 +504,7 @@ def test_the_extension_is_loaded_without_the_schema_library():
 
     code = (
         "import sys; import zettcode.tool_output.extension, zettcode.engine.permission; "
-        "print(any(name.startswith('zettcode.engine.tools.') and name != 'zettcode.engine.tools.boundary' "
+        "print(any(name.startswith('zettcode.tools.') and name != 'zettcode.tools.boundary' "
         "for name in sys.modules))"
     )
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout
