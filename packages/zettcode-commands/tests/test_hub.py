@@ -1691,3 +1691,48 @@ def test_a_refresh_forgets_which_working_daemons_were_warned(monkeypatch):
     asyncio.run(command._refresh(page(), object()))
 
     assert not command._forced, "an s pressed long after the warning is a first s again"
+
+
+# -- who the reader is, at the top left -------------------------------------------------------------------
+
+
+def test_the_top_left_names_the_reader_by_name_and_title_each_cut_to_its_own_width():
+    from zettcode.commands.hub import ME_NAME_WIDTH, ME_TITLE_WIDTH
+
+    opened = HubPage(data(me_name="main", me_title="Fixing the broker"), on_close=lambda: None)
+    assert _rendered(opened, 110, 32)[0].strip() == "main \u00b7 Fixing the broker"
+
+    long_name, long_title = "n" * 60, "t" * 200
+    opened = HubPage(data(me_name=long_name, me_title=long_title), on_close=lambda: None)
+    top = _rendered(opened, 160, 32)[0].strip()
+    name, title = top.split(" \u00b7 ")
+    assert len(name) == ME_NAME_WIDTH and name.endswith("\u2026"), "the name is cut with an ellipsis"
+    assert len(title) == ME_TITLE_WIDTH and title.endswith("\u2026"), "so is the title, at its own limit"
+
+    narrow = _rendered(opened, 30, 32)[0]
+    assert len(narrow.rstrip()) <= 30 - 2, "and the whole is cut to the room there is"
+
+
+def test_the_top_left_leaves_out_what_is_empty():
+    assert _rendered(HubPage(data(me_title="Only a title"), on_close=lambda: None), 80, 32)[0].strip() == "Only a title"
+    assert _rendered(HubPage(data(me_name="only-name"), on_close=lambda: None), 80, 32)[0].strip() == "only-name"
+    assert _rendered(HubPage(data(), on_close=lambda: None), 80, 32)[0].strip() == ""
+
+
+def test_a_reading_takes_the_readers_name_from_the_roster_and_falls_back_to_the_handle_and_the_stored_title(
+    tmp_path, daemons_on_disk
+):
+    client = _FakeClient(
+        tmp_path,
+        {
+            "sessions": [{"session_id": "self-1", "handle": "main", "title": "From the roster", "status": "idle"}],
+            "edges": [],
+        },
+    )
+    reading = _read(client)
+    assert (reading.me_name, reading.me_title) == ("main", "From the roster")
+
+    client = _FakeClient(tmp_path, RuntimeError("no broker"))
+    client.handle = "fallback"
+    reading = _read(client)
+    assert reading.me_name == "fallback", "without the roster, the client's own handle"
