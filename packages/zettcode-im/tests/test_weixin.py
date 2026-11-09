@@ -171,3 +171,22 @@ def test_stopping_a_running_bridge_signals_it_and_says_so(tmp_path: Path) -> Non
 
     assert said == f"stopped the bridge (pid {held.process.pid})"
     assert not worker.running()
+
+
+def test_the_module_runs_itself_the_way_the_background_process_starts_it(tmp_path: Path) -> None:
+    """The worker starts `python -m zettcode.im.weixin.cli run`, not the console script: the module must act.
+
+    Without the `__main__` guard the child imports the module, does nothing and exits 0 — the log holds one line
+    and the bridge that was just announced as running never existed.
+    """
+    import subprocess
+
+    finished = subprocess.run(  # noqa: S603 - this program's own module
+        [sys.executable, "-m", "zettcode.im.weixin.cli", "status", "--state-dir", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert finished.returncode == 0, finished.stderr
+    assert "bridge:    not running" in finished.stdout, finished.stdout + finished.stderr

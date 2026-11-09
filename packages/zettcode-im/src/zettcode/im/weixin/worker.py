@@ -90,6 +90,9 @@ class Worker:
         with open(self.log, "a", encoding="utf-8") as log:
             log.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} starting\n")
             log.flush()
+            # Unbuffered, so what the process says before it is killed is in the log: a file is block-buffered,
+            # and a start that fails early is exactly the case this log exists for.
+            environment = {**os.environ, "PYTHONUNBUFFERED": "1"}
             if os.name == "nt":  # pragma: no cover - the platform's own way of saying "not in this console's group"
                 process = subprocess.Popen(  # noqa: S603 - the arguments are this program's own module and flags
                     argv,
@@ -97,6 +100,7 @@ class Worker:
                     stdout=log,
                     stderr=subprocess.STDOUT,
                     close_fds=True,
+                    env=environment,
                     creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
                 )
             else:
@@ -106,6 +110,7 @@ class Worker:
                     stdout=log,
                     stderr=subprocess.STDOUT,
                     close_fds=True,
+                    env=environment,
                     start_new_session=True,
                 )
         self.pid_file.write_text(str(process.pid), encoding="utf-8")
