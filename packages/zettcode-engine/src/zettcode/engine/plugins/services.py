@@ -31,6 +31,7 @@ PERSISTENCE = "persistence"
 MODELS = "models"
 COMPACTION_COUNTER = "compaction-counter"
 SELECTED_MODEL = "selected-model"
+LLM = "llm"
 
 #: What the plugin context gives a plugin: the same values its attributes expose, found by name.
 PLUGIN_AGENT = "plugin-agent"
@@ -82,6 +83,7 @@ def require(services: Mapping[str, object], name: str, kind: type[_T]) -> _T:
 
 __all__ = [
     "CONTEXT_REPORT",
+    "LLM",
     "PLUGIN_AGENT",
     "PLUGIN_COMMANDS",
     "PLUGIN_CONFIG",

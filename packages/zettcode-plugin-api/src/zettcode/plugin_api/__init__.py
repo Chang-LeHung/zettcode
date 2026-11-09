@@ -99,6 +99,8 @@ _EXPORTS = {
     "PluginTurnMixin": "zettcode.engine.plugins",
     "PluginUiMixin": ".mixins",
     "Plugins": "zettcode.engine.plugins",
+    "LLM": "zettcode.engine.plugins",
+    "ModelAccess": "zettcode.engine.plugins",
     "PLUGIN_AGENT": "zettcode.engine.plugins",
     "PLUGIN_COMMANDS": "zettcode.engine.plugins",
     "PLUGIN_CONFIG": "zettcode.engine.plugins",
@@ -156,6 +158,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from zettcode.engine.extensions.context import ContextReport, ContextShare
     from zettcode.engine.inbox import INBOX, Inbox, Waiting
     from zettcode.engine.plugins import (
+        LLM,
         PLUGIN_AGENT,
         PLUGIN_COMMANDS,
         PLUGIN_CONFIG,
@@ -165,6 +168,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         AgentBuild,
         Contribution,
         ExtensionFactory,
+        ModelAccess,
         Plugin,
         PluginAgentMixin,
         PluginContext,
@@ -364,6 +368,8 @@ __all__ = [
     "PluginTurnMixin",
     "PluginUiMixin",
     "Plugins",
+    "LLM",
+    "ModelAccess",
     "PLUGIN_AGENT",
     "PLUGIN_COMMANDS",
     "PLUGIN_CONFIG",

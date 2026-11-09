@@ -10,6 +10,7 @@ import pytest
 
 import zettcode.sdk as zc
 from sdk_helpers import ScriptedModel, config_for, models, wire
+from zettcode.engine.plugins import LLM, ModelAccess
 from zettcode.sdk.errors import (
     ClientClosedError,
     ConfigurationError,
@@ -53,6 +54,14 @@ async def test_the_builtin_plugins_load_without_failures(tmp_path):
 
         assert report.failures == ()
         assert "coding" in report.loaded and "shell-permission" in report.loaded and "compaction" in report.loaded
+
+
+async def test_a_client_lists_its_services_and_reaches_the_model_one(tmp_path):
+    async with client_for(tmp_path) as client:
+        assert LLM in client.services
+        access = client.service(LLM, ModelAccess)
+        assert access.models == client.config.models
+        assert client.find("no-such-service", object) is None
 
 
 async def test_a_client_has_a_readable_repr_open_and_closed(tmp_path):

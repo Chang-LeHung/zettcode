@@ -38,6 +38,10 @@ class Greeter(TuiPlugin):  # 这个 mixin 提供行相关的钩子；基类仍�
 `ctx.find(PLUGIN_TUI, TuiGroup)`；属性只是短一点的类型化别名。前端如果有自己的实现，可以通过
 `ZettCodeEngine.preview(shared=...)` 把 agent 或 command 组交进来。
 
+`LLM` 是模型 service：`ctx.service(LLM, ModelAccess)` 能拿到读者配置的所有模型（`.models`），以及
+`.ask(question, origin="你的插件")` 用来问一个不会进入对话的 side question。使用 SDK 的程序也能找到同一批
+service：`client.services` 列出名字，`client.service(name, kind)` 取对象。
+
 **不会因为"不是给这个前端的"而被拒绝**：插件总会被激活；真正坏掉的（导入失败、两个插件抢同一个名字）会作为失败报告出来，读者看得到。
 
 ## 安装一个插件

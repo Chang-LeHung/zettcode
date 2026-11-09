@@ -14,6 +14,7 @@ setting.
 | File | Purpose | When a change takes effect |
 | --- | --- | --- |
 | `~/.zettcode/config.toml` | Model connections and optional features | Restart ZettCode. |
+| `~/.zettcode/.ztrc` | Extra command-line arguments, one per line | Read on the next start. |
 | `~/.zettcode/theme.toml` | One set of custom colours, laid over the palette in force | Restart; `/theme` selects a palette during a run. |
 | `~/.zettcode/themes/<name>.toml` | Your own palettes, picked by name | Picked up the next time `/theme` is used. |
 | `~/.zettcode/mcp.json` | External tool servers | Restart after changing server definitions. |
@@ -22,6 +23,11 @@ setting.
 `~` means your home directory. On Windows this is normally
 `C:\Users\<your-name>`. The workspace is separate from configuration: start with
 `zettcode -w /path/to/project`, or run `zettcode` from the project directory.
+
+`~/.zettcode/.ztrc` presets command-line arguments: one argument per non-blank line, read before the reader's own,
+so a later command-line word wins. Blank lines and lines starting with `#` are ignored. This is a place for a plugin
+or a wrapper to set a flag you always want; it is not a shell script — quotes are not interpreted, and a path with
+spaces stays on one line as one argument.
 
 To try a different configuration without replacing your normal file:
 

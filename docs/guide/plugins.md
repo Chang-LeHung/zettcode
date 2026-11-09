@@ -44,6 +44,10 @@ Each group is also a service, under the same name a plugin can pass to `ctx.serv
 the attributes remain as short, typed aliases. A front end may hand the agent or command group in through
 `ZettCodeEngine.preview(shared=...)` when it has its own implementation.
 
+`LLM` is the model service: `ctx.service(LLM, ModelAccess)` gives every model the reader configured (`.models`) and
+`.ask(question, origin="your-plugin")` for a side question that stays out of the conversation. A program using the
+SDK finds the same services: `client.services` lists their names, and `client.service(name, kind)` returns one.
+
 ## Installing one
 
 A plugin publishes a class under the `zettcode.plugin` entry-point group:
