@@ -28,6 +28,7 @@ by:
 session  01a1726a-3109-75a7-9285-390d9e381111
 workspace /Users/me/projects/api
 model    gpt-5 · effort high
+shell    full
 
 send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
 ```
@@ -43,7 +44,8 @@ send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
 | `--resume SESSION` | Continue a stored session instead of starting empty |
 | `--json` | Print the same facts as JSON, for a script or an agent |
 
-`spawn` returns once the daemon is reachable — the id it prints can be messaged straight away. If it cannot start,
+An installed plugin may add its own options to this command; they are listed by `zettcode daemon spawn --help` and
+reach the plugin as the `PLUGIN_CLI` service. `spawn` returns once the daemon is reachable — the id it prints can be messaged straight away. If it cannot start,
 nothing is left behind and the reason is printed (the child's own first words are kept in
 `~/.zettcode/daemon/<workspace>/.spawn/` until they are read).
 
@@ -55,8 +57,8 @@ given, and the `ask_user` tool is not offered at all. What the level you choose 
   sandbox, no approval, no network restriction. Start one only in a workspace you would give a shell to.
 - **`safe`** — every command runs in the sandbox: it writes only the workspace and the temporary directories,
   credentials under your home are hidden from it, and the environment is filtered down to `PATH`, `HOME`, `SHELL`,
-  `LANG`, `TERM`, `TMPDIR` and the like. The network is **allowed**, so a sandboxed daemon can still fetch a
-  dependency. `pip install --user`, `git push` over SSH and `gh` will fail.
+  `LANG`, `TERM`, `TMPDIR` and the like. The network follows `[shell] network` in the configuration, off by
+  default, as it does for a terminal; turn it on there if the daemon must fetch a dependency. `pip install --user`, `git push` over SSH and `gh` will fail.
 - **`deny`** — no shell at all. The daemon reads files, edits them and talks, and never runs a command.
 
 The configuration's own `permission` does not apply: a daemon's level is the one `spawn` was given.

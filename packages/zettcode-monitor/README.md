@@ -31,10 +31,9 @@ or, with `uv tool`:
 `pip install zettcode-monitor` beside an installed ZettCode is the same thing, for a program that pins or vendors its
 plugins itself. Restart afterwards, and `/monitor` is there.
 
-It runs on ZettCode 0.3 and later (`zettcode-plugin-api>=0.3,<0.4`): the plugin API it is built on — `PluginContext`,
-`TuiPlugin` and the three groups — is the one that line introduced, while the 0.2 line still spells it
-`TerminalPlugin` / `TerminalContainer`. The 0.1.1 release on PyPI is the one for that older API: it declares
-`zettcode>=0.1.11,<0.3` and runs beside a 0.2.x release. From a checkout of this repository:
+It runs on ZettCode 0.4 and later (`zettcode-plugin-api>=0.4,<0.5`): that is the API built on
+`PluginContext`, `TuiPlugin` and the three groups. The 0.1.1 release on PyPI is the one for the older
+`TerminalPlugin` / `TerminalContainer` API: it declares `zettcode>=0.1.11,<0.3`. From a checkout of this repository:
 
     uv tool install --force --with ./packages/zettcode-monitor zettcode
 
@@ -55,11 +54,11 @@ directory); it is separate from zettcode's `v*` tag. Running the workflow by han
 `zettcode-monitor` project name to be free on PyPI.
 
 The workflow installs `./zettcode` and this plugin from the same checkout and runs the tests on Python 3.10 and 3.15,
-so tag this only from a commit whose `zettcode-plugin-api` version the plugin's `zettcode-plugin-api>=0.3,<0.4`
+so tag this only from a commit whose `zettcode-plugin-api` version the plugin's `zettcode-plugin-api>=0.4,<0.5`
 allows.
 
-When ZettCode starts a new line — 0.4, say — publish this plugin **first**, with its `zettcode` range widened to allow
-both lines (`>=0.3,<0.5`), and only then release the new ZettCode whose `monitor` extra names it. The other order
+When ZettCode starts a new line — 0.5, say — publish this plugin **first**, with its `zettcode` range widened to allow
+both lines (`>=0.4,<0.6`), and only then release the new ZettCode whose `monitor` extra names it. The other order
 leaves a window in which `pip install "zettcode[monitor]"` cannot resolve, because the extra would name a plugin that
 does not accept the version being installed.
 

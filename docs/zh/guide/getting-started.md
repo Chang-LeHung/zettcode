@@ -34,9 +34,11 @@ pip install zettcode
 | `--full`、`--auto`、`--yolo` | 本轮用完整权限、不再询问就执行 shell 命令，等同于 `/permission full`。（`--auto` 是旧名字。） |
 | `--dry-run` | 跑完启动流程、画一帧就退出，用来做性能分析。 |
 
-有四个子命令按名字做事：`zettcode resume SESSION` 等同于 `zettcode --resume SESSION`（`-w DIR` 写在它前面或后面都可以，
-例如 `zettcode resume 01a10b75 -w ~/projects/api`）；`zettcode update`（也可以写成 `zettcode upgrade`，完全一样）安装最新版本后退出（见 FAQ 的“新版本”一节）；
-`zettcode doctor` 对配置文件里的每个模型各问一句话，打印哪些能答，答不了的会说明原因（token 被撤销、base URL 写错、端点没有这个模型等），有一个不能就以退出码 1 结束；`zettcode prompt` 不打开终端界面，只让 agent 跑一次，见下一节。
+有些子命令只是某个旗标的另一种写法：`zettcode resume SESSION` 等同于 `zettcode --resume SESSION`（`-w DIR` 写在它前面或后面都可以，
+例如 `zettcode resume 01a10b75 -w ~/projects/api`）；`zettcode update`（也可以写成 `zettcode upgrade`，完全一样）安装最新版本后退出（见 FAQ 的“新版本”一节）。
+另一些是独立命令：`zettcode doctor` 对配置文件里的每个模型各问一句话，打印哪些能答，答不了的会说明原因（token 被撤销、base URL 写错、端点没有这个模型等），
+有一个不能就以退出码 1 结束；`zettcode prompt` 不打开终端界面，只让 agent 跑一次，见下一节。`zettcode daemon`、`broker`、`gateway`、`plugin`
+是同一个可执行文件下的独立程序：启动后台 agent、运行本地 broker 或网页网关、安装和开关插件。见[后台 agent](/zh/guide/daemons)、[网页网关](/zh/guide/gateway)和[插件](/zh/guide/plugins)。
 
 ### 从脚本里问一个问题
 

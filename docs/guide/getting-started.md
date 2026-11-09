@@ -40,13 +40,15 @@ command line takes, which is deliberately short:
 | `--full`, `--auto`, `--yolo` | Run shell commands with full access and without asking, for this run. The same as `/permission full`. (`--auto` is the old name.) |
 | `--dry-run` | Run the startup, paint one frame, and exit. Useful for profiling. |
 
-Four subcommands do their work by name: `zettcode resume SESSION` is `zettcode --resume SESSION`
-(`-w DIR` may go before or after it, as in `zettcode resume 01a10b75 -w ~/projects/api`), `zettcode update`
+Some subcommands stand in for a flag: `zettcode resume SESSION` is `zettcode --resume SESSION`
+(`-w DIR` may go before or after it, as in `zettcode resume 01a10b75 -w ~/projects/api`), and `zettcode update`
 (or `zettcode upgrade`, the same thing) installs the newest release and exits (see the
-[FAQ](/guide/faq#new-versions)), and `zettcode doctor` asks every model in your config file one short
-question and prints which of them answer and how fast, or why not (a revoked token, a wrong base URL, a model
-the endpoint does not serve), exiting 1 if one does not. `zettcode prompt` runs the agent once
-without opening the terminal, below.
+[FAQ](/guide/faq#new-versions)). Others are commands of their own: `zettcode doctor` asks every model in your
+config file one short question and prints which of them answer and how fast, or why not (a revoked token, a wrong
+base URL, a model the endpoint does not serve), exiting 1 if one does not; `zettcode prompt` runs the agent once
+without opening the terminal, below. `zettcode daemon`, `broker`, `gateway` and `plugin` are separate programs under
+the same executable — start a background agent, run the local broker or web gateway, or install and switch plugins.
+See [Background agents](/guide/daemons), [Web gateway](/guide/gateway), and [Plugins](/guide/plugins).
 
 ### One question, from a script
 

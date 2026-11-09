@@ -21,6 +21,7 @@ zettcode daemon kill 01a1726a-3109-75a7-9285-390d9e381111
 session  01a1726a-3109-75a7-9285-390d9e381111
 workspace /Users/me/projects/api
 model    gpt-5 · effort high
+shell    full
 
 send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
 ```
@@ -36,13 +37,13 @@ send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
 | `--resume SESSION` | 接着一个已存会话，而不是从空会话开始 |
 | `--json` | 把同样的信息打成 JSON，给脚本或 agent 读 |
 
-`spawn` 在 daemon 能被找到之后才返回，所以打印出来的 id 立刻就能发消息。起不来的话什么都不会留下，原因会打印出来（子进程最早写的那几行留在 `~/.zettcode/daemon/<workspace>/.spawn/` 里，读之前不删）。
+已安装插件可以给它加自己的选项；`zettcode daemon spawn --help` 会列出这些选项，值通过 `PLUGIN_CLI` service 交给插件。`spawn` 在 daemon 能被找到之后才返回，所以打印出来的 id 立刻就能发消息。起不来的话什么都不会留下，原因会打印出来（子进程最早写的那几行留在 `~/.zettcode/daemon/<workspace>/.spawn/` 里，读之前不删）。
 
 ::: warning daemon 不向任何人提问，它的 shell 级别是起它时选的
 没有人在旁边点“允许”或回答问题，所以 daemon 从不提问：`ask` 不是它能拿到的级别，`ask_user` 工具也不会给它。你选的级别意味着：
 
 - **`full`（默认）** —— 每条命令都以**启动它的那个账号的权限**运行：没有沙箱、没有审批、没有网络限制。只在你愿意把 shell 交给它的工作区里起它。
-- **`safe`** —— 每条命令都在沙箱里跑：只能写工作区和临时目录，`~` 下的凭据对它不可读，环境变量被过滤成 `PATH`、`HOME`、`SHELL`、`LANG`、`TERM`、`TMPDIR` 这类。**网络是允许的**，所以沙箱里的 daemon 仍然能拉依赖；`pip install --user`、SSH 推代码、`gh` 会失败。
+- **`safe`** —— 每条命令都在沙箱里跑：只能写工作区和临时目录，`~` 下的凭据对它不可读，环境变量被过滤成 `PATH`、`HOME`、`SHELL`、`LANG`、`TERM`、`TMPDIR` 这类。网络跟配置里的 `[shell] network` 走，默认关闭，和终端一样；需要拉依赖时在那里打开；`pip install --user`、SSH 推代码、`gh` 会失败。
 - **`deny`** —— 完全不给 shell。daemon 只读文件、改文件、说话，不跑任何命令。
 
 配置里的 `permission` 对它不生效：daemon 的级别就是 `spawn` 时给的那个。
