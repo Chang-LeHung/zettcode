@@ -190,6 +190,15 @@ def test_the_rc_file_keeps_an_option_value_that_happens_to_look_like_a_command(t
     assert parse_args(["-w", str(tmp_path)], rc=rc).workspace == tmp_path
 
 
+def test_a_bad_rc_file_is_ignored_without_argparse_noise(tmp_path: Path, capsys):
+    rc = tmp_path / ".ztrc"
+    rc.write_text("--model\n", encoding="utf-8")
+
+    assert parse_args(["-w", str(tmp_path)], rc=rc).workspace == tmp_path
+    err = capsys.readouterr().err
+    assert "usage:" not in err and "ignored" in err
+
+
 def test_the_resume_flag_picks_the_session(tmp_path: Path):
     """`-r` and `--resume` are the same flag, and a run without one starts fresh."""
     assert parse_args(["-w", str(tmp_path)]) == Options(workspace=tmp_path)

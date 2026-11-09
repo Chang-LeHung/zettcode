@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import gc
+import io
 import logging
 import os
 import sys
@@ -31,12 +33,6 @@ from zettcode import logging_setup
 from zettcode.paths import DEFAULT_RC, resume_command
 
 logger = logging.getLogger("zettcode.terminal")
-
-#: The file at ``~/.zettcode/.ztrc`` may preset options, not choose a subcommand: a command in it would make the
-#: reader's own command a second positional and turn every start into a parse error.
-_RC_SUBCOMMANDS = frozenset(
-    {"update", "upgrade", "doctor", "resume", "prompt", "daemon", "broker", "gateway", "plugin"}
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -120,13 +116,19 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
     if rc is not None:
         preset = _rc_arguments(rc)
         if preset:
-            try:
-                parsed = parser.parse_args(preset)
-            except SystemExit:
+            keep = True
+            # The probe must not print argparse's usage block: a bad preset is ours to report, not a fatal error
+            # the reader never typed. `--help` and `--version` exit too; both are ignored with the rest.
+            with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    parsed = parser.parse_args(preset)
+                except SystemExit:
+                    keep = False
+                else:
+                    keep = parsed.command is None
+            if not keep:
+                print(f"zettcode: ignored {rc}: it must contain options only", file=sys.stderr)
                 preset = []
-            else:
-                if parsed.command is not None:
-                    preset = []
         words = [*preset, *words]
     args = parser.parse_args(words)
     # `upgrade` is another name for `update`; nothing after this point needs to know it was used.
