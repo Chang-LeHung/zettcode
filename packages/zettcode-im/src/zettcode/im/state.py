@@ -59,12 +59,20 @@ class BridgeState:
     # -- what the bridge asks -------------------------------------------------------------------------
     @property
     def logged_in(self) -> bool:
-        """Return whether a login has finished, which is what a run needs."""
-        return bool(self.credentials)
+        """Return whether a login has finished, which is what a run needs: a login without a token is not one."""
+        return bool(self.token())
 
     def token(self) -> str:
-        """Return the bot token a finished login produced, or an empty string."""
-        value = self.credentials.get("bot_token")
+        """Return the bot token a finished login produced, or an empty string.
+
+        The IM client hands it over inside ``credentials`` — ``{"config": {...}, "secrets": {...}}`` — and a token
+        read from the wrong level is an empty string that looks like a login until the first send fails, so both
+        the nested shape and a flat one are read.
+        """
+        secrets = self.credentials.get("secrets")
+        value = secrets.get("bot_token") if isinstance(secrets, dict) else None
+        if not isinstance(value, str) or not value:
+            value = self.credentials.get("bot_token")
         return value if isinstance(value, str) else ""
 
     def answered(self, event_id: str) -> bool:

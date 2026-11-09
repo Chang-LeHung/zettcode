@@ -79,3 +79,14 @@ def test_a_message_without_a_context_token_forgets_the_one_that_chat_had(tmp_pat
     state.remember("e2", cursor="c2", chat_id="chat", reply_token=None)
 
     assert state.reply_token("chat") is None
+
+
+def test_the_token_is_read_from_where_the_im_client_puts_it(tmp_path: Path) -> None:
+    """`agim` hands back `{"config": …, "secrets": {"bot_token": …}}`; a token read from the top level is empty."""
+    state = BridgeState.load(tmp_path / "state.json")
+    state.credentials = {"config": {"base_url": "https://example.com"}, "secrets": {"bot_token": "secret-token"}}
+
+    assert state.token() == "secret-token" and state.logged_in
+
+    state.credentials = {"config": {}}
+    assert state.token() == "" and not state.logged_in, "a login without a token is not a login"

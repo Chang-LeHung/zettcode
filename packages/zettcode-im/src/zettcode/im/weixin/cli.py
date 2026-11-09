@@ -188,6 +188,11 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
     state.allow = list(arguments.allow)
     state.allow_all = bool(arguments.allow_all)
     state.save()
+    if not state.token():
+        # A login without a token is a bridge that cannot send or receive, and a background process that says
+        # nothing about it. Better to say so here, where the reader is still watching the phone.
+        print("the login finished, but WeChat handed back no bot token. Nothing was started; run the command again")
+        return 3
 
     try:
         pid = worker.start(command("--state-dir", str(state_dir)))
@@ -228,15 +233,16 @@ async def _run(arguments: argparse.Namespace, state_dir: Path) -> int:
     )
     lock: SingletonLock | None = None
     try:
+        # The stored handshake is the *login* handshake, and it expires once the code has been scanned — the token
+        # it produced lives on. So this is a hint, not a gate: the poll below is what proves the token works.
         try:
             handshake = LoginHandshake.model_validate(state.handshake)
             login = await client.is_login(handshake)
-        except Exception as error:  # noqa: BLE001 - a handshake this build cannot read is a login to redo
-            print(f"the saved login cannot be checked: {error}. Run `zettcode-weixin` again.")
-            return 3
-        if login.status in (LoginStatus.FAILED, LoginStatus.EXPIRED):
-            print(f"the WeChat login has ended: {login.message}. Run `zettcode-weixin` again.")
-            return 3
+        except Exception as error:  # noqa: BLE001 - a handshake this build cannot read says nothing about the token
+            print(f"note: the saved login could not be checked ({error}); using its token")
+        else:
+            if login.status is not LoginStatus.CONNECTED:
+                print(f"note: the login handshake reads {login.status.value} ({login.message}); using its token")
         # The lock is taken only once the things that can still refuse this run have been checked: a process that
         # takes the lock and then exits is a start the reader was told had worked.
         lock = SingletonLock(Worker(state_dir).lock)
@@ -329,3 +335,7 @@ def _status(state_dir: Path) -> int:
 
 
 __all__ = ["DEFAULT_DIR", "LOGIN_TIMEOUT", "POLL", "build_parser", "main"]
+
+
+if __name__ == "__main__":  # the background process runs this module, not the console script
+    sys.exit(main())
