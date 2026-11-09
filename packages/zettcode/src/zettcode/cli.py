@@ -32,6 +32,12 @@ from zettcode.paths import DEFAULT_RC, resume_command
 
 logger = logging.getLogger("zettcode.terminal")
 
+#: The file at ``~/.zettcode/.ztrc`` may preset options, not choose a subcommand: a command in it would make the
+#: reader's own command a second positional and turn every start into a parse error.
+_RC_SUBCOMMANDS = frozenset(
+    {"update", "upgrade", "doctor", "resume", "prompt", "daemon", "broker", "gateway", "plugin"}
+)
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -112,7 +118,9 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
     parser = _build_parser()
     words = list(sys.argv[1:] if argv is None else argv)
     if rc is not None:
-        words = [*_rc_arguments(rc), *words]
+        preset = _rc_arguments(rc)
+        if not any(word in _RC_SUBCOMMANDS for word in preset):
+            words = [*preset, *words]
     args = parser.parse_args(words)
     # `upgrade` is another name for `update`; nothing after this point needs to know it was used.
     command = "update" if args.command == "upgrade" else args.command
@@ -179,6 +187,14 @@ def _add_global_options(parser: argparse.ArgumentParser) -> None:
         dest="auto",
         action="store_true",
         help="run shell commands with full access and without asking, for the rest of this run",
+    )
+    parser.add_argument(
+        "--no-full",
+        "--no-auto",
+        "--no-yolo",
+        dest="auto",
+        action="store_false",
+        help="turn off a full-access preset from ~/.zettcode/.ztrc",
     )
     parser.add_argument(
         "--dry-run",

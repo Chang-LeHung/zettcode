@@ -28,11 +28,6 @@ class ModelAccess:
         """Return every model the reader configured, in the order the configuration lists them."""
         return self._models
 
-    @property
-    def active(self) -> ModelConfig | None:
-        """Return the model the next request uses, when the runtime has one."""
-        return self._models[0] if self._models else None
-
     def bind(self, ask: Callable[..., Awaitable[str]]) -> None:
         """Give the service the conversation's side-question entry point; the front end is the caller."""
         self._ask = ask

@@ -89,8 +89,7 @@ def terminal_context(
 ) -> PluginContext:
     """Build one context with the terminal group attached, the way this loader does for a plugin."""
     context = PluginContext(config, services, name=name)
-    if context.tui is None:
-        context.attach_tui(TuiGroups(context))
+    context.attach_tui(TuiGroups(context))
     return context
 
 

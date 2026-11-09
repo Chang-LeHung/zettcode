@@ -164,10 +164,19 @@ def test_the_rc_file_presets_arguments_one_per_line(tmp_path: Path):
 
     options = parse_args([], rc=rc)
     assert options.workspace == tmp_path and options.auto is True
+    assert parse_args(["--no-full"], rc=rc).auto is False
     # A word on the command line comes after the file, so it wins.
     other = tmp_path / "other"
     assert parse_args(["-w", str(other)], rc=rc).workspace == other
     assert parse_args(["-w", str(tmp_path)], rc=tmp_path / "missing").workspace == tmp_path
+
+
+def test_the_rc_file_cannot_choose_a_subcommand(tmp_path: Path):
+    rc = tmp_path / ".ztrc"
+    rc.write_text("resume\nabc\n", encoding="utf-8")
+
+    # The file is ignored rather than turning the reader's own command into a second positional.
+    assert parse_args(["-w", str(tmp_path)], rc=rc).workspace == tmp_path
 
 
 def test_the_resume_flag_picks_the_session(tmp_path: Path):

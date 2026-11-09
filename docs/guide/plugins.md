@@ -41,8 +41,8 @@ claim — is reported as a failure where the reader can see it.
 
 Each group is also a service, under the same name a plugin can pass to `ctx.service`: `PLUGIN_AGENT`, `PLUGIN_COMMANDS`,
 `PLUGIN_TUI`, `PLUGIN_CONFIG`, `PLUGIN_WORKSPACE` and `PLUGIN_SETTINGS`. `ctx.tui` is `ctx.find(PLUGIN_TUI, TuiGroup)`;
-the attributes remain as short, typed aliases. A front end may hand the agent or command group in through
-`ZettCodeEngine.preview(shared=...)` when it has its own implementation.
+the attributes remain as short, typed aliases. The groups are per plugin; other services can be handed in through
+`ZettCodeEngine.preview(shared=...)`.
 
 `LLM` is the model service: `ctx.service(LLM, ModelAccess)` gives every model the reader configured (`.models`) and
 `.ask(question, origin="your-plugin")` for a side question that stays out of the conversation. A program using the

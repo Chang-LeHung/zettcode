@@ -455,15 +455,6 @@ def test_a_command_context_carries_all_its_words_as_a_list():
     assert plain.arguments == ("a", "b", "c")
 
 
-def test_a_shared_service_can_hand_in_the_context_groups(tmp_path: Path):
-    config = make_config(tmp_path)
-    base = PluginContext(config, {})
-    agent, commands = AgentGroups(base), CommandGroups()
-    injected = PluginContext(config, {PLUGIN_AGENT: agent, PLUGIN_COMMANDS: commands})
-
-    assert injected.agent is agent and injected.commands is commands
-
-
 def test_the_context_attributes_are_services_too(tmp_path: Path):
     config = make_config(tmp_path)
     ctx = PluginContext(config, {})
