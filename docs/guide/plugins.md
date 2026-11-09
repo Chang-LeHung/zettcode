@@ -184,7 +184,8 @@ process.
 | `SELECTED_MODEL` | `ModelConfig` | engine, when a model is configured | the model the next run uses |
 | `APPROVAL`, `USAGE`, `CONTEXT`, `SIDES`, `COMPACTION`, `TODOS` | engine contracts | built-in feature plugins | feature services |
 
-`HARNESS` and `DELIVERY` are internal engine services; use the typed readers or the feature services instead.
+`HARNESS` and `DELIVERY` are internal engine services and not part of the plugin contract; there is no typed
+reader for them.
 The types in this table are exported by `zettcode.plugin_api` (the contracts live in `zettcode.engine`).
 
 Use `ctx.find` for anything a plugin may or may not provide, especially `INBOX`,
@@ -370,7 +371,7 @@ class TicketsPlugin(Plugin[PluginContext]):
 `candidates(query)` returns the completions; `expand(name)` returns the text
 the model sees, or `None` when the token is not this provider's. A provider may
 override `rename(name)` to return the words the model reads in place of `@name`. `precedence` orders providers
-(lower first) when two offer the same name; tokens are distinct per kind.
+(lower first); when two providers offer the same name, the first in that order owns its completion, expansion and rename.
 
 ## What a plugin can take part in
 

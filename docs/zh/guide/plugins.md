@@ -164,7 +164,7 @@ ctx.tui is ctx.find(PLUGIN_TUI, TuiGroup)       # 没有屏幕时为 None
 | `SELECTED_MODEL` | `ModelConfig` | 配置了模型时 | 下一次运行使用的模型 |
 | `APPROVAL`、`USAGE`、`CONTEXT`、`SIDES`、`COMPACTION`、`TODOS` | engine 契约 | 内置功能插件 | 功能 service |
 
-`HARNESS` 和 `DELIVERY` 是 engine 内部 service；用类型化 reader 或功能 service，不要直接依赖它们。
+`HARNESS` 和 `DELIVERY` 是 engine 内部 service，不属于插件契约，也没有类型化 reader。
 这张表里的类型由 `zettcode.plugin_api` 导出（契约定义在 `zettcode.engine`）。
 
 可能不存在的 service 用 `ctx.find`，尤其是 `INBOX`、`HOST_LINK`、`SELECTED_MODEL` 和页面
@@ -326,7 +326,7 @@ class TicketsPlugin(Plugin[PluginContext]):
 
 `candidates(query)` 返回补全项；`expand(name)` 返回模型看到的文本，不是这个 provider 的 token
 返回 `None`。可以覆盖 `rename(name)`，返回模型看到的替代文本；两个 provider 提供同一个名字时用
-`precedence` 决定顺序（小的先）；token 本身按 kind 区分。
+`precedence` 决定顺序（小的先）；两个 provider 提供同一个名字时，排在前面的那个拥有它的补全、展开和重命名。
 
 ## 插件能参与什么
 
@@ -704,8 +704,6 @@ class Palettes(TuiPlugin):
     def activate(self, ctx: PluginContext) -> None:
         # 包里自带的主题文件：格式与 ~/.zettcode/themes/<名字>.toml 相同。
         ctx.tui.register_theme("acme", Path(__file__).parent / "acme.toml")
-        # 或者一个返回 zettcode.tui.Theme 的函数；第一次被用到时才会调用。
-        ctx.tui.register_theme("acme-night", build_night, description="深蓝，低眩光")
 ```
 
 名字是一个词（字母、数字、`.`、`_`、`-`）。`dark` 和 `light` 属于 ZettCode。名字如果已被内置配色或更早
