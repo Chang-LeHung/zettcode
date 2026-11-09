@@ -20,6 +20,7 @@ from zettcode.cli import (
     session_exists,
     workspace_from_args,
 )
+from zettcode.engine.plugins.cli import CliOption
 
 
 @pytest.fixture(autouse=True)
@@ -156,6 +157,21 @@ def test_workspace_comes_from_the_flag(tmp_path: Path):
 def test_the_dry_run_flag_asks_for_startup_only(tmp_path: Path):
     assert parse_args(["-w", str(tmp_path)]).dry_run is False
     assert parse_args(["-w", str(tmp_path), "--dry-run"]).dry_run is True
+
+
+def test_a_plugin_can_add_a_startup_option(tmp_path: Path, monkeypatch):
+    from zettcode.engine.plugins import cli as plugin_cli
+
+    monkeypatch.setattr(
+        plugin_cli,
+        "installed_options",
+        lambda: (("demo", CliOption(("--demo-depth",), "depth", default="2", metavar="N")),),
+    )
+
+    options = parse_args(["--demo-depth", "5", "-w", str(tmp_path)])
+
+    assert options.workspace == tmp_path
+    assert options.plugin_arguments == {"demo": {"depth": "5"}}
 
 
 def test_the_rc_file_presets_arguments_one_per_line(tmp_path: Path):

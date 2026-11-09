@@ -32,6 +32,7 @@ MODELS = "models"
 COMPACTION_COUNTER = "compaction-counter"
 SELECTED_MODEL = "selected-model"
 LLM = "llm"
+PLUGIN_CLI = "plugin-cli"
 
 #: What the plugin context gives a plugin: the same values its attributes expose, found by name.
 PLUGIN_AGENT = "plugin-agent"
@@ -85,6 +86,7 @@ __all__ = [
     "CONTEXT_REPORT",
     "LLM",
     "PLUGIN_AGENT",
+    "PLUGIN_CLI",
     "PLUGIN_COMMANDS",
     "PLUGIN_CONFIG",
     "PLUGIN_SETTINGS",
