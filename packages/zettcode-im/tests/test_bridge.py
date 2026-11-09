@@ -220,7 +220,6 @@ def test_the_bridge_runs_a_message_end_to_end_and_stops_when_asked(tmp_path: Pat
     im = Im([Result(Message(text="hello"), "cur-2")])
     link = Link(answer="hi there")
     opened = bridge(tmp_path, im=im, link=link)
-    opened.on_stop(lambda: None)
 
     async def scenario() -> None:
         running = asyncio.ensure_future(opened.run())
@@ -245,3 +244,42 @@ def test_a_long_answer_is_split_on_line_breaks_below_the_limit() -> None:
     assert all(len(piece) <= 100 for piece in pieces)
     assert "".join(pieces).replace("\n", "") == text.replace("\n", ""), "nothing is lost between the pieces"
     assert split("x" * 250, 100) == ["x" * 100, "x" * 100, "x" * 50], "a line with no break is cut at the limit"
+
+
+def test_a_picture_that_did_not_fit_still_sends_the_text(tmp_path: Path) -> None:
+    """The broker refuses the whole message over its picture limit, so the text must not carry the picture."""
+    link = Link()
+    opened = bridge(tmp_path, link=link)
+    huge = Media("image", "image/png", b"x" * (MAX_IMAGE_BYTES + 1))
+
+    asyncio.run(opened._turn(Message(text="read this", media=[huge]), "c"))
+
+    _, prompt, images = link.asked[0]
+    assert images == [] and "read this" in prompt
+
+
+def test_an_answer_the_chat_will_not_take_is_not_run_again_for_ever(tmp_path: Path) -> None:
+    """A send that keeps failing must not turn into a new agent turn every time the message is re-delivered."""
+
+    class Blocked(Im):
+        async def send(self, chat_id, text, *, context_token=None):
+            raise RuntimeError("this contact does not accept messages")
+
+    im, link = Blocked(), Link()
+    opened = bridge(tmp_path, im=im, link=link)
+    for attempt in range(3):
+        asyncio.run(opened._turn(Message(text="hello"), f"cur-{attempt}"))
+
+    assert len(link.asked) == 2, "one answer, then one retry; not a turn per delivery"
+    assert opened.state.answered("e1"), "and then the message is behind us, with the reason in the log"
+
+
+def test_a_chat_is_answered_with_the_context_it_last_had(tmp_path: Path) -> None:
+    """A message that arrives without a context token is still answered inside its conversation."""
+    im, link = Im(), Link()
+    opened = bridge(tmp_path, im=im, link=link)
+    opened.state.chats["chat"] = "older-context"
+
+    asyncio.run(opened._turn(Message(text="hello", reply_token=None), "c"))
+
+    assert im.sent[0][2] == "older-context"

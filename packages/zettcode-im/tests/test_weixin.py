@@ -112,7 +112,7 @@ def test_a_process_that_dies_before_it_is_ready_is_reported_with_its_log(tmp_pat
     with pytest.raises(RuntimeError) as failed:
         worker.start([sys.executable, "-c", "import sys; print('no token'); sys.exit(4)"], timeout=20)
 
-    assert "4" in str(failed.value) or "no token" in str(failed.value)
+    assert "no token" in str(failed.value), "the log is what the reader is given"
     assert "no token" in worker.tail(), "the log keeps what the process said before it went"
 
 
@@ -153,3 +153,21 @@ def test_status_says_what_the_state_holds(tmp_path: Path, capsys: pytest.Capture
     assert main(["status", "--state-dir", str(tmp_path)]) == 0
     said = capsys.readouterr().out
     assert "logged in" in said and "/w" in said and "01a1" in said and "everyone" in said
+
+
+def test_stopping_a_running_bridge_signals_it_and_says_so(tmp_path: Path) -> None:
+    """The pid is only trusted while the lock is held; the stop is a signal and a wait, not a promise."""
+    import time
+
+    worker = Worker(tmp_path)
+    with Fix(worker.lock) as held:
+        worker.pid_file.write_text(str(held.process.pid), encoding="utf-8")
+        for _ in range(100):
+            if worker.running():
+                break
+            time.sleep(0.02)
+
+        said = worker.stop(timeout=10)
+
+    assert said == f"stopped the bridge (pid {held.process.pid})"
+    assert not worker.running()

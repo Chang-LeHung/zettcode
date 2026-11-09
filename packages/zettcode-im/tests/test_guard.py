@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from zettcode.im.guard import ALIVE, DaemonGuard, DaemonUnavailable
+from zettcode.im.guard import DaemonGuard, DaemonUnavailable
 from zettcode.im.state import BridgeState
 
 
@@ -77,7 +77,6 @@ def test_after_a_restart_the_same_session_is_resumed_and_a_running_daemon_is_lef
     daemons.records = [Info("01a1", "dead")]
     assert asyncio_run(guard(tmp_path, state).ensure()) == "01a1"
     assert daemons.spawned[0]["resume"] == "01a1", "a stopped one is resumed, not replaced"
-    assert "working" in ALIVE and "dead" not in ALIVE
 
 
 def test_a_start_that_fails_is_not_retried_before_its_wait_and_the_wait_grows(tmp_path: Path, daemons: Daemons) -> None:

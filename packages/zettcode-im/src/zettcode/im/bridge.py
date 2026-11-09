@@ -14,7 +14,8 @@ Everything that can go wrong has a sentence for the reader, because a chat app h
 - the same event delivered twice (a restart mid-batch): answered once;
 - a sender who is not allowed to drive the agent: refused, with the id to allow;
 - pictures: forwarded with the text they came with, and the ones that cannot go — too many, too large, a format the
-  broker does not take, a model that does not read pictures — named back to the sender instead of lost quietly.
+  broker does not take — named back to the sender instead of lost quietly. A daemon whose model reads no pictures
+  refuses the message itself, and that refusal is what the chat is told.
 """
 
 from __future__ import annotations
@@ -53,14 +54,12 @@ class BridgeSettings:
         allow_all: Accept every sender. For a bot nobody else can find; logged loudly when the bridge starts.
         chunk: Characters per outgoing message.
         health_every: Seconds between looks at the daemon when nothing is arriving.
-        turn_timeout: Seconds to wait for an answer before telling the chat it is still working.
     """
 
     allow: frozenset[str] = frozenset()
     allow_all: bool = False
     chunk: int = CHUNK
     health_every: float = HEALTH_EVERY
-    turn_timeout: float = 600.0
 
     def permits(self, user_id: str) -> bool:
         """Return whether this sender may drive the agent."""
@@ -90,7 +89,8 @@ class Bridge:
     error: Callable[[str], None] = logger.warning
     _incoming: asyncio.Queue = field(default_factory=asyncio.Queue, init=False, repr=False)
     _stopped: asyncio.Event = field(default_factory=asyncio.Event, init=False, repr=False)
-    _became: Callable[[], None] | None = field(default=None, init=False, repr=False)
+    #: Messages whose answer could not be delivered, and how many times it was tried.
+    _undelivered: dict[str, int] = field(default_factory=dict, init=False, repr=False)
 
     # -- the run --------------------------------------------------------------------------------------
     async def run(self) -> None:
@@ -120,10 +120,6 @@ class Bridge:
     def stop(self) -> None:
         """Leave after the message being answered."""
         self._stopped.set()
-
-    def on_stop(self, callback: Callable[[], None]) -> None:
-        """Call ``callback`` once the bridge has stopped, so a process can end with it."""
-        self._became = callback
 
     # -- the two halves -------------------------------------------------------------------------------
     async def _receive(self) -> None:
@@ -188,8 +184,8 @@ class Bridge:
         pictures, notes = _pictures(message)
         if notes:
             prompt = "\n".join([prompt, *(f"({note})" for note in notes)])
-        if not prompt.strip() and not pictures:
-            # Media only, with nothing to say about it: nothing for the agent to read, so nothing is spent.
+        if not message.text.strip() and not pictures and not notes:
+            # Nothing to read and nobody to tell: no turn, no cost.
             await self._say(chat, message, "I cannot read that kind of message yet; send words or a picture.")
             self._done(message, cursor)
             return
@@ -211,8 +207,17 @@ class Bridge:
             self.link.status("idle")
         if not answer.strip():
             answer = "the agent finished without an answer to send back."
-        sent = await self._say(chat, message, answer)
-        if sent:
+        if await self._say(chat, message, answer):
+            self._done(message, cursor)
+            return
+        # The answer exists and the chat will not take it. Answering the same message again would run the turn
+        # again — and again, for as long as the platform keeps refusing — so the message is behind us after a
+        # second attempt, and the log is where the reason is.
+        attempts = self._undelivered.get(str(message.event_id), 0) + 1
+        self._undelivered[str(message.event_id)] = attempts
+        if attempts >= 2:
+            self._undelivered.pop(str(message.event_id), None)
+            self.error(f"giving up on delivering the answer to {message.event_id}: {attempts} attempts")
             self._done(message, cursor)
 
     def _unavailable(self, said: str) -> str:
@@ -223,10 +228,15 @@ class Bridge:
         return f"the agent could not be started: {said}"
 
     async def _say(self, chat: str, message: Any, text: str) -> bool:
-        """Send ``text`` to the chat in pieces; ``False`` when a piece did not go out."""
+        """Send ``text`` to the chat in pieces; ``False`` when a piece did not go out.
+
+        The reply context is the one this message carried, or the last one this chat had: a message that arrives
+        without one (a refused attachment, for instance) should still be answered in the conversation it belongs to.
+        """
+        context = getattr(message, "reply_token", None) or self.state.reply_token(chat)
         for piece in split(text, self.settings.chunk):
             try:
-                await self.im.send(chat, piece, context_token=getattr(message, "reply_token", None))
+                await self.im.send(chat, piece, context_token=context)
             except Exception as error:  # noqa: BLE001 - the chat is gone or the platform refused it
                 self.error(f"sending to {chat} failed: {error}")
                 return False
@@ -240,7 +250,11 @@ class Bridge:
         self._save()
 
     def _save(self) -> None:
-        self.state.save(self.path)
+        """Write the state, and say so if it cannot be written: a lost cursor is a re-answered batch."""
+        try:
+            self.state.save(self.path)
+        except OSError as error:
+            self.error(f"the state at {self.path} could not be written: {error}")
 
 
 def _prompt(message: Any) -> str:
