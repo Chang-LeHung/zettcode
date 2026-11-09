@@ -25,8 +25,7 @@ setting.
 `zettcode -w /path/to/project`, or run `zettcode` from the project directory.
 
 `~/.zettcode/.ztrc` presets command-line arguments: one argument per non-blank line, read before the reader's own,
-so a later command-line word wins. Blank lines and lines starting with `#` are ignored. Only options belong here;
-a line naming a subcommand makes the file ignored rather than making the reader's own command a second positional.
+so a later command-line word wins. Blank lines and lines starting with `#` are ignored. Only options belong here; a line the parser reads as a command makes the file ignored rather than making the reader's own command a second positional.
 `--full` can be turned back off with `--no-full`. This is a place for a plugin or a wrapper to set a flag you always
 want; it is not a shell script — quotes are not interpreted, and a path with spaces stays on one line as one argument.
 It applies to a session start; `daemon`, `broker`, `gateway` and `plugin` are routed before the session parser, so
