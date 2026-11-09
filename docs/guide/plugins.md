@@ -20,7 +20,7 @@ thing you want to build:
 
 ## How a plugin loads
 
-The unit is a Python distribution with an entry point:
+The unit is a Python distribution with an entry point — or a single `.py` file in `~/.zettcode/plugins`:
 
 ```toml
 [project.entry-points."zettcode.plugin"]
@@ -64,6 +64,10 @@ services, and guard screen work with:
 if ctx.tui is None:
     return
 ```
+
+The loader does not filter plugins by front end. A plugin is activated in every
+process that loads it, so screen-only work must be behind that guard; otherwise
+activation fails and its other registrations are discarded.
 
 ## A complete plugin
 
@@ -172,13 +176,16 @@ process.
 | `USAGE_LEDGER` | `UsageLedgerService` | engine | read token usage |
 | `CONTEXT_REPORT` | `ContextReportService` | engine | context report for a session |
 | `CONTEXT_PAGE` | `ContextPageService` | engine | `/context` page data and writer |
-| `MODELS` | `dict[ModelConfig, Adapter]` | engine | the model adapters built so far |
+| `MODELS` | provider adapters keyed by `ModelConfig` | engine | the models built so far |
 | `CAPABILITIES` | `ModelCapabilities` | built-in capabilities plugin | model-specific tool filtering |
 | `POLICY` | `ShellPolicy` | engine | current shell permission policy |
 | `PERSISTENCE` | `SessionStore` | engine | the storage implementation |
 | `COMPACTION_COUNTER` | `CompactionCounter` | engine | token accounting |
 | `SELECTED_MODEL` | `ModelConfig` | engine, when a model is configured | the model the next run uses |
-| `APPROVAL`, `USAGE`, `CONTEXT`, `SIDES`, `COMPACTION`, `TODOS` | engine contracts | provider plugins | built-in feature services |
+| `APPROVAL`, `USAGE`, `CONTEXT`, `SIDES`, `COMPACTION`, `TODOS` | engine contracts | built-in feature plugins | feature services |
+
+`HARNESS` and `DELIVERY` are internal engine services; use the typed readers or the feature services instead.
+The types in this table are exported by `zettcode.plugin_api` (the contracts live in `zettcode.engine`).
 
 Use `ctx.find` for anything a plugin may or may not provide, especially `INBOX`,
 `HOST_LINK`, `SELECTED_MODEL`, and the page services. Use `ctx.service` only
@@ -207,40 +214,9 @@ cannot be used inside `activate`, only once a request can run. The plugin gets
 the model of the current run through the run context; `ModelAccess` does not
 change the reader's selected model.
 
-## What each group holds
-
-A plugin's `activate(ctx)` gets one context, the same type in every process. What it can register into depends on the
-groups that context has:
-
-| Group | Where it exists | What goes in it |
-| --- | --- | --- |
-| `ctx.agent` | every process | an agent extension, a model provider, an `@` resource, a service others look up |
-| `ctx.commands` | every process | a plain command: a name, a summary, a handler whose result is text, a toast or an error — never a page, so any front end can run it |
-| `ctx.tui` | only where there is a terminal; `None` otherwise | the commands that open a page or need the shell, palettes, pets, presenters, header and status rows, the line a request ends on |
-
-So a plugin never declares which front end it is for. It registers into a group, and the group is what exists where it
-was loaded. One that only adds screen things starts its `activate` with the guard shown at the top of this page.
-
-`ctx.commands` is the one to reach for when the answer is words: it is registered for every process, and the terminal
-adds it to the command table beside the ones `ctx.tui` holds. A command that opens a page, asks the shell to act, or
-waits for a request to end belongs on `ctx.tui` instead.
-
-The loader does not filter plugins by front end. A plugin is activated in every process that loads it, so work
-that touches `ctx.tui` must be behind the guard above; otherwise activation fails and the plugin's other
-registrations are discarded. A module that cannot be imported, or a name two plugins claim, is reported as a failure
-where the reader can see it.
-
-A plugin can add flags to a session start and to `zettcode daemon spawn` by overriding `cli_arguments()` with
-`CliOption` values (flags, a destination, help, a default, and optionally an action, choices or metavar). The
-declarations are read from the class before activation, so they can be used without a configuration. The parsed
-values reach the plugin as the `PLUGIN_CLI` service, grouped by its entry-point name; they must be JSON-safe so a
-daemon's parent can pass them to its child. `~/.zettcode/.ztrc` may preset these flags like any other option. The
-declaration is read on every start before the configuration exists, so it may import every installed plugin class,
-including a disabled one; keep the class module cheap to import.
-
 ## Installing one
 
-A plugin publishes a class under the `zettcode.plugin` entry-point group:
+A plugin publishes a class under the `zettcode.plugin` entry-point group; the loader accepts a class, a zero-argument factory, or an instance, and a class is the usual form:
 
 ```toml
 [project]
@@ -252,8 +228,9 @@ greeter = "my_package:Greeter"
 ```
 
 `zettcode-plugin-api` is the one dependency a plugin needs, and it carries everything the plugin runs against. If
-you annotate with SDK types such as `Client`, `ModelInfo` or `Usage`, import them from `zettcode.sdk` or
-`zettcode.sdk.types`; those modules are not installed by `zettcode-plugin-api` alone. In a CI or lint environment that
+you annotate with SDK types, import them from the module that owns them: `Client` from `zettcode.sdk`,
+`ModelInfo` from `zettcode.sdk.types`, and `Usage` from either. Those modules are not installed by
+`zettcode-plugin-api` alone. In a CI or lint environment that
 installs only your package, use the extra
 `dependencies = ["zettcode-plugin-api[types]>=0.4,<0.5"]`, which pulls `zettcode-sdk`. Without it mypy cannot resolve
 those imports unless `ignore_missing_imports` is set; nothing changes at run time. `Theme` in a palette or presenter
@@ -389,8 +366,8 @@ def activate(self, ctx: PluginContext) -> None:
 
 `candidates(query)` returns the completions; `expand(name)` returns the text
 the model sees, or `None` when the token is not this provider's. A provider may
-override `rename(name)` to return the words the model reads in place of `@name`. `precedence` breaks ties
-when two providers offer the same token.
+override `rename(name)` to return the words the model reads in place of `@name`. `precedence` orders providers
+(lower first) when two offer the same name; tokens are distinct per kind.
 
 ## What a plugin can take part in
 
@@ -454,7 +431,7 @@ class WorkspaceLabel(TuiPlugin):
         return f"{context.model.name} · {context.session.workspace.name}"
 ```
 
-Returning a `str`, a styled `TextLine`, or `None` (draw nothing). A span with no
+Returning a `str`, a styled `TextLine`, a `Row`, or `None` (draw nothing); `(value, True)` takes the side over. `Row` carries `lead`/`trail` parts so `/statusline` can switch them. A span with no
 style of its own inherits the row's muted style, so a segment blends in by
 default and opts into colour when it wants to. Registering under a name that
 already exists **replaces** that segment in place; a new name is appended after
@@ -499,7 +476,7 @@ configuration, so the flags work even before a workspace is chosen. The parsed
 values are the `PLUGIN_CLI` service, grouped by entry-point name:
 
 ```text
-limit = ctx.service(PLUGIN_CLI, dict)["journal"]["limit"]
+limit = ctx.service(PLUGIN_CLI, dict).get("journal", {}).get("limit", "3")
 ```
 
 The flags are global, before a subcommand: `zettcode --journal-limit 5 resume ID`.
@@ -814,8 +791,6 @@ class Palettes(TuiPlugin):
     def activate(self, ctx: PluginContext) -> None:
         # A theme file shipped inside your package: same format as ~/.zettcode/themes/<name>.toml.
         ctx.tui.register_theme("acme", Path(__file__).parent / "acme.toml")
-        # Or a function that builds a zettcode.tui.Theme; it runs only when the palette is first asked for.
-        ctx.tui.register_theme("acme-night", build_night, description="deep blue, low glare")
 ```
 
 A name is one word (letters, digits, `.`, `_`, `-`). `dark` and `light` belong to ZettCode. A name a
@@ -873,7 +848,7 @@ class QuietNotice(Presenter):
         return self if entry.kind is EntryKind.NOTICE else next(entry)
 
     def lines(self, entry, width, theme, frame):
-        return [TextLine((Span(entry.text, Style(foreground=theme.muted)),))]
+        return self.text_lines(entry.text, width, Style(foreground=theme.muted))
 
 
 class QuietNotices(TuiPlugin):
@@ -886,7 +861,7 @@ class QuietNotices(TuiPlugin):
 A presenter's `handle(entry, next)` is its whole claim: return `self` to draw the entry, or call
 `next(entry)` to pass it on. The registry only orders the chain and starts it — it never matches a
 row itself. A presenter that always returns `self` takes every row it is asked about, so its place decides:
-register a catch-all at the lowest `priority` to make it a fallback. The built-in `ToolPresenter` is
+register a catch-all with a `priority` below the built-ins (`priority = -1`) to make it a fallback. The built-in `ToolPresenter` is
 a fallback because it is registered before the named tool presenters.
 
 The built-in presenters claim by `entry.kind`; the tool presenters claim by the tool's own name
@@ -909,14 +884,18 @@ narrower claim.
 The setup hook can add a tool for each request. A tool is a `zett-agent`
 `AgentTool`; the plugin only decides which ones this run sees:
 
-```text
+```python
 from zett_agent.tools import tool
 from zettcode.plugin_api import Plugin, PluginContext
 
 
 @tool
-async def word_count(text: str, context) -> str:
-    """Count words in a string."""
+async def word_count(text: str) -> str:
+    """Count words in a string.
+
+    Guidelines:
+        - Use it when the reader asks for a word count.
+    """
     return str(len(text.split()))
 
 
@@ -1012,7 +991,7 @@ from zettcode.plugin_api import INBOX, Inbox, Plugin, PluginContext, Trigger, Tr
 
 
 class EveryMinute(Trigger):
-    name = "every-minute"            # one lowercase word: it names the lock file
+    name = "every-minute"            # letters/digits/._- up to 64 chars; it names the lock file
     scope = TriggerScope.MACHINE     # one on the whole machine
 
     async def run(self, fire):
@@ -1065,10 +1044,12 @@ piece; this section is for the exact name, type and default.
 | Member | Meaning |
 | --- | --- |
 | `name` | identity used by `deps`, diagnostics and `/plugins`. Empty means the entry-point name is used. |
-| `origin` | distribution or file name; set by the loader. What `[plugins] disable` and the switch file match. |
+| `origin` | entry-point name, or the file stem for a single-file plugin; set by the loader. What `[plugins] disable` and the switch file match. |
 | `description` | one line declared for authors and diagnostics; the program does not display it yet. |
 | `deps` | other plugin **names** this one needs; the loader activates them first. |
-| `priority` | hook order against other extensions; lower runs first. Default `100`. |
+| `priority` | order among plugins inside the host; lower runs first. The host adopts the lowest, so one plugin’s priority moves the whole bundle against other extensions. Default `100`. |
+| `setting` | program-only: the config key that switches a compiled-in plugin; a third-party plugin declares none. |
+| `rank` | program-only ordering inside a role group; a third-party plugin leaves it at `0`. |
 | `default_enabled()` | class method; return `False` to require `[plugins] enable = ["name"]`. |
 | `cli_arguments()` | class method; returns `CliOption` declarations for startup and `daemon spawn`. |
 | `activate(ctx)` | synchronous; register everything the plugin contributes. |
@@ -1081,7 +1062,7 @@ piece; this section is for the exact name, type and default.
 
 ### Agent hook groups
 
-A plugin can override only the stages it needs. All are async and default to
+A plugin can override only the stages it needs. All are async except `accept`, and default to
 doing nothing:
 
 | Group | Methods |
@@ -1149,7 +1130,7 @@ with `argument`, `ui` and `host`; `context.require_host()` is the shell. The
 | Method | What it adds |
 | --- | --- |
 | `register_command` | a `/command` with a `CommandUi` and `CommandHost` |
-| `register_header_left/right`, `register_status_left/right` | a segment; a blank `name` appends (`segment-N`), while a `render_*` override registers `<region>_<side>` and replaces the built-in; `override=True` clears that side |
+| `register_header_left/right`, `register_status_left/right` | a segment (`str`, `TextLine` or `Row`); a blank `name` appends (`segment-N`), while a `render_*` override registers `<region>_<side>` and replaces the built-in; `override=True` clears that side |
 | `register_turn_segment(name, summary, builder)` | an item of the line a request ends on; name starts `turn-` |
 | `register_theme(name, theme, *, description="")` | a palette, file, or builder |
 | `register_pet(name, pet, *, description="")` | a pet, or a builder |
@@ -1188,7 +1169,7 @@ wrong type is refused at activation with the key named.
 
 `cli_arguments()` returns `CliOption(flags, dest, help="", default=None,
 action="store", choices=None, metavar=None)`. The parsed values are
-`ctx.service(PLUGIN_CLI, dict)[origin][dest]`. Flags belong before a
+`ctx.service(PLUGIN_CLI, dict).get(origin, {}).get(dest)`. Flags belong before a
 subcommand: `zettcode --journal-limit 5 resume ID`. `daemon spawn` accepts the
 same flags and passes the values to its child privately. A bad option is
 skipped with one message; it does not stop ZettCode.
@@ -1199,9 +1180,9 @@ skipped with one message; it does not stop ZettCode.
   dependency leaves the dependent plugin out and reports why.
 - A plugin whose `default_enabled()` is false loads only when `[plugins]
   enable` names it, the program requires it, or a kept plugin needs it.
-- Duplicate identities, command names, service names, extension names, theme
-  names and pet names fail the later plugin, not the whole application.
-- no screen: `ctx.tui is None`; a plugin must guard screen-only
+- Duplicate identities, command names claimed by another plugin, service names, extension names, theme names and pet
+  names fail the later plugin, not the whole application.
+- a process with no screen: `ctx.tui is None`; a plugin must guard screen-only
   work.
 - `Plugins.failures` has `origin: why`; `Plugins.taken` records a name lost to
   an earlier plugin. A failed plugin provides nothing.
@@ -1277,11 +1258,11 @@ failed:
 
 | Failure | What happens |
 | --- | --- |
-| import, `activate`, duplicate identity, or a name clash (command, theme, pet, provider, mention, extension, trigger, service) | the whole plugin is rejected and none of its registrations survive; `origin: why` appears in the transcript and `Plugins.failures` |
+| import, `activate`, duplicate identity, or a name clash (a command another plugin claimed, theme, pet, provider, mention, extension, trigger, service) | the whole plugin is rejected and none of its registrations survive; `origin: why` appears in the transcript and `Plugins.failures` |
 | a dependency missing, disabled, failed or cyclic | the dependent plugin is rejected too, with `needs plugin 'x' …` |
 | a command raises `ValueError` or `ZettCodeError` | the shell shows that sentence as the command's own error |
 | any other command exception | one `/<name>: <reason>` line, and the traceback is logged |
-| a focus / turn-start / turn-end handler raises | one `a plugin hook failed: …` line; that handler is not called again. An agent-side hook (`before_turn`, `on_tool`, …) failing propagates and fails the request instead |
+| a focus / turn-start / turn-end handler raises | one `a plugin hook failed: …` line, reported once; the handler is still called on later events. An agent-side hook (`before_turn`, `on_tool`, …) failing propagates and fails the request instead |
 | a trigger raises | the trigger is marked failed and is not restarted; a handler that raises costs one event |
 | a presenter raises while painting | it is not isolated like a hook: return the same rows for every frame and do not raise |
 
@@ -1289,7 +1270,9 @@ A failed plugin provides nothing. `ctx.find` returns `None`; `ctx.service` raise
 are in the shell's `plugin: …` line, `/plugins`, and `client.plugins.failures` on an SDK client; `plugin list` shows
 installation and switch state, not failure reasons. Structured logs are JSON lines under `~/.zettcode/log/` (`terminal.jsonl` by default); set
 `ZETTCODE_LOG_LEVEL=debug` for more. `Plugins.taken`
-records a name lost to an earlier plugin. Two plugins may not share an identity; the first keeps it. A built-in name
-always keeps the built-in: the shell's `/config`, `/theme`, `/pet`, `/statusline`, the agent's `/new`, `/compact`,
-`/export`, the program's `/model`, `/resume` and the rest. The plugin still loads, but its command is not listed and
-cannot be run, and no failure is reported; check `/help` after installing.
+records a name lost to an earlier plugin. Two plugins may not share an identity; the first keeps it. Command names
+are also shared. A name held by the shell's four commands (`/config`, `/theme`, `/pet`, `/statusline`) or the agent's
+commands (`/new`, `/compact`, `/export`) is silently dropped: the plugin loads, its command is not listed and cannot be
+run, and no failure is reported; check `/help` after installing. A name held by another plugin — including a program
+plugin such as `/model` or `/resume` — makes the plugin fail to load with "command … is already registered by another
+plugin", and that appears in `Plugins.failures`.
