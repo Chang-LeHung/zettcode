@@ -32,6 +32,14 @@ MODELS = "models"
 COMPACTION_COUNTER = "compaction-counter"
 SELECTED_MODEL = "selected-model"
 
+#: What the plugin context gives a plugin: the same values its attributes expose, found by name.
+PLUGIN_AGENT = "plugin-agent"
+PLUGIN_COMMANDS = "plugin-commands"
+PLUGIN_TUI = "plugin-tui"
+PLUGIN_CONFIG = "plugin-config"
+PLUGIN_WORKSPACE = "plugin-workspace"
+PLUGIN_SETTINGS = "plugin-settings"
+
 #: Provided by the built-in plugins.
 APPROVAL = "approval"
 USAGE = "usage"
@@ -74,6 +82,12 @@ def require(services: Mapping[str, object], name: str, kind: type[_T]) -> _T:
 
 __all__ = [
     "CONTEXT_REPORT",
+    "PLUGIN_AGENT",
+    "PLUGIN_COMMANDS",
+    "PLUGIN_CONFIG",
+    "PLUGIN_SETTINGS",
+    "PLUGIN_TUI",
+    "PLUGIN_WORKSPACE",
     "SESSION_STORE",
     "USAGE_LEDGER",
     "lookup",

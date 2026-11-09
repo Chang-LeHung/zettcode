@@ -38,12 +38,26 @@ from .mixins import (
     PluginTurnMixin,
 )
 from .plugin import Plugin, Plugins, PluginSetting
+from .services import (
+    PLUGIN_AGENT,
+    PLUGIN_COMMANDS,
+    PLUGIN_CONFIG,
+    PLUGIN_SETTINGS,
+    PLUGIN_TUI,
+    PLUGIN_WORKSPACE,
+)
 from .state import AgentBuild, Contribution, ExtensionFactory
 from .switches import PluginEntry, applied, catalog, off_names, set_enabled, set_many
 from .triggers import Trigger, TriggerEvent, TriggerHost, TriggerScope, TriggerState, TriggerStatus
 
 __all__ = [
     "PLUGIN_ENTRY_POINT_GROUP",
+    "PLUGIN_AGENT",
+    "PLUGIN_COMMANDS",
+    "PLUGIN_CONFIG",
+    "PLUGIN_SETTINGS",
+    "PLUGIN_TUI",
+    "PLUGIN_WORKSPACE",
     "AgentBuild",
     "Plugin",
     "PluginContext",

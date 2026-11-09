@@ -39,6 +39,11 @@ waits for a request to end belongs on `ctx.tui` instead.
 Nothing is rejected for being for the wrong front end: a plugin always activates, and a broken one — a module that cannot be imported, a name two plugins
 claim — is reported as a failure where the reader can see it.
 
+Each group is also a service, under the same name a plugin can pass to `ctx.service`: `PLUGIN_AGENT`, `PLUGIN_COMMANDS`,
+`PLUGIN_TUI`, `PLUGIN_CONFIG`, `PLUGIN_WORKSPACE` and `PLUGIN_SETTINGS`. `ctx.tui` is `ctx.find(PLUGIN_TUI, TuiGroup)`;
+the attributes remain as short, typed aliases. A front end may hand the agent or command group in through
+`ZettCodeEngine.preview(shared=...)` when it has its own implementation.
+
 ## Installing one
 
 A plugin publishes a class under the `zettcode.plugin` entry-point group:
@@ -297,6 +302,7 @@ A command is handed a `CommandContext`:
 | Attribute | What it is |
 | --- | --- |
 | `argument` | The trimmed text after the command name. |
+| `arguments` | The same words split on whitespace, for a command taking several values (daemon names, paths). |
 | `ui.markdown(text)` | Append Markdown to the conversation. |
 | `ui.notice(text)` / `ui.error(text)` | Add one muted or failing line. |
 | `ui.notify(text, level=…)` | Raise a toast. |
