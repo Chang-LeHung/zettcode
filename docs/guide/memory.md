@@ -43,8 +43,8 @@ name: Tests use a real database
 description: integration tests connect to the real database; used to judge relevance later
 type: feedback
 ---
-The tests connect to a real database. Then **Why:** mocks hid a migration failure.
-Then **How to apply:** run the database container before the suite.
+The tests connect to a real database. **Why:** mocks hid a migration failure. **How to apply:** run the database
+container before the suite.
 ```
 
 The four types are `user`, `feedback`, `project` and `reference`. The description is the retrieval key, not a human

@@ -5,7 +5,7 @@
 **`zettcode: Config key ... must be str` / `Unknown config keys ...`** —— 报错里会点名出错的键。
 拼错的键会被拒绝而不是忽略，所以通常改拼写就好。完整的键见[配置文件](/zh/guide/config)。
 
-**`zettcode: No models configured`** —— 这是 `zettcode ask` 和 `zettcode doctor` 在
+**`zettcode: No models configured`** —— 这是 `zettcode prompt` 和 `zettcode doctor` 在
 `~/.zettcode/config.toml` 里还没有 `[[models]]` 表时的回答。终端不会因此停下：它照常打开，头部显示
 `no model`，`/config` 会一步步问你要第一项配置 —— 供应商、model id、token —— 再把它写进那个文件；这台机器
 从来没建过配置文件时，它会连文件一起建出来。在那之前输入的 prompt 会用同一句话拒绝，你写的字仍留在输入框里。

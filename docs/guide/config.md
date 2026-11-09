@@ -771,7 +771,7 @@ or your shell history in an issue.
 
 | Symptom | What to check |
 | --- | --- |
-| `No models configured` | Add a `[[models]]` entry. The terminal starts without one and `/config` writes the first; `zettcode ask` and `zettcode doctor` refuse until the file has it. |
+| `No models configured` | Add a `[[models]]` entry. The terminal starts without one and `/config` writes the first; `zettcode prompt` and `zettcode doctor` refuse until the file has it. |
 | `Missing token for model ...` | Supply `token`, or set the variable of that API in the launching terminal: `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY` for an `anthropic` entry. A placeholder is non-empty and only fails later at the API. |
 | `Unknown config keys ...` | Use only the keys listed here. For example, `model_name` should be `model`. |
 | `must be bool` / `must be int` | Use `true`, not `"true"`; use `1000000`, not `"1000000"`. |
