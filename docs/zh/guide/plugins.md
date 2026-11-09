@@ -324,9 +324,9 @@ class TicketsPlugin(Plugin[PluginContext]):
         ctx.agent.register_mention(Tickets())
 ```
 
-`candidates(query)` 返回补全项；`expand(name)` 返回模型看到的文本，不是这个 provider 的 token
-返回 `None`。可以覆盖 `rename(name)`，返回模型看到的替代文本；两个 provider 提供同一个名字时用
-`precedence` 决定顺序（小的先）；两个 provider 提供同一个名字时，排在前面的那个拥有它的补全、展开和重命名。
+`candidates(query)` 返回补全项；`expand(name)` 返回模型看到的文本，token 不属于这个 provider 时返回 `None`。
+可以覆盖 `rename(name)`，返回模型看到的替代文本；`precedence` 决定 provider 的顺序（小的先），两个 provider
+提供同一个名字时，排在前面的那个拥有它的补全、展开和重命名。
 
 ## 插件能参与什么
 
