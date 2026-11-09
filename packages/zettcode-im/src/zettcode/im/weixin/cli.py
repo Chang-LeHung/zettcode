@@ -136,6 +136,11 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
     worker = Worker(state_dir)
     if worker.running():
         print(worker.stop(), "\u2014 a new scan starts a new process")
+        if worker.running():
+            # The old process is still writing the same state file with the old token and cursor; saving this
+            # login under it would be undone as soon as it saved again.
+            print("the old bridge did not stop; nothing was changed. Stop it by hand and run the command again.")
+            return 3
     state = BridgeState.load(state_dir / "state.json")
     client = WeChatClient()
     state_now = None
@@ -214,17 +219,14 @@ async def _run(arguments: argparse.Namespace, state_dir: Path) -> int:
     if not state.logged_in:
         print(f"no login in {state_dir}: run `zettcode-weixin` first")
         return 2
-    lock = SingletonLock(Worker(state_dir).lock)
-    if not lock.acquire():
-        print("another bridge is running; `zettcode-weixin status` says which, `stop` ends it")
-        return 3
     client = WeChatClient(token=state.token())
     link = SessionLink(
-        session_id="im-weixin",
+        session_id=_bridge_id(state_dir),
         handle="weixin",
         workspace=state.workspace,
         timeout=arguments.turn_timeout,
     )
+    lock: SingletonLock | None = None
     try:
         try:
             handshake = LoginHandshake.model_validate(state.handshake)
@@ -234,6 +236,12 @@ async def _run(arguments: argparse.Namespace, state_dir: Path) -> int:
             return 3
         if login.status in (LoginStatus.FAILED, LoginStatus.EXPIRED):
             print(f"the WeChat login has ended: {login.message}. Run `zettcode-weixin` again.")
+            return 3
+        # The lock is taken only once the things that can still refuse this run have been checked: a process that
+        # takes the lock and then exits is a start the reader was told had worked.
+        lock = SingletonLock(Worker(state_dir).lock)
+        if not lock.acquire(wait=0.2):  # a probe takes the lock for an instant; a short wait tells the two apart
+            print("another bridge is running; `zettcode-weixin status` says which, `stop` ends it")
             return 3
         guard = DaemonGuard(
             workspace=Path(state.workspace or Path.cwd()),
@@ -255,7 +263,6 @@ async def _run(arguments: argparse.Namespace, state_dir: Path) -> int:
             settings=BridgeSettings(
                 allow=frozenset(state.allow),
                 allow_all=state.allow_all,
-                turn_timeout=arguments.turn_timeout,
             ),
             error=_log,
         )
@@ -266,7 +273,19 @@ async def _run(arguments: argparse.Namespace, state_dir: Path) -> int:
     finally:
         await link.close()
         await client.aclose()
-        lock.release()
+        if lock is not None:
+            lock.release()
+
+
+def _bridge_id(state_dir: Path) -> str:
+    """Return the broker id of the bridge in one directory: stable per bridge, different between two of them.
+
+    Two bridges — two WeChat accounts, or a stale worker on another ``--state-dir`` — would otherwise claim the
+    same session on the broker, and the second would see every send refused as if it were the agent's fault.
+    """
+    import hashlib
+
+    return "im-weixin-" + hashlib.sha1(str(state_dir.resolve()).encode("utf-8")).hexdigest()[:8]
 
 
 def _on_signals(stop: object) -> None:

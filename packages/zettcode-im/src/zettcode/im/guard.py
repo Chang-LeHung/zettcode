@@ -132,10 +132,10 @@ class DaemonGuard:
         return info.session_id
 
     def _wait(self) -> float:
-        """Return how long the next attempt waits, and remember it."""
-        waits = self.waits or (FIRST_WAIT, FIRST_WAIT * 2, MAX_WAIT)
-        index = min(self._failures, len(waits) - 1)
-        return waits[index]
+        """Return how long the next attempt waits, and remember it: five seconds, doubling, up to five minutes."""
+        if self.waits:
+            return self.waits[min(self._failures, len(self.waits) - 1)]
+        return min(FIRST_WAIT * (2**self._failures), MAX_WAIT)
 
     def _failed(self, said: str) -> float:
         """Count a failed attempt, wait longer before the next, and return how long that is."""
