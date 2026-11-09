@@ -347,7 +347,7 @@ A mention provider adds a kind of `@` reference the composer can offer and the
 model can resolve:
 
 ```text
-from zettcode.plugin_api import Mention, MentionProvider, PluginContext
+from zettcode.plugin_api import Mention, MentionProvider, Plugin, PluginContext
 
 
 class Tickets(MentionProvider):
@@ -360,8 +360,11 @@ class Tickets(MentionProvider):
         return f"Ticket {name}" if name.startswith("ABC-") else None
 
 
-def activate(self, ctx: PluginContext) -> None:
-    ctx.agent.register_mention(Tickets())
+class TicketsPlugin(Plugin[PluginContext]):
+    name = "ticket-resources"
+
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_mention(Tickets())
 ```
 
 `candidates(query)` returns the completions; `expand(name)` returns the text
@@ -411,7 +414,8 @@ class Away(TuiPlugin):
 
 Neither is a row and neither may consume anything: they are told, and what they do with the news is their own. A hook
 is also told at a moment it must not disturb: it runs inside the request that just ended, before the shell is free
-again, so work that starts a turn of its own — `host.prompt(...)` — is scheduled, not done in the handler.
+again, so work that starts a turn of its own — the `HOST_LINK` host's `prompt(...)`, or
+`INBOX.deliver(..., mode="followup")` — is scheduled, not done in the handler.
 
 What is a turn: a request the reader sent, or one another session sent and this one answered. Running a command is
 not itself a turn, though a turn a command starts with `host.prompt` is; a side question and a resumed request are
@@ -486,10 +490,12 @@ dict, or `None`), because a daemon passes them through JSON. A declaration with
 a colliding flag or a non-JSON default is skipped with one message, never a
 traceback.
 
-Only **entry-point** plugins can declare these flags. Discovery reads entry points before any plugin module is
-imported, so a single `.py` file in `~/.zettcode/plugins` never has its `cli_arguments()` consulted. `zettcode --help` deliberately skips plugin discovery and therefore does
-not list these flags; `zettcode daemon spawn --help` does. `~/.zettcode/.ztrc`
-presets them for a session start only, not for `daemon spawn`.
+Only **entry-point** plugins can declare these flags. Their declarations are read from the plugin classes before the
+configuration exists; a single `.py` file has no entry point, so its `cli_arguments()` is never consulted. Reading
+the declarations imports every installed plugin class, including a disabled one, on every start — keep that module
+cheap to import. `zettcode --help` deliberately skips discovery and therefore does not list these flags;
+`zettcode daemon spawn --help` does. `~/.zettcode/.ztrc` presets them for a session start only, not for
+`daemon spawn`.
 
 ## Reading the configuration
 
@@ -990,7 +996,7 @@ from zettcode.plugin_api import INBOX, Inbox, Plugin, PluginContext, Trigger, Tr
 
 
 class EveryMinute(Trigger):
-    name = "every-minute"            # lowercase letters/digits/._- up to 64; it names the lock file
+    name = "every-minute"            # a lowercase letter or digit first, then lowercase letters/digits/._-, 1-64; it names the lock file
     scope = TriggerScope.MACHINE     # one on the whole machine
 
     async def run(self, fire):
