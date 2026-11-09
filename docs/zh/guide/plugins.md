@@ -260,7 +260,7 @@ zettcode plugin enable greeter        # 重新加载
 以及 `~/.zettcode/plugins` 里的单文件插件（文件路径），并说明下次启动是否加载、由哪个开关决定。编译进程序的插件
 `ENABLED` 是 `-`，它的设置在旁边的 `SWITCH` 里。`uninstall` 会从 `~/.zettcode/plugins` 删掉文件，
 或者卸载名字对应的发行包；名字可以是发行包名、`/plugins` 里显示的 entry point 名，或者文件名（去掉 `.py`）。
-`enable` 和 `disable` 写的就是 `/plugins` 面板用的同一份 `[plugins] disable` 列表；编译进程序的插件由配置里的设置控制，面板会改它，这条命令不会。
+`enable` 和 `disable` 写的就是 `/plugins` 面板用的同一份 `[plugins] disable` 列表，但只限这条命令接受的插件；面板还会列出程序自己的可选终端部分，这条命令不管它们。编译进程序的插件由配置里的设置控制，面板会改它，这条命令不会。
 程序自己的终端部分（`themes`、`pets`、`context`、`usage`）由 `/plugins` 页面列出，不在这个命令里。
 
 这个命令以前叫 `zettcode plugins`：为旧名字写的脚本仍然可用，不过 `zettcode --help` 里只列 `plugin`。
@@ -382,7 +382,7 @@ class WorkspaceLabel(TuiPlugin):
         return f"{context.model.name} · {context.session.workspace.name}"
 ```
 
-返回 `str`、带样式的 `TextLine`、`Row`，或者 `None`（什么都不画）；`(value, True)` 接管整侧。`Row` 的 `lead`/`trail` 部分可由 `/statusline` 开关。没有自带样式的片段会继承这一行的
+返回 `str`、带样式的 `TextLine`、`Row`，或者 `None`（什么都不画）。`Row` 由具名部分组成（`row.add(name, summary, text)`），`/statusline` 开关的是这些部分；`lead`/`trail` 是它们两边的固定文本。没有自带样式的片段会继承这一行的
 灰色样式，所以默认看起来是融进去的，想上色再上色。用已存在的名字注册会**原地替换**那个片段；
 新名字追加在该侧已有的片段之后。返回 `(value, True)` 表示独占该侧，这是在不知道内置名字的
 情况下接管整侧的做法。
@@ -431,8 +431,8 @@ limit = ctx.service(PLUGIN_CLI, dict).get("journal", {}).get("limit", "3")
 字典或 `None`），因为 daemon 通过 JSON 传递。声明有重名 flag 或非 JSON 默认值时，只跳过该选项并打印一行，
 不会 traceback。
 
-只有 **entry-point** 插件能声明这些参数；`~/.zettcode/plugins` 里单个 `.py` 文件加载得太晚，它的
-`cli_arguments()` 不会被读取。`zettcode --help` 故意跳过插件发现，所以不会列出这些 flag；
+只有 **entry-point** 插件能声明这些参数。发现阶段在导入任何插件模块之前就读 entry point，所以
+`~/.zettcode/plugins` 里单个 `.py` 文件的 `cli_arguments()` 不会被读取。`zettcode --help` 故意跳过插件发现，所以不会列出这些 flag；
 `zettcode daemon spawn --help` 会。`~/.zettcode/.ztrc` 只为会话启动预置它们，不会作用于 `daemon spawn`。
 
 ## 读配置
@@ -879,7 +879,7 @@ from zettcode.plugin_api import INBOX, Inbox, Plugin, PluginContext, Trigger, Tr
 
 
 class EveryMinute(Trigger):
-    name = "every-minute"            # 字母/数字/._-，最多 64 字符；同时是锁文件的名字
+    name = "every-minute"            # 小写字母/数字/._-，最多 64 字符；同时是锁文件的名字
     scope = TriggerScope.MACHINE     # 整台机器只跑一个
 
     async def run(self, fire):
@@ -1122,7 +1122,7 @@ helper。测试必须用临时目录：插件不能写读者的 home 或 checkou
 
 | 失败 | 结果 |
 | --- | --- |
-| import、`activate`、重复身份，或名字冲突（命令、主题、宠物、provider、mention、扩展、trigger、service） | 整个插件被拒绝，已注册内容全部丢弃；对话里出现 `origin: why`，也进 `Plugins.failures` |
+| import、`activate`、重复身份，或名字冲突（另一个插件已占用的命令、主题、宠物、provider、mention、扩展、trigger、service） | 整个插件被拒绝，已注册内容全部丢弃；对话里出现 `origin: why`，也进 `Plugins.failures` |
 | 依赖缺失、被禁用、失败或成环 | 依赖它的插件也被拒绝，并说明 `needs plugin 'x' …` |
 | 命令抛 `ValueError` 或 `ZettCodeError` | 那句话作为命令自己的错误显示 |
 | 命令抛其他异常 | 显示一行 `/<name>: <reason>`，traceback 写入日志 |

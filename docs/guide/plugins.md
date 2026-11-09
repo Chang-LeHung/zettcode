@@ -276,8 +276,8 @@ URL shown above. Start ZettCode again and the plugin is in the `/` menu.
 
 A single `.py` file is not installed into site-packages: it is copied into
 `~/.zettcode/plugins`, where the next start loads every class it defines that
-derives from `Plugin` or `TuiPlugin` — one file can hold more than one, and
-there is no name to pass. The file has to be one module (no relative imports),
+derives from `Plugin` or `TuiPlugin` — one file can hold more than one, but each
+class needs a distinct `name`; a class with none falls back to the file stem, so two such classes clash. The file has to be one module (no relative imports),
 and it declares no dependencies — install those the way the plugin's
 documentation says. Installing over a file with different content is refused
 until you pass `--force` (the message names the target path and says to remove it first or pass --force).
@@ -297,9 +297,9 @@ with whether the next start loads each one and the switch that decides it. The p
 its setting is the switch shown beside it. `uninstall` removes the file from `~/.zettcode/plugins`, or the distribution
 behind a name; the name is the distribution's own, the entry-point name
 `/plugins` shows as its origin, or the file's stem. `enable` and `disable`
-write the same `[plugins] disable` list the `/plugins` panel does; a plugin compiled into
-the program is switched by its own setting in the configuration file, which
-the panel edits and this command leaves alone.
+write the same `[plugins] disable` list the `/plugins` panel does, for the plugins this command accepts; the panel
+also lists the program's optional terminal parts, which this command does not. A plugin compiled into the program is
+switched by its own setting in the configuration file, which the panel edits and this command leaves alone.
 
 The command used to be called `zettcode plugins`; that word still works for the scripts written against it, though
 `zettcode --help` lists only `plugin`.
@@ -431,7 +431,7 @@ class WorkspaceLabel(TuiPlugin):
         return f"{context.model.name} · {context.session.workspace.name}"
 ```
 
-Returning a `str`, a styled `TextLine`, a `Row`, or `None` (draw nothing); `(value, True)` takes the side over. `Row` carries `lead`/`trail` parts so `/statusline` can switch them. A span with no
+Returning a `str`, a styled `TextLine`, a `Row`, or `None` (draw nothing). A `Row` is built from named parts (`row.add(name, summary, text)`), which `/statusline` switches; `lead`/`trail` are fixed text around them. A span with no
 style of its own inherits the row's muted style, so a segment blends in by
 default and opts into colour when it wants to. Registering under a name that
 already exists **replaces** that segment in place; a new name is appended after
@@ -486,9 +486,8 @@ dict, or `None`), because a daemon passes them through JSON. A declaration with
 a colliding flag or a non-JSON default is skipped with one message, never a
 traceback.
 
-Only **entry-point** plugins can declare these flags; a single `.py` file in
-`~/.zettcode/plugins` is loaded too late, so its `cli_arguments()` is never
-read. `zettcode --help` deliberately skips plugin discovery and therefore does
+Only **entry-point** plugins can declare these flags. Discovery reads entry points before any plugin module is
+imported, so a single `.py` file in `~/.zettcode/plugins` never has its `cli_arguments()` consulted. `zettcode --help` deliberately skips plugin discovery and therefore does
 not list these flags; `zettcode daemon spawn --help` does. `~/.zettcode/.ztrc`
 presets them for a session start only, not for `daemon spawn`.
 
@@ -991,7 +990,7 @@ from zettcode.plugin_api import INBOX, Inbox, Plugin, PluginContext, Trigger, Tr
 
 
 class EveryMinute(Trigger):
-    name = "every-minute"            # letters/digits/._- up to 64 chars; it names the lock file
+    name = "every-minute"            # lowercase letters/digits/._- up to 64; it names the lock file
     scope = TriggerScope.MACHINE     # one on the whole machine
 
     async def run(self, fire):
