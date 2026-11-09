@@ -12,6 +12,7 @@ terminal is a layer above this one, which is why the attribute is untyped here a
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
 from zettcode.plugin_tui import TuiGroup
@@ -19,7 +20,16 @@ from zettcode.providers import Provider
 
 from .commands import CommandGroups
 from .groups import AgentGroups
-from .services import lookup, require
+from .services import (
+    PLUGIN_AGENT,
+    PLUGIN_COMMANDS,
+    PLUGIN_CONFIG,
+    PLUGIN_SETTINGS,
+    PLUGIN_TUI,
+    PLUGIN_WORKSPACE,
+    lookup,
+    require,
+)
 from .settings import PluginSettings
 from .state import Contribution, ExtensionFactory
 from .triggers import Trigger, TriggerHandler, TriggerRegistration, check_name
@@ -53,21 +63,55 @@ class PluginContext:
             name: The plugin this context belongs to, which is the name its ``[plugins.<name>]`` table is written
                 under. The loader passes it; a test that builds a context by hand may leave it out.
         """
-        self.config = config
-        self.workspace = config.workspace
+        self._config = config
+        self._workspace = config.workspace
         #: The keys this plugin reads from the configuration, and the defaults it gives them.
-        self.settings = PluginSettings(name, config.plugin_settings.get(name) if name else None)
+        self._settings = PluginSettings(name, config.plugin_settings.get(name) if name else None)
+        provided = services if services is not None else {}
+        agent = provided.get(PLUGIN_AGENT)
         #: What every front end has: extensions, providers, ``@`` providers and services.
-        self.agent = AgentGroups(self)
+        self._agent = agent if isinstance(agent, AgentGroups) else AgentGroups(self)
+        commands = provided.get(PLUGIN_COMMANDS)
         #: Plain commands: text and a toast, no widget and no shell.
-        self.commands = CommandGroups()
-        self._tui: TuiGroup | None = None
-        self._available: Mapping[str, object] = services if services is not None else {}
+        self._commands = commands if isinstance(commands, CommandGroups) else CommandGroups()
+        self._available: dict[str, object] = {
+            **provided,
+            PLUGIN_AGENT: self._agent,
+            PLUGIN_COMMANDS: self._commands,
+            PLUGIN_CONFIG: self._config,
+            PLUGIN_WORKSPACE: self._workspace,
+            PLUGIN_SETTINGS: self._settings,
+        }
         self._mentions: list[MentionProvider] = []
         self._providers: list[Provider] = []
         self._extensions: list[Contribution] = []
         self._services: dict[str, object] = {}
         self._triggers: list[TriggerRegistration] = []
+
+    @property
+    def config(self) -> ZettCodeConfig:
+        """Return the resolved settings, the same object as the ``PLUGIN_CONFIG`` service."""
+        return self.service(PLUGIN_CONFIG, object)  # type: ignore[return-value]
+
+    @property
+    def workspace(self) -> Path:
+        """Return the directory the session works in, the same object as the ``PLUGIN_WORKSPACE`` service."""
+        return self.service(PLUGIN_WORKSPACE, Path)
+
+    @property
+    def settings(self) -> PluginSettings:
+        """Return this plugin's settings, the same object as the ``PLUGIN_SETTINGS`` service."""
+        return self.service(PLUGIN_SETTINGS, PluginSettings)
+
+    @property
+    def agent(self) -> AgentGroups:
+        """Return the agent group, the same object as the ``PLUGIN_AGENT`` service."""
+        return self.service(PLUGIN_AGENT, AgentGroups)
+
+    @property
+    def commands(self) -> CommandGroups:
+        """Return the plain-command group, the same object as the ``PLUGIN_COMMANDS`` service."""
+        return self.service(PLUGIN_COMMANDS, CommandGroups)
 
     @property
     def tui(self) -> TuiGroup | None:
@@ -76,11 +120,12 @@ class PluginContext:
         The loader attaches it once, before the plugin activates; a plugin reads it and never replaces it.
         :class:`zettcode.app.plugins.groups.TuiGroups` is the implementation.
         """
-        return self._tui
+        group = self.find(PLUGIN_TUI, object)
+        return group if isinstance(group, TuiGroup) else None
 
     def attach_tui(self, group: TuiGroup) -> None:
         """Give this context its terminal group; the terminal's loader is the caller."""
-        self._tui = group
+        self._available[PLUGIN_TUI] = group
 
     @property
     def extensions(self) -> tuple[Contribution, ...]:

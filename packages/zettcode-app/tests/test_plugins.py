@@ -27,6 +27,12 @@ from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine.extensions.usage import UsageSnapshot
 from zettcode.engine.plugins import (
+    PLUGIN_AGENT,
+    PLUGIN_COMMANDS,
+    PLUGIN_CONFIG,
+    PLUGIN_SETTINGS,
+    PLUGIN_TUI,
+    PLUGIN_WORKSPACE,
     PluginAgentMixin,
     PluginEventMixin,
     PluginExtension,
@@ -39,6 +45,8 @@ from zettcode.engine.plugins import (
     PluginTurnMixin,
 )
 from zettcode.engine.plugins import loader as loader_module
+from zettcode.engine.plugins.commands import CommandGroups, PlainCommandContext
+from zettcode.engine.plugins.groups import AgentGroups
 from zettcode.pets.plugin import PetsPlugin
 from zettcode.plugin_api.commands import CommandContext, CommandResult, CommandUi
 from zettcode.plugin_api.entries import EditEntry, EntryKind, ReadEntry, TextEntry
@@ -437,6 +445,38 @@ def make_config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:
         workspace=tmp_path, models=(ModelConfig(model="gpt", token="t"),), plugins_dir=tmp_path / "plugins"
     )
     return replace(config, **overrides) if overrides else config
+
+
+def test_a_command_context_carries_all_its_words_as_a_list():
+    context = CommandContext(argument="fix-parser docs", ui=_SilentUi())
+
+    assert context.argument == "fix-parser docs" and context.arguments == ("fix-parser", "docs")
+    plain = PlainCommandContext(argument="a b c")
+    assert plain.arguments == ("a", "b", "c")
+
+
+def test_a_shared_service_can_hand_in_the_context_groups(tmp_path: Path):
+    config = make_config(tmp_path)
+    base = PluginContext(config, {})
+    agent, commands = AgentGroups(base), CommandGroups()
+    injected = PluginContext(config, {PLUGIN_AGENT: agent, PLUGIN_COMMANDS: commands})
+
+    assert injected.agent is agent and injected.commands is commands
+
+
+def test_the_context_attributes_are_services_too(tmp_path: Path):
+    config = make_config(tmp_path)
+    ctx = PluginContext(config, {})
+
+    assert ctx.agent is ctx.service(PLUGIN_AGENT, AgentGroups)
+    assert ctx.commands is ctx.service(PLUGIN_COMMANDS, CommandGroups)
+    assert ctx.config is ctx.service(PLUGIN_CONFIG, object)
+    assert ctx.workspace is ctx.service(PLUGIN_WORKSPACE, Path)
+    assert ctx.settings is ctx.service(PLUGIN_SETTINGS, object)
+    assert ctx.tui is None
+
+    terminal = terminal_context(config, {}, name="test")
+    assert terminal.tui is not None and terminal.tui is terminal.service(PLUGIN_TUI, type(terminal.tui))
 
 
 def loaded_names(plugins: TuiPlugins) -> list[str]:

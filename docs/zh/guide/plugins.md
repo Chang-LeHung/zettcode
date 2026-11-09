@@ -33,6 +33,11 @@ class Greeter(TuiPlugin):  # 这个 mixin 提供行相关的钩子；基类仍�
 答案是文字的时候用 `ctx.commands`：它在每个进程里都存在，终端会把它和 `ctx.tui` 里的命令放在同一张表里。会开页面、
 要 shell 动手、需要等请求结束的命令，放在 `ctx.tui`。
 
+每个组同时也是一项 service，名字可以直接传给 `ctx.service`：`PLUGIN_AGENT`、`PLUGIN_COMMANDS`、`PLUGIN_TUI`、
+`PLUGIN_CONFIG`、`PLUGIN_WORKSPACE` 和 `PLUGIN_SETTINGS`。`ctx.tui` 就是
+`ctx.find(PLUGIN_TUI, TuiGroup)`；属性只是短一点的类型化别名。前端如果有自己的实现，可以通过
+`ZettCodeEngine.preview(shared=...)` 把 agent 或 command 组交进来。
+
 **不会因为"不是给这个前端的"而被拒绝**：插件总会被激活；真正坏掉的（导入失败、两个插件抢同一个名字）会作为失败报告出来，读者看得到。
 
 ## 安装一个插件
@@ -264,6 +269,7 @@ quiet = true
 | 属性 | 是什么 |
 | --- | --- |
 | `argument` | 命令名之后去掉首尾空白的参数。 |
+| `arguments` | 同一串参数按空白拆开，供接收多个值（daemon 名、路径等）的命令使用。 |
 | `ui.markdown(text)` | 往对话里追加 Markdown。 |
 | `ui.notice(text)` / `ui.error(text)` | 追加一行灰色提示 / 一行错误。 |
 | `ui.notify(text, level=…)` | 弹一个 toast。 |

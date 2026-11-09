@@ -55,6 +55,7 @@ class PlainCommandContext:
 
     Attributes:
         argument: The words typed after the command's name.
+        arguments: The same words split on whitespace, for a command that takes several values.
         level: The shell level the session is running at (``deny``, ``ask``, ``safe`` or ``full``), filled by the
             front end that runs the command. A command that decides what to ask the model says it in these terms
             rather than reaching for a shell it may not have.
@@ -65,6 +66,12 @@ class PlainCommandContext:
     #: The session, for a command that acts on it; ``None`` when the front end running it has no such reach, and the
     #: command then says so rather than failing.
     host: PlainCommandHost | None = None
+    arguments: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Derive the list form when the caller did not give one."""
+        if not self.arguments:
+            object.__setattr__(self, "arguments", tuple(self.argument.split()))
 
 
 @dataclass(frozen=True, slots=True)
