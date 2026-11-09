@@ -38,6 +38,9 @@ dev = [
   # package; a reader installs one from an extra in `packages/zettcode/pyproject.toml` instead.
   "zettcode-monitor",
   "zettcode-recap",
+  # The chat bridge is a program of its own, not a dependency of `zettcode`, but its suite runs in this environment
+  # like every other member's.
+  "zettcode-im",
 ]
 
 [tool.uv.sources]
@@ -73,6 +76,7 @@ zettcode-truncation = { workspace = true }
 zettcode-guidance = { workspace = true }
 zettcode-monitor = { workspace = true }
 zettcode-recap = { workspace = true }
+zettcode-im = { workspace = true }
 
 [tool.mypy]
 python_version = "3.10"
@@ -104,6 +108,7 @@ mypy_path = [
   "packages/zettcode-tool-output/src",
   "packages/zettcode-truncation/src",
   "packages/zettcode-guidance/src",
+  "packages/zettcode-im/src",
   "packages/zettcode/src",
   "packages/zettcode",
   ".github/scripts",
@@ -133,6 +138,7 @@ files = [
   "packages/zettcode-tool-output/src",
   "packages/zettcode-truncation/src",
   "packages/zettcode-guidance/src",
+  "packages/zettcode-im/src",
   "packages/zettcode/src",
   "packages/zettcode/perf",
   "packages/zettcode-monitor/src",
