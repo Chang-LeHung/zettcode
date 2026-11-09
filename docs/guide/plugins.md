@@ -52,7 +52,9 @@ A plugin can add flags to a session start and to `zettcode daemon spawn` by over
 `CliOption` values (flags, a destination, help, a default, and optionally an action, choices or metavar). The
 declarations are read from the class before activation, so they can be used without a configuration. The parsed
 values reach the plugin as the `PLUGIN_CLI` service, grouped by its entry-point name; they must be JSON-safe so a
-daemon's parent can pass them to its child. `~/.zettcode/.ztrc` may preset these flags like any other option.
+daemon's parent can pass them to its child. `~/.zettcode/.ztrc` may preset these flags like any other option. The
+declaration is read on every start before the configuration exists, so it may import every installed plugin class,
+including a disabled one; keep the class module cheap to import.
 
 ## Installing one
 

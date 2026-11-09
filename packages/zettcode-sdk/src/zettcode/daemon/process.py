@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 from typing import IO, TYPE_CHECKING
 
-from . import PERMISSIONS
+from . import PERMISSIONS, PLUGIN_ARGS_ENV
 from .state import START_SECONDS, Record, Registry, pid_runs
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -118,12 +118,19 @@ class Daemons:
         early.mkdir(parents=True, exist_ok=True)
         log_path = early / f"{token}.log"
         with log_path.open("wb") as log:
+            env = None
+            if plugin_arguments:
+                env = {
+                    **os.environ,
+                    PLUGIN_ARGS_ENV: json.dumps(plugin_arguments, separators=(",", ":"), sort_keys=True),
+                }
             child = _Child(
                 self._command(
                     _options(workspace, token, model, effort, resume, name, title, permission, plugin_arguments or {})
                 ),
                 workspace,
                 log,
+                env=env,
             )
         record = self._await(child, token, START_SECONDS)
         if record is None:
@@ -157,8 +164,6 @@ class Daemons:
         if options.title is not None:
             argv += ["--title", options.title]
         argv += ["--permission", options.permission]
-        if options.plugin_arguments:
-            argv += ["--plugin-args", json.dumps(options.plugin_arguments, separators=(",", ":"), sort_keys=True)]
         return argv
 
     def _await(self, child: _Child, token: str, timeout: float) -> Record | None:
@@ -491,7 +496,9 @@ class Daemons:
 class _Child:
     """The process a start made, kept just long enough to know whether it worked."""
 
-    def __init__(self, argv: list[str], workspace: Path, log: IO[bytes]) -> None:
+    def __init__(
+        self, argv: list[str], workspace: Path, log: IO[bytes], *, env: Mapping[str, str] | None = None
+    ) -> None:
         if os.name == "nt":  # pragma: no cover - exercised on Windows only
             self.process = subprocess.Popen(  # noqa: S603 - the argv is ours, not a caller's string
                 argv,
@@ -499,6 +506,7 @@ class _Child:
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 cwd=workspace,
+                env=env,
                 creationflags=0x00000008 | 0x00000200,  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
             )
         else:
@@ -508,6 +516,7 @@ class _Child:
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 cwd=workspace,
+                env=env,
                 start_new_session=True,
             )
 

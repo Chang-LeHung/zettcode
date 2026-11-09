@@ -376,6 +376,8 @@ class Client:
         effort: The reasoning level to start on.
         permission: The shell permission level: ``deny``, ``ask``, ``safe`` (every command in a sandbox) or ``full``.
         resume: A session id to continue instead of starting a new conversation.
+        shared: Services handed to the plugins before activation, by name; a front end uses this for values its
+            plugin flags parsed. A name the runtime owns is refused.
         store, theme_file, theme, themes_dir, pet, pet_position, reasoning_effort, shell_approval, reduced_motion,
         parallel_tool_call, max_iterations, transcript_max_entries, mouse_scroll_speed, tips, agents_md_enabled,
         ask_user_enabled, skills_enabled, skill_roots, skills_scope, mcp_enabled, mcp_config, mcp_scope,
