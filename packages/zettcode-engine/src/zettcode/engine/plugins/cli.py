@@ -79,7 +79,11 @@ def installed_options(entry_points: Iterable[EntryPoint] | None = None) -> tuple
             raise
         except Exception:
             continue
-        for option in declared:
+        try:
+            options = tuple(declared)
+        except (TypeError, ValueError):
+            continue
+        for option in options:
             if not isinstance(option, CliOption):
                 continue
             found.append((point.name, option))
@@ -96,15 +100,19 @@ def add_options(
     """
     added: list[tuple[str, CliOption, str]] = []
     for origin, option in options:
+        label = option.flags[0] if option.flags else option.dest
+        if not option.flags or not option.dest.strip():
+            print(f"zettcode: ignored {origin} {label}: an option needs flags and a destination", file=sys.stderr)
+            continue
         try:
             json.dumps(option.default)
         except (TypeError, ValueError):
-            print(f"zettcode: ignored {origin} {option.flags[0]}: its default is not JSON-safe", file=sys.stderr)
+            print(f"zettcode: ignored {origin} {label}: its default is not JSON-safe", file=sys.stderr)
             continue
         try:
             key = option.add(parser, prefix=f"{prefix}{origin}__")
-        except argparse.ArgumentError as error:
-            print(f"zettcode: ignored {origin} {option.flags[0]}: {error}", file=sys.stderr)
+        except (argparse.ArgumentError, ValueError) as error:
+            print(f"zettcode: ignored {origin} {label}: {error}", file=sys.stderr)
             continue
         added.append((origin, option, key))
     return tuple(added)
