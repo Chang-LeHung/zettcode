@@ -8,18 +8,15 @@ handed back as the ``PLUGIN_CLI`` service, a mapping from the plugin's entry-poi
 
 from __future__ import annotations
 
+import argparse
 import json
-import os
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    import argparse
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable
     from importlib.metadata import EntryPoint
-
-#: The environment handoff used by a daemon's parent to its child; a child starts before any parser of its own.
-ENV = "ZETTCODE_PLUGIN_CLI"
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,18 +65,19 @@ def installed_options(entry_points: Iterable[EntryPoint] | None = None) -> tuple
     the plugin for real.
     """
     from .loader import installed_entry_points
+    from .plugin import Plugin
 
     points = tuple(entry_points) if entry_points is not None else installed_entry_points()
     found: list[tuple[str, CliOption]] = []
     for point in points:
         try:
             target = point.load()
-            if not isinstance(target, type):
+            if not isinstance(target, type) or not issubclass(target, Plugin):
                 continue
-            declared = target.cli_arguments()  # type: ignore[attr-defined]
+            declared = target.cli_arguments()
         except (KeyboardInterrupt, SystemExit):
             raise
-        except BaseException:
+        except Exception:
             continue
         for option in declared:
             if not isinstance(option, CliOption):
@@ -91,10 +89,24 @@ def installed_options(entry_points: Iterable[EntryPoint] | None = None) -> tuple
 def add_options(
     parser: argparse.ArgumentParser, options: Iterable[tuple[str, CliOption]], *, prefix: str = "plugin__"
 ) -> tuple[tuple[str, CliOption, str], ...]:
-    """Add every option with a namespace key that names its plugin, and return the keys."""
+    """Add every option with a namespace key that names its plugin, and return the keys.
+
+    A colliding flag or a default that cannot cross a daemon's JSON handoff drops only that option and names it on
+    stderr; one bad plugin declaration must not make every start a traceback.
+    """
     added: list[tuple[str, CliOption, str]] = []
     for origin, option in options:
-        added.append((origin, option, option.add(parser, prefix=f"{prefix}{origin}__")))
+        try:
+            json.dumps(option.default)
+        except (TypeError, ValueError):
+            print(f"zettcode: ignored {origin} {option.flags[0]}: its default is not JSON-safe", file=sys.stderr)
+            continue
+        try:
+            key = option.add(parser, prefix=f"{prefix}{origin}__")
+        except argparse.ArgumentError as error:
+            print(f"zettcode: ignored {origin} {option.flags[0]}: {error}", file=sys.stderr)
+            continue
+        added.append((origin, option, key))
     return tuple(added)
 
 
@@ -104,26 +116,3 @@ def values(namespace: argparse.Namespace, added: Iterable[tuple[str, CliOption, 
     for origin, option, key in added:
         result.setdefault(origin, {})[option.dest] = getattr(namespace, key)
     return result
-
-
-def from_env() -> Mapping[str, Mapping[str, object]]:
-    """Return the values a parent process handed a daemon through :data:`ENV`; empty when there are none."""
-    raw = os.environ.get(ENV)
-    if not raw:
-        return {}
-    try:
-        parsed = json.loads(raw)
-    except ValueError:
-        return {}
-    if not isinstance(parsed, dict):
-        return {}
-    return {
-        str(origin): {str(key): value for key, value in table.items()}
-        for origin, table in parsed.items()
-        if isinstance(table, dict)
-    }
-
-
-def to_env(values: Mapping[str, Mapping[str, object]]) -> str:
-    """Return the environment spelling of plugin values for a daemon's child process."""
-    return json.dumps({origin: dict(table) for origin, table in values.items()}, separators=(",", ":"), sort_keys=True)

@@ -534,7 +534,12 @@ def boot_theme() -> Theme | None:
 
 
 async def async_main(
-    config: ZettCodeConfig, *, resume: str | None = None, auto: bool = False, dry_run: bool = False
+    config: ZettCodeConfig,
+    *,
+    resume: str | None = None,
+    auto: bool = False,
+    dry_run: bool = False,
+    shared: Mapping[str, object] | None = None,
 ) -> None:
     """Own runtime lifecycle around the full-screen application.
 
@@ -556,7 +561,7 @@ async def async_main(
 
     if resume is not None and not session_exists(config, resume):
         raise SystemExit(f"zettcode: no session {resume} in {config.store}")
-    agent = TerminalAgent.preview(config)
+    agent = TerminalAgent.preview(config, shared=shared)
     chosen = chosen_theme(agent)
     theme = chosen if chosen is not None else DARK
     if auto:
@@ -620,7 +625,10 @@ def build_application(options: Options, *, terminal: TuiApp | None = None) -> Ze
     config = resolve_config(require_models=False)
     if options.resume is not None and not session_exists(config, options.resume):
         raise SystemExit(f"zettcode: no session {options.resume} in {config.store}")
-    agent = TerminalAgent.preview(config)
+    from zettcode.engine.plugins.services import PLUGIN_CLI
+
+    shared = {PLUGIN_CLI: options.plugin_arguments} if options.plugin_arguments else None
+    agent = TerminalAgent.preview(config, shared=shared)
     chosen = chosen_theme(agent)
     theme = chosen if chosen is not None else DARK
     if options.auto:
@@ -907,14 +915,18 @@ def main() -> None:
         raise SystemExit(plugin_program([]))
     tune_collector()
     _name_process()
-    if getattr(options, "plugin_arguments", None):
-        from zettcode.engine.plugins.cli import ENV, to_env
+    from zettcode.engine.plugins.services import PLUGIN_CLI
 
-        os.environ[ENV] = to_env(options.plugin_arguments)
     try:
         if options.dry_run:
             asyncio.run(
-                async_main(resolve_config(require_models=False), resume=options.resume, auto=options.auto, dry_run=True)
+                async_main(
+                    resolve_config(require_models=False),
+                    resume=options.resume,
+                    auto=options.auto,
+                    dry_run=True,
+                    shared=({PLUGIN_CLI: options.plugin_arguments} if options.plugin_arguments else None),
+                )
             )
             return
         asyncio.run(launch(options))

@@ -19,7 +19,7 @@ import os
 import signal
 import time
 from collections import deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -121,6 +121,7 @@ class Options:
         name: A label the reader gave this daemon, so ``daemon list`` says what it is for.
         title: What to call the session, when the reader named it at the start; ``None`` lets it name itself.
         permission: The shell level it runs at: ``deny``, ``safe`` or ``full``. There is nobody to answer ``ask``.
+        plugin_arguments: Values the plugin options parsed, by entry-point name.
     """
 
     workspace: Path
@@ -131,6 +132,7 @@ class Options:
     name: str | None = None
     title: str | None = None
     permission: str = "full"
+    plugin_arguments: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
 
 
 class Daemon:
@@ -686,8 +688,10 @@ def _client(options: Options) -> Client:
       too, but it would cost the model a turn and teach it that its reader is unavailable, which is not the truth:
       it has no reader.
     """
+    from zettcode.engine.plugins.services import PLUGIN_CLI
     from zettcode.sdk.client import Client
 
+    shared = {PLUGIN_CLI: options.plugin_arguments} if options.plugin_arguments else None
     return Client(
         options.workspace,
         model=options.model,
@@ -695,6 +699,7 @@ def _client(options: Options) -> Client:
         permission=options.permission,
         sessions_enabled=True,
         ask_user_enabled=False,
+        shared=shared,
     )
 
 

@@ -243,8 +243,6 @@ class CommandContext:
 
     Attributes:
         argument: Trimmed text after the command name; ``""`` when none.
-        arguments: The same words split on whitespace, so a command taking several values — daemon names, short
-            values without spaces — can read them without parsing ``argument`` itself.
         ui: Surfaces the command may write to while it runs.
         host: The shell, for a command that acts on the application itself; ``None`` where there is no shell,
             such as a handler called directly in a test. Use :meth:`require_host` in a command that needs it.
@@ -253,12 +251,6 @@ class CommandContext:
     argument: str
     ui: CommandUi
     host: CommandHost | None = None
-    arguments: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        """Derive the list form when the caller did not give one."""
-        if not self.arguments:
-            object.__setattr__(self, "arguments", tuple(self.argument.split()))
 
     def require_host(self) -> CommandHost:
         """Return the shell, or raise ``RuntimeError`` when the command was run without one."""

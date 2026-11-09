@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 
-from zettcode.engine.plugins.cli import ENV, CliOption, add_options, from_env, installed_options, to_env, values
+from zettcode.engine.plugins.cli import CliOption, add_options, installed_options, values
+from zettcode.engine.plugins.plugin import Plugin
 
 
-class Example:
+class Example(Plugin):
     """A plugin class as an entry point returns it: the declaration is read, never an instance."""
 
     @classmethod
@@ -35,10 +36,11 @@ def test_options_are_read_from_the_class_and_parsed_under_the_plugin_name():
     assert values(parser.parse_args(["--example-depth", "7"]), added) == {"example": {"depth": "7"}}
 
 
-def test_plugin_values_cross_the_daemon_environment(monkeypatch):
-    monkeypatch.setenv(ENV, to_env({"example": {"depth": 3}}))
+def test_a_colliding_or_non_json_option_is_skipped_with_one_line(capsys):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--depth")
 
-    assert from_env() == {"example": {"depth": 3}}
-
-    monkeypatch.setenv(ENV, "not json")
-    assert from_env() == {}
+    assert add_options(parser, [("example", CliOption(("--depth",), "depth"))]) == ()
+    assert add_options(parser, [("example", CliOption(("--where",), "where", default=object()))]) == ()
+    err = capsys.readouterr().err
+    assert "ignored example --depth" in err and "ignored example --where" in err
