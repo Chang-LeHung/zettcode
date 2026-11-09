@@ -273,7 +273,7 @@ quiet = true
 | 属性 | 是什么 |
 | --- | --- |
 | `argument` | 命令名之后去掉首尾空白的参数。 |
-| `arguments` | 同一串参数按空白拆开，供接收多个值（daemon 名、路径等）的命令使用。 |
+| `arguments` | 同一串参数按空白拆开，供接收多个值（daemon 名、不含空格的短值等）的命令使用。 |
 | `ui.markdown(text)` | 往对话里追加 Markdown。 |
 | `ui.notice(text)` / `ui.error(text)` | 追加一行灰色提示 / 一行错误。 |
 | `ui.notify(text, level=…)` | 弹一个 toast。 |

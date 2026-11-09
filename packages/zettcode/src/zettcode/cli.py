@@ -119,8 +119,15 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
     words = list(sys.argv[1:] if argv is None else argv)
     if rc is not None:
         preset = _rc_arguments(rc)
-        if not any(word in _RC_SUBCOMMANDS for word in preset):
-            words = [*preset, *words]
+        if preset:
+            try:
+                parsed = parser.parse_args(preset)
+            except SystemExit:
+                preset = []
+            else:
+                if parsed.command is not None:
+                    preset = []
+        words = [*preset, *words]
     args = parser.parse_args(words)
     # `upgrade` is another name for `update`; nothing after this point needs to know it was used.
     command = "update" if args.command == "upgrade" else args.command

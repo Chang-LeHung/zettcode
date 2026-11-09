@@ -243,8 +243,8 @@ class CommandContext:
 
     Attributes:
         argument: Trimmed text after the command name; ``""`` when none.
-        arguments: The same words split on whitespace, so a command taking several values — daemon names, paths —
-            can read them without parsing ``argument`` itself.
+        arguments: The same words split on whitespace, so a command taking several values — daemon names, short
+            values without spaces — can read them without parsing ``argument`` itself.
         ui: Surfaces the command may write to while it runs.
         host: The shell, for a command that acts on the application itself; ``None`` where there is no shell,
             such as a handler called directly in a test. Use :meth:`require_host` in a command that needs it.
