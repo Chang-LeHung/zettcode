@@ -25,7 +25,7 @@ import io
 import logging
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -35,7 +35,7 @@ from zettcode.paths import DEFAULT_RC, resume_command
 logger = logging.getLogger("zettcode.terminal")
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     #: What ``add_subparsers`` returns, which the standard library gives no public name to.
     Subcommands = argparse._SubParsersAction[argparse.ArgumentParser]
@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from zettcode.app.agent.agent import TerminalAgent
     from zettcode.app.ui.app import ZettCodeApp
     from zettcode.config import ZettCodeConfig
+    from zettcode.engine.plugins.cli import CliOption
     from zettcode.tui import Theme, TuiApp
 
 
@@ -62,6 +63,7 @@ class Options:
         model: For ``prompt``, the model to use by the name ``/model`` lists, instead of the first one.
         effort: For ``prompt``, the reasoning level, instead of the config file's.
         continue_request: For ``prompt``, pick up the request that was cut short instead of sending ``prompt``.
+        plugin_arguments: The values of the options the installed plugins declared, by entry-point name.
     """
 
     workspace: Path
@@ -73,6 +75,7 @@ class Options:
     model: str | None = None
     effort: str | None = None
     continue_request: bool = False
+    plugin_arguments: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
 
 
 def version_text() -> str:
@@ -113,6 +116,12 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
     """
     parser = _build_parser()
     words = list(sys.argv[1:] if argv is None else argv)
+    plugin_added: tuple[tuple[str, CliOption, str], ...] = ()
+    if not any(word in {"-h", "--help", "-v", "-V", "--version"} for word in words):
+        from zettcode.engine.plugins.cli import add_options, installed_options
+        from zettcode.engine.plugins.cli import values as plugin_values
+
+        plugin_added = add_options(parser, installed_options())
     if rc is not None:
         preset = _rc_arguments(rc)
         if preset:
@@ -133,7 +142,8 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
     args = parser.parse_args(words)
     # `upgrade` is another name for `update`; nothing after this point needs to know it was used.
     command = "update" if args.command == "upgrade" else args.command
-    return _OPTIONS.get(command, _plain_options)(parser, args, command)
+    options = _OPTIONS.get(command, _plain_options)(parser, args, command)
+    return replace(options, plugin_arguments=plugin_values(args, plugin_added))
 
 
 def _rc_arguments(path: Path) -> list[str]:
@@ -897,6 +907,10 @@ def main() -> None:
         raise SystemExit(plugin_program([]))
     tune_collector()
     _name_process()
+    if getattr(options, "plugin_arguments", None):
+        from zettcode.engine.plugins.cli import ENV, to_env
+
+        os.environ[ENV] = to_env(options.plugin_arguments)
     try:
         if options.dry_run:
             asyncio.run(

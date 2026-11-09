@@ -38,7 +38,7 @@ from zettcode.config import (
     model_index,
 )
 from zettcode.engine.extensions.context import ContextReport
-from zettcode.engine.plugins import AgentBuild, Plugins, TriggerHost, TriggerStatus, load_plugins
+from zettcode.engine.plugins import AgentBuild, Plugins, TriggerHost, TriggerStatus, from_env, load_plugins
 from zettcode.engine.plugins.llm import ModelAccess
 from zettcode.engine.plugins.services import (
     APPROVAL,
@@ -49,6 +49,7 @@ from zettcode.engine.plugins.services import (
     LLM,
     MODELS,
     PERSISTENCE,
+    PLUGIN_CLI,
     POLICY,
     SELECTED_MODEL,
     SESSION_STORE,
@@ -360,6 +361,7 @@ class ZettCodeEngine:
             CONTEXT_REPORT,
             CONTEXT_PAGE,
             LLM,
+            PLUGIN_CLI,
         }
         taken = sorted(name for name in (shared or {}) if name in reserved)
         if taken:
@@ -400,6 +402,7 @@ class ZettCodeEngine:
             CONTEXT_REPORT: context_reports,
             CONTEXT_PAGE: context_page,
             LLM: ModelAccess(config.models),
+            PLUGIN_CLI: from_env(),
         }
         if selected is not None:
             # A plugin that sizes something for the model asks for this one; a machine with no model provides

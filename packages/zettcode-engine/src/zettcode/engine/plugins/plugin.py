@@ -32,6 +32,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zettcode.mention import MentionProvider
     from zettcode.providers import Provider
 
+    from .cli import CliOption
     from .extension import PluginExtension
     from .triggers import TriggerRegistration
 
@@ -120,6 +121,16 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
         belongs in ``[plugins] enable``. The default is on.
         """
         return True
+
+    @classmethod
+    def cli_arguments(cls) -> tuple[CliOption, ...]:
+        """Return the command-line options this plugin adds to a start or a daemon spawn.
+
+        The declarations are read from the class before the plugin is activated or a configuration exists, which is
+        why this is a class method. The parsed values are handed back as the ``PLUGIN_CLI`` service under this
+        plugin's entry-point name. The default adds nothing.
+        """
+        return ()
 
     def activate(self, container: _C) -> None:
         """Run once at startup, before any agent client is built.

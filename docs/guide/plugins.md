@@ -48,6 +48,12 @@ the attributes remain as short, typed aliases. The groups are per plugin; other 
 `.ask(question, origin="your-plugin")` for a side question that stays out of the conversation. A program using the
 SDK finds the same services: `client.services` lists their names, and `client.service(name, kind)` returns one.
 
+A plugin can add flags to a session start and to `zettcode daemon spawn` by overriding `cli_arguments()` with
+`CliOption` values (flags, a destination, help, a default, and optionally an action, choices or metavar). The
+declarations are read from the class before activation, so they can be used without a configuration. The parsed
+values reach the plugin as the `PLUGIN_CLI` service, grouped by its entry-point name; they must be JSON-safe so a
+daemon's parent can pass them to its child. `~/.zettcode/.ztrc` may preset these flags like any other option.
+
 ## Installing one
 
 A plugin publishes a class under the `zettcode.plugin` entry-point group:
