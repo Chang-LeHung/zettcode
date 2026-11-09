@@ -29,6 +29,8 @@ so a later command-line word wins. Blank lines and lines starting with `#` are i
 a line naming a subcommand makes the file ignored rather than making the reader's own command a second positional.
 `--full` can be turned back off with `--no-full`. This is a place for a plugin or a wrapper to set a flag you always
 want; it is not a shell script — quotes are not interpreted, and a path with spaces stays on one line as one argument.
+It applies to a session start; `daemon`, `broker`, `gateway` and `plugin` are routed before the session parser, so
+the file does not affect them.
 
 To try a different configuration without replacing your normal file:
 

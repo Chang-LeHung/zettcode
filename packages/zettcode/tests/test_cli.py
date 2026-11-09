@@ -179,6 +179,17 @@ def test_the_rc_file_cannot_choose_a_subcommand(tmp_path: Path):
     assert parse_args(["-w", str(tmp_path)], rc=rc).workspace == tmp_path
 
 
+def test_the_rc_file_keeps_an_option_value_that_happens_to_look_like_a_command(tmp_path: Path):
+    rc = tmp_path / ".ztrc"
+    rc.write_text("-w\nresume\n--full\n", encoding="utf-8")
+    options = parse_args([], rc=rc)
+
+    assert options.workspace == Path("resume") and options.auto is True
+
+    rc.write_text("plugins\n", encoding="utf-8")
+    assert parse_args(["-w", str(tmp_path)], rc=rc).workspace == tmp_path
+
+
 def test_the_resume_flag_picks_the_session(tmp_path: Path):
     """`-r` and `--resume` are the same flag, and a run without one starts fresh."""
     assert parse_args(["-w", str(tmp_path)]) == Options(workspace=tmp_path)

@@ -306,7 +306,7 @@ A command is handed a `CommandContext`:
 | Attribute | What it is |
 | --- | --- |
 | `argument` | The trimmed text after the command name. |
-| `arguments` | The same words split on whitespace, for a command taking several values (daemon names, paths). |
+| `arguments` | The same words split on whitespace, for a command taking several values (daemon names, short values without spaces). |
 | `ui.markdown(text)` | Append Markdown to the conversation. |
 | `ui.notice(text)` / `ui.error(text)` | Add one muted or failing line. |
 | `ui.notify(text, level=…)` | Raise a toast. |
