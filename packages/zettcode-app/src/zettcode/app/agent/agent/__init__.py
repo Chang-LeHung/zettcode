@@ -26,6 +26,8 @@ from .commands import CommandsMixin
 SessionLink: TypeAlias = Messenger
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from collections.abc import Mapping
+
     from zettcode.config import ZettCodeConfig
     from zettcode.sdk.client import Client
 
@@ -71,6 +73,12 @@ class TerminalAgent(CommandsMixin, ZettCodeAgent, CommandAgent):
         return cls(await ZettCodeEngine.create(config, load or _terminal_loader()))
 
     @classmethod
-    def preview(cls, config: ZettCodeConfig, load: PluginLoader | None = None) -> TerminalAgent:
+    def preview(
+        cls,
+        config: ZettCodeConfig,
+        load: PluginLoader | None = None,
+        *,
+        shared: Mapping[str, object] | None = None,
+    ) -> TerminalAgent:
         """Wrap an engine that still has to start, built with the terminal's plugins, so the shell can paint first."""
-        return cls(ZettCodeEngine.preview(config, load or _terminal_loader()))
+        return cls(ZettCodeEngine.preview(config, load or _terminal_loader(), shared=shared))

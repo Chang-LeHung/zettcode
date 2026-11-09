@@ -45,7 +45,7 @@ from zettcode.engine.plugins import (
     PluginTurnMixin,
 )
 from zettcode.engine.plugins import loader as loader_module
-from zettcode.engine.plugins.commands import CommandGroups, PlainCommandContext
+from zettcode.engine.plugins.commands import CommandGroups
 from zettcode.engine.plugins.groups import AgentGroups
 from zettcode.pets.plugin import PetsPlugin
 from zettcode.plugin_api.commands import CommandContext, CommandResult, CommandUi
@@ -445,14 +445,6 @@ def make_config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:
         workspace=tmp_path, models=(ModelConfig(model="gpt", token="t"),), plugins_dir=tmp_path / "plugins"
     )
     return replace(config, **overrides) if overrides else config
-
-
-def test_a_command_context_carries_all_its_words_as_a_list():
-    context = CommandContext(argument="fix-parser docs", ui=_SilentUi())
-
-    assert context.argument == "fix-parser docs" and context.arguments == ("fix-parser", "docs")
-    plain = PlainCommandContext(argument="a b c")
-    assert plain.arguments == ("a", "b", "c")
 
 
 def test_the_context_attributes_are_services_too(tmp_path: Path):

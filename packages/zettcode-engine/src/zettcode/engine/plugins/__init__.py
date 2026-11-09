@@ -23,7 +23,7 @@ The pieces live in focused modules — :mod:`~zettcode.engine.plugins.mixins` fo
 
 from __future__ import annotations
 
-from .cli import CliOption, from_env, installed_options
+from .cli import CliOption, installed_options
 from .context import PluginContext
 from .extension import PluginExtension
 from .llm import ModelAccess
@@ -60,7 +60,6 @@ __all__ = [
     "ModelAccess",
     "CliOption",
     "PLUGIN_CLI",
-    "from_env",
     "installed_options",
     "PLUGIN_AGENT",
     "PLUGIN_COMMANDS",

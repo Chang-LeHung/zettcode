@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -46,7 +45,9 @@ EXIT_FAILED = 1
 EXIT_USAGE = 2
 
 
-def _build_parser() -> tuple[argparse.ArgumentParser, tuple[tuple[str, CliOption, str], ...]]:
+def _build_parser(
+    *, with_plugins: bool = True
+) -> tuple[argparse.ArgumentParser, tuple[tuple[str, CliOption, str], ...]]:
     """Return the parser for ``zettcode daemon`` and the plugin options added to ``spawn``."""
     parser = argparse.ArgumentParser(
         prog="zettcode daemon",
@@ -240,6 +241,9 @@ def _build_parser() -> tuple[argparse.ArgumentParser, tuple[tuple[str, CliOption
     run.add_argument("--name", default=None, help=argparse.SUPPRESS)
     run.add_argument("--title", default=None, help=argparse.SUPPRESS)
     run.add_argument("--permission", default="full", choices=PERMISSIONS, help=argparse.SUPPRESS)
+    run.add_argument("--plugin-args", default=None, help=argparse.SUPPRESS)
+    if not with_plugins:
+        return parser, ()
     from zettcode.engine.plugins.cli import add_options, installed_options
 
     return parser, add_options(spawn, installed_options())
@@ -247,8 +251,9 @@ def _build_parser() -> tuple[argparse.ArgumentParser, tuple[tuple[str, CliOption
 
 def daemon_program(argv: Sequence[str] | None = None) -> int:
     """Run ``zettcode daemon`` for these arguments and return the exit status."""
-    parser, plugin_added = _build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    words = list(argv) if argv is not None else list(sys.argv[1:])
+    parser, plugin_added = _build_parser(with_plugins=words[:1] == ["spawn"])
+    args = parser.parse_args(words)
     if args.command == "list":
         return _list(args.json)
     if args.command == "model":
@@ -380,10 +385,6 @@ def _spawn(args: argparse.Namespace, plugin_arguments: dict[str, dict[str, objec
     """Start one daemon, wait until it can be messaged, and print what to do with it."""
     from .process import Daemons, SpawnFailed
 
-    if plugin_arguments:
-        from zettcode.engine.plugins.cli import ENV, to_env
-
-        os.environ[ENV] = to_env(plugin_arguments)
     try:
         record = Daemons().start(
             args.workspace,
@@ -393,6 +394,7 @@ def _spawn(args: argparse.Namespace, plugin_arguments: dict[str, dict[str, objec
             name=args.name,
             title=args.title,
             permission=args.permission,
+            plugin_arguments=plugin_arguments,
         )
     except SpawnFailed as error:
         sys.stderr.write(f"zettcode daemon: could not start: {error}\n")
@@ -657,6 +659,7 @@ def _run(args: argparse.Namespace) -> int:
         name=args.name,
         title=args.title,
         permission=args.permission,
+        plugin_arguments=json.loads(args.plugin_args) if args.plugin_args else {},
     )
     try:
         return asyncio.run(serve(options))

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import json
 import os
 import secrets
 import shutil
@@ -26,7 +27,7 @@ from . import PERMISSIONS
 from .state import START_SECONDS, Record, Registry, pid_runs
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from .run import Options
     from .state import State
@@ -83,6 +84,7 @@ class Daemons:
         name: str | None = None,
         title: str | None = None,
         permission: str = "full",
+        plugin_arguments: Mapping[str, Mapping[str, object]] | None = None,
     ) -> Record:
         """Start one daemon in ``workspace`` and return the record it wrote once it was reachable.
 
@@ -94,6 +96,7 @@ class Daemons:
             name: A label to record beside the session, so ``daemon list`` says what it is for.
             title: What to call the session. ``None`` lets it name itself from its first answer.
             permission: The shell level it runs at: ``deny``, ``safe`` or ``full``.
+            plugin_arguments: Values the plugin options parsed, handed to the child as JSON.
 
         Raises:
             SpawnFailed: The permission is not one of :data:`~zettcode.daemon.PERMISSIONS`, the workspace is not a
@@ -116,7 +119,9 @@ class Daemons:
         log_path = early / f"{token}.log"
         with log_path.open("wb") as log:
             child = _Child(
-                self._command(_options(workspace, token, model, effort, resume, name, title, permission)),
+                self._command(
+                    _options(workspace, token, model, effort, resume, name, title, permission, plugin_arguments or {})
+                ),
                 workspace,
                 log,
             )
@@ -152,6 +157,8 @@ class Daemons:
         if options.title is not None:
             argv += ["--title", options.title]
         argv += ["--permission", options.permission]
+        if options.plugin_arguments:
+            argv += ["--plugin-args", json.dumps(options.plugin_arguments, separators=(",", ":"), sort_keys=True)]
         return argv
 
     def _await(self, child: _Child, token: str, timeout: float) -> Record | None:
@@ -530,6 +537,7 @@ def _options(
     name: str | None,
     title: str | None,
     permission: str,
+    plugin_arguments: Mapping[str, Mapping[str, object]] | None = None,
 ) -> Options:
     """Build what ``daemon run`` should be told, without importing its module until it is needed."""
     from .run import Options
@@ -543,6 +551,7 @@ def _options(
         name=name,
         title=title,
         permission=permission,
+        plugin_arguments=plugin_arguments or {},
     )
 
 

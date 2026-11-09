@@ -415,6 +415,7 @@ class Client:
         effort: str | None = None,
         permission: str | None = None,
         resume: str | None = None,
+        shared: Mapping[str, object] | None = None,
         # The configuration fields, named and typed rather than taken as any keyword: a misspelt one is then a
         # TypeError from Python at the call, not a configuration error raised once the client is being built.
         store: str | Path = _UNSET,
@@ -481,7 +482,7 @@ class Client:
         from .translation import AgentBridge
 
         try:
-            runtime = ZettCodeEngine.preview(resolved, load_agent_plugins)
+            runtime = ZettCodeEngine.preview(resolved, load_agent_plugins, shared=shared)
         except BaseException:
             self._unregister()
             raise
