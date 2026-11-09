@@ -35,8 +35,8 @@ class Greeter(TuiPlugin):  # 这个 mixin 提供行相关的钩子；基类仍�
 
 每个组同时也是一项 service，名字可以直接传给 `ctx.service`：`PLUGIN_AGENT`、`PLUGIN_COMMANDS`、`PLUGIN_TUI`、
 `PLUGIN_CONFIG`、`PLUGIN_WORKSPACE` 和 `PLUGIN_SETTINGS`。`ctx.tui` 就是
-`ctx.find(PLUGIN_TUI, TuiGroup)`；属性只是短一点的类型化别名。前端如果有自己的实现，可以通过
-`ZettCodeEngine.preview(shared=...)` 把 agent 或 command 组交进来。
+`ctx.find(PLUGIN_TUI, TuiGroup)`；属性只是短一点的类型化别名。这些组属于每个插件；
+其他 service 可以通过 `ZettCodeEngine.preview(shared=...)` 交进来。
 
 `LLM` 是模型 service：`ctx.service(LLM, ModelAccess)` 能拿到读者配置的所有模型（`.models`），以及
 `.ask(question, origin="你的插件")` 用来问一个不会进入对话的 side question。使用 SDK 的程序也能找到同一批

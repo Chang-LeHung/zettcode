@@ -44,6 +44,11 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 
 _T = TypeVar("_T")
 
+#: Names the context owns; a plugin may read them but not replace them.
+_CONTEXT_SERVICES = frozenset(
+    {PLUGIN_AGENT, PLUGIN_COMMANDS, PLUGIN_CONFIG, PLUGIN_SETTINGS, PLUGIN_TUI, PLUGIN_WORKSPACE}
+)
+
 
 class PluginContext:
     """What a plugin is handed when it activates, and the groups it registers into.
@@ -67,15 +72,12 @@ class PluginContext:
         self._workspace = config.workspace
         #: The keys this plugin reads from the configuration, and the defaults it gives them.
         self._settings = PluginSettings(name, config.plugin_settings.get(name) if name else None)
-        provided = services if services is not None else {}
-        agent = provided.get(PLUGIN_AGENT)
         #: What every front end has: extensions, providers, ``@`` providers and services.
-        self._agent = agent if isinstance(agent, AgentGroups) else AgentGroups(self)
-        commands = provided.get(PLUGIN_COMMANDS)
+        self._agent = AgentGroups(self)
         #: Plain commands: text and a toast, no widget and no shell.
-        self._commands = commands if isinstance(commands, CommandGroups) else CommandGroups()
+        self._commands = CommandGroups()
         self._available: dict[str, object] = {
-            **provided,
+            **(services if services is not None else {}),
             PLUGIN_AGENT: self._agent,
             PLUGIN_COMMANDS: self._commands,
             PLUGIN_CONFIG: self._config,
@@ -275,7 +277,7 @@ class PluginContext:
         name = name.strip()
         if not name:
             raise ValueError("Service name cannot be empty")
-        if name in self._services:
+        if name in self._services or name in _CONTEXT_SERVICES:
             raise ValueError(f"Service already provided: {name}")
         self._services[name] = service
         return service

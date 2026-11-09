@@ -525,7 +525,7 @@ class Client:
         bundle = getattr(self._agent.runtime, "plugins", None)
         access = None if bundle is None else bundle.find(LLM, ModelAccess)
         if access is not None:
-            access.bind(self.session.ask)
+            access.bind(lambda question, **options: self.session.ask(question, **options))
 
     def _bind_context_page(self, runtime: ZettCodeEngine) -> None:
         """Give the page service the client's own compact-percent write, so it shares the open check and errors."""
@@ -571,6 +571,7 @@ class Client:
         client._bridge = AgentBridge(agent)
         client._fresh = {agent.runtime.session_id}
         client.sessions = Sessions(client)
+        client._bind_llm()
         client._ledger_reader = None
         return client
 
