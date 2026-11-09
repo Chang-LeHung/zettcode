@@ -1,0 +1,247 @@
+"""One message in, one turn, one answer out — and the pictures that travel with it."""
+
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from zettcode.broker.protocol import MAX_IMAGE_BYTES, MAX_IMAGES
+from zettcode.im.bridge import Bridge, BridgeSettings, split
+from zettcode.im.guard import DaemonUnavailable
+from zettcode.im.link import LinkError
+from zettcode.im.state import BridgeState
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 40
+
+
+@dataclass
+class Media:
+    kind: str
+    media_type: str
+    data: bytes
+
+
+@dataclass
+class Message:
+    event_id: str = "e1"
+    chat_id: str = "chat"
+    user_id: str = "u1"
+    text: str = ""
+    media: list[Any] = field(default_factory=list)
+    rejected_media: list[Any] = field(default_factory=list)
+    reply_token: str | None = "token"
+
+
+@dataclass
+class Result:
+    message: Message
+    cursor: str = "cur-1"
+
+
+class Im:
+    """The platform client, with as many messages as the test put in."""
+
+    def __init__(self, results: list[Result] | None = None) -> None:
+        self.results = list(results or [])
+        self.sent: list[tuple[str, str, str | None]] = []
+
+    async def receive(self, cursor: str | None = None):
+        if not self.results:
+            await asyncio.sleep(3600)
+        return self.results.pop(0)
+
+    async def send(self, chat_id: str, text: str, *, context_token: str | None = None) -> None:
+        self.sent.append((chat_id, text, context_token))
+
+
+class Guard:
+    def __init__(self, session: str = "01a1", error: Exception | None = None) -> None:
+        self.session = session
+        self.error = error
+        self.ensured = 0
+
+    async def ensure(self) -> str:
+        self.ensured += 1
+        if self.error is not None:
+            raise self.error
+        return self.session
+
+    def wait_left(self) -> float:
+        return 0.0
+
+
+class Link:
+    def __init__(self, answer: str = "the answer", error: Exception | None = None) -> None:
+        self.answer = answer
+        self.error = error
+        self.asked: list[tuple[str, str, list[Any]]] = []
+        self.statuses: list[str] = []
+
+    async def ask(self, session: str, text: str, *, images: Any = ()) -> str:
+        self.asked.append((session, text, list(images)))
+        if self.error is not None:
+            raise self.error
+        return self.answer
+
+    def status(self, status: str) -> None:
+        self.statuses.append(status)
+
+
+def bridge(
+    tmp_path: Path,
+    *,
+    settings: BridgeSettings | None = None,
+    im: Im | None = None,
+    link: Link | None = None,
+    guard: Guard | None = None,
+) -> Bridge:
+    state = BridgeState.load(tmp_path / "state.json")
+    return Bridge(
+        im=im or Im(),
+        guard=guard or Guard(),  # type: ignore[arg-type]
+        link=link or Link(),  # type: ignore[arg-type]
+        state=state,
+        path=tmp_path / "state.json",
+        settings=settings or BridgeSettings(allow_all=True),
+        error=lambda said: None,
+    )
+
+
+def test_a_message_becomes_one_turn_and_the_answer_goes_back_to_its_chat(tmp_path: Path) -> None:
+    im, link = Im(), Link(answer="done")
+    opened = bridge(tmp_path, im=im, link=link)
+
+    asyncio.run(opened._turn(Message(text="list the files"), "cur-9"))
+
+    session, prompt, images = link.asked[0]
+    assert session == "01a1" and "list the files" in prompt and "u1" in prompt, "who wrote and what"
+    assert images == []
+    assert im.sent == [("chat", "done", "token")], "the answer goes back with the chat's context token"
+    assert link.statuses == ["working", "idle"]
+    assert opened.state.cursor == "cur-9" and opened.state.answered("e1")
+
+
+def test_a_picture_travels_with_the_prompt_and_an_image_only_message_runs_a_turn(tmp_path: Path) -> None:
+    im, link = Im(), Link()
+    opened = bridge(tmp_path, im=im, link=link)
+
+    asyncio.run(opened._turn(Message(text="", media=[Media("image", "image/png", PNG)]), "c"))
+
+    _, prompt, images = link.asked[0]
+    assert [picture.media_type for picture in images] == ["image/png"]
+    assert images[0].data == PNG
+    assert "not forwarded" not in prompt, "a picture that fits is not hedged about"
+
+
+def test_pictures_that_cannot_go_are_named_in_the_prompt_instead_of_being_lost(tmp_path: Path) -> None:
+    link = Link()
+    opened = bridge(tmp_path, link=link)
+    too_big = Media("image", "image/png", b"x" * (MAX_IMAGE_BYTES + 1))
+    many = [Media("image", "image/jpeg", PNG) for _ in range(MAX_IMAGES + 1)]
+    wrong = Media("image", "image/tiff", PNG)
+    voice = Media("voice", "audio/amr", b"\x00")
+
+    asyncio.run(opened._turn(Message(text="look", media=[too_big, wrong, voice, *many]), "c"))
+
+    _, prompt, images = link.asked[0]
+    assert len(images) == MAX_IMAGES, "the broker takes four; the fifth waits for another message"
+    assert "over the 4 MiB limit" in prompt
+    assert "is not one the agent takes" in prompt
+    assert "1 voice not forwarded" in prompt
+    assert "at most 4 go with one message" in prompt
+
+
+def test_a_sender_who_is_not_allowed_is_refused_with_the_id_to_allow(tmp_path: Path) -> None:
+    im, link = Im(), Link()
+    opened = bridge(tmp_path, im=im, link=link, settings=BridgeSettings(allow=frozenset({"someone-else"})))
+
+    asyncio.run(opened._turn(Message(text="rm -rf", user_id="stranger"), "c"))
+
+    assert link.asked == [], "nothing reaches the agent"
+    assert "stranger" in im.sent[0][1] and "not allowed" in im.sent[0][1]
+
+
+def test_a_daemon_that_cannot_start_is_explained_and_the_message_is_not_asked_again(tmp_path: Path) -> None:
+    im, link = Im(), Link()
+    guard = Guard(error=DaemonUnavailable("the model rejected the key"))
+    opened = bridge(tmp_path, im=im, link=link, guard=guard)
+
+    asyncio.run(opened._turn(Message(text="hello"), "c"))
+
+    assert link.asked == []
+    assert "the model rejected the key" in im.sent[0][1]
+    assert opened.state.answered("e1"), "the message is behind us; the sender does not get it twice"
+
+
+def test_a_link_that_fails_says_so_in_the_chat(tmp_path: Path) -> None:
+    im = Im()
+    opened = bridge(tmp_path, im=im, link=Link(error=LinkError("the session broker is not reachable")))
+
+    asyncio.run(opened._turn(Message(text="hello"), "c"))
+
+    assert "not reachable" in im.sent[0][1]
+
+
+def test_an_answer_that_arrives_empty_is_still_an_answer(tmp_path: Path) -> None:
+    im = Im()
+    opened = bridge(tmp_path, im=im, link=Link(answer="   "))
+
+    asyncio.run(opened._turn(Message(text="hello"), "c"))
+
+    assert im.sent and "without an answer" in im.sent[0][1]
+
+
+def test_the_same_event_delivered_twice_is_answered_once(tmp_path: Path) -> None:
+    """A restart mid-batch re-delivers the batch; the state, not the agent, is what stops the second answer."""
+    im = Im(
+        [Result(Message(event_id="e1", text="hello"), "cur-1"), Result(Message(event_id="e1", text="hello"), "cur-2")]
+    )
+    opened = bridge(tmp_path, im=im, link=Link(answer="hi"))
+
+    async def scenario() -> None:
+        running = asyncio.ensure_future(opened.run())
+        for _ in range(200):
+            if im.sent:
+                break
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
+        opened.stop()
+        await running
+
+    asyncio.run(scenario())
+
+    assert len(im.sent) == 1, "one answer for one message, however many times the platform hands it over"
+    assert BridgeState.load(tmp_path / "state.json").cursor == "cur-2", "the cursor still moves past it"
+
+
+def test_the_bridge_runs_a_message_end_to_end_and_stops_when_asked(tmp_path: Path) -> None:
+    im = Im([Result(Message(text="hello"), "cur-2")])
+    link = Link(answer="hi there")
+    opened = bridge(tmp_path, im=im, link=link)
+    opened.on_stop(lambda: None)
+
+    async def scenario() -> None:
+        running = asyncio.ensure_future(opened.run())
+        for _ in range(200):
+            if im.sent:
+                break
+            await asyncio.sleep(0.01)
+        opened.stop()
+        await running
+
+    asyncio.run(scenario())
+
+    assert im.sent == [("chat", "hi there", "token")]
+    assert BridgeState.load(tmp_path / "state.json").cursor == "cur-2"
+
+
+def test_a_long_answer_is_split_on_line_breaks_below_the_limit() -> None:
+    text = "\n".join(["line " * 10 for _ in range(20)])
+
+    pieces = split(text, 100)
+
+    assert all(len(piece) <= 100 for piece in pieces)
+    assert "".join(pieces).replace("\n", "") == text.replace("\n", ""), "nothing is lost between the pieces"
+    assert split("x" * 250, 100) == ["x" * 100, "x" * 100, "x" * 50], "a line with no break is cut at the limit"

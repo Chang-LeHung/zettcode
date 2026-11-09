@@ -1,0 +1,55 @@
+[project]
+name = "zettcode-im"
+description = "Chat bridges: a WeChat conversation that drives one ZettCode daemon, and a place for the next chat app"
+requires-python = ">=3.10"
+dynamic = ["version"]
+license = "MIT"
+authors = [{name = "Chang-LeHung"}]
+keywords = ["zettcode", "im", "wechat", "bridge", "daemon"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Typing :: Typed",
+]
+dependencies = [
+  # One stateless interface for IM login, receive and send, with the personal-WeChat client behind it.
+  "agim>=0.0.2,<0.1",
+  # The code a login puts in the terminal. No image library: the modules are drawn with block characters.
+  "qrcode>=8,<9",
+  # The daemon it owns is the SDK's, the session it talks over is the broker's, and the lock and the version are
+  # the engine's.
+  "zettcode-engine",
+  "zettcode-broker",
+  "zettcode-sdk",
+]
+
+# A program of its own, not a part of `zettcode`: nothing in the terminal needs it, and a reader who wants it
+# installs it beside the program.
+[project.scripts]
+zettcode-weixin = "zettcode.im.weixin.cli:main"
+
+[project.urls]
+Repository = "https://github.com/Chang-LeHung/zettcode"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# One version for the whole repository: the engine ships the file.
+path = "../zettcode-engine/src/zettcode/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zettcode"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
