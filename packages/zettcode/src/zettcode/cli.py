@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from zettcode import logging_setup
-from zettcode.paths import resume_command
+from zettcode.paths import DEFAULT_RC, resume_command
 
 logger = logging.getLogger("zettcode.terminal")
 
@@ -101,17 +101,31 @@ class _Version(argparse.Action):
         parser.exit()
 
 
-def parse_args(argv: list[str] | None = None) -> Options:
+def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -> Options:
     """Return the workspace to run in and the session to resume, if any.
 
     Args:
-        argv: Arguments to parse; ``None`` reads the process's own.
+        argv: Arguments to parse; ``None`` reads the process's own. The file at ``rc`` is read first, so its
+            arguments are presets the reader can override on the command line.
+        rc: The extra-arguments file; ``None`` skips it, and a missing or unreadable file is ignored.
     """
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    words = list(sys.argv[1:] if argv is None else argv)
+    if rc is not None:
+        words = [*_rc_arguments(rc), *words]
+    args = parser.parse_args(words)
     # `upgrade` is another name for `update`; nothing after this point needs to know it was used.
     command = "update" if args.command == "upgrade" else args.command
     return _OPTIONS.get(command, _plain_options)(parser, args, command)
+
+
+def _rc_arguments(path: Path) -> list[str]:
+    """Return the arguments in ``path``, one per non-blank, non-comment line."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return []
+    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
 
 
 def _build_parser() -> argparse.ArgumentParser:

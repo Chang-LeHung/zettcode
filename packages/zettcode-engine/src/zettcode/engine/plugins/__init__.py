@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from .context import PluginContext
 from .extension import PluginExtension
+from .llm import ModelAccess
 from .loader import PLUGIN_ENTRY_POINT_GROUP, Loader, installed_entry_points, load_plugins
 from .mixins import (
     PluginAgentMixin,
@@ -39,6 +40,7 @@ from .mixins import (
 )
 from .plugin import Plugin, Plugins, PluginSetting
 from .services import (
+    LLM,
     PLUGIN_AGENT,
     PLUGIN_COMMANDS,
     PLUGIN_CONFIG,
@@ -52,6 +54,8 @@ from .triggers import Trigger, TriggerEvent, TriggerHost, TriggerScope, TriggerS
 
 __all__ = [
     "PLUGIN_ENTRY_POINT_GROUP",
+    "LLM",
+    "ModelAccess",
     "PLUGIN_AGENT",
     "PLUGIN_COMMANDS",
     "PLUGIN_CONFIG",

@@ -158,6 +158,18 @@ def test_the_dry_run_flag_asks_for_startup_only(tmp_path: Path):
     assert parse_args(["-w", str(tmp_path), "--dry-run"]).dry_run is True
 
 
+def test_the_rc_file_presets_arguments_one_per_line(tmp_path: Path):
+    rc = tmp_path / ".ztrc"
+    rc.write_text(f"# preset\n--workspace\n{tmp_path}\n--full\n\n", encoding="utf-8")
+
+    options = parse_args([], rc=rc)
+    assert options.workspace == tmp_path and options.auto is True
+    # A word on the command line comes after the file, so it wins.
+    other = tmp_path / "other"
+    assert parse_args(["-w", str(other)], rc=rc).workspace == other
+    assert parse_args(["-w", str(tmp_path)], rc=tmp_path / "missing").workspace == tmp_path
+
+
 def test_the_resume_flag_picks_the_session(tmp_path: Path):
     """`-r` and `--resume` are the same flag, and a run without one starts fresh."""
     assert parse_args(["-w", str(tmp_path)]) == Options(workspace=tmp_path)

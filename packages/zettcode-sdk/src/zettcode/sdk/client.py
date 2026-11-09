@@ -513,10 +513,20 @@ class Client:
             self._dispose()
             raise
         self.sessions = Sessions(self)
+        self._bind_llm()
         #: One reader for the workspace's ledger, so a second look at the usage reads only what changed.
         self._ledger_reader: Any = None
 
     # -- process-wide bookkeeping --
+    def _bind_llm(self) -> None:
+        """Give the plugin model service the conversation's side-question entry point."""
+        from zettcode.engine.plugins import LLM, ModelAccess
+
+        bundle = getattr(self._agent.runtime, "plugins", None)
+        access = None if bundle is None else bundle.find(LLM, ModelAccess)
+        if access is not None:
+            access.bind(self.session.ask)
+
     def _bind_context_page(self, runtime: ZettCodeEngine) -> None:
         """Give the page service the client's own compact-percent write, so it shares the open check and errors."""
         from zettcode.engine.service_contracts import CONTEXT_PAGE, ContextPageService
@@ -1479,6 +1489,12 @@ class Client:
                 for status in self._agent.runtime.trigger_statuses()
             ),
         )
+
+    @property
+    def services(self) -> tuple[str, ...]:
+        """Return every service the runtime and the loaded plugins provide, by name, sorted."""
+        self._check_open()
+        return tuple(sorted(self._agent.runtime.plugins.services))
 
     def service(self, name: str, kind: type[_T]) -> _T:
         """Return the object provided under ``name``, as a plugin gets it from its context.

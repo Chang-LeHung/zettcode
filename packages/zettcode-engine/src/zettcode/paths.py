@@ -14,6 +14,10 @@ from pathlib import Path
 #: The conventional config file, read when the user has created one.
 CONFIG_FILE = Path.home() / ".zettcode" / "config.toml"
 
+#: Extra command-line arguments, one per line, read before the reader's own. A plugin may preset the flags its
+#: commands need without asking the reader to type them at every start.
+DEFAULT_RC = Path.home() / ".zettcode" / ".ztrc"
+
 #: Session storage is an application default, not a model setting.
 DEFAULT_STORE = Path.home() / ".zettcode" / "sessions"
 
