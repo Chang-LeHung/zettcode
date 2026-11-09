@@ -304,7 +304,7 @@ disable = ["greeter"]
 Mention provider 增加一种 `@` 引用，补全菜单能提供，模型能解析：
 
 ```text
-from zettcode.plugin_api import Mention, MentionProvider, PluginContext
+from zettcode.plugin_api import Mention, MentionProvider, Plugin, PluginContext
 
 
 class Tickets(MentionProvider):
@@ -317,8 +317,11 @@ class Tickets(MentionProvider):
         return f"Ticket {name}" if name.startswith("ABC-") else None
 
 
-def activate(self, ctx: PluginContext) -> None:
-    ctx.agent.register_mention(Tickets())
+class TicketsPlugin(Plugin[PluginContext]):
+    name = "ticket-resources"
+
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_mention(Tickets())
 ```
 
 `candidates(query)` 返回补全项；`expand(name)` 返回模型看到的文本，不是这个 provider 的 token
@@ -362,7 +365,7 @@ class Away(TuiPlugin):
 ```
 
 两者都不是行，也不能消费事件：只是被告知，怎么处理是插件自己的事。钩子被调用时也不是动手的好时机：它运行在
-刚结束的那次请求里面，shell 还没空出来，所以要开新一轮的工作——比如 `host.prompt(...)`——应该排到之后去做，
+刚结束的那次请求里面，shell 还没空出来，所以要开新一轮的工作——比如 `HOST_LINK` 的 host `prompt(...)`，或 `INBOX.deliver(..., mode="followup")`——应该排到之后去做，
 而不是在处理器里直接做。
 
 什么算「一轮」：读者发的一次请求，或另一个会话发来、由本会话回答的那次请求。执行命令本身不算一轮，但命令用
@@ -431,8 +434,9 @@ limit = ctx.service(PLUGIN_CLI, dict).get("journal", {}).get("limit", "3")
 字典或 `None`），因为 daemon 通过 JSON 传递。声明有重名 flag 或非 JSON 默认值时，只跳过该选项并打印一行，
 不会 traceback。
 
-只有 **entry-point** 插件能声明这些参数。发现阶段在导入任何插件模块之前就读 entry point，所以
-`~/.zettcode/plugins` 里单个 `.py` 文件的 `cli_arguments()` 不会被读取。`zettcode --help` 故意跳过插件发现，所以不会列出这些 flag；
+只有 **entry-point** 插件能声明这些参数。声明在配置还不存在时就从插件类读取；`~/.zettcode/plugins` 里单个
+`.py` 文件没有 entry point，所以它的 `cli_arguments()` 不会被读取。读取声明会在每次启动时导入所有已安装插件的类，
+包括被禁用的插件——让那个模块保持轻量。`zettcode --help` 故意跳过插件发现，所以不会列出这些 flag；
 `zettcode daemon spawn --help` 会。`~/.zettcode/.ztrc` 只为会话启动预置它们，不会作用于 `daemon spawn`。
 
 ## 读配置
@@ -879,7 +883,7 @@ from zettcode.plugin_api import INBOX, Inbox, Plugin, PluginContext, Trigger, Tr
 
 
 class EveryMinute(Trigger):
-    name = "every-minute"            # 小写字母/数字/._-，最多 64 字符；同时是锁文件的名字
+    name = "every-minute"            # 首字符是小写字母或数字，之后可用小写字母/数字/._-，1-64 字符；同时是锁文件的名字
     scope = TriggerScope.MACHINE     # 整台机器只跑一个
 
     async def run(self, fire):
