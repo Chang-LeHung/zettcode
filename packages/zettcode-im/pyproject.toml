@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   # One stateless interface for IM login, receive and send, with the personal-WeChat client behind it.
-  "agim>=0.0.2,<0.1",
+  "agim>=0.0.3,<0.1",
   # The code a login puts in the terminal. No image library: the modules are drawn with block characters.
   "qrcode>=8,<9",
   # The daemon it owns is the SDK's, the session it talks over is the broker's, and the lock and the version are
