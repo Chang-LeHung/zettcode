@@ -14,7 +14,7 @@
 | 知道 `ctx` 和 service 给了什么 | [上下文和它提供的 service](#上下文和它提供的-service) |
 | 加命令、行、配色、宠物、provider、工具或 trigger | 下面的小节和 [插件 API 参考](#插件-api-参考) |
 | 声明配置或命令行参数 | [读配置](#读配置)、[命令行参数](#命令行参数) |
-| 理解失败、顺序和依赖 | [依赖别的插件](#依赖别的插件)、[出问题的时候](#出问题的时候) |
+| 理解失败、顺序和依赖 | [依赖别的插件](#deps)、[出问题的时候](#出问题的时候) |
 
 ## 插件如何加载
 
@@ -41,7 +41,7 @@ journal = "my_package.plugin:Journal"
 6. 关闭时调用一次 `await plugin.aclose()`，最后激活的最先调用。
 
 加载器是宽容的：导入或激活失败的插件会显示为 `plugin: …`，应用继续运行。依赖和顺序见
-[依赖别的插件](#依赖别的插件)。
+[依赖别的插件](#deps)。
 
 插件没有“终端插件”和“服务端插件”之分。它在所有进程里拿到同一个 `PluginContext`；
 只是没有屏幕时 `ctx.tui` 是 `None`。把可移植的部分写在 `ctx.agent`、`ctx.commands` 和
@@ -153,7 +153,7 @@ ctx.tui is ctx.find(PLUGIN_TUI, TuiGroup)       # 没有屏幕时为 None
 | `USAGE_LEDGER` | `UsageLedgerService` | engine | 读取 token 用量 |
 | `CONTEXT_REPORT` | `ContextReportService` | engine | 某个会话的上下文报告 |
 | `CONTEXT_PAGE` | `ContextPageService` | engine | `/context` 页面的数据和写入 |
-| `MODELS` | `dict[ModelConfig, AgentModel]` | engine | 已经构建的模型适配器 |
+| `MODELS` | `dict[ModelConfig, Adapter]` | engine | 已经构建的模型适配器 |
 | `CAPABILITIES` | `ModelCapabilities` | built-in capabilities 插件 | 按模型过滤工具 |
 | `POLICY` | `ShellPolicy` | engine | 当前 shell 权限策略 |
 | `PERSISTENCE` | `SessionStore` | engine | 存储实现 |
@@ -183,7 +183,7 @@ answer = await access.ask("Summarise the failing test", origin="journal")
 `RuntimeError`；它不能在 `activate` 里用，只能在能跑请求之后用。插件从当前运行上下文拿当前模型；`ModelAccess`
 不会改变读者选择的模型。
 
-## 每个组装什么
+## 每个组里放什么
 
 插件的 `activate(ctx)` 只有一个上下文，任何进程里都是同一个类型。它能往哪里注册，取决于这个上下文有哪些组：
 
@@ -194,7 +194,7 @@ answer = await access.ask("Summarise the failing test", origin="journal")
 | `ctx.tui` | 只有终端；其余进程为 `None` | 会开页面或需要 shell 的命令、配色、宠物、presenter、页眉/状态行、请求结束那一行的条目 |
 
 所以插件**不需要**声明自己面向哪个前端：它往组里注册，而组是否存在，取决于它被加载到哪个进程。只加屏幕相关东西
-的插件，在 `activate` 开头加一句判断即可：
+的插件，在 `activate` 开头加一句判断即可（见本页顶部）。
 
 答案是文字的时候用 `ctx.commands`：它在每个进程里都存在，终端会把它和 `ctx.tui` 里的命令放在同一张表里。会开页面、
 要 shell 动手、需要等请求结束的命令，放在 `ctx.tui`。
@@ -328,7 +328,7 @@ class Tickets(MentionProvider):
     kind = "ticket"                 # 整个应用唯一
 
     def candidates(self, query: str) -> list[Mention]:
-        return [Mention("ticket", self.kind, "ABC-123", "the open ticket")]
+        return [Mention("@ABC-123", self.kind, "ABC-123", "the open ticket")]
 
     def expand(self, name: str) -> str | None:
         return f"Ticket {name}" if name.startswith("ABC-") else None
@@ -339,7 +339,7 @@ def activate(self, ctx: PluginContext) -> None:
 ```
 
 `candidates(query)` 返回补全项；`expand(name)` 返回模型看到的文本，不是这个 provider 的 token
-返回 `None`。可以覆盖 `rename(name)` 改显示名；两个 provider 提供同一个 token 时用
+返回 `None`。可以覆盖 `rename(name)`，返回模型看到的替代文本；两个 provider 提供同一个 token 时用
 `precedence` 决定顺序。
 
 ## 插件能参与什么
@@ -474,7 +474,7 @@ after_seconds = 240
 quiet = true
 ```
 
-`declare` 一次写齐插件读的所有键即可：这些默认值既是校验读者那张表的依据，也是读者没写时的取值。
+`declare` 可以调用多次，继续声明更多键：这些默认值既是校验读者那张表的依据，也是读者没写时的取值。
 
 插件自己的设置表和 `[plugins]` 的开关写在同一个文件里，互不妨碍。`[plugins.recap]` 生效不需要你另写一行
 `[plugins]`；`/plugins` 和 `zettcode plugin disable` 要写 `disable = [...]` 时，如果文件里只有
@@ -794,6 +794,31 @@ presenter 的 `handle(entry, next)` 就是它全部的认领声明：返回 `sel
 优先级 0，最先注册。插件想压过另一个插件，就在 presenter 类上把 `priority` 提高；只想画某一种行时通常不需要
 优先级，后注册本身就是更窄的声明。
 
+## 给请求加一个工具
+
+setup hook 可以给每次请求加工具。工具是 `zett-agent` 的 `AgentTool`；插件只决定这次运行能看到哪些：
+
+```text
+from zett_agent.tools import tool
+from zettcode.plugin_api import Plugin, PluginContext
+
+
+@tool
+async def word_count(text: str, context) -> str:
+    """Count words in a string."""
+    return str(len(text.split()))
+
+
+class Counter(Plugin[PluginContext]):
+    name = "word-count"
+
+    async def on_tool(self, context) -> None:
+        context.register_tool(word_count)
+```
+
+`on_tool` 在请求构建之前运行；这次加进去的工具只属于这次请求，下次要再加。
+观察一次调用用 `before_tool`，替换结果用 `on_tool_call` middleware。
+
 ## 把整个扩展交给代理 {#extensions}
 
 上面的钩子方法，运行在 ZettCode 为所有插件承载的同一个扩展里。如果一个插件本身就是一个扩展，或者包装了
@@ -917,7 +942,7 @@ class Heartbeat(Plugin[PluginContext]):
 | --- | --- |
 | `name` | 身份；被 `deps`、诊断和 `/plugins` 使用。为空时使用 entry-point 名字 |
 | `origin` | 发行包或文件名，由加载器设置；`[plugins] disable` 按它匹配 |
-| `description` | 一行说明，显示在诊断和 `/plugins` |
+| `description` | 给作者和诊断用的一行说明；程序目前不显示它 |
 | `deps` | 依赖的插件 **name**；加载器先激活它们 |
 | `priority` | 相对其他扩展的 hook 顺序；越小越先。默认 `100` |
 | `default_enabled()` | 类方法；返回 `False` 表示要 `[plugins] enable = ["name"]` 才加载 |
@@ -979,7 +1004,7 @@ class Heartbeat(Plugin[PluginContext]):
 
 `ctx.tui.register_command(name, description, handler, *, when_busy="refuse",
 subcommands=())` 加终端命令。handler 收到 `CommandContext`，有 `argument`、`ui` 和
-`host`；`host.require_host()` 是 shell。`CommandResult` 字段是 `message`、
+`host`；`context.require_host()` 是 shell。`CommandResult` 字段是 `message`、
 `notification`、`widget`、`relayout`、`intro`、`run`。`intro` + `run` 让慢命令的行保持
 运行状态。
 
@@ -996,10 +1021,10 @@ subcommands=())` 加终端命令。handler 收到 `CommandContext`，有 `argume
 | 方法 | 加什么 |
 | --- | --- |
 | `register_command` | 带 `CommandUi` 和 `CommandHost` 的 `/命令` |
-| `register_header_left/right`、`register_status_left/right` | 一个片段；`name=` 默认是该侧，同名原地替换，`override=True` 清空该侧 |
+| `register_header_left/right`、`register_status_left/right` | 一个片段；`name` 为空时追加（`segment-N`），`render_*` 覆盖则注册 `<region>_<side>` 并替换内置片段；`override=True` 清空该侧 |
 | `register_turn_segment(name, summary, builder)` | 请求结束那一行的条目；name 以 `turn-` 开头 |
-| `register_theme(name, theme, description="")` | 配色、文件或 builder |
-| `register_pet(name, pet, description="")` | 宠物或 builder |
+| `register_theme(name, theme, *, description="")` | 配色、文件或 builder |
+| `register_pet(name, pet, *, description="")` | 宠物或 builder |
 | `register_presenter(presenter)` | 行 presenter；后注册的同优先级胜出 |
 | `register_focus_handler(handler)` | 窗口获得/失去焦点 |
 | `register_turn_start_handler(handler)` | 一轮开始 |
@@ -1055,20 +1080,23 @@ action="store", choices=None, metavar=None)`。解析后的值是
 ```python
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.plugin_api import PLUGIN_CLI
 
 
 def activate_for_test(tmp_path):
     config = ZettCodeConfig(
         workspace=tmp_path,
+        store=tmp_path / "sessions",
         models=(ModelConfig(model="example", token="test"),),
     )
-    ctx = terminal_context(config, {}, name="journal")
+    ctx = terminal_context(config, {PLUGIN_CLI: {"journal": {"limit": "5"}}}, name="journal")
     Journal().activate(ctx)
     return ctx
 ```
 
-没有屏幕半边时，用 `PluginContext(config, services)` 和 `ctx.commands`。测试命令 handler
-时构造 `PlainCommandContext(argument="...")` 或
+没有屏幕半边时，用 `PluginContext(config, services)` 和 `ctx.commands`。屏幕测试需要安装程序本身
+（`zettcode.app` 不是 `zettcode-plugin-api` 的依赖）；没有屏幕半边的插件只需要 `PluginContext`。
+测试命令 handler 时构造 `PlainCommandContext(argument="...")` 或
 `CommandContext(argument="...", ui=...)`；测试屏幕贡献时用 `ctx.tui` 和与应用相同的
 helper。测试必须用临时目录：插件不能写读者的 home 或 checkout。
 
@@ -1088,6 +1116,8 @@ helper。测试必须用临时目录：插件不能写读者的 home 或 checkou
   `[harness] subagent`、`[harness] todowrite`、`[ask_user] enabled`——面板写的就是配置文件里的那个键。没有这种设置的
   内置插件根本不会列出来：它上面没有可以按的东西。（加载失败的内置插件还是会列出来，写明原因——没有什么可按，
   但这件事值得知道。）
+- 程序自己的**终端部分**里，非必需的（`themes`、`pets`、`context`、`usage`）会作为第三方行出现，
+  `[plugins] disable` 能关掉；终端启动必需的四个不会列出，`zettcode plugin disable` 也关不掉这两类。
 
 想要的名字已经被另一个插件占用的插件，会带一条说明列出来，但没有开关：拿到名字的那个留下，页面说明是谁没拿到，
 而不是只把它写进日志。
@@ -1106,12 +1136,13 @@ helper。测试必须用临时目录：插件不能写读者的 home 或 checkou
 | 依赖缺失、被禁用、失败或成环 | 依赖它的插件也被拒绝，并说明 `needs plugin 'x' …` |
 | 命令抛 `ValueError` 或 `ZettCodeError` | 那句话作为命令自己的错误显示 |
 | 命令抛其他异常 | 显示一行 `/<name>: <reason>`，traceback 写入日志 |
-| 插件 hook 抛异常 | 显示一行 `a plugin hook failed: …`；这个 hook 不会再被调用 |
+| focus / turn-start / turn-end handler 抛异常 | 显示一行 `a plugin hook failed: …`；这个 handler 不会再被调用。agent 侧 hook（`before_turn`、`on_tool` 等）失败会向上传播，让请求失败 |
 | trigger 抛异常 | trigger 标记为 failed，不再重启；handler 抛异常只损失一个事件 |
 | presenter 在绘制时抛异常 | 不会像 hook 那样隔离：对任何 frame 返回同样的行，不要抛 |
 
 失败的插件不提供任何东西。`ctx.find` 返回 `None`；`ctx.service` 抛 `LookupError`。同样的信息还出现在 shell 的
-`plugin: …` 行、`/plugins`、`zettcode plugin list`，以及 SDK 客户端的 `client.plugins.failures`。结构化日志是
+`plugin: …` 行、`/plugins`，以及 SDK 客户端的 `client.plugins.failures`；`plugin list` 只显示安装和开关状态，不显示失败原因。结构化日志是
 `~/.zettcode/log/` 下的 JSON lines（默认 `terminal.jsonl`）；`ZETTCODE_LOG_LEVEL=debug` 打开更多内容。`Plugins.taken` 记录输给
-前一个插件的名字。两个插件不能重名，先到的保留。已安装插件的命令不能覆盖内置命令：这个插件会加载失败。
-命令名是四个 shell 独占命令之一（`/config`、`/theme`、`/pet`、`/statusline`）时，会在合并时被丢弃，也不列出。
+前一个插件的名字。两个插件不能重名，先到的保留。内置名字永远保留给内置命令：shell 的 `/config`、`/theme`、`/pet`、
+`/statusline`，agent 的 `/new`、`/compact`、`/export`，程序的 `/model`、`/resume` 等等。插件仍会加载，但它的命令不会列出、
+也不能运行，而且不会报告失败；安装后检查 `/help`。
