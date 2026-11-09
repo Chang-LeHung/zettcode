@@ -14,4 +14,7 @@ from __future__ import annotations
 #: The shell levels a daemon can be given. There is no ``ask``: nobody is there to answer it.
 PERMISSIONS = ("deny", "safe", "full")
 
-__all__ = ["PERMISSIONS", "cli", "process", "run", "state"]
+#: The environment handoff from ``spawn`` to the child it starts; the child removes it once read.
+PLUGIN_ARGS_ENV = "ZETTCODE_PLUGIN_ARGS"
+
+__all__ = ["PERMISSIONS", "PLUGIN_ARGS_ENV", "cli", "process", "run", "state"]

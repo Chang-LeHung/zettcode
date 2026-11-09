@@ -42,5 +42,7 @@ def test_a_colliding_or_non_json_option_is_skipped_with_one_line(capsys):
 
     assert add_options(parser, [("example", CliOption(("--depth",), "depth"))]) == ()
     assert add_options(parser, [("example", CliOption(("--where",), "where", default=object()))]) == ()
+    assert add_options(parser, [("example", CliOption((), "where"))]) == ()
+    assert add_options(parser, [("example", CliOption(("--x",), 5))]) == ()
     err = capsys.readouterr().err
     assert "ignored example --depth" in err and "ignored example --where" in err

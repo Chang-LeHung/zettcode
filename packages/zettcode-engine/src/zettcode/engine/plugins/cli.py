@@ -100,10 +100,17 @@ def add_options(
     """
     added: list[tuple[str, CliOption, str]] = []
     for origin, option in options:
-        label = option.flags[0] if option.flags else option.dest
-        if not option.flags or not option.dest.strip():
-            print(f"zettcode: ignored {origin} {label}: an option needs flags and a destination", file=sys.stderr)
+        if (
+            not isinstance(option.flags, tuple)
+            or not option.flags
+            or not all(isinstance(flag, str) and flag.startswith("-") for flag in option.flags)
+        ):
+            print(f"zettcode: ignored {origin} {option.dest!r}: flags must be option strings", file=sys.stderr)
             continue
+        if not isinstance(option.dest, str) or not option.dest.strip():
+            print(f"zettcode: ignored {origin} {option.flags[0]}: a destination is required", file=sys.stderr)
+            continue
+        label = option.flags[0]
         try:
             json.dumps(option.default)
         except (TypeError, ValueError):
@@ -111,7 +118,7 @@ def add_options(
             continue
         try:
             key = option.add(parser, prefix=f"{prefix}{origin}__")
-        except (argparse.ArgumentError, ValueError) as error:
+        except (argparse.ArgumentError, TypeError, ValueError) as error:
             print(f"zettcode: ignored {origin} {label}: {error}", file=sys.stderr)
             continue
         added.append((origin, option, key))

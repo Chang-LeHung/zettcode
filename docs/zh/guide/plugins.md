@@ -45,6 +45,7 @@ service：`client.services` 列出名字，`client.service(name, kind)` 取对�
 插件可以重写 `cli_arguments()`，返回 `CliOption`，给会话启动和 `zettcode daemon spawn` 增加参数。声明在读配置、
 激活插件之前就从类上读取，所以不需要先有配置；解析后的值通过 `PLUGIN_CLI` service 交回插件，按 entry-point 名字分组。
 这些值必须是 JSON 安全的，daemon 的父进程才能把它们传给子进程。`~/.zettcode/.ztrc` 也可以像预置其他选项一样预置它们。
+声明会在每次启动、配置还不存在时读取，因此可能导入每个已安装插件的类（包括被禁用的插件）；插件模块的导入应保持轻量。
 
 **不会因为"不是给这个前端的"而被拒绝**：插件总会被激活；真正坏掉的（导入失败、两个插件抢同一个名字）会作为失败报告出来，读者看得到。
 

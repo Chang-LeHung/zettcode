@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 
 from zettcode.table import block, table
 
-from . import PERMISSIONS
+from . import PERMISSIONS, PLUGIN_ARGS_ENV
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Sequence
@@ -241,7 +241,6 @@ def _build_parser(
     run.add_argument("--name", default=None, help=argparse.SUPPRESS)
     run.add_argument("--title", default=None, help=argparse.SUPPRESS)
     run.add_argument("--permission", default="full", choices=PERMISSIONS, help=argparse.SUPPRESS)
-    run.add_argument("--plugin-args", default=None, help=argparse.SUPPRESS)
     if not with_plugins:
         return parser, ()
     from zettcode.engine.plugins.cli import add_options, installed_options
@@ -659,12 +658,26 @@ def _run(args: argparse.Namespace) -> int:
         name=args.name,
         title=args.title,
         permission=args.permission,
-        plugin_arguments=json.loads(args.plugin_args) if args.plugin_args else {},
+        plugin_arguments=_plugin_arguments(),
     )
     try:
         return asyncio.run(serve(options))
     except KeyboardInterrupt:
         return EXIT_OK
+
+
+def _plugin_arguments() -> dict[str, dict[str, object]]:
+    """Read and remove the spawn handoff before the daemon starts anything of its own."""
+    import os
+
+    raw = os.environ.pop(PLUGIN_ARGS_ENV, None)
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return {}
+    return {str(origin): table for origin, table in parsed.items() if isinstance(table, dict)}
 
 
 def _positive(text: str) -> int:
