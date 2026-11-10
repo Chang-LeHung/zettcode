@@ -31,7 +31,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 #: The words ``/harness`` takes, in the order the completion menu offers them. Both say ``needs_more``: the menu
 #: offers them, but Enter on the word alone does not run one — ``/harness `` and Enter stays the panel it was, and
-#: ``gen`` (a paid turn) takes a second Enter once the word is in the draft.
+#: ``gen`` (a paid turn) takes a second Enter once the word is in the draft, as does ``reset`` so a menu Enter cannot
+#: flip the switch by itself.
 SUBCOMMANDS: tuple[Subcommand, ...] = (
     Subcommand("gen", "turn the harness on and have a tool built; add what you want after the word", needs_more=True),
     Subcommand(

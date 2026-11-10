@@ -437,7 +437,7 @@ class _Switch:
         self.session = type("Session", (), {"id": "mine", "locked": locked})()
         self.harness = harness
         self.started = started
-        #: What happened, in the order the command made it happen: the switch or the turn it asked for.
+        #: What happened, in the order the command made it happen: the switch, the notice it wrote, or the turn.
         self.events: list[str] = []
         self.switched: list[bool] = []
 
@@ -712,6 +712,7 @@ async def test_a_word_the_command_does_not_take_lists_the_ones_it_does(tmp_path:
     ], bullets
     assert "told to treat it as a requirement" in bullets[1], "the gen line says what a description is for"
     assert client.switched == [] and shell.prompts == [], "a typo changes nothing"
+    assert shell.ui.messages == [], "a usage error is the result's message, not something the command writes"
 
 
 async def test_reset_takes_nothing_after_it(tmp_path: Path):
