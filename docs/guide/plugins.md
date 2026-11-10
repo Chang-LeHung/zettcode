@@ -500,8 +500,8 @@ cache imports every installed plugin class, including a disabled one — keep th
 To keep the interactive start fast, the parser reads these declarations from `~/.zettcode/plugin-cli.json` instead of
 importing every plugin. When the cache is missing or stale, a daemon thread imports the plugin classes and refreshes
 it; the first start after installing or changing a plugin therefore has no new flags, and the next start has them.
-A cache miss is accepted rather than waiting; `prompt`, `--dry-run` and `daemon spawn` refresh synchronously because
-they end too soon for the background thread. If `.ztrc` names a plugin flag before the cache exists, that one start
+A cache miss is accepted rather than waiting; `prompt`, `doctor`, `--dry-run` and `daemon spawn` refresh synchronously
+because they end too soon for the background thread. If `.ztrc` names a plugin flag before the cache exists, that one start
 refreshes the declarations synchronously and applies them, so the preset is not lost.
 
 ## Reading the configuration
