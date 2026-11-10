@@ -518,7 +518,7 @@ def _configured(tmp_path: Path) -> ZettCodeConfig:
     )
 
 
-async def _run(argument: str, client: _Switch) -> tuple[CommandResult, _Shell]:
+async def _run(argument: str, client: _Switch, choices: object | None = None) -> tuple[CommandResult, _Shell]:
     """Run ``/harness`` with ``argument`` and return what it answered, beside the shell it answered through.
 
     What the command wrote to the reader's surfaces is on ``shell.ui``, so a test can read a notice as well as a result.
@@ -528,7 +528,9 @@ async def _run(argument: str, client: _Switch) -> tuple[CommandResult, _Shell]:
 
     shell = _Shell(client)
     context = CommandContext(argument=argument, ui=shell.ui, host=shell)  # type: ignore[arg-type]
-    return await HarnessCommand().harness(context), shell
+    command = HarnessCommand()
+    command.choices = choices  # type: ignore[assignment]
+    return await command.harness(context), shell
 
 
 async def test_the_command_is_offered_with_the_two_words_it_takes():
@@ -549,6 +551,9 @@ async def test_the_command_is_offered_with_the_two_words_it_takes():
     class Context:
         def __init__(self) -> None:
             self.tui = Tui()
+
+        def find(self, _name, _kind):
+            return None
 
     context = Context()
     HarnessCommand().activate(context)  # type: ignore[arg-type]
@@ -696,6 +701,56 @@ async def test_a_folder_beyond_the_newest_thousand_says_so(tmp_path: Path):
     page = result.widget.slots[0].widget  # type: ignore[union-attr]
     row = next(item for item in page.list.items if item.label == "old")
     assert row.disabled and "outside newest 1000" in row.description
+
+
+async def test_the_panel_borrows_another_sessions_harness(tmp_path: Path):
+    from zettcode.engine.harness_paths import harness_root
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    config = _configured(tmp_path)
+    other = harness_root(config) / "other" / "notes"
+    other.mkdir(parents=True)
+    (other / "__init__.py").write_text("", encoding="utf-8")
+    choices = HarnessChoices()
+
+    result, shell = await _run("", _Switch(config), choices)
+    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    page.list.select(next(index for index, item in enumerate(page.list.items) if item.value == "other"))
+    page.list.activate()
+
+    assert choices.target("mine") is not None and choices.target("mine").session_id == "other"
+    assert shell.closed == 1, "choosing a harness closes the picker"
+
+
+async def test_the_current_row_returns_to_the_sessions_own_harness(tmp_path: Path):
+    from zettcode.engine.harness_paths import harness_root
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    config = _configured(tmp_path)
+    other = harness_root(config) / "other"
+    other.mkdir(parents=True)
+    choices = HarnessChoices()
+    choices.select("mine", "other", other)
+
+    result, _ = await _run("", _Switch(config), choices)
+    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    page.list.activate()
+
+    assert choices.target("mine") is None
+
+
+def test_a_borrowed_harness_replaces_the_sessions_directory(tmp_path: Path):
+    from zettcode.jit_harness.extension import SwitchedHarness
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    choices = HarnessChoices()
+    extension = SwitchedHarness(tmp_path / "root", HarnessSwitch(), choices=choices)
+    other = tmp_path / "other"
+    choices.select("mine", "other", other)
+
+    assert extension.session_directory("mine") == other
+    choices.clear("mine")
+    assert extension.session_directory("mine") == tmp_path / "root" / "mine"
 
 
 async def test_gen_turns_the_harness_on_first_and_asks_for_one_tool_as_one_turn(tmp_path: Path):

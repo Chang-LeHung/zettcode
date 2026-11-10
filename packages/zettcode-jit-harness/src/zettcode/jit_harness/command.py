@@ -5,7 +5,9 @@ and the command to another. Both are here now: the part owns what it shows and t
 against the plugin contract — the context, the result and ``bottom_panel`` — so the panel is drawn without the
 application, and the SDK is only what ``host.client`` is typed as.
 
-``/harness`` with nothing after it opens the session picker: every session with a harness, the current one first and selected; Enter switches to that session. ``gen`` turns the harness on and asks the model, as one
+``/harness`` with nothing after it opens the session picker: every session with a harness, the current one first and
+selected; Enter borrows that session's harness for the current conversation, and the current row returns to its own.
+``gen`` turns the harness on and asks the model, as one
 ordinary turn, to build a small tool for this workspace — the rest of the line, if there is any, is what the reader
 wants built and is handed on as a requirement rather than as advice; ``reset`` turns it off again so later requests
 have none of its tools, and deletes nothing. Both words act on the switch and on the harness folder alone: the
@@ -26,6 +28,7 @@ from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.tui.render import truncate
 
 from .page import HARNESS_ROWS, HarnessPage
+from .selection import HARNESS_CHOICES, HarnessChoice, HarnessChoices
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.config import ZettCodeConfig
@@ -172,6 +175,9 @@ class HarnessCommand(TuiPlugin):
         "the just-in-time harness: /harness (the panel), gen [what you want] (build a tool), reset (switch back)"
     )
 
+    def __init__(self) -> None:
+        self.choices: HarnessChoices | None = None
+
     def activate(self, ctx: PluginContext) -> None:
         """Register ``/harness``; it takes the request slot, so it is refused while a request runs.
 
@@ -181,6 +187,7 @@ class HarnessCommand(TuiPlugin):
         """
         if ctx.tui is None:
             return
+        self.choices = ctx.find(HARNESS_CHOICES, HarnessChoices)
         ctx.tui.register_command(
             "harness",
             "the just-in-time harness: the panel, and the words that turn it on or hand it back",
@@ -213,9 +220,9 @@ class HarnessCommand(TuiPlugin):
     async def _panel(self, host: CommandHost) -> CommandResult:
         """Open the picker: stored sessions with a harness, the current session first, then stale folders.
 
-        The current session is always a row, even before it has a folder, so opening ``/harness`` and pressing Enter
-        cannot silently resume somebody else. Rows for sessions the store no longer knows are shown disabled; their
-        folders are read, never imported or moved.
+        The current session is always a row, even before it has a folder; Enter on another row borrows that harness,
+        and Enter on the current row returns to the session's own. Rows for sessions the store no longer knows are
+        shown disabled; their folders are read, never imported or moved.
         """
         current = host.client.session.id
         config = host.client.config
@@ -241,6 +248,7 @@ class HarnessCommand(TuiPlugin):
             len(stored) >= STORE_ROWS,
             root,
             error,
+            self.choices.target(current) if self.choices is not None else None,
         )
         state = "on" if host.client.harness else "off"
         page = HarnessPage(
@@ -265,19 +273,22 @@ class HarnessCommand(TuiPlugin):
         capped: bool,
         root: Path,
         error: str,
+        choice: HarnessChoice | None,
     ) -> list[tuple[str | None, str, str, bool]]:
         """Build rows from ids and pure paths; filesystem scans stay off the event loop."""
-        count = cls._repository_count(current_directory)
-        rows: list[tuple[str | None, str, str, bool]] = [
-            (
-                current,
-                current_title,
-                f"{count} repositor{'y' if count == 1 else 'ies'} \u00b7 current"
-                if current_directory.is_dir()
-                else "No harness yet",
-                False,
+        if choice is not None:
+            current_count = cls._repository_count(choice.directory)
+            current_detail = (
+                f"{current_count} repositor{'y' if current_count == 1 else 'ies'} · using {choice.session_id}"
             )
-        ]
+        else:
+            current_count = cls._repository_count(current_directory)
+            current_detail = (
+                f"{current_count} repositor{'y' if current_count == 1 else 'ies'} · current"
+                if current_directory.is_dir()
+                else "No harness yet"
+            )
+        rows: list[tuple[str | None, str, str, bool]] = [(current, current_title, current_detail, False)]
         if error:
             rows.append((None, "Session store unreadable", error, True))
         seen = {current_directory.name}
@@ -290,14 +301,10 @@ class HarnessCommand(TuiPlugin):
                 continue
             seen.add(directory.name)
             count = cls._repository_count(directory)
-            rows.append(
-                (
-                    session_id,
-                    getattr(info, "title", None) or session_id,
-                    f"{count} repositor{'y' if count == 1 else 'ies'}",
-                    False,
-                )
-            )
+            detail = f"{count} repositor{'y' if count == 1 else 'ies'}"
+            if choice is not None and choice.session_id == session_id:
+                detail += " · in use"
+            rows.append((session_id, getattr(info, "title", None) or session_id, detail, False))
         if root.is_dir():
             try:
                 stale = sorted(root.iterdir(), key=lambda path: path.name)
@@ -326,13 +333,20 @@ class HarnessCommand(TuiPlugin):
         except OSError:
             return 0
 
-    @staticmethod
-    def _switch(host: CommandHost, current: str, session_id: str) -> None:
-        """Switch to another session, or close the page when it is already this one."""
+    def _switch(self, host: CommandHost, current: str, session_id: str) -> None:
+        """Borrow the selected session's harness, or close the page on the current row."""
         if session_id == current:
+            if self.choices is not None:
+                self.choices.clear(current)
             host.close_page()
-        else:
+            return
+        if self.choices is None:
             host.select_session(session_id)
+            return
+        directory = existing_session_path(host.client.config, session_id)
+        if directory.is_dir():
+            self.choices.select(current, session_id, directory)
+        host.close_page()
 
     async def _generate(self, host: CommandHost, description: str, *, ui: CommandUi) -> CommandResult:
         """Turn the harness on and hand the model the brief, as one ordinary turn of this conversation.
@@ -411,7 +425,7 @@ class HarnessCommand(TuiPlugin):
         said = f"`/harness {tried}` is not a word `/harness` takes." if tried else ""
         return (
             f"{said}\n\n"
-            "- `/harness` — every session's harness; the current one is first, and Enter switches to a row\n"
+            "- `/harness` — every session's harness; Enter borrows the selected one, and the current row returns to its own\n"
             "- `/harness gen [description]` — turn it on (for this run) and have a tool built; anything you write after\n"
             "  the word says what you want, and the model is told to treat it as a requirement\n"
             "- `/harness reset` — turn it off (for this run), so later requests have none of its tools; what this\n"

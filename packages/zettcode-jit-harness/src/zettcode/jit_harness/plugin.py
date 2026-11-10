@@ -11,6 +11,8 @@ from zettcode.engine.plugins.plugin import Plugin, PluginSetting
 from zettcode.engine.plugins.services import HARNESS, POLICY
 from zettcode.plugin_api.host import HOST_LINK, HostLink
 
+from .selection import HARNESS_CHOICES, HarnessChoices
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.extensions.base import AgentExtension
     from zett_agent.jit_harness import JITToolHost
@@ -40,6 +42,8 @@ class Harness(Plugin[PluginContext]):
         switch = ctx.service(HARNESS, HarnessSwitch)
         root = harness_root(ctx.config)
         policy = ctx.service(POLICY, ShellPolicy)
+        choices = HarnessChoices()
+        ctx.provide(HARNESS_CHOICES, choices)
 
         def host() -> JITToolHost:
             """Where one session's repository code runs.
@@ -72,6 +76,7 @@ class Harness(Plugin[PluginContext]):
                 boundary=boundary,
                 unbounded=policy.sandbox_missing,
                 legacy_root=ctx.config.harness_dir,
+                choices=choices,
             )
 
         ctx.agent.register_extension_factory("SwitchedHarness", build)
