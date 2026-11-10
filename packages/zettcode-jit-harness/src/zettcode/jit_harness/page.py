@@ -44,20 +44,11 @@ class HarnessPage(ListPage):
         items = [
             ListItem(session_id, label, detail, disabled=disabled) for session_id, label, detail, disabled in sessions
         ]
-        if not items:
-            items = [
-                ListItem(
-                    None,
-                    "No harness yet",
-                    "run /harness gen in a session; its tools live in that session's folder",
-                    disabled=True,
-                )
-            ]
         super().__init__(
             items,
             title="Harnesses",
             subtitle=_shown(directory),
             footer=f"harness is {state} \u00b7 enter switch \u00b7 esc close",
-            on_select=lambda item: on_switch(str(item.value)) if item.value is not None else on_close(),
+            on_select=lambda item: on_switch(str(item.value)),
             on_cancel=on_close,
         )

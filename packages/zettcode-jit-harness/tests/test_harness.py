@@ -634,6 +634,22 @@ async def test_harness_alone_opens_the_panel_and_changes_nothing(tmp_path: Path)
     assert client.switched == [] and shell.prompts == [], "looking at the harness is not touching it"
 
 
+async def test_the_panel_lists_a_legacy_folder_without_moving_it(tmp_path: Path):
+    from zettcode.engine.harness_paths import harness_root
+
+    config = _configured(tmp_path)
+    legacy = config.harness_dir / "other" / "old"
+    (legacy).mkdir(parents=True)
+    (legacy / "__init__.py").write_text("", encoding="utf-8")
+
+    result, _ = await _run("", _Switch(config))
+    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    rows = {item.label: item for item in page.list.items}
+    assert "Other" in rows and rows["Other"].value == "other"
+    assert legacy.is_dir(), "opening the picker reads the legacy folder"
+    assert not (harness_root(config) / "other").exists(), "it does not migrate every session just by being listed"
+
+
 async def test_a_harness_folder_without_a_stored_session_is_shown_disabled(tmp_path: Path):
     from zettcode.engine.harness_paths import harness_root
 
