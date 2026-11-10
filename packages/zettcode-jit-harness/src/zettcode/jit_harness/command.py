@@ -147,9 +147,10 @@ def brief_for(description: str) -> str:
 def shown_for(description: str) -> str:
     """Return what the transcript draws for the turn: the command, on one row, shortened when it is long.
 
-    The row is one line because a conversation row is: a description pasted with its own line breaks is drawn with the
-    breaks as single spaces, while the model reads it exactly as it was written. The budget is columns, not characters:
-    a row of 120 Chinese characters is 240 columns, and the framework's own `truncate` is what knows the difference.
+    One line on purpose, not because a conversation row cannot hold more — a row with line breaks is drawn with them.
+    A description pasted with its own breaks would otherwise fill the screen, and the model reads it verbatim further
+    down anyway, so the breaks become single spaces here. The budget is columns, not characters: a row of 120 Chinese
+    characters is 240 columns, and the framework's own `truncate` is what knows the difference.
     """
     asked = description.strip().replace("\r\n", " ").replace("\r", " ").replace("\n", " ").replace("\t", " ")
     line = f"/harness gen {asked}" if asked else "/harness gen"
