@@ -1,8 +1,7 @@
-"""The panel ``/harness`` opens: the switch's state, the folder, and this session's repositories.
+"""The panel ``/harness`` opens: every session's harness, with this session's row selected.
 
-The two words beside the panel change **this run** — ``gen`` turns the switch on, which every session in the window
-sees, and has a tool built; ``reset`` turns it off again, so later requests have none of its tools, and keeps what this
-session wrote — while ``/plugins`` is what a run starts with. The panel itself writes nothing.
+Up and Down move through the rows; Enter switches to the selected session, whose harness then belongs to the current
+conversation. The panel only reads the harness directories; ``/harness gen`` and ``/harness reset`` change the run.
 """
 
 from __future__ import annotations
@@ -17,11 +16,7 @@ HARNESS_ROWS = 12
 
 
 def _shown(directory: Path) -> str:
-    """Return the folder as the subtitle shows it: the whole path, with the home directory collapsed to ``~``.
-
-    The panel has the width of the screen, so unlike the header it does not shorten the tail; the one substitution is
-    the home directory, which is longer than it says.
-    """
+    """Return the folder as the subtitle shows it: the whole path, with the home directory collapsed to ``~``."""
     value = str(directory)
     home = str(Path.home())
     if value == home or value.startswith(home + "/"):
@@ -30,11 +25,10 @@ def _shown(directory: Path) -> str:
 
 
 class HarnessPage(ListPage):
-    """What the harness is doing now: on or off, where its files are, and what the model has written.
+    """Every session that has a harness, with the current one first and selected.
 
-    The page writes nothing: `/harness gen` and `/harness reset` are what turn it on and hand it back, and
-    `/plugins` is where the harness is switched for the next start. Each repository is one row; selecting any row (or
-    Escape) closes the page.
+    Rows carry a session id as their value. Enter asks the shell to switch to that session; the panel itself writes
+    nothing. Escape closes it.
     """
 
     def __init__(
@@ -42,23 +36,26 @@ class HarnessPage(ListPage):
         *,
         state: str,
         directory: Path,
-        repositories: Sequence[tuple[str, str]],
+        sessions: Sequence[tuple[str, str, str]],
+        on_switch: Callable[[str], None],
         on_close: Callable[[], None],
     ) -> None:
-        items = [ListItem(name, name, detail) for name, detail in repositories]
+        """Build the rows from ``(session id, label, detail)``, current session first."""
+        items = [ListItem(session_id, label, detail) for session_id, label, detail in sessions]
         if not items:
             items = [
                 ListItem(
-                    "none",
-                    "No repositories yet",
-                    "the model makes one with repo_create when the harness is on",
+                    None,
+                    "No harness yet",
+                    "run /harness gen in a session; its tools live in that session's folder",
+                    disabled=True,
                 )
             ]
         super().__init__(
             items,
             title=f"Harness is {state}",
             subtitle=_shown(directory),
-            footer="/harness gen|reset \u00b7 /plugins: next start \u00b7 esc close",
-            on_select=lambda _value: on_close(),
+            footer="enter switch \u00b7 esc close",
+            on_select=lambda item: on_switch(str(item.value)) if item.value is not None else on_close(),
             on_cancel=on_close,
         )

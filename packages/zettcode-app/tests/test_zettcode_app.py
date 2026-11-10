@@ -9674,48 +9674,31 @@ def test_a_row_on_screen_is_drawn_by_the_presenter_a_plugin_registered():
     assert any("LOUD" in row for row in rows), rows
 
 
-async def test_the_harness_command_lists_the_sessions_repositories_and_checks_their_manifest(tmp_path):
-    """`/harness` shows what the model wrote, and what `zett-agent` 0.2.2 would make of it.
-
-    A repository is loadable only when its `MANIFEST` says what it is, so a reader asking about the harness gets the
-    answer from the files — read, never imported. What the manifest declares is what is shown: whether the code
-    defines that tool is the load's question, not this command's.
-    """
-    from zettcode.engine.harness_paths import session_directory
+async def test_the_harness_command_lists_sessions_with_harnesses(tmp_path):
+    """`/harness` is a session picker: the current session first, and every other session that has a harness."""
+    from zettcode.engine.harness_paths import harness_root, session_directory
 
     app = build_app()
     harness = _harness(app)
     app.agent.runtime.config.harness_dir = tmp_path / "harness"
-    folder = session_directory(app.agent.runtime.config, app.client.session.id)
+    current = app.client.session.id
+    folder = session_directory(app.agent.runtime.config, current)
 
     await _type_command(app, harness, "/harness")
     said = harness.render().text
-    assert "No repositories yet" in said and "repo_cr" in said, said
+    assert "No harness yet" in said, said
     harness.press("escape")
 
-    ready = folder / "kit"
-    ready.mkdir(parents=True)
-    (ready / "__init__.py").write_text("def slug(text):\n    return text\n", encoding="utf-8")
-    (ready / "MANIFEST").write_text(
-        'name = "kit"\nversion = "1.0"\ndescription = "small helpers"\ntools = ["slug"]\n', encoding="utf-8"
-    )
-    (ready / "BAN_TOOLS").write_text("rm_rf\n", encoding="utf-8")
-    unready = folder / "old"
-    unready.mkdir()
-    (unready / "__init__.py").write_text("", encoding="utf-8")
-    hollow = folder / "hollow"
-    hollow.mkdir()
-    (hollow / "__init__.py").write_text("# defines nothing\n", encoding="utf-8")
-    (hollow / "MANIFEST").write_text(
-        'name = "hollow"\nversion = "0.1"\ndescription = "declares a tool it never defines"\ntools = ["slug"]\n',
-        encoding="utf-8",
-    )
+    for name in ("kit", "old", "hollow"):
+        repository = folder / name
+        repository.mkdir(parents=True)
+        (repository / "__init__.py").write_text("", encoding="utf-8")
+    other = harness_root(app.agent.runtime.config) / "other"
+    (other / "notes").mkdir(parents=True)
+    (other / "notes" / "__init__.py").write_text("", encoding="utf-8")
 
     await _type_command(app, harness, "/harness")
 
     said = harness.render().text
-    assert "kit" in said and "small helpers" in said and "1 b" in said, said
-    assert "old" in said and "no MANIFEST" in said, said
-    # The declaration is what this reads; comparing it with the code is the load's job, so a repository whose code
-    # defines nothing still shows what its MANIFEST declares.
-    assert "hollow" in said and "declares a tool it never" in said, said
+    assert "3 repositories" in said and "current" in said, said
+    assert "other" in said and "1 repository" in said, said

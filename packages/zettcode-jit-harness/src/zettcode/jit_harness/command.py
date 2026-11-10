@@ -5,7 +5,7 @@ and the command to another. Both are here now: the part owns what it shows and t
 against the plugin contract — the context, the result and ``bottom_panel`` — so the panel is drawn without the
 application, and the SDK is only what ``host.client`` is typed as.
 
-``/harness`` with nothing after it opens the read-only panel. ``gen`` turns the harness on and asks the model, as one
+``/harness`` with nothing after it opens the session picker: every session with a harness, the current one first and selected; Enter switches to that session. ``gen`` turns the harness on and asks the model, as one
 ordinary turn, to build a small tool for this workspace — the rest of the line, if there is any, is what the reader
 wants built and is handed on as a requirement rather than as advice; ``reset`` turns it off again so later requests
 have none of its tools, and deletes nothing. Both words act on the switch and on the harness folder alone: the
@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zettcode.engine.harness_paths import session_directory
+from zettcode.engine.harness_paths import harness_root, session_directory
 from zettcode.plugin_api.commands import CommandContext, CommandResult, Subcommand
 from zettcode.plugin_api.panels import bottom_panel
 from zettcode.plugin_api.plugin import TuiPlugin
@@ -195,7 +195,7 @@ class HarnessCommand(TuiPlugin):
         host = context.require_host()
         word, rest = split_argument(context.argument)
         if not word:
-            return self._panel(host)
+            return await self._panel(host)
         if word == "gen":
             return await self._generate(host, rest, ui=context.ui)
         if word == "reset":
@@ -204,19 +204,53 @@ class HarnessCommand(TuiPlugin):
             return self._reset(host)
         return CommandResult(message=self._usage(tried=word))
 
-    def _panel(self, host: CommandHost) -> CommandResult:
-        """Open a read-only panel on the just-in-time harness.
+    async def _panel(self, host: CommandHost) -> CommandResult:
+        """Open the session picker: every harness, with this session first when it has one.
 
-        The switch is a plugin setting too: ``/plugins`` turns the harness on or off for the next start, and this page
-        says which state it found, where the repositories live, and what this session has written. Nothing on the
-        page changes anything; the repositories are read with
-        :func:`zett_agent.jit_harness.inspect_repository`, which imports nothing.
+        The rows are directories under the workspace's harness root; a session with tools there is a row whether or
+        not it is still in the session store. Enter switches to that conversation through the shell, which is what
+        makes that session's harness current. The current row is first, so the list's own selection highlights it.
         """
         directory = directory_of(host)
+        root = harness_root(host.client.config)
+        current = host.client.session.id
+        sessions: list[tuple[str, str, str]] = []
+        if root.is_dir():
+            for path in sorted(root.iterdir(), key=lambda item: (item.name != current, item.name)):
+                if not path.is_dir():
+                    continue
+                count = self._repository_count(path)
+                label = path.name
+                detail = f"{count} repositor{'y' if count == 1 else 'ies'}"
+                if path.name == current:
+                    label = getattr(host.client.session, "title", None) or label
+                    detail += " \u00b7 current"
+                sessions.append((path.name, label, detail))
         state = "on" if host.client.harness else "off"
-        repositories = self._repositories(directory)
-        page = HarnessPage(state=state, directory=directory, repositories=repositories, on_close=host.close_page)
+        page = HarnessPage(
+            state=state,
+            directory=directory,
+            sessions=sessions,
+            on_switch=lambda session_id: self._switch(host, current, session_id),
+            on_close=host.close_page,
+        )
         return CommandResult(widget=bottom_panel(page, rows=HARNESS_ROWS))
+
+    @staticmethod
+    def _repository_count(directory: Path) -> int:
+        """Return how many repositories the session folder holds, without importing any of them."""
+        try:
+            return sum(1 for path in directory.iterdir() if (path / "__init__.py").is_file())
+        except OSError:
+            return 0
+
+    @staticmethod
+    def _switch(host: CommandHost, current: str, session_id: str) -> None:
+        """Switch to another session, or close the page when it is already this one."""
+        if session_id == current:
+            host.close_page()
+        else:
+            host.select_session(session_id)
 
     async def _generate(self, host: CommandHost, description: str, *, ui: CommandUi) -> CommandResult:
         """Turn the harness on and hand the model the brief, as one ordinary turn of this conversation.
@@ -295,44 +329,10 @@ class HarnessCommand(TuiPlugin):
         said = f"`/harness {tried}` is not a word `/harness` takes." if tried else ""
         return (
             f"{said}\n\n"
-            "- `/harness` — the panel: whether it is on, where its files are, and this session's repositories\n"
+            "- `/harness` — every session's harness; the current one is first, and Enter switches to a row\n"
             "- `/harness gen [description]` — turn it on (for this run) and have a tool built; anything you write after\n"
             "  the word says what you want, and the model is told to treat it as a requirement\n"
             "- `/harness reset` — turn it off (for this run), so later requests have none of its tools; what this\n"
             "  session wrote stays where it is\n"
             "- `/plugins` — whether a run starts with it on, from `harness.jit`"
         ).strip()
-
-    def _repositories(self, directory: Path) -> list[tuple[str, str]]:
-        """Return this session's repositories as ``(name, detail)``: what the files declare, or why they cannot load."""
-        from zett_agent.jit_harness import inspect_repository
-
-        try:
-            found = (
-                sorted(path for path in directory.iterdir() if (path / "__init__.py").is_file())
-                if directory.is_dir()
-                else []
-            )
-        except OSError as error:
-            return [("Could not be read", str(error))]
-        rows: list[tuple[str, str]] = []
-        for path in found:
-            try:
-                policy = inspect_repository(path)
-            except OSError as error:  # a MANIFEST nobody can read is one row, not a failed command
-                rows.append((path.name, f"cannot be read: {error}"))
-                continue
-            if not policy.ok or policy.manifest is None:
-                rows.append((path.name, f"cannot load: {'; '.join(policy.problems)}"))
-                continue
-            manifest = policy.manifest
-            declared = (
-                f"declares {len(manifest.tools)} tool{'s' if len(manifest.tools) != 1 else ''}"
-                if manifest.tools
-                else "declares no tools"
-            )
-            banned = f"; {len(policy.banned)} banned" if policy.banned else ""
-            rows.append(
-                (path.name, f"{manifest.name} {manifest.version} — {manifest.description} ({declared}{banned})")
-            )
-        return rows
