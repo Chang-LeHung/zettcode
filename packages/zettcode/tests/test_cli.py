@@ -159,6 +159,17 @@ def test_the_dry_run_flag_asks_for_startup_only(tmp_path: Path):
     assert parse_args(["-w", str(tmp_path), "--dry-run"]).dry_run is True
 
 
+def test_a_one_shot_command_fills_the_plugin_cache_synchronously(tmp_path: Path, monkeypatch):
+    from zettcode.engine.plugins import cli as plugin_cli
+
+    waits: list[bool] = []
+    monkeypatch.setattr(
+        plugin_cli, "load_cached_options", lambda **kwargs: waits.append(kwargs.get("wait", False)) or ()
+    )
+    parse_args(["--dry-run"], rc=None)
+    assert True in waits
+
+
 def test_a_plugin_can_add_a_startup_option(tmp_path: Path, monkeypatch):
     from zettcode.engine.plugins import cli as plugin_cli
 
