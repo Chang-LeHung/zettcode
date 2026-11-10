@@ -3012,10 +3012,10 @@ async def test_the_harness_command_opens_the_panel_and_changes_nothing():
 
     assert app.agent.harness is False, "the panel changes nothing"
     said = harness.render().text
-    assert "Harness is off" in said and "esc close" in said
+    assert "Harnesses" in said and "No harness yet" in said and "harness is off" in said and "esc close" in said
 
     harness.press("escape")
-    assert "Harness is off" not in harness.render().text
+    assert "Harnesses" not in harness.render().text
 
 
 async def test_enter_straight_after_the_space_on_harness_stays_the_panel(tmp_path):
@@ -3028,7 +3028,9 @@ async def test_enter_straight_after_the_space_on_harness_stays_the_panel(tmp_pat
 
     assert app.agent.harness is False, "no word ran"
     assert app.agent.runtime.client.messages == [], "no turn was started for a menu Enter"
-    assert "Harness is off" in harness.render().text, "the bare command is what it was: the panel"
+    assert "Harnesses" in harness.render().text and "No harness yet" in harness.render().text, (
+        "the bare command is what it was: the panel"
+    )
 
 
 async def test_the_harness_command_asks_for_a_tool_when_gen_is_the_word(tmp_path):

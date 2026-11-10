@@ -435,6 +435,13 @@ class _Switch:
     ) -> None:
         self.config = config
         self.session = type("Session", (), {"id": "mine", "locked": locked})()
+        self.sessions = type(
+            "Sessions",
+            (),
+            {
+                "list": lambda _self, *, limit=1000: _stored(),
+            },
+        )()
         self.harness = harness
         self.started = started
         #: What happened, in the order the command made it happen: the switch, the notice it wrote, or the turn.
@@ -446,6 +453,14 @@ class _Switch:
         self.events.append(f"switch:{bool(on)}")
         self.harness = bool(on)
         return self.harness
+
+
+async def _stored():
+    """The session store the picker reads: the current session and one other with a harness."""
+    return [
+        type("Info", (), {"id": "mine", "title": "Mine"})(),
+        type("Info", (), {"id": "other", "title": "Other"})(),
+    ]
 
 
 class _Shell:
@@ -565,8 +580,8 @@ def test_the_harness_page_lists_sessions_and_switches_to_the_selected_one(tmp_pa
         state="on",
         directory=tmp_path / "harness",
         sessions=[
-            ("mine", "Mine", "2 repositories · current"),
-            ("other", "Other", "1 repository"),
+            ("mine", "Mine", "2 repositories · current", False),
+            ("other", "Other", "1 repository", False),
         ],
         on_switch=switched.append,
         on_close=lambda: closed.append(1),
@@ -611,8 +626,26 @@ async def test_harness_alone_opens_the_panel_and_changes_nothing(tmp_path: Path)
     result, shell = await _run("", client)
 
     assert result.widget is not None, "no argument is still the page"
+    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    assert [item.value for item in page.list.items] == ["mine"], "the current session is always a row"
+    assert page.list.current is not None and page.list.current.value == "mine"
+    assert "No harness yet" in page.list.current.description
     assert result.message == ""
     assert client.switched == [] and shell.prompts == [], "looking at the harness is not touching it"
+
+
+async def test_a_harness_folder_without_a_stored_session_is_shown_disabled(tmp_path: Path):
+    from zettcode.engine.harness_paths import harness_root
+
+    config = _configured(tmp_path)
+    gone = harness_root(config) / "gone"
+    (gone / "old").mkdir(parents=True)
+    (gone / "old" / "__init__.py").write_text("", encoding="utf-8")
+    result, _ = await _run("", _Switch(config))
+    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    row = next(item for item in page.list.items if item.label == "gone")
+    assert row.disabled and row.value is None
+    assert "session gone" in row.description
 
 
 async def test_gen_turns_the_harness_on_first_and_asks_for_one_tool_as_one_turn(tmp_path: Path):
