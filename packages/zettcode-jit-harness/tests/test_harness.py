@@ -823,16 +823,84 @@ async def test_a_subcommand_takes_nothing_after_it(tmp_path: Path):
 
 async def test_the_plugin_hands_the_command_the_harness_it_built(tmp_path: Path, monkeypatch):
     """The delete closes this process's own child through the extension the plugin built: nothing else can reach it."""
-    from zettcode.engine.extensions.harness_switch import HarnessSwitch
     from zettcode.engine.harness_paths import session_directory
-    from zettcode.engine.permission import Permission, ShellPolicy
-    from zettcode.engine.plugins.services import HARNESS
     from zettcode.engine.plugins.state import AgentBuild
-    from zettcode.jit_harness.plugin import Harness
     from zettcode.plugin_api.commands import CommandContext
-    from zettcode.plugin_api.host import HOST_LINK, HostLink
 
     config = _configured(tmp_path)
+    built = _plugin_registrations(config)
+    extension = built["factory"](AgentBuild(model=object()))  # type: ignore[operator]
+    closed: list[str] = []
+    monkeypatch.setattr(extension, "forget_session", lambda session_id: closed.append(session_id))
+
+    mine = session_directory(config, "mine")
+    (mine / "kit").mkdir(parents=True)
+    command = built["command"]
+    await command(CommandContext(argument="reset", ui=_Ui(), host=_Shell(_Switch(config, harness=True))))  # type: ignore[operator]
+
+    assert closed == ["mine"], "the command closed the extension the plugin built, for this session"
+    assert not mine.exists()
+
+
+async def test_reset_deletes_with_nothing_built_yet(tmp_path: Path):
+    """A runtime with no model never calls the factory, so there is no child to close — and the delete still works."""
+    from zettcode.engine.harness_paths import session_directory
+    from zettcode.plugin_api.commands import CommandContext
+
+    config = _configured(tmp_path)
+    built = _plugin_registrations(config)
+    mine = session_directory(config, "mine")
+    (mine / "kit").mkdir(parents=True)
+
+    command = built["command"]
+    await command(CommandContext(argument="reset", ui=_Ui(), host=_Shell(_Switch(config, harness=True))))  # type: ignore[operator]
+
+    assert not mine.exists(), "an empty handle is not an IndexError"
+
+
+async def test_reset_names_a_pre_workspace_copy_it_cannot_drop(tmp_path: Path, monkeypatch):
+    """The move merges what it can and leaves the rest, and the next request folds it back: the answer says so."""
+    from zett_agent.jit_harness.repo import session_directory_name
+
+    from zettcode.engine.harness_paths import harness_root
+    from zettcode.jit_harness import command as command_module
+
+    config = _configured(tmp_path)
+    legacy = config.harness_dir / session_directory_name("mine")
+    (legacy / "kit").mkdir(parents=True)
+    (legacy / "kit" / "__init__.py").write_text("", encoding="utf-8")
+    mine = harness_root(config) / session_directory_name("mine")
+    (mine / "new").mkdir(parents=True)
+    monkeypatch.setattr(command_module, "session_directory", lambda config, session_id: mine)
+
+    result, _ = await _run("reset", _Switch(config, harness=True))
+
+    assert not mine.exists(), "the folder it did delete is gone"
+    assert (legacy / "kit").is_dir(), "the copy it could not take stays where it is"
+    assert str(legacy) in result.message and "merges it back in" in result.message
+
+
+async def test_reset_says_a_folder_that_held_nothing_held_no_repository(tmp_path: Path):
+    from zettcode.engine.harness_paths import session_directory
+
+    config = _configured(tmp_path)
+    mine = session_directory(config, "mine")
+    mine.mkdir(parents=True)
+
+    result, _ = await _run("reset", _Switch(config, harness=True))
+
+    assert not mine.exists()
+    assert "no repository in it" in result.message
+
+
+def _plugin_registrations(config: ZettCodeConfig) -> dict[str, object]:
+    """Activate the real plugin against a stand-in container and return what it registered."""
+    from zettcode.engine.extensions.harness_switch import HarnessSwitch
+    from zettcode.engine.permission import Permission, ShellPolicy
+    from zettcode.engine.plugins.services import HARNESS
+    from zettcode.jit_harness.plugin import Harness
+    from zettcode.plugin_api.host import HOST_LINK, HostLink
+
     built: dict[str, object] = {}
 
     class Agent:
@@ -857,14 +925,4 @@ async def test_the_plugin_hands_the_command_the_harness_it_built(tmp_path: Path,
             return self.link if name == HOST_LINK else None
 
     Harness().activate(Context())  # type: ignore[arg-type]
-    extension = built["factory"](AgentBuild(model=object()))  # type: ignore[operator]
-    closed: list[str] = []
-    monkeypatch.setattr(extension, "forget_session", lambda session_id: closed.append(session_id))
-
-    mine = session_directory(config, "mine")
-    (mine / "kit").mkdir(parents=True)
-    command = built["command"]
-    await command(CommandContext(argument="reset", ui=_Ui(), host=_Shell(_Switch(config, harness=True))))  # type: ignore[operator]
-
-    assert closed == ["mine"], "the command closed the extension the plugin built, for this session"
-    assert not mine.exists()
+    return built

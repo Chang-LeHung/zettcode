@@ -27,6 +27,7 @@ from zettcode.plugin_api.plugin import TuiPlugin
 from .page import HARNESS_ROWS, HarnessPage
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from zettcode.config import ZettCodeConfig
     from zettcode.engine.plugins.context import PluginContext
     from zettcode.plugin_api.commands import CommandHost
 
@@ -49,8 +50,8 @@ LOCKED = (
 #: What ``/harness reset`` answers when this window's own harness for the session is still in a request. It cannot
 #: happen while the shell refuses a busy command, and it is said rather than assumed.
 HARNESS_IN_USE = (
-    "**Nothing was deleted**: this session's harness is still loaded by a request that has not ended. "
-    "Run `/harness reset` again in a moment."
+    "**Harness is off for this run**, and nothing was deleted: this session's harness is still loaded by a request "
+    "that has not ended. Run `/harness reset` again in a moment."
 )
 
 #: What ``/harness gen`` asks the model for. It is one turn of this conversation, so it says what a good tool is and
@@ -88,7 +89,7 @@ class HarnessCommand(TuiPlugin):
                 remove a folder a live child process is working in (Windows refuses that). A command built without
                 one — in a test — has nothing to close.
         """
-        self._release: Callable[[str], bool] = release or (lambda session_id: True)
+        self._release: Callable[[str], bool] = release if release is not None else (lambda session_id: True)
 
     def activate(self, ctx: PluginContext) -> None:
         """Register ``/harness``; it takes the request slot, so it is refused while a request runs.
@@ -172,7 +173,9 @@ class HarnessCommand(TuiPlugin):
         that process — before the path is even worked out, because naming it can move a pre-workspace folder into
         place. And the folder has to be inside the harness root: one that is itself a link, resolves elsewhere, or is
         a pre-workspace installation the move could not merge is reported with its path and left alone. A
-        ``harness_dir`` that is itself a link is not that case; it is the harness folder, resolved on both sides.
+        ``harness_dir`` that is itself a link is not that case; it is the harness folder, resolved on both sides. A
+        copy the move could not take — it failed, or it merged only part of a folder — is named in the answer instead
+        of being called gone, because the next request folds it back in.
         """
         if host.client.session.locked:
             return CommandResult(message=LOCKED)
@@ -219,7 +222,19 @@ class HarnessCommand(TuiPlugin):
             return CommandResult(
                 message=f"**Harness is off for this run**, but `{directory}` could not be deleted: {describe_error(error)}"
             )
-        named = ", ".join(f"`{name}`" for name, _detail in kept) or "the folder held no repository"
+        named = ", ".join(f"`{name}`" for name, _detail in kept) or "no repository in it"
+        leaving = self._legacy(config, host.client.session.id)
+        if leaving is not None:
+            # The move merges what it can and leaves the rest: the next request folds that copy back in, so the folder
+            # is not the whole story and the message must not say it is.
+            return CommandResult(
+                message=(
+                    f"**Harness is off for this run**, and `{directory}` is gone ({named}).\n\n"
+                    f"A copy from before the workspace level is still at `{leaving}`; the next request merges it back "
+                    "in, so run `/harness reset` again to drop that one too. Nothing in the workspace was touched."
+                ),
+                notification="Harness reset",
+            )
         return CommandResult(
             message=(
                 f"**Harness is off for this run**, and this session's tools are gone with their folder: {named}.\n\n"
@@ -230,11 +245,19 @@ class HarnessCommand(TuiPlugin):
         )
 
     @staticmethod
+    def _legacy(config: ZettCodeConfig, session_id: str) -> Path | None:
+        """Return a pre-workspace copy of this session's folder that the delete leaves behind, if there is one."""
+        from zett_agent.jit_harness.repo import session_directory_name
+
+        copy = config.harness_dir / session_directory_name(session_id)
+        return copy if copy.is_dir() else None
+
+    @staticmethod
     def _inside(directory: Path, root: Path) -> bool:
         """Return whether ``directory`` is strictly below ``root``, links and all — the one test the delete rests on.
 
-        ``resolved != resolved_root`` compares a path with its own parent's parent today: ``session_directory_name``
-        never yields an empty name, so the two cannot be equal. It is kept for the change that would make them so — a
+        ``resolved != resolved_root`` compares a path with its own parent today: ``session_directory_name`` never
+        yields an empty name, so the two cannot be equal. It is kept for the change that would make them so — a
         ``move_session`` that returned the root itself — because the cost of the check is one comparison and the cost
         of being wrong is a deleted harness folder.
         """
