@@ -63,7 +63,9 @@ def default_effort(model: str | None = None, *, path: str | Path | None = None) 
 
     try:
         listed = list_models(path)
-    except ValueError:
+    except (OSError, ValueError):
+        # No configuration to read is a daemon that runs on the model's own default, not a spawn that fails: the
+        # same file is read again by the child, which says what it thinks of it.
         return ""
     if not listed:
         return ""

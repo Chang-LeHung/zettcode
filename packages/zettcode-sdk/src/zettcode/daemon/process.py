@@ -421,6 +421,10 @@ class Daemons:
             if other:
                 self._write(record, lambda current: applied(current, title=None))
                 message += "; the other changes were written"
+                if permission is not None:
+                    # Written, not applied: this path never restarts, and saying "written" alone would suggest the
+                    # level is in force when the process is still running with the old one.
+                    message += ", and the shell level takes effect when the daemon is started again"
             raise UpdateFailed(message)
         try:
             self._rename(record.session_id, state.workspace, cleaned)
