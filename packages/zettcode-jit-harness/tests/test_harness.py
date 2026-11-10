@@ -649,6 +649,7 @@ async def test_reset_says_when_the_path_is_taken_by_something_that_is_not_a_fold
     result, _ = await _run("reset", _Switch(config, harness=True))
 
     assert "is there but is not a folder" in result.message, result.message
+    assert "move it aside first" in result.message, "and what to do about it, since gen cannot write past it"
     assert "there is no folder at" not in result.message
     assert mine.read_text(encoding="utf-8") == "in the way", "and it was left alone"
     assert "never wrote" not in result.message, "and nothing is claimed about what the session did"
