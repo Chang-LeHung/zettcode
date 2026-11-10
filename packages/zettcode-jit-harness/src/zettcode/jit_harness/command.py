@@ -14,7 +14,6 @@ never touched, and the repositories live under ``config.harness_dir``, not in th
 
 from __future__ import annotations
 
-import re
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -74,15 +73,19 @@ GEN_BRIEF = """Build one small tool for this workspace in the just-in-time harne
 """
 
 #: What follows the brief when the reader wrote something after ``gen``. It has to read as a change of author, because
-#: that is what it is: the brief is the command's advice, and what comes after is the person who asked.
+#: that is what it is: the brief is the command's advice, and what comes after is the person who asked. It can narrow
+#: the work and redirect it, and it cannot lift the floor under it: a description is often a report or a request
+#: pasted in, and a paste must not be able to turn this command into a turn that edits the workspace.
 GEN_ASKED = """
 ---
 
 What follows is what the person asking added after `/harness gen`, word for word. Treat it as a requirement, not as
 advice: where it disagrees with the brief above, it wins, and anything it rules out — a file, a directory, the
-network, writing anything at all — stays out of bounds however much the brief would otherwise allow. If it asks for
-something this session cannot do, say so in the report instead of quietly doing something else. When you report, say
-whether every point of it was met, and name the ones that were not and why.
+network, writing anything at all — stays out of bounds however much the brief would otherwise allow. What it cannot
+do is lift the floor: the repository and the tools still live in this session's harness folder, the workspace's own
+files are still not edited, and nothing here grants a permission the session does not already have. If it asks for
+more than that, say so in the report instead of doing it. When you report, say whether every point of it was met, and
+name the ones that were not and why.
 """
 
 #: How much of a description is passed on. A brief is paid for in every later request of the session, and a reader
@@ -98,16 +101,12 @@ def split_argument(argument: str) -> tuple[str, str]:
 
     ``/harness gen  fix the  parser`` gives ``("gen", "fix the  parser")``: the spacing inside a description belongs to
     the reader, so only the whitespace between the word and the description is dropped. A line of nothing but spaces
-    has no word at all, which is the panel; a command whose only argument is whitespace is a command with none (§
-    "only whitespace is no description").
+    has no word at all, which is the panel; and a description of only whitespace is no description at all (A17).
     """
-    text = argument.strip()
-    if not text:
+    pieces = argument.split(None, 1)
+    if not pieces:
         return "", ""
-    match = re.match(r"(\S+)\s*(.*)", text, re.DOTALL)
-    if match is None:  # impossible: a non-blank string starts with a non-space
-        return "", ""
-    return match.group(1).lower(), match.group(2).strip()
+    return pieces[0].lower(), pieces[1].strip() if len(pieces) > 1 else ""
 
 
 def brief_for(description: str) -> str:
@@ -125,8 +124,12 @@ def brief_for(description: str) -> str:
 
 
 def shown_for(description: str) -> str:
-    """Return what the transcript draws for the turn: the command as typed, shortened to a row when it is long."""
-    asked = description.strip()
+    """Return what the transcript draws for the turn: the command, on one row, shortened when it is long.
+
+    The row is one line because a conversation row is: a description pasted with its own line breaks is drawn with the
+    breaks as single spaces, while the model reads it exactly as it was written.
+    """
+    asked = description.strip().replace("\r", " ").replace("\n", " ").replace("\t", " ")
     line = f"/harness gen {asked}" if asked else "/harness gen"
     return line if len(line) <= MAX_SHOWN else line[: MAX_SHOWN - 1] + "\u2026"
 
@@ -202,7 +205,7 @@ class HarnessCommand(TuiPlugin):
         page = HarnessPage(state=state, directory=directory, repositories=repositories, on_close=host.close_page)
         return CommandResult(widget=bottom_panel(page, rows=HARNESS_ROWS))
 
-    async def _generate(self, host: CommandHost, description: str = "") -> CommandResult:
+    async def _generate(self, host: CommandHost, description: str) -> CommandResult:
         """Turn the harness on and hand the model the brief, as one ordinary turn of this conversation.
 
         The switch goes first: the turn mounts the harness's tools when it starts, so a prompt sent before the switch
@@ -223,7 +226,7 @@ class HarnessCommand(TuiPlugin):
         return CommandResult(
             message=(
                 "**The harness is on**, but the turn did not start: the window said why, above the composer, for a "
-                "moment. Run `/harness gen` again when it is free."
+                "moment. Run `/harness gen` again when it is free — what you wrote after the word was not kept."
             )
         )
 
