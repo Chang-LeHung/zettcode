@@ -69,7 +69,7 @@ def test_the_cache_returns_options_without_importing_a_plugin(tmp_path, monkeypa
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("foreground import")),
     )
 
-    found = load_cached_options(cache)
+    found = load_cached_options(cache, wait=True)
 
     assert found[0][0] == "example" and found[0][1].flags == ("--example-depth",)
 

@@ -116,6 +116,7 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
     """
     parser = _build_parser()
     words = list(sys.argv[1:] if argv is None else argv)
+    plugin_values: Callable[..., dict[str, dict[str, object]]] | None = None
     plugin_added: tuple[tuple[str, CliOption, str], ...] = ()
     if not any(word in {"-h", "--help", "-v", "-V", "--version"} for word in words):
         from zettcode.engine.plugins.cli import add_options, load_cached_options
@@ -134,6 +135,9 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
                 except SystemExit:
                     # A preset may name a plugin flag that the cache does not know yet. Refresh once, rebuild the
                     # parser with the declarations, and retry; token surgery corrupts values that happen to match.
+                    from zettcode.engine.plugins.cli import add_options, load_cached_options
+                    from zettcode.engine.plugins.cli import values as plugin_values
+
                     fresh = load_cached_options(wait=True)
                     if fresh:
                         parser = _build_parser()
@@ -156,6 +160,7 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
     # `upgrade` is another name for `update`; nothing after this point needs to know it was used.
     command = "update" if args.command == "upgrade" else args.command
     options = _OPTIONS.get(command, _plain_options)(parser, args, command)
+    assert plugin_values is not None
     return replace(options, plugin_arguments=plugin_values(args, plugin_added))
 
 
