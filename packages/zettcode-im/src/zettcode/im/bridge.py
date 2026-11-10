@@ -43,6 +43,9 @@ HEALTH_EVERY = 20.0
 #: Seconds to wait before polling again after the platform itself failed.
 POLL_BACKOFF = 5.0
 
+#: Seconds one poll may stay out before it is dropped and asked again (see :meth:`Bridge._receive`).
+POLL_TIMEOUT = 120.0
+
 
 @dataclass(frozen=True, slots=True)
 class BridgeSettings:
@@ -60,6 +63,9 @@ class BridgeSettings:
     allow_all: bool = False
     chunk: int = CHUNK
     health_every: float = HEALTH_EVERY
+    #: Seconds a single poll may stay out before it is abandoned and asked again. The platform's long poll is under
+    #: a minute; this is the width of the slack, not the poll's own timeout.
+    poll_timeout: float = POLL_TIMEOUT
 
     def permits(self, user_id: str) -> bool:
         """Return whether this sender may drive the agent."""
@@ -123,10 +129,22 @@ class Bridge:
 
     # -- the two halves -------------------------------------------------------------------------------
     async def _receive(self) -> None:
-        """Take messages off the platform and queue them; never run a turn here."""
+        """Take messages off the platform and queue them; never run a turn here.
+
+        The poll is given a deadline. The platform's long poll is under a minute, so a call that is still out after
+        ``poll_timeout`` is not waiting for a message — it is a connection the network quietly dropped, and a bridge
+        that keeps waiting on it is a bridge that never speaks again. The deadline turns that into one more poll.
+        """
         while not self._stopped.is_set():
             try:
-                result = await self.im.receive(self.state.cursor or None)
+                result = await asyncio.wait_for(
+                    self.im.receive(self.state.cursor or None), timeout=max(1.0, self.settings.poll_timeout)
+                )
+            except asyncio.TimeoutError:
+                self.error(
+                    f"nothing came back from the chat app in {int(self.settings.poll_timeout)} seconds; asking again"
+                )
+                continue
             except asyncio.CancelledError:
                 raise
             except Exception as error:  # noqa: BLE001 - a poll that fails is retried, not fatal

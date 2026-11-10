@@ -283,3 +283,36 @@ def test_a_chat_is_answered_with_the_context_it_last_had(tmp_path: Path) -> None
     asyncio.run(opened._turn(Message(text="hello", reply_token=None), "c"))
 
     assert im.sent[0][2] == "older-context"
+
+
+def test_a_poll_that_hangs_is_abandoned_and_asked_again(tmp_path: Path) -> None:
+    """A dropped connection looks exactly like a quiet chat; the bridge must not wait on it for ever."""
+    said: list[str] = []
+
+    class Stuck(Im):
+        calls = 0
+
+        async def receive(self, cursor=None):
+            Stuck.calls += 1
+            await asyncio.sleep(3600)
+
+    opened = bridge(
+        tmp_path,
+        im=Stuck(),
+        settings=BridgeSettings(allow_all=True, poll_timeout=0.05),
+    )
+    opened.error = said.append
+
+    async def scenario() -> None:
+        running = asyncio.ensure_future(opened.run())
+        for _ in range(200):
+            if said:
+                break
+            await asyncio.sleep(0.01)
+        opened.stop()
+        await running
+
+    asyncio.run(scenario())
+
+    assert said and "nothing came back" in said[0]
+    assert Stuck.calls >= 2, "and it asks again rather than staying on the dead connection"
