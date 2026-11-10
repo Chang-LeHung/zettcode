@@ -13,6 +13,8 @@ from zettcode.app.agent.agent import TerminalAgent
 from zettcode.commands.context_page import KNOB, LIT, SLIDE_SECONDS, ContextPage
 from zettcode.config import load_config
 from zettcode.engine import core as runtime_module
+from zettcode.engine.provided import entries
+from zettcode.providers import ProvidedModel, Provider
 from zettcode.tui.testing import Harness
 
 BASE = """\
@@ -336,3 +338,23 @@ async def test_the_terminal_client_binds_the_context_page_writer(agent):
     name, reason = service.set_compact_percent(60)
     assert name == "Fast"
     assert tomllib.loads(path.read_text(encoding="utf-8"))["models"][0]["compact_percent"] == 60, reason
+
+
+def test_a_provided_model_keeps_the_share_for_the_run_and_says_that(agent):
+    shell, path = agent
+    provider = Provider(
+        "acme",
+        "Acme",
+        base_url="https://api.acme.example/v1",
+        token_env=None,
+        models=(ProvidedModel("acme-1"),),
+    )
+    shell.runtime.replace_provided(entries((provider,)))
+    shell.use_model("acme-1")
+    before = path.read_text(encoding="utf-8")
+
+    model, unwritten = shell.change_compact_percent(60)
+
+    assert unwritten == "a model a plugin offers has no line in the config file"
+    assert shell.active_model.compact_percent == 60 and model.compact_percent == 60
+    assert path.read_text(encoding="utf-8") == before, "a provided model is never written to the file"

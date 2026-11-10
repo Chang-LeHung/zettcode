@@ -201,6 +201,8 @@ class ModelOut(BaseModel):
     temperature: float | None = None
     can_search: bool = True
     search_name: str = ""
+    provider: str | None = None
+    token_env: str | None = None
 
 
 class ModelsOut(BaseModel):

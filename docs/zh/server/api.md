@@ -36,10 +36,10 @@ title: HTTP API 参考
 
 | 方法 | 路径 | 请求体 | 返回 |
 | --- | --- | --- | --- |
-| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent","web_search","web_search_name","display_model","base_url","api","temperature","can_search","search_name"}], "current"}`;配置模型之前也能用,此时 `current` 为 null。 |
+| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent","web_search","web_search_name","display_model","base_url","api","temperature","can_search","search_name","provider","token_env"}], "current"}`。先列配置文件里的模型，再列插件提供的；`provider` 是插件 host 的名字，文件条目为 null；`token_env` 是插件指定但当时没有设置的环境变量名，否则为 null。配置模型之前也能用，此时 `current` 为 null。 |
 | `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "chat"?, "multimodal"?, "temperature"?, "web_search"?, "web_search_name"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201,返回新的列表。第一个模型会让服务器变得可用;后续模型供 `PATCH /settings` 选择。写入配置文件,键名与终端 `/config add` 一致。`web_search` 让供应商替模型联网搜索;DeepSeek 模型没有 `anthropic` 时会被拒绝,拼错的键返回 `422`。 |
 | `PATCH` | `/models/{name}` | `POST /models` 接受的任意字段 | 新的列表。未给出的键保持不变;没给新 token 就保留旧的。值为 `null` 的键会从条目里删掉(`model` 和 `token` 除外):`"temperature": null` 回到提供商自己的默认值,`"anthropic": null` 把这个标记从文件里删掉,而不是留下 `anthropic = false`。 |
-| `DELETE` | `/models/{name}` | — | 剩下的模型。最后一个不能删(`400 invalid`):client 至少需要一个。 |
+| `DELETE` | `/models/{name}` | — | 剩下的模型。文件里的最后一个条目在插件提供模型时可以删（否则 `400 invalid`：至少要有一个模型可用）；插件提供的模型不在文件里，也不在这里删。 |
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions","harness"}`;改动过压缩点的 `PATCH` 之后还会带 `"unsaved"`(见下)。 |
 | `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?, "harness"?, "compact_percent"?}` | 更改后与 `GET /settings` 相同;至少给一个字段。`permission` 是 `deny`、`ask`、`safe` 或 `full`(`auto` 是 `full` 的旧名,会按 `full` 返回);`harness` 从下一次 prompt 起开启或关闭 just-in-time 工具 harness。`compact_percent` 大于 0、至多 100,从下一次请求起生效并写入配置文件;文件写不进去时,返回里带 `"unsaved": "<原因>"`,改动只在本次运行有效。有 run 在进行时,移动 `compact_percent` 会返回 `409`,其他字段不会。 |
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...], "entries": [{"name","origin","builtin","enabled","failure","setting","switchable","why"}], "triggers": [{"name","scope","state","detail"}]}`：名字、失败原因，以及面板会展示的每一条——其中也包括开关动不了的行（编译进程序却加载失败的、配置文件攥着的、整组关掉的），`switchable` 和 `why` 说的就是这些。`origin` 是发行包的名字，开关就用它写；`enabled` 说的是**下次启动**是否做它的活；`setting` 是决定内置插件的配置键（`"skills.enabled"`），装进来的为空。没有这种键的内置插件根本不会列出来。`triggers` 是已加载插件注册的每个触发器现在在哪儿，运行时启动之后才有：`scope` 是 `process` 或 `machine`，`state` 是 `pending`、`standby`、`running`、`skipped`、`finished`、`failed` 或 `stopped`，`detail` 说明 `standby`、`skipped` 和 `failed` 的原因——其他状态为空。 |
@@ -56,6 +56,8 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 ```
 
 模型用 `/models` 列出的名字指定(有条目设了显示名就用显示名)。模型的 token 永远不会返回。
+
+服务器用配置文件里的模型启动 agent：第一条 `POST /models` 写下的条目让 client 就绪并加载插件，之后插件提供的模型会出现在 `GET /models` 里，可以用 `PATCH /settings` 选择。文件里没有任何条目时，所有需要模型的请求都返回 `409 no_model` 和 `POST /models` 的提示。
 
 ## 会话
 

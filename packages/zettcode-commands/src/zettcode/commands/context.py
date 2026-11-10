@@ -31,10 +31,17 @@ class ContextPagePlugin(TuiPlugin):
             """Open the context page, or say why there is nothing to measure yet."""
             host = context.require_host()
             if host.client.active_model is None:
-                return CommandResult(
-                    message="No model is configured yet \u2014 `/config` adds one; `/context` has something to "
-                    "measure after the first request."
-                )
+                if host.client.models:
+                    message = (
+                        "No model is chosen yet \u2014 `/model` picks one; `/context` has something to "
+                        "measure after the first request."
+                    )
+                else:
+                    message = (
+                        "No model is configured yet \u2014 `/config` adds one; `/context` has something to "
+                        "measure after the first request."
+                    )
+                return CommandResult(message=message)
             service = ctx.agent.context_report_service()
             if service is None:
                 report = await host.client.session.context()

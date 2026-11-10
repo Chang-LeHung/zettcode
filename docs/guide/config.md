@@ -64,35 +64,21 @@ Models
 ~/.zettcode/config.toml
  ▸ 1. DeepSeek Pro (current)   deepseek-v4-pro · chat · https://api.deepseek.com
    2. DeepSeek Flash           deepseek-flash · chat · https://api.deepseek.com
-   + Add a model               from a provider, or any endpoint
+   + Add a model               choose the API, then the model
 ```
 
-**Add a model** asks which provider it is at, then only what that provider does not already say. A
-provider is a known host — its address and API are filled in, so you give the **model id** and
-your **token**:
+**Add a model** asks which API the endpoint speaks — `chat` for chat completions, `responses` for the
+Responses API, `anthropic` for the Messages API — and then shows the form below. Nothing else is known in
+advance: the address is optional, and leaving it empty uses the API's own. Plugin-provided models appear
+in `/model` and are not added here; see [Plugins](/guide/plugins#providers).
 
-| Provider | API | Address |
-| --- | --- | --- |
-| `openai` | chat completions | `https://api.openai.com/v1` |
-| `anthropic` | Messages API | `https://api.anthropic.com` |
-| `deepseek` | chat completions | `https://api.deepseek.com` |
-| `openrouter` | chat completions | `https://openrouter.ai/api/v1` |
-| `groq` | chat completions | `https://api.groq.com/openai/v1` |
-| `ollama` | chat completions | `http://localhost:11434/v1` |
-| `custom` | **you choose** | **you give it** |
-
-`custom` is any other endpoint. It first asks which **API** it speaks (`chat` for chat completions,
-`responses` for the Responses API, `anthropic` for the Messages API), on a list of its own, and then shows
-the form below. An Anthropic-API endpoint has no address line: the SDK has one. Plugins can add providers to
-this list; see [Plugins](/guide/plugins#providers).
-
-A provider is added on **one form**, not a question at a time:
+A model is added on **one form**, not a question at a time:
 
 ```text
-Add a model at DeepSeek
+Add a model — OpenAI Chat API
 
 ╭─ Model id * ────────────────────────────────────────╮
-│ deepseek-chat                                  │
+│ gpt-4o                                         │
 ╰────────────────────────────────────────────────╯
 ╭─ Token ──────────────────────────────────────────╮
 │ ••••••••••••••                                 │
@@ -106,15 +92,15 @@ something to type into; a click anywhere on a box, its border included, puts the
 and work the same.
 
 **Tab** (or **↓**) moves to the next line and **Shift-Tab** (or **↑**) to the previous one, going round at the ends;
-**Enter** saves all of it; a hint under the form explains the line the cursor is in. Only the **model id** is required
-(and the address for `custom`). The **token may be empty**: a local server (Ollama, LM Studio, vLLM) wants none, and
+**Enter** saves all of it; a hint under the form explains the line the cursor is in. Only the **model id** is required.
+The **token may be empty**: a local server (Ollama, LM Studio, vLLM) wants none, and
 the environment's `OPENAI_API_KEY` is used when there is one. A line that cannot be saved — an address that is not
 http or https, a temperature out of range — is named above the form, the cursor goes to it, and everything you typed
 stays.
 
 The token is typed as bullets and never shown again — not in the panel, not in `/config list`, not
-in the line that says the model was added. **Escape goes back one step**: from the form to the provider list (for
-`custom`, to the list of APIs), from the list to the models, and only from the models
+in the line that says the model was added. **Escape goes back one step**: from the form to the list of APIs, from the
+list to the models, and only from the models
 panel does it close. Nothing is written until you press Enter on the form, so going back never costs anything.
 
 Choose a model in the panel and every setting of it is on one page, the name on the left and its value on the right:
@@ -164,26 +150,25 @@ Some rows are about what the model can carry, and each takes effect in the runni
 
 The window and the share together decide when compaction happens — at 200k and 75% that is 150,000 tokens —
 and the panel says what they come to when you set them. The values are not asked when you *add* a model
-(the provider does not know them); set them here afterwards, or give `--context` and `--compact` on the line.
+(the endpoint does not say); set them here afterwards, or give `--context` and `--compact` on the line.
 
 The same thing on one line, asking only for what the line leaves out:
 
 ```text
-/config add deepseek --model deepseek-chat --token sk-...
-/config add custom --api chat --url https://llm.example/v1 --model my-model --token sk-... --name "My model"
-/config add anthropic --model claude-sonnet-4-5          # opens the form for the rest
+/config add --model deepseek-chat --token sk-... --url https://api.deepseek.com
+/config add --api chat --url https://llm.example/v1 --model my-model --token sk-... --name "My model"
+/config add --api anthropic --model claude-sonnet-4-5          # opens the form for the rest
 /config remove 3          # or the name: /config remove "My model"
-/config add custom --api chat --url https://llm.example/v1 --model big --token sk-... --context 1m --compact 60
+/config add --api chat --url https://llm.example/v1 --model big --token sk-... --context 1m --compact 60
 /config list              # the models, what they take and where they compress, never a token
-/config providers         # what `add` accepts
 ```
 
 | Option | Meaning |
 | --- | --- |
-| `--model ID` | The model id the provider calls it. |
+| `--model ID` | The model id the endpoint calls it. |
 | `--token KEY` | The credential. Left out, the form has a hidden token line, which may stay empty. |
-| `--url URL` | The address, replacing the provider's. Required for `custom` (except `--api anthropic`). |
-| `--api chat\|responses\|anthropic` | Which API. A provider has its own; this overrides it, e.g. `openai --api responses`. |
+| `--url URL` | The address. Left out, the API's own is used. |
+| `--api chat\|responses\|anthropic` | Which API; a line that names none means chat completions. |
 | `--name SHOWN` | The name in the header and `/model` (`display_model`). |
 | `--multimodal` | The model accepts images. |
 | `--context TOKENS` | The context window: `200000`, `200k`, `1m`. |

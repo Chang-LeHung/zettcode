@@ -19,11 +19,12 @@ from zettcode.engine.service_contracts import (
     SessionStoreService,
     UsageLedgerService,
 )
+from zettcode.providers import ProvidedModel, Provider
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zett_agent.extensions.base import AgentExtension
+    from collections.abc import Iterable
 
-    from zettcode.providers import Provider
+    from zett_agent.extensions.base import AgentExtension
 
     from .context import PluginContext
     from .state import Contribution, ExtensionFactory
@@ -66,8 +67,16 @@ class AgentGroups:
         return self._context.register_extension_factory(name, factory)
 
     def register_provider(self, provider: Provider) -> Provider:
-        """Describe a host models can be reached at, so ``/config`` offers it."""
+        """Describe a host and the models it serves, so ``/model`` offers them."""
         return self._context.register_provider(provider)
+
+    def register_model(self, provider: str | Provider, model: ProvidedModel) -> ProvidedModel:
+        """Offer one more model at a provider this plugin registered."""
+        return self._context.register_model(provider, model)
+
+    def register_models(self, provider: str | Provider, models: Iterable[ProvidedModel]) -> tuple[ProvidedModel, ...]:
+        """Offer several more models at one provider this plugin registered."""
+        return self._context.register_models(provider, models)
 
     def register_mention(self, provider: object) -> object:
         """Register one kind of ``@`` resource the composer can offer."""

@@ -19,8 +19,8 @@
 | `/resume` | 弹出面板选择最近的会话；`/resume <id>` 直接打开指定会话。面板里每个会话显示：更新时间、条目数、输入和输出 token 数、输入中命中服务商缓存的比例，以及短 id。直接在面板里输入即可按标题或 id 搜索，搜索框为空时就是全部会话、新的在前；在第一行按 `↑` 光标进入搜索框，在搜索框里再按 `↑` 跳到最后一行、按 `↓` 回到第一行；`Esc` 先清空搜索，再按一次才关闭面板。终端较窄时，先省掉右边的列。 |
 | `/continue` | 从中断的地方继续一个没做完的请求 —— 被 `Esc` 停掉、失败、被 provider 断开、或碰到输出上限。见[继续](#continue)。 |
 | `/fork` | 把当前对话带进一个新会话，并在那里继续。 |
-| `/model` | 用面板选择后续请求使用的模型。 |
-| `/config` | 不用改文件就能添加、修改、删除模型，并设置它是否接受图片、上下文窗口多大、什么时候压缩：`/config`、`/config add <provider> …`、`/config remove <序号>`。见[用 /config 添加模型](/zh/guide/config#adding-models-with-config)。 |
+| `/model` | 用面板选择后续请求使用的模型；插件提供的模型也在这里列出。 |
+| `/config` | 不用改文件就能添加、修改、删除模型，并设置它是否接受图片、上下文窗口多大、什么时候压缩：`/config`、`/config add [--model ID] …`、`/config remove <序号>`。见[用 /config 添加模型](/zh/guide/config#adding-models-with-config)。 |
 | `/effort` | 用轨道上的小圆点选择模型的推理强度：`/effort` 打开，← → 滑动，`Enter` 应用；`/effort high` 直接设置。当前模型不支持的档位（见 [`reasoning_efforts`](/zh/guide/config#reasoning-levels-a-model-takes)）会被拒绝，并列出它支持的档位。 |
 | `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。`safe` 把每条命令放进只能写工作区和 `/tmp` 的沙箱里跑，`full` 用你自己的权限跑。档位属于这个会话：下次打开它就从这一档开始，新会话则从本次运行开始时的档位开始。 |
 | `/plugins` | 打开插件开关：`Space`/`←`/`→` 切换一个，`Enter` 写入，`Esc` 取消，改动从下次启动生效。`/plugins disable <名字>` 和 `/plugins enable <名字>` 按名字切换一个（同样下次启动生效）；`disable` 写进 `config.toml` 的 `[plugins] disable`。见[关掉一个插件](/zh/guide/plugins#关掉一个插件)。 |

@@ -648,7 +648,7 @@ class Session:
         Raises:
             ValueError: The prompt is empty, or ``timeout`` is not a positive number.
             TypeError: A piece of the prompt is not text or an :class:`Image`.
-            ConfigurationError: No model is configured, or the prompt carries images and the model does not
+            ConfigurationError: No model is configured or chosen, or the prompt carries images and the model does not
                 accept them.
             SessionBusyError: Another run is in progress (checked again when the run starts).
             ClientClosedError: The client was closed.
@@ -664,11 +664,11 @@ class Session:
         registry = client._mention_registry() if mentions else None
         entry = client._agent.active_model
         if entry is None:
-            from zettcode.config import NO_MODEL_REFUSAL
+            from zettcode.config import NO_MODEL_CHOSEN, NO_MODEL_REFUSAL
 
             from .errors import ConfigurationError
 
-            raise ConfigurationError(NO_MODEL_REFUSAL)
+            raise ConfigurationError(NO_MODEL_CHOSEN if client._agent.models else NO_MODEL_REFUSAL)
         parts, hint = _prompt_parts(
             prompt,
             images,

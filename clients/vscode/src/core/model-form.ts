@@ -7,9 +7,9 @@ export type Api = "chat" | "responses" | "anthropic";
 
 /** Each protocol, in the order a list shows them, with the words that say what it is. */
 export const APIS: readonly { value: Api; label: string; detail: string }[] = [
-  { value: "chat", label: "Chat completions", detail: "an OpenAI-compatible endpoint" },
-  { value: "responses", label: "Responses API", detail: "an OpenAI-compatible endpoint" },
-  { value: "anthropic", label: "Anthropic Messages API", detail: "Anthropic's own API" },
+  { value: "chat", label: "OpenAI Chat API", detail: "chat completions" },
+  { value: "responses", label: "OpenAI Responses API", detail: "OpenAI's Responses protocol, with hosted tools" },
+  { value: "anthropic", label: "Anthropic Messages API", detail: "Anthropic's own protocol, not OpenAI-compatible" },
 ];
 
 /** The most a temperature may be: 2 on an OpenAI-compatible endpoint, 1 on Anthropic's. */

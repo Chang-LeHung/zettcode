@@ -751,14 +751,14 @@ needs it. It runs **without** the busy state to itself, so a command that edits 
 session, or the model the request started with would pull the floor out from under it. Your handler
 can be awaited for as long as it likes: the request is not waiting for it, and quitting cancels it.
 
-## Describing a provider {#providers}
+## Offering models at a provider {#providers}
 
-A plugin can add a host to the list `/config` offers, so a service ZettCode does not know can be
-set up by choosing it and giving a token:
+A plugin can offer models at a host it knows: they appear in `/model` as soon as the plugin loads, and
+choosing one sends the token the provider names. Nothing is written to the configuration file.
 
 ```python
 from zettcode.plugin_api import Plugin, PluginContext
-from zettcode.plugin_api import Provider
+from zettcode.plugin_api import ProvidedModel, Provider
 
 
 class Acme(Plugin[PluginContext]):
@@ -767,23 +767,29 @@ class Acme(Plugin[PluginContext]):
     def activate(self, ctx: PluginContext) -> None:
         ctx.agent.register_provider(
             Provider(
-                "acme",  # what `/config add acme` is typed with
-                "Acme AI",  # what the picker shows
+                "acme",  # unique across the application
+                "Acme AI",  # what a list shows for the host
                 api="chat",  # chat | responses | anthropic
                 base_url="https://api.acme.example/v1",
-                token_env="ACME_API_KEY",  # named in the hint only; never read
-                note="model ids look like acme-<size>",  # a lower-case phrase, no leading article or full stop
+                token_env="ACME_API_KEY",  # the runtime reads the token from it
+                models=(
+                    ProvidedModel("acme-large", display_model="Acme Large", context_window=200_000),
+                    ProvidedModel("acme-small", context_window=64_000),
+                ),
+                note="model ids scale by the suffix",  # a lower-case phrase, no leading article or full stop
             )
         )
 ```
 
-A provider describes an address and a protocol and nothing more: nothing is called or connected to,
-and the reader still supplies the token and the model id. `models=("acme-small", …)` can suggest
-ids to show in the question.
+A `ProvidedModel` may override the host's protocol, address and image support, and set its own context
+window, compaction share, reasoning levels and temperature. `ctx.agent.register_model("acme", ...)` and
+`register_models(...)` add models to a provider already registered.
 
-Names are unique across the application. A plugin that registers a name a built-in provider already
-has (`openai`, `anthropic`, `deepseek`, `openrouter`, `groq`, `ollama`, `custom`), or one another plugin
-registered first, is reported like any other plugin that cannot load.
+`token_env` names the variable the runtime reads when the model is used; leave it out for a host that
+takes no key, such as a local server. A model a plugin offers is listed by `/model` and not by
+`/config`, which edits the file only. Names are unique across the application: a model shown by a name
+the file already uses, or by one an earlier plugin offered, is refused, and the plugin is reported like
+any other plugin that cannot load.
 
 ## Offering a palette {#themes}
 

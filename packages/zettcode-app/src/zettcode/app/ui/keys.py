@@ -14,7 +14,7 @@ from zettcode.tui import AnyEvent, Host
 from zettcode.tui.clipboard import copy_route
 
 from .clipboard import read_image
-from .shell import ASK_SCREEN, PAGE_SCREEN, ShellState
+from .shell import ASK_SCREEN, NO_MODEL_CHOSEN_IMAGE, NO_MODEL_IMAGE, PAGE_SCREEN, ShellState
 from .widgets.completer import COMMAND_PREFIX
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -297,8 +297,9 @@ class KeysMixin(ShellState):
         if image is None:
             self.transcript.notice("no image on the clipboard")
         elif self.model is None:
-            # Nothing would take the picture: say what to set up rather than reporting the model's limits.
-            self.transcript.error("no model is configured yet \u2014 /config adds one, then the image can go with it")
+            # Nothing would take the picture: say what to set up rather than reporting the model's limits. A
+            # machine whose plugin offers models has something to pick, so the picker is the instruction.
+            self.transcript.error(NO_MODEL_CHOSEN_IMAGE if self.client.models else NO_MODEL_IMAGE)
         elif not self.model.multimodal:
             self.transcript.error(f"{self.model.name} does not take images")
         else:

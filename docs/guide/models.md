@@ -12,6 +12,12 @@ requests — the one already running is not disturbed — and the header shows t
 new name immediately. `/model DeepSeek Pro` also works, matching either the display
 name or the model id, for when you know exactly what you want.
 
+Models a plugin offers appear here too, with `from the <provider> plugin` on their row. They are not in the
+configuration file: the plugin describes the host, and the runtime reads the token from the environment
+variable the plugin names, once, when it is built. A row that says `needs $ACME_API_KEY` is one whose
+variable was not set at that moment: export it and start the session again. `/config` lists the file's
+models only.
+
 Each model keeps its own token, endpoint, and window, so switching between a
 local server and a hosted one is one keystroke rather than an edit and a
 restart.

@@ -29,18 +29,31 @@ EMPTY_REPLY = "The model sent back an empty reply. Try again, or check the model
 #: What a machine with no ``[[models]]`` entry says for itself. The shell starts anyway — a reader can look through
 #: sessions, change the theme and set a model up — so the line that opens the conversation names the one command
 #: that turns it into a working agent, rather than a start that exits with a message about a file.
-NO_MODEL_START = (
-    "no model is configured yet \u2014 /config adds one (a provider, a model id, and a token); "
-    "nothing else here waits for it"
-)
+NO_MODEL_START = "no model is configured yet \u2014 /config adds one; nothing else here waits for it"
+
+#: What that machine says when a plugin offers models but none has been chosen: ``/config`` edits only the file, so
+#: the picker is the command that makes it work.
+NO_MODEL_CHOSEN_START = "no model is chosen yet \u2014 /model picks one; nothing else here waits for it"
 
 #: What a prompt typed on such a machine is answered with. It is not an error in the program but in the setup, so
 #: the sentence says how to finish the setup, and the draft is kept so nothing has to be typed again.
 NO_MODEL_ASKED = "no model is configured yet \u2014 /config adds one, then ask again; your words are still in the box"
 
+#: What a prompt is answered with when the models exist but none is chosen.
+NO_MODEL_CHOSEN_ASKED = (
+    "no model is chosen yet \u2014 /model picks one, then ask again; your words are still in the box"
+)
+
 #: What ``/btw`` says instead, and the difference is the box: a command is submitted and the composer cleared
 #: before its handler runs, so the prompt's "your words are still in the box" would be false there.
 NO_MODEL_QUESTION = "no model is configured yet \u2014 /config adds one; /btw asks it once there is one"
+
+#: What ``/btw`` says when the models exist but none is chosen.
+NO_MODEL_CHOSEN_QUESTION = "no model is chosen yet \u2014 /model picks one; /btw asks it once there is one"
+
+#: What a pasted image is told when nothing could take it, by the two states above.
+NO_MODEL_IMAGE = "no model is configured yet \u2014 /config adds one, then the image can go with it"
+NO_MODEL_CHOSEN_IMAGE = "no model is chosen yet \u2014 /model picks one, then the image can go with it"
 
 #: Screen name used for a page a command presented; the shell checks it to know
 #: that Ctrl-C and Ctrl-D belong to the page rather than the composer.

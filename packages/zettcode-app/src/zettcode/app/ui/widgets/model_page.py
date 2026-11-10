@@ -52,7 +52,7 @@ class ModelPage(ListPage):
                 ListItem(
                     entry,
                     f"{index:>{digits}}. {entry.name}{' (current)' if entry.active else ''}",
-                    f"{entry.model} {SEPARATOR} {entry.api} {SEPARATOR} {'multimodal' if entry.multimodal else 'text'}",
+                    _subtitle(entry),
                 )
                 for index, entry in enumerate(models, start=1)
             ],
@@ -61,3 +61,13 @@ class ModelPage(ListPage):
             on_cancel=on_cancel,
             selected=next((i for i, entry in enumerate(models) if entry.active), 0),
         )
+
+
+def _subtitle(entry: ModelInfo) -> str:
+    """Return the line under a model's name: what it is, and which plugin offered it when one did."""
+    parts = [entry.model, entry.api, "multimodal" if entry.multimodal else "text"]
+    if entry.provider is not None:
+        parts.append(f"from the {entry.provider} plugin")
+    if entry.token_env is not None:
+        parts.append(f"needs ${entry.token_env}")
+    return f" {SEPARATOR} ".join(parts)

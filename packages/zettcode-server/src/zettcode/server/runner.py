@@ -186,11 +186,18 @@ class Pending:
         )
 
 
+#: What a request that needs an agent is refused with. The server opens its client from the configuration file, so
+#: the first entry is what makes it ready; models a plugin offers appear afterwards.
+NO_MODEL_MESSAGE = "No model is configured; add one with POST /models"
+
+
 class NoModelError(RuntimeError):
-    """No model is configured yet, so there is nothing to run a prompt with.
+    """No model is configured, so there is nothing to run a prompt with.
 
     A fresh machine has no ``[[models]]`` entry; the server still starts, lists and edits the configuration, and
-    answers this on what needs an agent. ``POST /models`` is what turns it into a working server.
+    answers this on what needs an agent. ``POST /models`` adds the file entry that makes the client, which is what
+    loads the plugins: the models they offer appear in ``GET /models`` after that and are chosen with
+    ``PATCH /settings``.
     """
 
 
@@ -262,7 +269,7 @@ class Runner:
             NoModelError: No model is configured yet, so there is no agent to drive.
         """
         if self._slot is None:
-            raise NoModelError("No model is configured; add one with POST /models")
+            raise NoModelError(NO_MODEL_MESSAGE)
         return self._slot
 
     @property
@@ -641,7 +648,7 @@ class Runner:
             model=like.model.name, effort=like.effort, permission=like.permission, harness=like.harness
         )
         if client is None:
-            raise NoModelError("No model is configured; add one with POST /models")
+            raise NoModelError(NO_MODEL_MESSAGE)
         slot = Slot(client)
         await self._join(slot)
         return slot

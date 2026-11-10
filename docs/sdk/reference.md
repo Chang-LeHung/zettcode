@@ -138,7 +138,7 @@ The agent for one workspace. An async context manager. Every configuration field
 | `closed` | `bool` | Whether `aclose()` has run. |
 | `session` | `Session` | The current conversation. |
 | `sessions` | `Sessions` | The stored conversations. |
-| `models` | `tuple[ModelInfo, ...]` | The configured models; the active one is marked. |
+| `models` | `tuple[ModelInfo, ...]` | The models available — the file's and the ones plugins offer — with the active one marked. |
 | `model` | `ModelInfo` | The active model. |
 | `effort` | `str` | The reasoning level the next run uses. |
 | `efforts` | `tuple[str, ...]` | The levels the active model accepts. |
@@ -185,7 +185,7 @@ The agent for one workspace. An async context manager. Every configuration field
 | `self_compaction_default` | `bool` | What a session that has made no choice does (`[compaction] self`). |
 | `use_self_compaction_default(enabled)` | `Path` | Writes that default into the configuration file and applies it now; raises `ConfigurationError` when the file is missing or cannot be edited. |
 | `use_self_compaction(choice)` | `bool` | Let the model compact this session itself (`True`), stop it (`False`), or follow the default (`None`). |
-| `await check_models(*, timeout=30)` | `tuple[ModelCheck, ...]` | Ask every configured model one short question, as `zettcode doctor`. |
+| `await check_models(*, timeout=30)` | `tuple[ModelCheck, ...]` | Ask every available model (the file's and the plugins') one short question. |
 | `aclose()` | — | Stops a run in progress, leaves the broker and releases everything. Safe to call twice. |
 
 `use_model`, `use_effort` and `use_permission` raise `ConfigurationError` for a choice that does not exist, with the valid ones in the message.
@@ -396,7 +396,7 @@ Properties: `ok` (`stop is None`) and `failed_tools`.
 
 ### `ModelInfo`
 
-`name`, `model`, `context_window: int`, `multimodal: bool`, `efforts: tuple[str, ...]`, `active: bool = False`.
+`name`, `model`, `context_window: int`, `multimodal: bool`, `efforts: tuple[str, ...]`, `active: bool = False`, `provider: str or None = None`. `provider` names the plugin host that offered the model; it is `None` for an entry in the configuration file.
 
 ### `SessionInfo`
 

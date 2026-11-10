@@ -85,7 +85,7 @@ async def test_the_shell_offers_config_words_and_tab_takes_one():
 
     harness.write("/config ")
 
-    assert values(app.completions.items) == ["add", "remove", "list", "providers"]
+    assert values(app.completions.items) == ["add", "remove", "list"]
     assert "show the models in the file" in harness.text()
 
     harness.write("re")

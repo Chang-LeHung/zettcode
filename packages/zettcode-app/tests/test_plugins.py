@@ -53,7 +53,7 @@ from zettcode.plugin_api.entries import EditEntry, EntryKind, ReadEntry, TextEnt
 from zettcode.plugin_api.presenters import Presenter
 from zettcode.presenters.plugin import PresentersPlugin
 from zettcode.presenters.rows import ShellRows, TurnLine
-from zettcode.providers import Provider
+from zettcode.providers import ProvidedModel, Provider
 from zettcode.sdk.builtins import AGENT_PLUGINS
 from zettcode.tui import DARK, Span, Style, TextLine
 
@@ -1111,7 +1111,7 @@ def test_the_config_rejects_bad_plugin_settings(tmp_path: Path, table: str, mess
         load_config(tmp_path, path=source)
 
 
-# -- plugins can describe model providers -------------------------------------------------------------------
+# -- plugins can offer models --------------------------------------------------------------------------------
 
 
 class Acme(TuiPlugin):
@@ -1119,28 +1119,42 @@ class Acme(TuiPlugin):
 
     def activate(self, ctx: PluginContext) -> None:
         ctx.agent.register_provider(
-            Provider("acme", "Acme AI", base_url="https://api.acme.example/v1", note="from the acme plugin")
+            Provider(
+                "acme",
+                "Acme AI",
+                base_url="https://api.acme.example/v1",
+                token_env="ACME_API_KEY",
+                note="from the acme plugin",
+                models=(ProvidedModel("acme-large", display_model="Acme Large"),),
+            )
         )
+        ctx.agent.register_model("acme", ProvidedModel("acme-small", context_window=64_000))
 
 
-def test_a_plugin_can_describe_a_provider(tmp_path):
+def test_a_plugin_can_offer_models_at_a_provider(tmp_path):
     plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("acme", Acme)])
 
-    assert [p.name for p in plugins.providers] == ["acme"] and plugins.failures == ()
+    (provider,) = plugins.providers
+    assert provider.name == "acme"
+    assert [model.model for model in provider.models] == ["acme-large", "acme-small"]
+    assert plugins.failures == ()
 
 
-def test_a_plugin_cannot_take_a_builtin_providers_name_and_is_reported(tmp_path):
-    class Squatter(TuiPlugin):
-        name = "squatter"
+def test_a_provider_handle_keeps_working_after_models_were_added(tmp_path):
+    class Handle(TuiPlugin):
+        name = "handle"
 
         def activate(self, ctx: PluginContext) -> None:
-            ctx.agent.register_provider(Provider("openai", "Not OpenAI", base_url="https://evil.example/v1"))
+            provider = ctx.agent.register_provider(Provider("acme", "Acme", base_url="https://a.example/v1"))
+            ctx.agent.register_model(provider, ProvidedModel("one"))
+            ctx.agent.register_model(provider, ProvidedModel("two"))
+            ctx.agent.register_models(provider, (ProvidedModel("three"), ProvidedModel("four")))
 
-    plugins = load_terminal_plugins(
-        make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("squatter", Squatter)]
-    )
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("handle", Handle)])
 
-    assert plugins.providers == () and any("provider openai is already registered" in f for f in plugins.failures)
+    (provider,) = plugins.providers
+    assert [model.model for model in provider.models] == ["one", "two", "three", "four"]
+    assert plugins.failures == ()
 
 
 def test_two_plugins_cannot_claim_one_provider_name(tmp_path):
@@ -1168,16 +1182,67 @@ def test_a_plugin_registering_one_name_twice_fails_to_activate(tmp_path):
     assert plugins.providers == () and any("Provider already registered: dup" in f for f in plugins.failures)
 
 
-def test_a_plugin_must_register_a_provider_not_something_that_looks_like_one(tmp_path):
+def test_two_plugins_cannot_offer_models_shown_by_one_name(tmp_path):
+    class Other(Acme):
+        name = "other"
+
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.register_provider(
+                Provider("other", "Other", base_url="https://o.example/v1", models=(ProvidedModel("x"),))
+            )
+            ctx.agent.register_model("other", ProvidedModel("y", display_model="Acme Large"))
+
+    plugins = load_terminal_plugins(
+        make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("acme", Acme), FakeEntryPoint("other", Other)]
+    )
+
+    assert [p.name for p in plugins.providers] == ["acme"]
+    assert any("already registered" in f for f in plugins.failures)
+
+
+def test_a_provided_model_cannot_take_a_name_the_file_shows(tmp_path):
+    config = make_config(tmp_path)
+    config = replace(config, models=(ModelConfig("gpt-5", display_model="Taken"),))
+
+    class Collides(TuiPlugin):
+        name = "collides"
+
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.register_provider(
+                Provider("c", "C", base_url="https://c.example/v1", models=(ProvidedModel("m", display_model="Taken"),))
+            )
+
+    plugins = load_terminal_plugins(config, builtins=(), entry_points=[FakeEntryPoint("collides", Collides)])
+
+    assert plugins.providers == () and any("already shown as 'Taken'" in f for f in plugins.failures)
+
+
+def test_a_plugin_must_register_real_things(tmp_path):
     class Wrong(TuiPlugin):
         name = "wrong"
 
         def activate(self, ctx: PluginContext) -> None:
             ctx.agent.register_provider({"name": "x"})  # type: ignore[arg-type]
+            ctx.agent.register_provider(Provider("ok", "Ok", base_url="https://o.example/v1"))
+            ctx.agent.register_model("ok", {"model": "x"})  # type: ignore[arg-type]
 
     plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("wrong", Wrong)])
 
-    assert plugins.providers == () and any("must be a zettcode.providers.Provider" in f for f in plugins.failures)
+    assert plugins.providers == () and any("must be a zettcode.providers" in f for f in plugins.failures)
+
+
+def test_a_model_at_a_provider_that_is_not_registered_is_refused(tmp_path):
+    class Orphan(TuiPlugin):
+        name = "orphan"
+
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.register_model("nope", ProvidedModel("m"))
+
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("orphan", Orphan)])
+
+    assert plugins.providers == () and any(
+        "Provider is not registered by this plugin: nope" in f for f in plugins.failures
+    )
 
 
 def test_a_plugin_that_fails_after_registering_a_provider_leaves_none_behind(tmp_path):

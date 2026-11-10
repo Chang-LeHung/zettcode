@@ -200,18 +200,20 @@ def _guarded(text: str, where: Path) -> tuple[list[str], list[tuple[int, int]], 
     return lines, blocks, data
 
 
-def _checked(new_text: str, before: dict[str, Any], expected: list[dict[str, Any]], where: Path) -> None:
+def _checked(
+    new_text: str, before: dict[str, Any], expected: list[dict[str, Any]], where: Path, *, allow_empty: bool = False
+) -> None:
     """Refuse a result that does not hold what the edit meant it to, before anything is written."""
     after = _parse(new_text, where)
-    if after.get("models") != expected:
+    models = after.get("models") or []
+    if models != expected:
         raise ConfigEditError("the edit did not produce the models it meant to; nothing was written")
     others_before = {key: value for key, value in before.items() if key != "models"}
     others_after = {key: value for key, value in after.items() if key != "models"}
     if others_before != others_after:
         raise ConfigEditError("the edit would have changed something other than the models; nothing was written")
-    models = after.get("models")
     try:
-        _read_models(models, where)
+        _read_models(models, where, required=not allow_empty)
     except ValueError as error:
         raise ConfigEditError(str(error)) from error
 
@@ -257,12 +259,20 @@ def replace_model(text: str, index: int, entry: Mapping[str, object], *, where: 
     return result
 
 
-def remove_model(text: str, index: int, *, where: Path) -> str:
-    """Return ``text`` without model number ``index`` (from zero). The last one cannot be removed."""
+def remove_model(text: str, index: int, *, where: Path, allow_empty: bool = False) -> str:
+    """Return ``text`` without model number ``index`` (from zero).
+
+    Args:
+        text: The file's text.
+        index: Which model to drop.
+        where: The file, for messages.
+        allow_empty: Allow the last entry to go. Only a caller that knows something else can serve a request (a
+            model a plugin offers) passes this; the file alone cannot be emptied.
+    """
     lines, blocks, data = _guarded(text, where)
     if not 0 <= index < len(blocks):
         raise ConfigEditError(f"there is no model number {index + 1}")
-    if len(blocks) == 1:
+    if len(blocks) == 1 and not allow_empty:
         raise ConfigEditError("that is the only model; add another before removing it")
     start, end = blocks[index]
     # The blank line that set the block apart goes with it, so removing leaves no gap behind.
@@ -272,7 +282,7 @@ def remove_model(text: str, index: int, *, where: Path) -> str:
     expected = list(data["models"])
     del expected[index]
     result = "\n".join(new)
-    _checked(result, data, expected, where)
+    _checked(result, data, expected, where, allow_empty=allow_empty)
     return result
 
 

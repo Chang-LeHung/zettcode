@@ -1,4 +1,4 @@
-"""What ``/config add`` means: turn a choice of provider and a few answers into one model entry.
+"""What ``/config add`` means: turn a few answers into one model entry.
 
 The panel asks one question at a time and ``/config add`` takes everything on one line; both end up
 here, so a model added either way is the same model. This module is plain data in and data out: it
@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypeVar
 
-from zettcode.providers import CUSTOM, Api, Provider, check_url, find_provider
+from zettcode.providers import Api, check_url
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.sdk.types import ModelInfo
@@ -21,7 +21,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 T = TypeVar("T")
 
 USAGE = (
-    "/config add <provider> [--model ID] [--token KEY] [--url URL] [--api chat|responses|anthropic] "
+    "/config add [--model ID] [--token KEY] [--url URL] [--api chat|responses|anthropic] "
     "[--name SHOWN] [--multimodal] [--context TOKENS] [--compact PERCENT] [--temperature T] "
     "[--web-search] [--search-tool TYPE]"
 )
@@ -51,8 +51,7 @@ class Draft:
     """What is known about a model that is being added, filled in as it is learned.
 
     Attributes:
-        provider: The described host the model is at, or ``None`` for a custom one.
-        api: Which protocol it speaks. Starts as the provider's, and a reader may change it.
+        api: Which protocol it speaks: chat completions unless the reader says otherwise.
         url: The address; ``None`` is the SDK's own default.
         model: The model id sent to the endpoint.
         token: The credential. May stay empty: a local server wants none, and the environment can supply one.
@@ -65,7 +64,6 @@ class Draft:
         search_tool: The tool type that search is sent as; empty takes the default for the API.
     """
 
-    provider: Provider | None = None
     api: Api = Api.CHAT
     url: str | None = None
     model: str = ""
@@ -85,8 +83,8 @@ class Draft:
     #: The questions answered in the panel, newest last, each with what was typed, so that
     #: Escape can take back the last one and show it again as it was answered.
     trail: list[tuple[str, str]] = field(default_factory=list)
-    #: Whether the flow was entered from the panel's provider list, which is where Escape from
-    #: the first question goes back to; from a typed line there is nothing behind it.
+    #: Whether the flow was entered from the model list, which is where Escape from the first question
+    #: goes back to; from a typed line there is nothing behind it.
     from_panel: bool = False
 
     def undo(self) -> str | None:
@@ -109,34 +107,16 @@ class Draft:
         self.given.discard(name)
         return previous
 
-    @classmethod
-    def for_provider(cls, provider: Provider | None) -> Draft:
-        """Start a draft with what the provider already says."""
-        if provider is None:
-            return cls()
-        return cls(
-            provider=provider,
-            api=provider.api,
-            url=provider.base_url,
-            multimodal=provider.multimodal,
-        )
-
-    @property
-    def custom(self) -> bool:
-        """Return whether the host is one nobody described, so its address has to be asked."""
-        return self.provider is None
-
     def missing(self) -> list[str]:
         """Return what still has to be asked, in the order to ask it.
 
-        The token is asked about, not required: a draft that was not told one (``--token``) is shown to the reader
-        with the line empty, and an empty line is a valid answer.
+        The protocol comes first, because it decides what the rest of the form offers. The token is asked about,
+        not required: a draft that was not told one (``--token``) is shown to the reader with the line empty, and
+        an empty line is a valid answer.
         """
         wanted: list[str] = []
-        if self.custom and "api" not in self.given:
+        if "api" not in self.given:
             wanted.append("api")
-        if (self.custom or self.url is None) and "url" not in self.given and self.api is not Api.ANTHROPIC:
-            wanted.append("url")
         if not self.model:
             wanted.append("model")
         if "token" not in self.given:
@@ -161,8 +141,6 @@ def entry_for(draft: Draft) -> dict[str, object]:
         entry["display_model"] = draft.name.strip()
     if draft.url:
         entry["base_url"] = check_url(draft.url)
-    elif draft.custom and draft.api is not Api.ANTHROPIC:
-        raise ValueError("A custom provider needs an address (--url)")
     entry.update(draft.api.keys)
     if draft.chat and draft.api is Api.CHAT:
         entry["chat"] = True
@@ -181,12 +159,11 @@ def entry_for(draft: Draft) -> dict[str, object]:
     return entry
 
 
-def parse_add(argument: str, providers: Sequence[Provider]) -> Draft:
+def parse_add(argument: str) -> Draft:
     """Read what follows ``/config add`` into a draft, which may still be missing answers.
 
     Args:
-        argument: The text after ``add``: a provider name (or ``custom``) and optional flags.
-        providers: The hosts that can be named.
+        argument: The text after ``add``, which is flags and their values.
 
     Raises:
         ValueError: With a sentence saying what is wrong and how to write it.
@@ -195,15 +172,17 @@ def parse_add(argument: str, providers: Sequence[Provider]) -> Draft:
         words = shlex.split(argument)
     except ValueError as error:
         raise ValueError(f"cannot read that: {error}") from error
-    if not words or words[0].startswith("--"):
-        names = ", ".join([*(provider.name for provider in providers), CUSTOM])
-        raise ValueError(f"Name the provider: one of {names}\nUsage: {USAGE}")
-    name, flags = words[0].lower(), _flags(words[1:])
-    provider = None if name == CUSTOM else find_provider(name, providers)
-    if provider is None and name != CUSTOM:
-        known = ", ".join([*(item.name for item in providers), CUSTOM])
-        raise ValueError(f"Unknown provider {words[0]!r}; use one of {known}")
-    draft = Draft.for_provider(provider)
+    if not words:
+        # `/config add` on its own opens the panel, which asks the protocol first.
+        return Draft()
+    if not words[0].startswith("--"):
+        raise ValueError(f"Put the model after --model, not on its own\nUsage: {USAGE}")
+    flags = _flags(words)
+    draft = Draft()
+    if "--api" not in flags:
+        # A line that names settings and no protocol means chat completions, the way an entry with no flag
+        # does: a reader typing everything on one line is not asked a question they did not raise.
+        draft.given.add("api")
     if "--api" in flags:
         try:
             draft.api = Api.parse(flags["--api"])

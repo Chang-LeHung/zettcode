@@ -180,12 +180,14 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     result = namespace["notes"](PlainCommandContext(argument=""))
     assert result.markdown.startswith("# ") and "- " in result.markdown and result.message == ""
 
-    # The provider example is run as written: what the page says a plugin can describe is what loads.
+    # The provider example is run as written: what the page says a plugin can offer is what loads.
     described = terminal_context(config)
     namespace["Acme"]().activate(described)
     (provider,) = described.providers
     assert (provider.name, provider.label, provider.api) == ("acme", "Acme AI", "chat")
     assert provider.base_url == "https://api.acme.example/v1" and provider.token_env == "ACME_API_KEY"
+    assert [model.model for model in provider.models] == ["acme-large", "acme-small"]
+    assert provider.models[0].shown_name == "Acme Large" and provider.models[0].context_window == 200_000
 
     # The extension example is run as written too, with a stand-in for the extension it names.
     class AuditExtension(AgentExtension):

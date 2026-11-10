@@ -44,6 +44,9 @@ class SettingsMixin(ShellState):
         selected = self.client.use_model(name)
         if previous is None or selected.name != previous.name or selected.model != previous.model:
             self.transcript.model_changed(previous.name if previous is not None else "", selected.name)
+        # A machine whose first model is one a plugin offered had nothing to warm at launch; the choice is the
+        # moment the runtime has something to build, exactly as the first `/config` entry is.
+        self._warm_runtime()
         self.app.request_layout()
         return selected
 

@@ -657,14 +657,14 @@ ctx.tui.register_command("status", "show the build status", self.status, when_bu
 忙碌状态，所以一个会修改 transcript、会话、或请求启动时所用模型的命令，会把请求脚下的地面抽走。
 处理函数想等多久都可以：请求不会等它，退出时会取消它。
 
-## 描述一个 provider {#providers}
+## 在 provider 上提供模型 {#providers}
 
-插件可以往 `/config` 提供的列表里添加一个服务商，这样 ZettCode 不认识的服务，选中它再给一个 token
-就能配好：
+插件可以在它知道的 host 上提供模型：插件加载后，这些模型会直接出现在 `/model` 里，选中后就使用
+provider 指定的 token。不会写配置文件。
 
 ```python
 from zettcode.plugin_api import Plugin, PluginContext
-from zettcode.plugin_api import Provider
+from zettcode.plugin_api import ProvidedModel, Provider
 
 
 class Acme(Plugin[PluginContext]):
@@ -673,22 +673,27 @@ class Acme(Plugin[PluginContext]):
     def activate(self, ctx: PluginContext) -> None:
         ctx.agent.register_provider(
             Provider(
-                "acme",  # `/config add acme` 里输入的名字
-                "Acme AI",  # 选择器里显示的名字
+                "acme",  # 整个应用里唯一
+                "Acme AI",  # 列表里显示的 host 名字
                 api="chat",  # chat | responses | anthropic
                 base_url="https://api.acme.example/v1",
-                token_env="ACME_API_KEY",  # 只用于提示，不会被读取
-                note="model ids look like acme-<size>",  # 显示在旁边的一行说明：小写短语，不以冠词开头，不加句号
+                token_env="ACME_API_KEY",  # runtime 从这里读取 token
+                models=(
+                    ProvidedModel("acme-large", display_model="Acme Large", context_window=200_000),
+                    ProvidedModel("acme-small", context_window=64_000),
+                ),
+                note="model ids scale by the suffix",  # 小写短语，不以冠词开头，不加句号
             )
         )
 ```
 
-provider 只描述一个地址和一种协议：不会调用或连接任何东西，token 和模型 id 仍然由用户提供。
-`models=("acme-small", …)` 可以给提问处提示几个 id。
+`ProvidedModel` 可以覆盖 host 的协议、地址和图片支持，也可以单独设置上下文窗口、压缩比例、推理级别和
+temperature。`ctx.agent.register_model("acme", ...)` 与 `register_models(...)` 可以给已注册的
+provider 继续添加模型。
 
-名字在整个应用里唯一。如果插件注册的名字已被内置 provider（`openai`、`anthropic`、`deepseek`、
-`openrouter`、`groq`、`ollama`、`custom`）占用，或被先加载的插件占用，这个插件会被跳过，并像其他加载
-失败的插件一样报告。
+`token_env` 是 runtime 在使用模型时读取 token 的环境变量名；本地服务这类不需要 key 的 host 可以不写。
+插件提供的模型只出现在 `/model`，`/config` 只编辑配置文件。模型显示名在整个应用里唯一：与文件里的
+名字重复、或与更早插件提供的名字重复，都会拒绝加载，并像其他加载失败的插件一样报告。
 
 ## 提供配色 {#themes}
 

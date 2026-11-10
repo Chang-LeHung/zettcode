@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, cast
 
 from zettcode.presenters.text import compact_path
-from zettcode.providers import API_FLAG_KEYS, CUSTOM, Api, check_url
+from zettcode.providers import API_FLAG_KEYS, Api, check_url
 from zettcode.sdk.errors import ConfigurationError
 from zettcode.tui import SEPARATOR, ListItem, ListPage, Screen, Widget
 
@@ -32,7 +32,6 @@ from .widgets import Field, FormPage, ModelSettingsPage, bottom_panel, form_rows
 from .widgets.model_settings_page import Action, Answer, Setting
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zettcode.providers import Provider
     from zettcode.sdk.types import ModelInfo
 
 #: Rows the list pages take: the title, a blank, up to eight rows, the keys.
@@ -91,7 +90,7 @@ class ConfigMixin(ShellState):
             )
             for index, (model, _) in enumerate(entries)
         ]
-        rows.append(ListItem(None, "+ Add a model", "from a provider, or any endpoint"))
+        rows.append(ListItem(None, "+ Add a model", "choose the API, then the model"))
         page = ListPage(
             rows,
             title="Models",
@@ -104,26 +103,11 @@ class ConfigMixin(ShellState):
     def _config_chosen(self, item: ListItem) -> None:
         """A row of the model list: a model to change, or the row that adds one."""
         if item.value is None:
-            self._config_pick_provider(replace=True)
+            self._config_begin(replace=True)
         else:
             self._config_actions(int(item.value), replace=True)  # type: ignore[call-overload]
 
     # -- adding --------------------------------------------------------------------------
-    def _config_pick_provider(self, *, replace: bool) -> None:
-        """Ask which host the model is at."""
-        rows = [
-            ListItem(provider, provider.label, provider.note or provider.api.description)
-            for provider in self.agent.providers
-        ]
-        rows.append(ListItem(CUSTOM, "Custom", "any endpoint; you give the address and the protocol"))
-        page = ListPage(
-            rows,
-            title="Add a model \u2014 which provider?",
-            on_select=lambda item: self._config_begin(None if item.value == CUSTOM else cast("Provider", item.value)),
-            on_cancel=self._config_back,
-        )
-        self._config_show(page, rows=LIST_ROWS, replace=replace)
-
     def _config_back(self) -> None:
         """Go back to the model list."""
         try:
@@ -135,33 +119,33 @@ class ConfigMixin(ShellState):
         self.app.push_screen(Screen(page, name=PAGE_SCREEN, modal=True))
         self.app.request_layout()
 
-    def _config_begin(self, provider: Provider | None) -> None:
-        """Start asking what the provider does not already say."""
-        draft = Draft.for_provider(provider)
+    def _config_begin(self, *, replace: bool) -> None:
+        """Start a new model: the protocol is the first question, and the rest follows in one form."""
+        draft = Draft()
         draft.from_panel = True
-        self._config_ask(draft)
+        self._config_ask(draft, replace=replace)
 
     def _config_step_back(self, draft: Draft) -> None:
         """Escape in the form: take back the last choice made before it and ask it again.
 
-        That choice is the protocol of a custom endpoint, the one thing asked on a page of its own. With none behind
-        it, Escape goes to the provider list when the flow came from there, and closes when it was started from a
-        typed line, which has nothing behind it.
+        That choice is the protocol, the one thing asked on a page of its own. With none behind it, Escape goes back
+        to the model list when the flow came from there, and closes when it was started from a typed line, which has
+        nothing behind it.
         """
         previous = draft.undo()
         if previous is not None:
             self._config_ask(draft)
         elif draft.from_panel:
-            self._config_pick_provider(replace=True)
+            self._config_back()
         else:
             self._config_end()
 
     def _config_ask(self, draft: Draft, *, replace: bool = True) -> None:
         """Ask for what a draft is missing, or write it when nothing is.
 
-        A custom endpoint is asked which protocol it speaks, on a list of its own, because that is a choice among three
-        words and not text. Everything else is one form: the model id, the token, the address and a name, with the cursor
-        moving between them by Tab and Enter saving all of it.
+        The protocol is asked on a list of its own, because that is a choice among three words and not text.
+        Everything else is one form: the model id, the token, the address and a name, with the cursor moving
+        between them by Tab and Enter saving all of it.
 
         Args:
             draft: What is known so far.
@@ -178,21 +162,12 @@ class ConfigMixin(ShellState):
 
     def _config_add_form(self, draft: Draft, *, replace: bool) -> None:
         """Show the form that adds a model: only the model id has to be filled in."""
-        host = draft.provider.label if draft.provider is not None else "a custom endpoint"
-        suggestions = draft.provider.models if draft.provider is not None else ()
-        token_note = (
-            f"Your key; the vendor's own tools read it from ${draft.provider.token_env}. Leave it empty for a local server."
-            if draft.provider is not None and draft.provider.token_env
-            else "Your key for this endpoint. Leave it empty for a local server, or to use the environment's."
-        )
         fields = [
             Field(
                 "model",
                 "Model id",
                 initial=draft.model,
-                placeholder=suggestions[0] if suggestions else "",
-                hint="The id the provider calls the model, exactly as its documentation writes it."
-                + (f" For example: {', '.join(suggestions[:3])}" if suggestions else ""),
+                hint="The id the endpoint calls the model, exactly as its documentation writes it.",
                 required=True,
             ),
             Field(
@@ -200,21 +175,19 @@ class ConfigMixin(ShellState):
                 "Token",
                 initial=draft.token,
                 placeholder="optional",
-                hint=f"{token_note} It is written to {self.client.config_file}.",
+                hint=f"Your key for this endpoint. Leave it empty for a local server, or to use the environment's. "
+                f"It is written to {self.client.config_file}.",
                 secret=True,
             ),
+            Field(
+                "url",
+                "Address",
+                initial=draft.url or "",
+                placeholder="default address",
+                hint="The address the client appends its route to, such as https://api.example.com/v1. "
+                "Leave it empty for the API's own.",
+            ),
         ]
-        if draft.api is not Api.ANTHROPIC:
-            fields.append(
-                Field(
-                    "url",
-                    "Address",
-                    initial=draft.url or "",
-                    placeholder="default address" if not draft.custom else "https://api.example.com/v1",
-                    hint="The address the client appends its route to, such as https://api.example.com/v1.",
-                    required=draft.custom,
-                )
-            )
         fields.append(
             Field(
                 "name",
@@ -236,7 +209,7 @@ class ConfigMixin(ShellState):
             )
         )
         page = FormPage(
-            f"Add a model at {host}",
+            f"Add a model \u2014 {draft.api.label}",
             fields,
             on_submit=lambda values: self._config_added(draft, values),
             on_cancel=lambda: self._config_step_back(draft),
@@ -253,7 +226,7 @@ class ConfigMixin(ShellState):
             except ValueError as error:
                 return ("url", str(error))
             draft.url = checked
-        elif draft.api is not Api.ANTHROPIC:
+        else:
             draft.url = None
         draft.given.add("url")
         draft.model = values["model"]
@@ -271,8 +244,8 @@ class ConfigMixin(ShellState):
         return None
 
     def _config_ask_api(self, draft: Draft, *, replace: bool = True) -> None:
-        """Ask which protocol a custom endpoint speaks."""
-        rows = [ListItem(api, api.value, api.description) for api in Api]
+        """Ask which protocol the endpoint speaks."""
+        rows = [ListItem(api, api.label, api.description) for api in Api]
         page = ListPage(
             rows,
             title="Which API does the endpoint speak?",
@@ -564,7 +537,7 @@ class ConfigMixin(ShellState):
         Raises:
             ValueError: With the reason, when the line cannot be understood or the entry is refused.
         """
-        draft = parse_add(argument, self.agent.providers)
+        draft = parse_add(argument)
         if draft.missing():
             self._config_ask(draft, replace=False)  # nothing of the flow is on screen yet
             return None
@@ -614,13 +587,4 @@ class ConfigMixin(ShellState):
                 f"| {'yes' if model.multimodal else 'no'} | {model.context_window:,} "
                 f"| {whole_if_whole(model.compact_percent)}% |"
             )
-        return "\n".join(lines)
-
-    def config_providers_listing(self) -> str:
-        """Return the providers `/config add` accepts, as Markdown."""
-        lines = ["| name | api | address | note |", "| --- | --- | --- | --- |"]
-        for provider in self.agent.providers:
-            note = provider.note or provider.api.description
-            lines.append(f"| `{provider.name}` | {provider.api} | {provider.base_url or 'default'} | {note} |")
-        lines.append(f"| `{CUSTOM}` | you choose | you give it | any endpoint |")
         return "\n".join(lines)

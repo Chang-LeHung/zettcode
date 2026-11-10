@@ -15,7 +15,6 @@ from zettcode.app.ui.config_form import (
     whole_if_whole,
 )
 from zettcode.config import DEFAULT_COMPACT_PERCENT, DEFAULT_CONTEXT_WINDOW, ModelConfig
-from zettcode.providers import BUILTIN_PROVIDERS
 
 # -- how a size and a share are written -----------------------------------------------------------------------
 
@@ -78,11 +77,11 @@ def test_the_limits_of_a_model_are_said_in_one_line_with_the_size_it_comes_to():
 
 
 def _draft(line: str) -> Draft:
-    return parse_add(line, BUILTIN_PROVIDERS)
+    return parse_add(line)
 
 
 def test_the_flags_of_add_carry_the_window_and_the_share_into_the_entry():
-    draft = _draft("custom --api chat --url https://x.example/v1 --model m --token t --context 200k --compact 75%")
+    draft = _draft("--api chat --url https://x.example/v1 --model m --token t --context 200k --compact 75%")
 
     entry = entry_for(draft)
 
@@ -91,25 +90,25 @@ def test_the_flags_of_add_carry_the_window_and_the_share_into_the_entry():
 
 
 def test_a_model_added_without_them_carries_neither_so_the_defaults_stay_the_defaults():
-    entry = entry_for(_draft("custom --url https://x.example/v1 --model m --token t"))
+    entry = entry_for(_draft("--url https://x.example/v1 --model m --token t"))
 
     assert "context_window" not in entry and "compact_percent" not in entry and "multimodal" not in entry
 
 
 def test_a_flag_that_is_wrong_names_itself():
     with pytest.raises(ValueError, match=r"--context: .*write 200k"):
-        _draft("custom --context 200")
+        _draft("--context 200")
     with pytest.raises(ValueError, match=r"--compact: .*at most 100"):
-        _draft("custom --compact 150")
+        _draft("--compact 150")
     with pytest.raises(ValueError, match="--context needs a value"):
-        _draft("custom --context")
+        _draft("--context")
 
 
 async def test_add_from_the_line_writes_the_window_and_the_share_and_the_session_has_them(shell):  # noqa: F811
     fx = shell()
 
     await fx.command(
-        "/config add custom --api chat --url https://x.example/v1 --model big --token sk-x --context 1m --compact 60"
+        "/config add --api chat --url https://x.example/v1 --model big --token sk-x --context 1m --compact 60"
     )
 
     written = fx.models[2]

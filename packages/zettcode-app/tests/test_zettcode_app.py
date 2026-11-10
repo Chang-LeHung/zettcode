@@ -376,6 +376,11 @@ class FakeRuntime:
         """Mirror the real runtime: this process does not hold the active session's lock."""
         return self.session_id not in self._mine
 
+    @property
+    def models(self) -> tuple[ModelConfig, ...]:
+        """Mirror the real runtime: the file's models, with no plugin offering any here."""
+        return tuple(self.config.models)
+
     def retake_session(self) -> bool:
         """Mirror the real runtime: take the lock again, and say whether it is held now."""
         self._claim()
@@ -8098,7 +8103,7 @@ def test_the_name_the_picker_showed_wins_over_a_model_that_happens_to_be_called_
 
     a = ModelConfig(model="a", display_model="b", token="t")
     b = ModelConfig(model="b", display_model="c", token="t")
-    holder = type("Holder", (), {"config": type("C", (), {"models": (a, b)})()})()
+    holder = type("Holder", (), {"config": type("C", (), {"models": (a, b)})(), "models": (a, b)})()
 
     assert ZettCodeEngine.find_model(holder, "b") is a
     assert ZettCodeEngine.find_model(holder, "c") is b, "and a display name is still found"
@@ -8110,7 +8115,7 @@ def test_a_name_two_entries_answer_to_in_the_second_step_is_not_guessed():
 
     a = ModelConfig(model="x", display_model="one", token="t")
     b = ModelConfig(model="x", display_model="two", token="t")
-    holder = type("Holder", (), {"config": type("C", (), {"models": (a, b)})()})()
+    holder = type("Holder", (), {"config": type("C", (), {"models": (a, b)})(), "models": (a, b)})()
 
     assert ZettCodeEngine.find_model(holder, "x") is None
     assert ZettCodeEngine.find_model(holder, "one") is a

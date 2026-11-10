@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from server_fakes import FakeClient, FakeRun
+from zettcode.sdk.types import ModelInfo
 from zettcode.server.app import create_app
 from zettcode.server.settings import Settings
 
@@ -116,6 +117,23 @@ async def test_a_model_removed_while_a_client_runs_reaches_it_too(tmp_path: Path
     assert client.removed == ["fast"]
     assert [model["name"] for model in response.json()["models"]] == ["gpt-5"]
     assert response.json()["current"] == "gpt-5"
+
+
+async def test_a_model_a_plugin_offers_is_listed_and_can_be_chosen(tmp_path: Path):
+    """The client loads the plugins, so after it exists a provided model is listed and `PATCH /settings` takes it."""
+    client = FakeClient()
+    client.models = (
+        *client.models,
+        ModelInfo("Acme Large", "acme-large", 200_000, False, ("low",), provider="acme"),
+    )
+
+    async with serve(tmp_path, factory=lambda: client) as http:
+        models = (await http.get("/models")).json()["models"]
+        chosen = await http.patch("/settings", json={"model": "Acme Large"})
+
+    assert models[-1]["provider"] == "acme"
+    assert chosen.status_code == 200, chosen.text
+    assert client.model.name == "Acme Large"
 
 
 async def test_a_model_is_changed_and_its_token_kept_unless_a_new_one_is_given(tmp_path: Path):

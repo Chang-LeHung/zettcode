@@ -228,11 +228,11 @@ class ModelCommands(TuiPlugin):
         """Open the model picker, or switch directly to a named model.
 
         The picker is a widget, so the command needs the shell: the agent owns the models, the shell owns the
-        widget that chooses between them. A machine with no model has nothing to pick, so the command points at
-        the one that adds the first entry instead of opening an empty list.
+        widget that chooses between them. A machine with nothing to pick has no model at all, so the command points
+        at the one that adds the first entry instead of opening an empty list.
         """
         host = context.require_host()
-        if host.client.active_model is None:
+        if host.client.active_model is None and not host.client.models:
             return CommandResult(message="No model is configured yet \u2014 `/config` adds the first one.")
         if context.argument:
             host.change_model(context.argument)
@@ -253,9 +253,13 @@ class ModelCommands(TuiPlugin):
         """
         host = context.require_host()
         if host.client.active_model is None:
-            return CommandResult(
-                message="No model is configured yet \u2014 `/config` adds one; `/effort` sets the level it reasons at."
-            )
+            if host.client.models:
+                message = "No model is chosen yet \u2014 `/model` picks one; `/effort` sets the level it reasons at."
+            else:
+                message = (
+                    "No model is configured yet \u2014 `/config` adds one; `/effort` sets the level it reasons at."
+                )
+            return CommandResult(message=message)
         if context.argument:
             try:
                 host.change_effort(context.argument)

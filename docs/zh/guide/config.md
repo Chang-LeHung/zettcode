@@ -59,33 +59,20 @@ Models
 ~/.zettcode/config.toml
  ▸ 1. DeepSeek Pro (current)   deepseek-v4-pro · chat · https://api.deepseek.com
    2. DeepSeek Flash           deepseek-flash · chat · https://api.deepseek.com
-   + Add a model               from a provider, or any endpoint
+   + Add a model               choose the API, then the model
 ```
 
-**Add a model** 先问你选哪个 provider，再只问这个 provider 没有说明的部分。provider 是已知的服务商
-—— 地址和 API 已经填好，你只需要给出**模型 id** 和 **token**：
+**Add a model** 先在单独的列表里问端点用哪种 **API**（`chat` 是 chat completions，`responses` 是
+Responses API，`anthropic` 是 Messages API），然后显示下面的表单。没有别的预设：地址可以留空，留空就用该 API 自带的。
+插件提供的模型会出现在 `/model` 里，不在这里添加；见[插件](/zh/guide/plugins#providers)。
 
-| Provider | API | 地址 |
-| --- | --- | --- |
-| `openai` | chat completions | `https://api.openai.com/v1` |
-| `anthropic` | Messages API | `https://api.anthropic.com` |
-| `deepseek` | chat completions | `https://api.deepseek.com` |
-| `openrouter` | chat completions | `https://openrouter.ai/api/v1` |
-| `groq` | chat completions | `https://api.groq.com/openai/v1` |
-| `ollama` | chat completions | `http://localhost:11434/v1` |
-| `custom` | **你选择** | **你填写** |
-
-`custom` 是任何其他端点。它先在单独的列表里问它用哪种 **API**（`chat` 是 chat completions，`responses` 是
-Responses API，`anthropic` 是 Messages API），然后显示下面的表单。Anthropic API 的端点没有地址这一行：
-SDK 自带一个。插件可以往这个列表里添加 provider，见[插件](/zh/guide/plugins#providers)。
-
-添加一个 provider 用的是**一个表单**，而不是一个一个地问：
+添加模型用的是**一个表单**，而不是一个一个地问：
 
 ```text
-Add a model at DeepSeek
+Add a model — OpenAI Chat API
 
 ╭─ Model id * ────────────────────────────────────────╮
-│ deepseek-chat                                  │
+│ gpt-4o                                         │
 ╰────────────────────────────────────────────────╯
 ╭─ Token ──────────────────────────────────────────╮
 │ ••••••••••••••                                 │
@@ -96,12 +83,12 @@ Add a model at DeepSeek
 每一行都是一个**方框**，标签在上边框上，光标所在的那个框会变成亮绿色，一眼就能看出这是要输入的地方；点击方框的任何位置（包括边框）都会把光标放到那里。
 表单大约需要 20 行；终端不够高时，每一行改成占一行、文字带底色，用法不变。
 
-**Tab**（或 **↓**）移到下一行，**Shift-Tab**（或 **↑**）回到上一行，到尽头会绕回来；**Enter** 一次保存全部；表单下面的提示会解释光标所在的那一行。只有**模型 id** 是必填的
-（`custom` 还要地址）。**token 可以留空**：本地服务器（Ollama、LM Studio、vLLM）不需要，环境里有 `OPENAI_API_KEY` 时就用它。
+**Tab**（或 **↓**）移到下一行，**Shift-Tab**（或 **↑**）回到上一行，到尽头会绕回来；**Enter** 一次保存全部；表单下面的提示会解释光标所在的那一行。只有**模型 id** 是必填的。
+**token 可以留空**：本地服务器（Ollama、LM Studio、vLLM）不需要，环境里有 `OPENAI_API_KEY` 时就用它。
 保存不了的那一行——比如不是 http 或 https 的地址、超出范围的温度——会在表单上方点名，光标跳到那一行，你输入过的内容都不会丢。
 
 token 输入时显示为圆点，之后也不会再显示 —— 面板里没有，`/config list` 里没有，提示“已添加”的那一行
-里也没有。**Escape 是退回上一步**：从表单退到 provider 列表（`custom` 退到 API 列表），从列表退到模型列表，只有在模型列表按 Escape 才会关闭。
+里也没有。**Escape 是退回上一步**：从表单退到 API 列表，从列表退到模型列表，只有在模型列表按 Escape 才会关闭。
 在表单里按 Enter 之前什么都不会写入，所以退回去不会有任何损失。
 
 在面板里选中一个模型，它的所有设置都在同一页上，左边是条目，右边是值：
@@ -147,27 +134,25 @@ Enter 默认的答案是 *Keep it*）。屏幕太矮放不下所有行时，页�
 | **Compress at** | 对话占到窗口的多少时，在下一次请求前先做摘要（`compact_percent`）。 | 大于 0、不超过 100 的百分比：`80` 或 `80%`。留空用 80。 |
 
 窗口和比例合起来决定什么时候压缩 —— 窗口 200k、比例 75% 就是 150,000 token —— 设置之后面板会告诉你算出来是多少。
-*添加*模型时不会问这些（provider 并不知道），添加之后在这里设置，或者在命令行里加 `--context` 和 `--compact`。
+*添加*模型时不会问这些（端点不会说明），添加之后在这里设置，或者在命令行里加 `--context` 和 `--compact`。
 
 同样的事也可以写成一行，只会询问这一行没有给出的部分：
 
 ```text
-/config add deepseek --model deepseek-chat --token sk-...
-/config add custom --api chat --url https://llm.example/v1 --model my-model --token sk-... --name "My model"
-/config add anthropic --model claude-sonnet-4-5          # 打开表单填其余的
+/config add --model deepseek-chat --token sk-... --url https://api.deepseek.com
+/config add --api chat --url https://llm.example/v1 --model my-model --token sk-... --name "My model"
+/config add --api anthropic --model claude-sonnet-4-5          # 打开表单填其余的
 /config remove 3          # 也可以用名字：/config remove "My model"
-/config add custom --api chat --url https://llm.example/v1 --model big --token sk-... --context 1m --compact 60
-/config add custom --api chat --url https://llm.example/v1 --model big --token sk-... --context 1m --compact 60
+/config add --api chat --url https://llm.example/v1 --model big --token sk-... --context 1m --compact 60
 /config list              # 模型、它们接受什么、在哪里压缩，不显示 token
-/config providers         # `add` 接受哪些 provider
 ```
 
 | 选项 | 含义 |
 | --- | --- |
-| `--model ID` | provider 称呼这个模型的 id。 |
+| `--model ID` | 端点称呼这个模型的 id。 |
 | `--token KEY` | 凭据。不写的话，表单里有一行隐藏输入的 token，也可以留空。 |
-| `--url URL` | 地址，替换 provider 自带的。`custom` 必须给（`--api anthropic` 除外）。 |
-| `--api chat\|responses\|anthropic` | 用哪种 API。provider 有自己的默认值，这里可以覆盖，例如 `openai --api responses`。 |
+| `--url URL` | 地址。留空就用该 API 自带的。 |
+| `--api chat\|responses\|anthropic` | 用哪种 API；一行里不写就是 chat completions。 |
 | `--name SHOWN` | 在标题栏和 `/model` 里显示的名字（`display_model`）。 |
 | `--multimodal` | 模型接受图片。 |
 | `--context TOKENS` | 上下文窗口：`200000`、`200k`、`1m`。 |
