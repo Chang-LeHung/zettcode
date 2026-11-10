@@ -222,9 +222,12 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
         # The daemon of the old workspace is nobody's now: the bridge will start a new one here, and leaving the old
         # one running is a session a reader never asked to keep. Best effort: a busy one is reported, not waited on.
         from zettcode.sdk.daemons import stop_daemon
+        from zettcode.sdk.errors import SessionNotFoundError
 
         try:
             said = await stop_daemon(previous_session, keep=True)
+        except SessionNotFoundError:
+            said = "no daemon was running for the old workspace"
         except Exception as error:  # noqa: BLE001 - the login is finished either way
             said = f"the daemon of the old workspace was left running ({error})"
         print(f"daemon     {said}")

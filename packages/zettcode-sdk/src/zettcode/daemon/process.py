@@ -21,7 +21,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import IO, TYPE_CHECKING
+from typing import IO, TYPE_CHECKING, NoReturn
 
 from . import PERMISSIONS, PLUGIN_ARGS_ENV
 from .state import START_SECONDS, Record, Registry, pid_runs
@@ -432,18 +432,36 @@ class Daemons:
                 ) from error
             stopped = True
 
-        def refuse(said: str) -> None:
+        def refuse(said: str) -> NoReturn:
             """Raise, putting the daemon back first when this command already stopped it."""
             if stopped:
                 said = self._put_back(record, state, said)
             raise UpdateFailed(said)
+
+        def finish(updated: Record) -> Record:
+            """Start the daemon this command stopped, or put everything back the way it was and say why not.
+
+            The record already names the new level at this point, so a start that fails is two things to undo: the
+            level in the record, and the stopped daemon. Both are, at the level it actually had.
+            """
+            if not (stopped and permission):
+                return updated
+            try:
+                return self._start_again(updated, permission)
+            except UpdateFailed as error:
+
+                def restore(current: State | None) -> State:
+                    return dataclasses.replace(current or state, permission=state.permission)
+
+                self._write(updated, restore)
+                refuse(f"{error}")
 
         if cleaned is None:
             try:
                 updated = self._write(record, lambda current: applied(current, title=None))
             except UpdateFailed as error:
                 refuse(f"{error}")
-            return self._start_again(updated, permission) if stopped and permission else updated
+            return finish(updated)
         if record.alive and not stopped:
             message = "the daemon is running, and its session is its own; stop it before naming it"
             if other:
@@ -465,14 +483,18 @@ class Daemons:
             updated = self._write(record, lambda current: applied(current, title=cleaned))
         except UpdateFailed as error:
             refuse(f"{error}; the session was renamed, so its record still says the old title")
-        return self._start_again(updated, permission) if stopped and permission else updated
+        return finish(updated)
 
     def _put_back(self, record: Record, state: State, said: str) -> str:
         """Start a daemon this command stopped back at the level it had, and return the sentence to raise.
 
         The command has already failed for its own reason; this only makes sure it did not also leave nothing
         running. Whatever the start says is added to that sentence rather than replacing it.
+
+        A record with no level predates the ``full`` default — it was started at ``safe`` — so it comes back at
+        ``safe``: a failure must not quietly hand a daemon more shell than it had.
         """
+        level = state.permission or "safe"
         try:
             self.start(
                 Path(state.workspace),
@@ -480,12 +502,12 @@ class Daemons:
                 effort=state.effort,
                 resume=record.session_id,
                 name=state.name,
-                permission=state.permission or "full",
+                permission=level,
                 plugin_arguments=state.plugin_arguments,
             )
         except SpawnFailed as error:
             return f"{said}; and it could not be started again: {error}"
-        return f"{said}; it was started again at {state.permission or 'full'}"
+        return f"{said}; it was started again at {level}"
 
     def _start_again(self, record: Record, permission: str) -> Record:
         """Start a daemon that :meth:`update` stopped for its new shell level, on the session it was running.
@@ -493,9 +515,8 @@ class Daemons:
         The level is handed to the process when it starts, so nothing short of a restart changes it. The session
         is the one thing that must survive, and it does: the conversation is on disk and ``resume`` continues it.
 
-        What does not survive is the plugin arguments a daemon was started with: they are not written into the
-        record, so a restart starts the plugins on their own defaults. Restarting a daemon that a plugin shaped is
-        the same gap the companion restarts have, and closing it means keeping those values in the record.
+        The values a plugin's options parsed are written into the record when the daemon starts, so they are handed
+        back here: the agent that comes back is the one that stopped, plugins and all.
         """
         state = record.state
         if state is None:

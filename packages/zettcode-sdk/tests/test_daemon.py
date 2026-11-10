@@ -1959,3 +1959,52 @@ def test_a_restart_for_a_level_keeps_the_plugin_values_it_was_started_with(home,
     process.Daemons().update(running, permission="full")
 
     assert started[0]["plugin_arguments"] == {"journal": level}
+
+
+def test_a_restart_that_fails_puts_the_daemon_back_and_the_record_with_it(home, monkeypatch):
+    """The record must not keep the level the failed restart was for, and nothing is left stopped."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), permission="safe"))
+    record.beat()
+    running = Registry().find("01a1")
+    starts: list[str | None] = []
+
+    monkeypatch.setattr(process.Daemons, "stop", lambda self, target, **k: "stopped; its record was kept")
+
+    def start(self, workspace, **kwargs):
+        starts.append(kwargs.get("permission"))
+        if kwargs.get("permission") == "full":
+            raise process.SpawnFailed("the model rejected the key")
+        return running
+
+    monkeypatch.setattr(process.Daemons, "start", start)
+
+    with pytest.raises(process.UpdateFailed, match="started again at safe"):
+        process.Daemons().update(running, permission="full")
+
+    assert starts == ["full", "safe"], "the failed attempt, then the level it had"
+    assert Registry().find("01a1").state.permission == "safe", "and the record says what runs"
+
+
+def test_a_failed_restart_of_a_daemon_with_no_recorded_level_does_not_raise_its_shell(home, monkeypatch):
+    """`permission is None` is a record from before the full default: it was started at safe."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), permission=None))
+    record.beat()
+    running = Registry().find("01a1")
+    starts: list[str | None] = []
+
+    monkeypatch.setattr(process.Daemons, "stop", lambda self, target, **k: "stopped")
+
+    def start(self, workspace, **kwargs):
+        starts.append(kwargs.get("permission"))
+        if kwargs.get("permission") == "full":
+            raise process.SpawnFailed("the model rejected the key")
+        return running
+
+    monkeypatch.setattr(process.Daemons, "start", start)
+
+    with pytest.raises(process.UpdateFailed, match="started again at safe"):
+        process.Daemons().update(running, permission="full")
+
+    assert starts == ["full", "safe"], "never full for a daemon that had no level"
