@@ -452,7 +452,7 @@ class _Shell:
 
     def __init__(self, client: _Switch) -> None:
         self.client = client
-        self.ui = _Ui()
+        self.ui = _Ui(client.events)
         self.prompts: list[tuple[str, str | None]] = []
         self.closed = 0
 
@@ -466,17 +466,20 @@ class _Shell:
 
 
 class _Ui:
-    """The surfaces a command may write to, recording what reached them."""
+    """The surfaces a command may write to, recording what reached them — and when, next to the turns."""
 
-    def __init__(self) -> None:
+    def __init__(self, events: list[str] | None = None) -> None:
         self.notices: list[str] = []
         self.messages: list[str] = []
+        #: Shared with the fake client, so a notice and a turn are ordered against each other.
+        self.events = events if events is not None else []
 
     def markdown(self, text: str) -> None:
         self.messages.append(text)
 
     def notice(self, text: str) -> None:
         self.notices.append(text)
+        self.events.append("notice")
 
     def error(self, text: str) -> None: ...
 
@@ -776,8 +779,10 @@ async def test_a_description_that_was_cut_says_so_to_the_reader_before_the_turn(
     result, shell = await _run(f"gen {'x' * (MAX_DESCRIPTION + 500)}", _Switch(_configured(tmp_path)))
     (notice,) = shell.ui.notices
     assert f"cut at {MAX_DESCRIPTION} characters" in notice and "500 characters were not sent" in notice
-    assert shell.prompts, "the notice came with the turn, not instead of it"
-    assert result.message == "", "and the turn is still the answer"
+    assert result.message == "", "the turn is still the answer"
+    assert shell.client.events == ["switch:True", "notice", "prompt"], (
+        "the reader learns before the turn goes out, not after the model has built from what was left"
+    )
 
     _, one = await _run(f"gen {'x' * (MAX_DESCRIPTION + 1)}", _Switch(_configured(tmp_path)))
     assert "1 character was not sent" in one.ui.notices[0], one.ui.notices
@@ -824,3 +829,10 @@ async def test_the_description_cannot_lift_the_floor():
         "no permission the session did not already have",
     ):
         assert rule in tail, f"the last paragraph no longer denies: {rule}"
+
+
+def test_the_numbers_the_guide_and_the_invariant_name():
+    """4000 characters and 120 columns are promises in the guide and in A16, not implementation details."""
+    from zettcode.jit_harness.command import MAX_DESCRIPTION, MAX_SHOWN
+
+    assert (MAX_DESCRIPTION, MAX_SHOWN) == (4000, 120)
