@@ -49,7 +49,7 @@ class HarnessPage(ListPage):
             items,
             title="Harnesses",
             subtitle=_shown(directory),
-            footer=f"harness is {state} \u00b7 enter switch \u00b7 esc close",
+            footer=f"harness is {state} \u00b7 enter borrow \u00b7 esc close",
             on_select=lambda item: on_switch(str(item.value)),
             on_cancel=on_close,
         )
