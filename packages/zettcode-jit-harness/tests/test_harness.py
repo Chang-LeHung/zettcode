@@ -761,12 +761,12 @@ async def test_a_description_that_was_cut_says_so_to_the_reader_too(tmp_path: Pa
     """The model is told where its brief was cut; a reader who pasted 4,500 characters is told how much went."""
     from zettcode.jit_harness.command import MAX_DESCRIPTION
 
-    client = _Switch(_configured(tmp_path))
-
-    result, _ = await _run(f"gen {'x' * (MAX_DESCRIPTION + 500)}", client)
-
+    result, _ = await _run(f"gen {'x' * (MAX_DESCRIPTION + 500)}", _Switch(_configured(tmp_path)))
     assert f"cut at {MAX_DESCRIPTION} characters" in result.message, result.message
-    assert "500 were not sent" in result.message
+    assert "500 characters were not sent" in result.message
+
+    one, _ = await _run(f"gen {'x' * (MAX_DESCRIPTION + 1)}", _Switch(_configured(tmp_path)))
+    assert "1 character was not sent" in one.message, one.message
 
 
 async def test_a_description_short_enough_to_send_adds_no_note(tmp_path: Path):
