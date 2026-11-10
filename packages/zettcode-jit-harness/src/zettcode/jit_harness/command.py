@@ -233,10 +233,11 @@ class HarnessCommand(TuiPlugin):
             asked = description.strip()
             if len(asked) > MAX_DESCRIPTION:
                 # The model was told where its brief was cut; the reader pasted the text and has to be told too.
+                lost = len(asked) - MAX_DESCRIPTION
                 return CommandResult(
                     message=(
-                        f"Your description was cut at {MAX_DESCRIPTION} characters: the last "
-                        f"{len(asked) - MAX_DESCRIPTION} were not sent."
+                        f"Your description was cut at {MAX_DESCRIPTION} characters: the last {lost} "
+                        f"{'character was' if lost == 1 else 'characters were'} not sent."
                     )
                 )
             return CommandResult()
