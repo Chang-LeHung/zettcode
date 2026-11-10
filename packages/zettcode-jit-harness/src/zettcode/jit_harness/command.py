@@ -15,10 +15,11 @@ workspace's own files are never touched, and the repositories live under ``confi
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zettcode.engine.harness_paths import harness_root, session_directory
+from zettcode.engine.harness_paths import existing_session_path, harness_root, session_directory
 from zettcode.plugin_api.commands import CommandContext, CommandResult, Subcommand
 from zettcode.plugin_api.panels import bottom_panel
 from zettcode.plugin_api.plugin import TuiPlugin
@@ -27,6 +28,7 @@ from zettcode.tui.render import truncate
 from .page import HARNESS_ROWS, HarnessPage
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from zettcode.config import ZettCodeConfig
     from zettcode.engine.plugins.context import PluginContext
     from zettcode.plugin_api.commands import CommandHost, CommandUi
 
@@ -210,43 +212,83 @@ class HarnessCommand(TuiPlugin):
 
         The current session is always a row, even before it has a folder, so opening ``/harness`` and pressing Enter
         cannot silently resume somebody else. Rows for sessions the store no longer knows are shown disabled; their
-        folders are read, never imported.
+        folders are read, never imported or moved.
         """
         current = host.client.session.id
-        current_directory = directory_of(host)
-        root = harness_root(host.client.config)
+        config = host.client.config
+        current_directory = existing_session_path(config, current)
+        root = harness_root(config)
+        error = ""
         try:
             stored = await host.client.sessions.list(limit=1000)
-        except Exception:
+        except Exception as failure:
             stored = []
+            error = str(failure)
         titles = {info.id: info.title for info in stored}
         current_title = titles.get(current)
         if current_title is None:
             current_title = await asyncio.to_thread(lambda: getattr(host.client.session, "title", None))
-        count = self._repository_count(current_directory)
+        rows = await asyncio.to_thread(
+            self._session_rows,
+            config,
+            current,
+            current_title or "Current session",
+            current_directory,
+            stored,
+            len(stored) >= 1000,
+            root,
+            error,
+        )
+        state = "on" if host.client.harness else "off"
+        page = HarnessPage(
+            state=state,
+            directory=root,
+            sessions=rows,
+            on_switch=lambda session_id: self._switch(host, current, session_id),
+            on_close=host.close_page,
+        )
+        return CommandResult(widget=bottom_panel(page, rows=HARNESS_ROWS))
+
+    @classmethod
+    def _session_rows(
+        cls,
+        config: ZettCodeConfig,
+        current: str,
+        current_title: str,
+        current_directory: Path,
+        stored: Sequence[object],
+        capped: bool,
+        root: Path,
+        error: str,
+    ) -> list[tuple[str | None, str, str, bool]]:
+        """Build rows from ids and pure paths; filesystem scans stay off the event loop."""
+        count = cls._repository_count(current_directory)
         rows: list[tuple[str | None, str, str, bool]] = [
             (
                 current,
-                current_title or "Current session",
+                current_title,
                 f"{count} repositor{'y' if count == 1 else 'ies'} \u00b7 current"
                 if current_directory.is_dir()
                 else "No harness yet",
                 False,
             )
         ]
+        if error:
+            rows.append((None, "Session store unreadable", error, True))
         seen = {current_directory.name}
         for info in stored:
-            if info.id == current:
+            session_id = getattr(info, "id", "")
+            if not session_id or session_id == current:
                 continue
-            directory = session_directory(host.client.config, info.id)
+            directory = existing_session_path(config, session_id)
             if not directory.is_dir():
                 continue
             seen.add(directory.name)
-            count = self._repository_count(directory)
+            count = cls._repository_count(directory)
             rows.append(
                 (
-                    info.id,
-                    info.title or info.id,
+                    session_id,
+                    getattr(info, "title", None) or session_id,
                     f"{count} repositor{'y' if count == 1 else 'ies'}",
                     False,
                 )
@@ -259,24 +301,17 @@ class HarnessCommand(TuiPlugin):
             for path in stale:
                 if not path.is_dir() or path.name in seen:
                     continue
-                count = self._repository_count(path)
+                count = cls._repository_count(path)
+                reason = "outside newest 1000" if capped else "session gone"
                 rows.append(
                     (
                         None,
                         path.name,
-                        f"{count} repositor{'y' if count == 1 else 'ies'} \u00b7 session gone",
+                        f"{count} repositor{'y' if count == 1 else 'ies'} \u00b7 {reason}",
                         True,
                     )
                 )
-        state = "on" if host.client.harness else "off"
-        page = HarnessPage(
-            state=state,
-            directory=root,
-            sessions=rows,
-            on_switch=lambda session_id: self._switch(host, current, session_id),
-            on_close=host.close_page,
-        )
-        return CommandResult(widget=bottom_panel(page, rows=HARNESS_ROWS))
+        return rows
 
     @staticmethod
     def _repository_count(directory: Path) -> int:

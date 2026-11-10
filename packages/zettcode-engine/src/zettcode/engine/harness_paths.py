@@ -34,6 +34,25 @@ def harness_root(config: ZettCodeConfig) -> Path:
     return config.harness_dir / workspace_directory_name(config.workspace)
 
 
+def session_path(config: ZettCodeConfig, session_id: str) -> Path:
+    """Return a session's canonical harness folder without moving or creating anything."""
+    from zett_agent.jit_harness.repo import session_directory_name
+
+    return harness_root(config) / session_directory_name(session_id)
+
+
+def existing_session_path(config: ZettCodeConfig, session_id: str) -> Path:
+    """Return the canonical folder when it exists, else a pre-workspace one, without moving either."""
+    from zett_agent.jit_harness.repo import session_directory_name
+
+    name = session_directory_name(session_id)
+    current = harness_root(config) / name
+    if current.is_dir():
+        return current
+    legacy = config.harness_dir / name
+    return legacy if legacy.is_dir() else current
+
+
 def move_session(legacy_root: Path, root: Path, session_id: str) -> Path:
     """Return this session's directory under ``root``, moving ``legacy_root``'s copy into it first.
 
