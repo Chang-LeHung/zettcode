@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from plugin_helpers import agent_extensions
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.jit_harness.extension import SwitchedHarness
+from zettcode.plugin_api.commands import CommandResult
 from zettcode.sdk.builtins import load_agent_plugins
 
 #: The tools the framework's harness adds to a request.
@@ -420,3 +422,274 @@ def test_a_repository_present_on_both_sides_stays_in_the_legacy_folder(tmp_path:
 
     assert (root / "sid" / "kit" / "new.py").is_file(), "the new copy wins"
     assert (legacy / "sid" / "kit").is_dir(), "the old copy is not thrown away"
+
+
+# -- /harness and its two words ------------------------------------------------------------------------------------
+
+
+class _Switch:
+    """The bit of the SDK client ``/harness`` reads: the config, the session, the switch and one turn's worth of SDK."""
+
+    def __init__(self, config: ZettCodeConfig, *, harness: bool = False, started: bool = True) -> None:
+        self.config = config
+        self.session = type("Session", (), {"id": "mine"})()
+        self.harness = harness
+        self.started = started
+        #: What happened, in the order the command made it happen: the switch or the turn it asked for.
+        self.events: list[str] = []
+        self.switched: list[bool] = []
+
+    def use_harness(self, on: bool) -> bool:
+        self.switched.append(on)
+        self.events.append(f"switch:{bool(on)}")
+        self.harness = bool(on)
+        return self.harness
+
+
+class _Shell:
+    """The shell a command runs against: the client, the turn it may start, and the page it may close."""
+
+    def __init__(self, client: _Switch) -> None:
+        self.client = client
+        self.prompts: list[tuple[str, str | None]] = []
+        self.closed = 0
+
+    async def prompt(self, text: str, *, shown: str | None = None, cache: str | None = None) -> bool:
+        self.client.events.append("prompt")
+        self.prompts.append((text, shown))
+        return self.client.started
+
+    def close_page(self) -> None:
+        self.closed += 1
+
+
+class _Ui:
+    """The surfaces a command may write to; ``/harness`` answers in its result instead."""
+
+    def markdown(self, text: str) -> None: ...
+
+    def notice(self, text: str) -> None: ...
+
+    def error(self, text: str) -> None: ...
+
+    def notify(self, text: str, *, level: str = "info") -> None: ...
+
+
+def _configured(tmp_path: Path) -> ZettCodeConfig:
+    """Return a config whose harness folder and session store are both under the test's directory."""
+    (tmp_path / "work").mkdir(exist_ok=True)
+    return ZettCodeConfig(
+        workspace=tmp_path / "work",
+        models=(ModelConfig(model="m", token="t"),),
+        store=tmp_path / "sessions",
+        harness_dir=tmp_path / "harness",
+        mcp_enabled=False,
+    )
+
+
+async def _run(argument: str, client: _Switch) -> tuple[CommandResult, _Shell]:
+    """Run ``/harness`` with ``argument`` and return what it answered, beside the shell it answered through."""
+    from zettcode.jit_harness.command import HarnessCommand
+    from zettcode.plugin_api.commands import CommandContext
+
+    shell = _Shell(client)
+    context = CommandContext(argument=argument, ui=_Ui(), host=shell)  # type: ignore[arg-type]
+    return await HarnessCommand().harness(context), shell
+
+
+async def test_the_command_is_offered_with_the_two_words_it_takes():
+    """The menu offers ``gen`` and ``reset`` behind an extra Enter, and the policy for a running request is ``refuse``."""
+    from types import SimpleNamespace
+
+    from zettcode.jit_harness.command import HarnessCommand
+
+    class Tui:
+        def __init__(self) -> None:
+            self.registered: list[SimpleNamespace] = []
+
+        def register_command(self, name, description, handler, *, when_busy="refuse", subcommands=()):
+            self.registered.append(
+                SimpleNamespace(name=name, handler=handler, when_busy=when_busy, subcommands=tuple(subcommands))
+            )
+
+    class Context:
+        def __init__(self) -> None:
+            self.tui = Tui()
+
+    context = Context()
+    HarnessCommand().activate(context)  # type: ignore[arg-type]
+
+    (command,) = context.tui.registered
+    assert command.name == "harness"
+    assert command.when_busy == "refuse", "gen asks for a turn, and reset deletes what a running request has loaded"
+    assert [word.name for word in command.subcommands] == ["gen", "reset"]
+    assert all(word.needs_more for word in command.subcommands), (
+        "a menu Enter on the word must not spend a turn or delete a folder by itself"
+    )
+
+
+async def test_harness_alone_opens_the_panel_and_changes_nothing(tmp_path: Path):
+    client = _Switch(_configured(tmp_path))
+
+    result, shell = await _run("", client)
+
+    assert result.widget is not None, "no argument is still the page"
+    assert result.message == ""
+    assert client.switched == [] and shell.prompts == [], "looking at the harness is not touching it"
+
+
+async def test_gen_turns_the_harness_on_first_and_asks_for_one_tool_as_one_turn(tmp_path: Path):
+    client = _Switch(_configured(tmp_path))
+
+    result, shell = await _run("gen", client)
+
+    assert client.events == ["switch:True", "prompt"], "the turn mounts the tools, so the switch has to move first"
+    (text, shown) = shell.prompts[0]
+    assert shown == "/harness gen", "the reader sees the command, not the brief"
+    assert "repo_create" in text and "repo_load" in text, (
+        "the brief names the tools that build and check the repository"
+    )
+    assert "Do not change the workspace" in text, "a tool is built in the harness's folder, never in the project"
+    assert result.message == "" and result.widget is None, "the turn is the answer"
+
+
+async def test_gen_says_so_when_the_switch_did_not_move(tmp_path: Path):
+    class Deaf(_Switch):
+        def use_harness(self, on: bool) -> bool:
+            super().use_harness(on)
+            return False
+
+    client = Deaf(_configured(tmp_path))
+
+    result, shell = await _run("gen", client)
+
+    assert "did not turn on" in result.message
+    assert shell.prompts == [], "nothing is generated for a harness that is not on"
+
+
+async def test_gen_says_so_when_no_turn_could_be_started(tmp_path: Path):
+    """A locked session or a window still starting answers ``False``: the harness stays on and the reader is told."""
+    client = _Switch(_configured(tmp_path), started=False)
+
+    result, _ = await _run("gen", client)
+
+    assert client.harness is True, "the switch moved before the turn was refused"
+    assert "no turn was started" in result.message and "/harness gen" in result.message
+
+
+async def test_reset_turns_the_harness_off_and_deletes_only_this_sessions_folder(tmp_path: Path):
+    from zettcode.engine.harness_paths import session_directory
+
+    config = _configured(tmp_path)
+    (config.workspace / "main.py").write_text("print(1)", encoding="utf-8")
+    mine = session_directory(config, "mine")
+    (mine / "kit").mkdir(parents=True)
+    (mine / "kit" / "__init__.py").write_text("", encoding="utf-8")
+    (mine / "scratch").mkdir()
+    theirs = session_directory(config, "theirs")
+    (theirs / "tool").mkdir(parents=True)
+
+    result, _ = await _run("reset", _Switch(config, harness=True))
+
+    assert not mine.exists(), "this session's folder is gone, not merely the repositories in it"
+    assert (theirs / "tool").is_dir(), "another session's tools are not this command's"
+    assert (config.workspace / "main.py").read_text(encoding="utf-8") == "print(1)", "the workspace is never touched"
+    assert "`kit`" in result.message, "the report names what it dropped"
+    assert "nothing in the workspace was touched" in result.message
+
+
+async def test_reset_reports_the_switch_even_when_there_was_nothing_to_delete(tmp_path: Path):
+    client = _Switch(_configured(tmp_path), harness=True)
+
+    result, _ = await _run("reset", client)
+
+    assert client.harness is False and client.switched == [False]
+    assert "nothing to delete" in result.message
+
+
+async def test_reset_deletes_nothing_that_is_not_inside_the_harness_root(tmp_path: Path, monkeypatch):
+    """A session folder that resolves elsewhere is reported, not removed: the check is what makes the delete safe."""
+    from zettcode.jit_harness import command as command_module
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "keep.txt").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(command_module, "session_directory", lambda config, session_id: elsewhere)
+    client = _Switch(_configured(tmp_path), harness=True)
+
+    result, _ = await _run("reset", client)
+
+    assert (elsewhere / "keep.txt").is_file(), "nothing outside the harness folder is deleted, however it got there"
+    assert client.harness is False, "the switch still goes off"
+    assert "left alone" in result.message and str(elsewhere) in result.message
+
+
+@pytest.mark.skipif(os.name == "nt", reason="creating a symbolic link needs a privilege on Windows")
+async def test_reset_reports_a_session_folder_that_is_itself_a_link_instead_of_failing(tmp_path: Path):
+    """The folder a link points at is not this session's storage: it is named, not deleted, and the switch still goes off.
+
+    A link *inside* the folder is a different matter and is safe by construction — ``rmtree`` unlinks an entry it
+    finds and never descends into one — so this is the case the resolved check is for.
+    """
+    from zettcode.engine.harness_paths import harness_root, session_directory
+
+    config = _configured(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("x", encoding="utf-8")
+    root = harness_root(config)
+    root.mkdir(parents=True)
+    (root / "mine").symlink_to(outside, target_is_directory=True)
+    linked = session_directory(config, "mine")
+    assert linked.resolve() == outside.resolve()
+    client = _Switch(config, harness=True)
+
+    result, _ = await _run("reset", client)
+
+    assert (outside / "keep.txt").is_file(), "what the link points at is not this session's to delete"
+    assert linked.is_symlink(), "the link itself is left in place"
+    assert "left alone" in result.message and str(linked) in result.message
+    assert client.harness is False
+
+
+async def test_reset_still_deletes_when_a_manifest_cannot_be_read(tmp_path: Path, monkeypatch):
+    """Reporting what is about to go must never be the reason it does not go: an unreadable file is one row."""
+    import zett_agent.jit_harness
+
+    from zettcode.engine.harness_paths import session_directory
+
+    config = _configured(tmp_path)
+    mine = session_directory(config, "mine")
+    (mine / "kit").mkdir(parents=True)
+    (mine / "kit" / "__init__.py").write_text("", encoding="utf-8")
+
+    def unreadable(path):
+        raise OSError("Permission denied")
+
+    monkeypatch.setattr(zett_agent.jit_harness, "inspect_repository", unreadable)
+
+    result, _ = await _run("reset", _Switch(config, harness=True))
+
+    assert not mine.exists(), "the delete is not held up by a file it could not describe"
+    assert "`kit`" in result.message, "the row that could not be read still names the repository"
+
+
+async def test_a_word_the_command_does_not_take_lists_the_ones_it_does(tmp_path: Path):
+    """``on`` and ``off`` used to be this command's; a reader who still types one is pointed at both switches."""
+    client = _Switch(_configured(tmp_path))
+
+    result, shell = await _run("on", client)
+
+    assert "not a word" in result.message
+    for form in ("/harness", "/harness gen", "/harness reset", "/plugins"):
+        assert form in result.message, f"the usage does not name {form}"
+    assert client.switched == [] and shell.prompts == [], "a typo changes nothing"
+
+
+async def test_a_subcommand_takes_nothing_after_it(tmp_path: Path):
+    client = _Switch(_configured(tmp_path))
+
+    result, shell = await _run("gen now", client)
+
+    assert "takes nothing after it" in result.message
+    assert client.switched == [] and shell.prompts == [], "nothing runs on a usage error"

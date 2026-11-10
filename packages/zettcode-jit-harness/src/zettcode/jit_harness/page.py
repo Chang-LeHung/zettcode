@@ -1,4 +1,9 @@
-"""The read-only panel `/harness` opens: the switch's state, the folder, and this session's repositories."""
+"""The panel ``/harness`` opens: the switch's state, the folder, and this session's repositories.
+
+The two words beside the panel change **this session** — ``gen`` turns the harness on and has a tool built, ``reset``
+turns it off and deletes what this session kept — while ``/plugins`` is what a run starts with. The panel itself
+writes nothing.
+"""
 
 from __future__ import annotations
 
@@ -27,8 +32,9 @@ def _shown(directory: Path) -> str:
 class HarnessPage(ListPage):
     """What the harness is doing now: on or off, where its files are, and what the model has written.
 
-    The page writes nothing: the switch lives on the `/plugins` page, which is where a reader turns the harness on or
-    off for the next start. Each repository is one row; selecting any row (or Escape) closes the page.
+    The page writes nothing: `/harness gen` and `/harness reset` are what turn it on, build a tool and drop one, and
+    `/plugins` is where the harness is switched for the next start. Each repository is one row; selecting any row (or
+    Escape) closes the page.
     """
 
     def __init__(
@@ -52,7 +58,7 @@ class HarnessPage(ListPage):
             items,
             title=f"Harness is {state}",
             subtitle=_shown(directory),
-            footer="/plugins switches it \u00b7 esc close",
+            footer="/harness gen|reset \u00b7 /plugins: next start \u00b7 esc close",
             on_select=lambda _value: on_close(),
             on_cancel=on_close,
         )
