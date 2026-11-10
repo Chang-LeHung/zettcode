@@ -525,7 +525,7 @@ async def test_the_command_is_offered_with_the_two_words_it_takes():
     assert command.when_busy == "refuse", "gen asks for a turn of its own, so the whole command takes the slot"
     assert [word.name for word in command.subcommands] == ["gen", "reset"]
     assert all(word.needs_more for word in command.subcommands), (
-        "a menu Enter on the word must not spend a turn or delete a folder by itself"
+        "a menu Enter on the word must not spend a turn or flip the switch by itself"
     )
 
 
@@ -603,6 +603,8 @@ async def test_reset_only_switches_back_and_deletes_nothing(tmp_path: Path):
     after = {path.relative_to(mine): path.read_bytes() for path in mine.rglob("*") if path.is_file()}
     assert after == before, "not a byte of the session's tools was touched"
     assert str(mine) in result.message, "the folder is named, so a reader who wants it gone knows what to remove"
+    assert "folder this session's tools live in is still there" in result.message, "the folder it kept is reported"
+    assert "never wrote a tool" not in result.message, "a session that did write one is not told it did not"
     assert "later requests have none of its tools" in result.message, "and what changes is the next request"
 
 
@@ -617,7 +619,7 @@ async def test_reset_says_when_the_session_never_wrote_a_tool(tmp_path: Path):
     result, _ = await _run("reset", _Switch(config, harness=True))
 
     assert "never wrote a tool" in result.message, result.message
-    assert "tools are still in" not in result.message, "nothing is claimed to be there"
+    assert "is still there" not in result.message, "nothing is claimed to be there"
 
 
 async def test_reset_does_not_ask_for_the_session_to_itself(tmp_path: Path):
@@ -753,6 +755,26 @@ async def test_the_row_is_clamped_by_columns_so_a_wide_description_fits(tmp_path
     assert shown.endswith("\u2026"), "a cut row says it was cut"
     assert display_width(shown) <= MAX_SHOWN, "the row fits the budget in columns"
     assert len(shown) < MAX_SHOWN, "so it holds fewer characters than the budget: this is what columns means"
+
+
+async def test_a_description_that_was_cut_says_so_to_the_reader_too(tmp_path: Path):
+    """The model is told where its brief was cut; a reader who pasted 4,500 characters is told how much went."""
+    from zettcode.jit_harness.command import MAX_DESCRIPTION
+
+    client = _Switch(_configured(tmp_path))
+
+    result, _ = await _run(f"gen {'x' * (MAX_DESCRIPTION + 500)}", client)
+
+    assert f"cut at {MAX_DESCRIPTION} characters" in result.message, result.message
+    assert "500 were not sent" in result.message
+
+
+async def test_a_description_short_enough_to_send_adds_no_note(tmp_path: Path):
+    client = _Switch(_configured(tmp_path))
+
+    result, _ = await _run("gen fix the  parser", client)
+
+    assert result.message == "", "a turn that ran with all of the description is its own answer"
 
 
 async def test_a_description_outranks_the_brief_and_the_report_answers_it():
