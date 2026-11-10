@@ -134,13 +134,9 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
 
     state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     worker = Worker(state_dir)
-    if worker.running():
-        print(worker.stop(), "\u2014 a new scan starts a new process")
-        if worker.running():
-            # The old process is still writing the same state file with the old token and cursor; saving this
-            # login under it would be undone as soon as it saved again.
-            print("the old bridge did not stop; nothing was changed. Stop it by hand and run the command again.")
-            return 3
+    # The running bridge stays up while the code is on screen: a scan that fails, or a reader who walks away,
+    # must not cost the bridge they already had. Nothing is written until the login has finished, so the old
+    # process keeps working on the state it started with.
     state = BridgeState.load(state_dir / "state.json")
     client = WeChatClient()
     state_now = None
@@ -187,13 +183,20 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
     state.permission = arguments.permission
     state.allow = list(arguments.allow)
     state.allow_all = bool(arguments.allow_all)
-    state.save()
     if not state.token():
         # A login without a token is a bridge that cannot send or receive, and a background process that says
         # nothing about it. Better to say so here, where the reader is still watching the phone.
         print("the login finished, but WeChat handed back no bot token. Nothing was started; run the command again")
         return 3
 
+    # Only now is the old process stopped, and it is stopped before the new state is written: one that is still
+    # running keeps its own copy and would write that back over the new token at its next message.
+    if worker.running():
+        print(worker.stop(), "\u2014 the new login replaces it")
+        if worker.running():
+            print("the old bridge did not stop, so the new login was not saved. Stop it by hand and run again.")
+            return 3
+    state.save()
     try:
         pid = worker.start(command("--state-dir", str(state_dir)))
     except RuntimeError as error:

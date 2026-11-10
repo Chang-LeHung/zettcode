@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -190,3 +191,97 @@ def test_the_module_runs_itself_the_way_the_background_process_starts_it(tmp_pat
 
     assert finished.returncode == 0, finished.stderr
     assert "bridge:    not running" in finished.stdout, finished.stdout + finished.stderr
+
+
+class ScanWorker:
+    """What a login does to the background process, in order."""
+
+    calls: list[str] = []
+    running_now = False
+
+    def __init__(self, directory: Path) -> None:
+        self.directory = directory
+        self.log = directory / "worker.log"
+
+    def running(self) -> bool:
+        return self.running_now
+
+    def stop(self, **_kwargs) -> str:
+        ScanWorker.calls.append("stop")
+        ScanWorker.running_now = False
+        return "stopped the bridge (pid 1)"
+
+    def start(self, argv, **_kwargs) -> int:
+        ScanWorker.calls.append("start")
+        ScanWorker.running_now = True
+        return 2
+
+
+class ScanClient:
+    """A WeChat client whose login answers the way the test needs, without a phone."""
+
+    def __init__(self, statuses: list) -> None:
+        self.statuses = statuses
+        self.closed = False
+
+    async def login(self):
+        from agim.models import LoginHandshake
+
+        return LoginHandshake(qr_content="https://example.com/qr")
+
+    async def is_login(self, handshake, *, verify_code=None):
+        from agim.models import LoginCredentials, LoginState
+
+        status = self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
+        if status.value == "connected":
+            return LoginState(
+                status=status,
+                message="connected",
+                credentials=LoginCredentials(config={"base_url": "https://example.com"}, secrets={"bot_token": "t"}),
+            )
+        return LoginState(status=status, message="no")
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+def test_a_scan_that_does_not_finish_leaves_the_running_bridge_alone(tmp_path: Path, monkeypatch) -> None:
+    """The bridge a reader already has must outlive a scan they walked away from."""
+    from agim.models import LoginStatus
+
+    from zettcode.im.weixin import cli
+
+    ScanWorker.calls = []
+    ScanWorker.running_now = True
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+    monkeypatch.setattr("agim.wechat.client.WeChatClient", lambda *a, **k: ScanClient([LoginStatus.EXPIRED]))
+
+    status = asyncio.run(cli._login(cli.build_parser().parse_args(["login", "--state-dir", str(tmp_path)]), tmp_path))
+
+    assert status == 2
+    assert ScanWorker.calls == [], "nothing was stopped and nothing was started"
+    assert ScanWorker.running_now, "the bridge that was there is still there"
+
+
+def test_a_scan_that_finishes_replaces_the_running_bridge(tmp_path: Path, monkeypatch) -> None:
+    from agim.models import LoginStatus
+
+    from zettcode.im.state import BridgeState
+    from zettcode.im.weixin import cli
+
+    ScanWorker.calls = []
+    ScanWorker.running_now = True
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+    monkeypatch.setattr("agim.wechat.client.WeChatClient", lambda *a, **k: ScanClient([LoginStatus.CONNECTED]))
+
+    status = asyncio.run(
+        cli._login(
+            cli.build_parser().parse_args(["login", "--state-dir", str(tmp_path), "--allow", "u1"]),
+            tmp_path,
+        )
+    )
+
+    assert status == 0
+    assert ScanWorker.calls == ["stop", "start"], "the old process is stopped, then a new one starts"
+    saved = BridgeState.load(tmp_path / "state.json")
+    assert saved.token() == "t" and saved.allow == ["u1"]
