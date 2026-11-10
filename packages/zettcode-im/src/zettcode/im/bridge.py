@@ -21,6 +21,7 @@ Everything that can go wrong has a sentence for the reader, because a chat app h
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -183,7 +184,8 @@ class Bridge:
     # -- one message ----------------------------------------------------------------------------------
     async def _turn(self, message: Any, cursor: str) -> None:
         """Answer one inbound message, and remember that it was answered."""
-        if self.state.answered(str(message.event_id)):
+        identity = _identity(message)
+        if self.state.answered(identity):
             # The queue is a moment behind the state: a batch handed over twice may be queued twice before the
             # first answer is written. The state is the word, not the queue — but the cursor still moves, or the
             # next poll would ask for this message again.
@@ -191,6 +193,12 @@ class Bridge:
             self._save()
             return
         chat = str(message.chat_id)
+        # One line per message, before anything can fail: without it a turn that worked and a message that never
+        # arrived look the same in the log, which is the worst thing to be unsure about.
+        self.error(
+            f"got {message.event_id} from {message.user_id} in {chat}: "
+            f"{len(str(message.text))} characters, {len(getattr(message, 'media', ()) or ())} attachment(s)"
+        )
         if not self.settings.permits(str(message.user_id)):
             self.error(f"refused {message.event_id}: {message.user_id} is not in the allowed senders")
             await self._say(
@@ -226,15 +234,16 @@ class Bridge:
         if not answer.strip():
             answer = "the agent finished without an answer to send back."
         if await self._say(chat, message, answer):
+            self.error(f"answered {message.event_id}: {len(answer)} characters")
             self._done(message, cursor)
             return
         # The answer exists and the chat will not take it. Answering the same message again would run the turn
         # again — and again, for as long as the platform keeps refusing — so the message is behind us after a
         # second attempt, and the log is where the reason is.
-        attempts = self._undelivered.get(str(message.event_id), 0) + 1
-        self._undelivered[str(message.event_id)] = attempts
+        attempts = self._undelivered.get(identity, 0) + 1
+        self._undelivered[identity] = attempts
         if attempts >= 2:
-            self._undelivered.pop(str(message.event_id), None)
+            self._undelivered.pop(identity, None)
             self.error(f"giving up on delivering the answer to {message.event_id}: {attempts} attempts")
             self._done(message, cursor)
 
@@ -263,7 +272,7 @@ class Bridge:
     def _done(self, message: Any, cursor: str) -> None:
         """Record the answer: the message is behind us, and the next poll starts after it."""
         self.state.remember(
-            str(message.event_id), cursor=cursor or "", chat_id=str(message.chat_id), reply_token=message.reply_token
+            _identity(message), cursor=cursor or "", chat_id=str(message.chat_id), reply_token=message.reply_token
         )
         self._save()
 
@@ -273,6 +282,19 @@ class Bridge:
             self.state.save_runtime(self.path)
         except OSError as error:
             self.error(f"the state at {self.path} could not be written: {error}")
+
+
+def _identity(message: Any) -> str:
+    """Return the key a message is remembered by: the chat, the platform's id for it, and what it said.
+
+    The platform's own id cannot stand alone. When a message carries no id the IM client falls back to a sequence
+    number — one that starts at 1 in every conversation and again after every login — so ``"1"`` names a different
+    message tomorrow. Remembering it alone made a new message look answered, and the bridge dropped it without a
+    word. The chat and a short digest of the text make a collision need the same sequence number, in the same chat,
+    with the same words, which is what a genuine re-delivery of one message is.
+    """
+    digest = hashlib.sha1(str(message.text).encode("utf-8")).hexdigest()[:10]
+    return f"{message.chat_id}|{message.event_id}|{digest}"
 
 
 def _prompt(message: Any) -> str:
