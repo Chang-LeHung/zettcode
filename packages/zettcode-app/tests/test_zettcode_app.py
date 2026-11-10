@@ -9673,7 +9673,7 @@ async def test_the_harness_command_lists_sessions_with_harnesses(tmp_path):
 
     await _type_command(app, harness, "/harness")
     said = harness.render().text
-    assert "No harness yet" in said, said
+    assert "No harness yet" in said and "SESSION · REPOSITORY" in said, said
     harness.press("escape")
 
     for name in ("kit", "old", "hollow"):
