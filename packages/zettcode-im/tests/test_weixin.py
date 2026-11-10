@@ -551,3 +551,17 @@ def test_set_does_not_save_when_the_bridge_did_not_stop(tmp_path: Path, monkeypa
 
     assert cli.main(["set", "--state-dir", str(tmp_path), "--permission", "deny"]) == 3
     assert BridgeState.load(tmp_path / "state.json").permission == "safe"
+
+
+def test_the_default_level_is_nothing_when_the_configuration_lists_no_model_or_cannot_be_read(monkeypatch) -> None:
+    """Both are a daemon on the model's own default, not a spawn that fails."""
+    from zettcode.sdk.daemons import default_effort
+
+    monkeypatch.setattr("zettcode.sdk.models.list_models", lambda *a, **k: [])
+    assert default_effort() == ""
+
+    def broken(*_a, **_k):
+        raise OSError("no such file")
+
+    monkeypatch.setattr("zettcode.sdk.models.list_models", broken)
+    assert default_effort() == ""
