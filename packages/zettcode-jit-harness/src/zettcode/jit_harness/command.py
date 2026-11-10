@@ -55,6 +55,10 @@ HARNESS_IN_USE = (
     "that has not ended. Run `/harness reset` again in a moment."
 )
 
+#: Said when a turn this reader asked for did not start and they had written something: their words went with the
+#: draft, and a reader who pasted a paragraph has to be told to paste it again rather than find out by looking.
+NOT_KEPT = "What you wrote after the word was not kept."
+
 #: What ``/harness gen`` asks the model for. It is one turn of this conversation, so it says what a good tool is and
 #: what a report of one has to contain; the reader sees only the command in the transcript.
 GEN_BRIEF = """Build one small tool for this workspace in the just-in-time harness, then report it.
@@ -233,15 +237,15 @@ class HarnessCommand(TuiPlugin):
         the brief, marked as a requirement, and what the transcript shows is the command with it rather than the brief.
         """
         if host.client.session.locked:
-            return CommandResult(message=LOCKED)
+            return CommandResult(message=f"{LOCKED}\n\n{NOT_KEPT}" if description.strip() else LOCKED)
         host.client.use_harness(True)
         if await host.prompt(brief_for(description), shown=shown_for(description)):
             return CommandResult()
-        kept = " — what you wrote after the word was not kept." if description.strip() else "."
+        kept = f" {NOT_KEPT}" if description.strip() else ""
         return CommandResult(
             message=(
                 "**The harness is on**, but the turn did not start: the window said why, above the composer, for a "
-                f"moment. Run `/harness gen` again when it is free{kept}"
+                f"moment. Run `/harness gen` again when it is free.{kept}"
             )
         )
 
