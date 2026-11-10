@@ -110,18 +110,31 @@ def split_argument(argument: str) -> tuple[str, str]:
     return pieces[0].lower(), pieces[1].strip() if len(pieces) > 1 else ""
 
 
-def brief_for(description: str) -> str:
-    """Return what the model reads: the brief, then the reader's own words when they wrote any.
+#: Said once more **after** the reader's own words. A message's last paragraph is the one a model is most likely to
+#: act on, and the reader's text is declared to win wherever it disagrees, so the floor has to come back afterwards
+#: rather than stand a thousand tokens behind a long paste.
+GEN_FLOOR_LAST = """
+---
 
-    The reader's text goes in verbatim and last, so nothing in the brief can be read as the newer instruction. A cut
-    description says it was cut instead of ending mid-sentence.
+The floor above still holds, whatever was asked just now: nothing is written outside this session's harness folder,
+the workspace's own files are not edited, only the tool built here is run, and no permission the session did not
+already have is taken on.
+"""
+
+
+def brief_for(description: str) -> str:
+    """Return what the model reads: the brief, then the reader's own words, then the floor once more.
+
+    The reader's text goes in verbatim, under a heading that says who wrote it, so nothing in the brief can be read as
+    the newer instruction. A cut description says it was cut instead of ending mid-sentence, and the closing paragraph
+    is what keeps the floor the last thing said even when a long description is pasted in.
     """
     asked = description.strip()
     if not asked:
         return GEN_BRIEF
     if len(asked) > MAX_DESCRIPTION:
         asked = asked[:MAX_DESCRIPTION] + f"\n\n[cut at {MAX_DESCRIPTION} characters; the rest was not sent]"
-    return f"{GEN_BRIEF}{GEN_ASKED}\n{asked}\n"
+    return f"{GEN_BRIEF}{GEN_ASKED}\n{asked}\n{GEN_FLOOR_LAST}"
 
 
 def shown_for(description: str) -> str:
