@@ -159,8 +159,8 @@ class HarnessCommand(TuiPlugin):
             return CommandResult()
         return CommandResult(
             message=(
-                "**The harness is on**, but the turn did not start. What refused it is in the line above; when the "
-                "window is free, run `/harness gen` again."
+                "**The harness is on**, but the turn did not start: the window said why, above the composer, for a "
+                "moment. Run `/harness gen` again when it is free."
             )
         )
 
@@ -220,7 +220,10 @@ class HarnessCommand(TuiPlugin):
             )
         except OSError as error:
             return CommandResult(
-                message=f"**Harness is off for this run**, but `{directory}` could not be deleted: {describe_error(error)}"
+                message=(
+                    f"**Harness is off for this run**, but `{directory}` could not be deleted: "
+                    f"{describe_error(error)}. Fix what stopped it and run `/harness reset` again."
+                )
             )
         named = ", ".join(f"`{name}`" for name, _detail in kept) or "no repository in it"
         leaving = self._legacy(config, host.client.session.id)
