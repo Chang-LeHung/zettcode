@@ -218,6 +218,9 @@ def _refresh(target: Path, delay: float = 0.0) -> None:
 
         points = tuple(installed_entry_points())
         fingerprint = _fingerprint(points)
+        cached = _read_cache(target)
+        if cached is not None and cached.get("version") == _CACHE_VERSION and cached.get("fingerprint") == fingerprint:
+            return
         rows: list[dict[str, object]] = []
         for origin, option in installed_options(points):
             try:
@@ -237,9 +240,9 @@ def _refresh(target: Path, delay: float = 0.0) -> None:
                 }
             )
         _write_cache(target, {"version": _CACHE_VERSION, "fingerprint": fingerprint, "options": rows})
-    except Exception:
-        # The next start tries again; a cache miss is already an accepted outcome.
-        pass
+    except Exception as error:
+        # The next start tries again; a cache miss is already an accepted outcome, but say why once.
+        sys.stderr.write(f"zettcode: could not cache plugin CLI options: {error}\n")
     finally:
         with _refresh_lock:
             _refreshing.discard(target)
@@ -248,6 +251,13 @@ def _refresh(target: Path, delay: float = 0.0) -> None:
 def _write_cache(path: Path, data: dict[str, object]) -> None:
     """Write the cache atomically, so a concurrent start sees either the old file or the new one."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    # A killed writer leaves a temp file behind; remove old ones when the next write runs.
+    for stale in path.parent.glob(f".{path.name}.*.tmp"):
+        try:
+            if time.time() - stale.stat().st_mtime > 3600:
+                stale.unlink()
+        except OSError:
+            pass
     temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     try:
         temporary.write_text(json.dumps(data, separators=(",", ":"), sort_keys=True), encoding="utf-8")

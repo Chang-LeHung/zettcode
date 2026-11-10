@@ -187,17 +187,18 @@ def test_the_rc_file_presets_arguments_one_per_line(tmp_path: Path):
     assert parse_args(["-w", str(tmp_path)], rc=tmp_path / "missing").workspace == tmp_path
 
 
-def test_an_unknown_rc_option_is_dropped_but_known_options_survive(tmp_path: Path, monkeypatch, capsys):
+def test_a_plugin_flag_in_rc_refreshes_a_cold_cache(tmp_path: Path, monkeypatch):
     from zettcode.engine.plugins import cli as plugin_cli
 
-    monkeypatch.setattr(plugin_cli, "load_cached_options", lambda: ())
+    fresh = (("demo", CliOption(("--demo-depth",), "depth", default="2", metavar="N")),)
+    monkeypatch.setattr(plugin_cli, "load_cached_options", lambda *, wait=False: fresh if wait else ())
     rc = tmp_path / ".ztrc"
     rc.write_text("--demo-depth\n5\n--full\n", encoding="utf-8")
 
     options = parse_args([], rc=rc)
 
     assert options.auto is True
-    assert "ignored unknown options" in capsys.readouterr().err
+    assert options.plugin_arguments == {"demo": {"depth": "5"}}
 
 
 def test_the_rc_file_cannot_choose_a_subcommand(tmp_path: Path):
