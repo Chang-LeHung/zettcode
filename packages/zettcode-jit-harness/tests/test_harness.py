@@ -617,6 +617,7 @@ async def test_reset_only_switches_back_and_deletes_nothing(tmp_path: Path):
     assert after == before, "not a byte of the session's tools was touched"
     assert str(mine) in result.message, "the folder is named, so a reader who wants it gone knows what to remove"
     assert "folder this session's tools live in is still there" in result.message, "the folder it kept is reported"
+    assert "on Windows close ZettCode first" in result.message, "the child still works in there, and Windows knows it"
     assert "is not there" not in result.message, "the folder it found is not called missing"
     assert "later requests have none of its tools" in result.message, "and what changes is the next request"
 
@@ -831,8 +832,8 @@ async def test_the_description_cannot_lift_the_floor():
         assert rule in tail, f"the last paragraph no longer denies: {rule}"
 
 
-def test_the_numbers_the_guide_and_the_invariant_name():
-    """4000 characters and 120 columns are promises in the guide and in A16, not implementation details."""
+def test_the_two_numbers_the_guide_names():
+    """4000 characters sent and 120 columns drawn are the numbers the guide promises; test_docs.py holds the guide."""
     from zettcode.jit_harness.command import MAX_DESCRIPTION, MAX_SHOWN
 
     assert (MAX_DESCRIPTION, MAX_SHOWN) == (4000, 120)

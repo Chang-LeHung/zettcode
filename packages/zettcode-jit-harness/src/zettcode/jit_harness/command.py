@@ -240,11 +240,11 @@ class HarnessCommand(TuiPlugin):
             )
         if await host.prompt(brief_for(description), shown=shown_for(description)):
             return CommandResult()
-        kept = f" {NOT_KEPT}" if description.strip() else ""
+        unsent = f" {NOT_KEPT}" if description.strip() else ""
         return CommandResult(
             message=(
                 "**The harness is on**, but the turn did not start: the window said why, above the composer, for a "
-                f"moment. Run `/harness gen` again when it is free.{kept}"
+                f"moment. Run `/harness gen` again when it is free.{unsent}"
             )
         )
 

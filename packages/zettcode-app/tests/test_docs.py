@@ -220,6 +220,18 @@ def test_every_english_guide_page_has_a_chinese_counterpart():
     assert "overview.md" in english
 
 
+@pytest.mark.parametrize("path", ["docs/guide/commands.md", "docs/zh/guide/commands.md"])
+def test_the_harness_row_promises_the_limits_the_command_uses(path):
+    """The two numbers a reader is told about are the command's own constants, not a second copy of them."""
+    from zettcode.jit_harness.command import MAX_DESCRIPTION, MAX_SHOWN
+
+    (row,) = [
+        line for line in (ROOT / path).read_text(encoding="utf-8").splitlines() if line.startswith("| `/harness` |")
+    ]
+    assert str(MAX_DESCRIPTION) in row, row
+    assert str(MAX_SHOWN) in row, row
+
+
 def test_the_terminal_preview_is_offline_deterministic_and_leaves_no_workspace(render_terminal, monkeypatch):
     def refuse_start(*args, **kwargs):
         raise AssertionError("Documentation assets must never start a model or contact an API")
