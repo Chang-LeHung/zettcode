@@ -268,7 +268,7 @@ class HarnessCommand(TuiPlugin):
         elif directory.exists():
             kept = (
                 f"Nothing was deleted: `{directory}` is there but is not a folder, so it was left as it is. "
-                "`/harness gen` writes the folder it needs beside it."
+                "`/harness gen` cannot make the folder while that is in the way: move it aside first."
             )
         else:
             kept = (
