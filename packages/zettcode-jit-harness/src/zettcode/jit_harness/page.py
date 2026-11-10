@@ -36,12 +36,14 @@ class HarnessPage(ListPage):
         *,
         state: str,
         directory: Path,
-        sessions: Sequence[tuple[str, str, str]],
+        sessions: Sequence[tuple[str | None, str, str, bool]],
         on_switch: Callable[[str], None],
         on_close: Callable[[], None],
     ) -> None:
-        """Build the rows from ``(session id, label, detail)``, current session first."""
-        items = [ListItem(session_id, label, detail) for session_id, label, detail in sessions]
+        """Build the rows from ``(session id, label, detail, disabled)``, current session first."""
+        items = [
+            ListItem(session_id, label, detail, disabled=disabled) for session_id, label, detail, disabled in sessions
+        ]
         if not items:
             items = [
                 ListItem(
@@ -53,9 +55,9 @@ class HarnessPage(ListPage):
             ]
         super().__init__(
             items,
-            title=f"Harness is {state}",
+            title="Harnesses",
             subtitle=_shown(directory),
-            footer="enter switch \u00b7 esc close",
+            footer=f"harness is {state} \u00b7 enter switch \u00b7 esc close",
             on_select=lambda item: on_switch(str(item.value)) if item.value is not None else on_close(),
             on_cancel=on_close,
         )
