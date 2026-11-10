@@ -199,6 +199,7 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
     # setting, and a flag that was not given leaves the stored one alone — a re-scan that forgot `--allow` used to
     # wipe the allow-list and turn every message into a refusal.
     previous_workspace = state.workspace
+    previous_session = state.session_id
     _apply_settings(state, arguments)
     if state.workspace != previous_workspace:
         # A session lives in one workspace: its id in another would resume a conversation that is not there.
@@ -217,6 +218,21 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
             print("the old bridge did not stop, so the new login was not saved. Stop it by hand and run again.")
             return 3
     state.save()
+    if previous_session and state.workspace != previous_workspace:
+        # The daemon of the old workspace is nobody's now: the bridge will start a new one here, and leaving the old
+        # one running is a session a reader never asked to keep. Best effort: a busy one is reported, not waited on.
+        from zettcode.sdk.daemons import stop_daemon
+
+        try:
+            said = await stop_daemon(previous_session, keep=True)
+        except Exception as error:  # noqa: BLE001 - the login is finished either way
+            said = f"the daemon of the old workspace was left running ({error})"
+        print(f"daemon     {said}")
+    elif previous_session and (arguments.model or arguments.effort or arguments.permission):
+        print(
+            "note       a daemon that is already running keeps the settings it was started with; "
+            "`zettcode-weixin set` applies new ones now"
+        )
     try:
         pid = worker.start(command("--state-dir", str(state_dir)))
     except RuntimeError as error:
