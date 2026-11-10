@@ -17,21 +17,19 @@ workspace's own files are never touched, and the repositories live under ``confi
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zettcode.engine.harness_paths import existing_session_path, harness_root, session_directory
+from zettcode.engine.harness_paths import existing_session_path, session_directory
 from zettcode.plugin_api.commands import CommandContext, CommandResult, Subcommand
 from zettcode.plugin_api.panels import bottom_panel
 from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.tui.render import truncate
 
-from .page import HARNESS_ROWS, HarnessPage
+from .page import HARNESS_ROWS, HarnessPage, HarnessTarget
 from .selection import HARNESS_CHOICES, HarnessChoice, HarnessChoices
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zettcode.config import ZettCodeConfig
     from zettcode.engine.plugins.context import PluginContext
     from zettcode.plugin_api.commands import CommandHost, CommandUi
 
@@ -47,9 +45,6 @@ SUBCOMMANDS: tuple[Subcommand, ...] = (
         needs_more=True,
     ),
 )
-
-#: How many stored sessions the picker asks for; hitting the cap changes what a stale row may mean.
-STORE_ROWS = 1000
 
 #: What ``gen`` answers when another process holds the session: a turn cannot start in one, and the switch must not
 #: move for a run that would then do nothing. ``when_busy`` sees this process's requests only. ``reset`` does not ask
@@ -218,36 +213,24 @@ class HarnessCommand(TuiPlugin):
         return CommandResult(message=self._usage(tried=word))
 
     async def _panel(self, host: CommandHost) -> CommandResult:
-        """Open the picker: stored sessions with a harness, the current session first, then stale folders.
+        """Open the picker over every harness directory under the configured harness root.
 
-        The current session is always a row, even before it has a folder; Enter on another row borrows that harness,
-        and Enter on the current row returns to the session's own. Rows for sessions the store no longer knows are
-        shown disabled; their folders are read, never imported or moved.
+        The current session is always a row, even before it has a folder; Enter on another row borrows that directory,
+        and Enter on the current row returns to the session's own. Directories are grouped by workspace when they are
+        one level down, and legacy session directories are still rows. The panel reads the tree, never imports a
+        plugin, and never moves a folder.
         """
         current = host.client.session.id
         config = host.client.config
         current_directory = existing_session_path(config, current)
-        root = harness_root(config)
-        error = ""
-        try:
-            stored = await host.client.sessions.list(limit=STORE_ROWS)
-        except Exception as failure:
-            stored = []
-            error = str(failure) or type(failure).__name__
-        titles = {info.id: info.title for info in stored}
-        current_title = titles.get(current)
-        if current_title is None:
-            current_title = await asyncio.to_thread(lambda: getattr(host.client.session, "title", None))
+        root = config.harness_dir
+        current_title = await asyncio.to_thread(lambda: getattr(host.client.session, "title", None))
         rows = await asyncio.to_thread(
             self._session_rows,
-            config,
             current,
             current_title or "Current session",
             current_directory,
-            stored,
-            len(stored) >= STORE_ROWS,
             root,
-            error,
             self.choices.target(current) if self.choices is not None else None,
         )
         state = "on" if host.client.harness else "off"
@@ -255,7 +238,7 @@ class HarnessCommand(TuiPlugin):
             state=state,
             directory=root,
             sessions=rows,
-            on_switch=lambda session_id: self._switch(host, current, session_id),
+            on_switch=lambda target: self._switch(host, current, target),
             on_close=host.close_page,
         )
         return CommandResult(widget=bottom_panel(page, rows=HARNESS_ROWS))
@@ -263,19 +246,13 @@ class HarnessCommand(TuiPlugin):
     @classmethod
     def _session_rows(
         cls,
-        config: ZettCodeConfig,
         current: str,
         current_title: str,
         current_directory: Path,
-        # Structural on purpose: this plugin does not depend on zettcode-sdk, so SessionInfo is not imported here.
-        # A row that does not carry an id is dropped by the getattr below.
-        stored: Sequence[object],
-        capped: bool,
         root: Path,
-        error: str,
         choice: HarnessChoice | None,
-    ) -> list[tuple[str | None, str, str, bool]]:
-        """Build rows from ids and pure paths; filesystem scans stay off the event loop."""
+    ) -> list[tuple[HarnessTarget | None, str, str, bool]]:
+        """Scan the harness tree off the event loop: workspace/session rows plus legacy session folders."""
         if choice is not None:
             current_count = cls._repository_count(choice.directory)
             current_detail = (
@@ -288,42 +265,59 @@ class HarnessCommand(TuiPlugin):
                 if current_directory.is_dir()
                 else "No harness yet"
             )
-        rows: list[tuple[str | None, str, str, bool]] = [(current, current_title, current_detail, False)]
-        if error:
-            rows.append((None, "Session store unreadable", error, True))
-        seen = {current_directory.name}
-        for info in stored:
-            session_id = getattr(info, "id", "")
-            if not session_id or session_id == current:
+        rows: list[tuple[HarnessTarget | None, str, str, bool]] = [
+            (HarnessTarget(current, current_directory), current_title, current_detail, False)
+        ]
+        seen = {current_directory.resolve()}
+        for directory, label in cls._all_harnesses(root):
+            try:
+                if directory.resolve() in seen:
+                    continue
+            except OSError:
                 continue
-            directory = existing_session_path(config, session_id)
-            if not directory.is_dir():
-                continue
-            seen.add(directory.name)
             count = cls._repository_count(directory)
             detail = f"{count} repositor{'y' if count == 1 else 'ies'}"
-            if choice is not None and choice.session_id == session_id:
+            if choice is not None and choice.directory == directory:
                 detail += " · in use"
-            rows.append((session_id, getattr(info, "title", None) or session_id, detail, False))
-        if root.is_dir():
-            try:
-                stale = sorted(root.iterdir(), key=lambda path: path.name)
-            except OSError:
-                stale = []
-            for path in stale:
-                if not path.is_dir() or path.name in seen:
-                    continue
-                count = cls._repository_count(path)
-                reason = f"outside newest {STORE_ROWS}" if capped else "session gone"
-                rows.append(
-                    (
-                        None,
-                        path.name,
-                        f"{count} repositor{'y' if count == 1 else 'ies'} \u00b7 {reason}",
-                        True,
-                    )
-                )
+            rows.append((HarnessTarget(label, directory), label, detail, False))
         return rows
+
+    @classmethod
+    def _all_harnesses(cls, root: Path) -> list[tuple[Path, str]]:
+        """Return every session directory under ``root``, labelled by workspace when there is one."""
+        if not root.is_dir():
+            return []
+        found: list[tuple[Path, str]] = []
+        try:
+            children = sorted(root.iterdir(), key=lambda path: path.name)
+        except OSError:
+            return []
+        for child in children:
+            if not child.is_dir():
+                continue
+            try:
+                direct = [path for path in child.iterdir() if path.is_dir() and (path / "__init__.py").is_file()]
+            except OSError:
+                continue
+            if direct:
+                # A legacy session directory sits directly under the harness root.
+                found.append((child, child.name))
+                continue
+            try:
+                sessions = [path for path in child.iterdir() if path.is_dir() and cls._has_repository(path)]
+            except OSError:
+                continue
+            for session in sessions:
+                found.append((session, f"{child.name}/{session.name}"))
+        return found
+
+    @classmethod
+    def _has_repository(cls, directory: Path) -> bool:
+        """Return whether a workspace/session directory holds at least one repository."""
+        try:
+            return any(path.is_dir() and (path / "__init__.py").is_file() for path in directory.iterdir())
+        except OSError:
+            return False
 
     @staticmethod
     def _repository_count(directory: Path) -> int:
@@ -333,9 +327,9 @@ class HarnessCommand(TuiPlugin):
         except OSError:
             return 0
 
-    def _switch(self, host: CommandHost, current: str, session_id: str) -> None:
-        """Borrow the selected session's harness, or close the page on the current row."""
-        if session_id == current:
+    def _switch(self, host: CommandHost, current: str, target: HarnessTarget) -> None:
+        """Borrow the selected harness, or close the page on the current row."""
+        if target.label == current or target.directory == existing_session_path(host.client.config, current):
             if self.choices is not None:
                 self.choices.clear(current)
             host.close_page()
@@ -344,12 +338,11 @@ class HarnessCommand(TuiPlugin):
             host.transcript.notice("Harness borrowing is unavailable in this window.")
             host.close_page()
             return
-        directory = existing_session_path(host.client.config, session_id)
-        if not directory.is_dir():
-            host.transcript.notice(f"That harness folder is gone: `{directory}`.")
+        if not target.directory.is_dir():
+            host.transcript.notice(f"That harness folder is gone: `{target.directory}`.")
             host.close_page()
             return
-        self.choices.select(current, session_id, directory)
+        self.choices.select(current, target.label, target.directory)
         host.close_page()
 
     async def _generate(self, host: CommandHost, description: str, *, ui: CommandUi) -> CommandResult:

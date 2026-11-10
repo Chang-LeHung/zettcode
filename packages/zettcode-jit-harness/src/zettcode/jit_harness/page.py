@@ -8,12 +8,21 @@ session returns it to that session's own harness. The panel only reads the harne
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from zettcode.tui import ListItem, ListPage
 
 #: Rows the panel asks for when it is anchored to the bottom edge.
 HARNESS_ROWS = 12
+
+
+@dataclass(frozen=True, slots=True)
+class HarnessTarget:
+    """One harness the current session can borrow: its display label and the folder to use."""
+
+    label: str
+    directory: Path
 
 
 def _shown(directory: Path) -> str:
@@ -28,8 +37,8 @@ def _shown(directory: Path) -> str:
 class HarnessPage(ListPage):
     """Every session that has a harness, with the current one first and selected.
 
-    Rows carry a session id as their value. Enter asks the command to borrow that session's harness; the panel itself
-    writes nothing. Escape closes it.
+    Rows carry a :class:`HarnessTarget`. Enter asks the command to borrow that directory; the panel itself writes
+    nothing. Escape closes it.
     """
 
     def __init__(
@@ -37,19 +46,17 @@ class HarnessPage(ListPage):
         *,
         state: str,
         directory: Path,
-        sessions: Sequence[tuple[str | None, str, str, bool]],
-        on_switch: Callable[[str], None],
+        sessions: Sequence[tuple[HarnessTarget | None, str, str, bool]],
+        on_switch: Callable[[HarnessTarget], None],
         on_close: Callable[[], None],
     ) -> None:
-        """Build the rows from ``(session id, label, detail, disabled)``, current session first."""
-        items = [
-            ListItem(session_id, label, detail, disabled=disabled) for session_id, label, detail, disabled in sessions
-        ]
+        """Build the rows from ``(target, label, detail, disabled)``, current session first."""
+        items = [ListItem(target, label, detail, disabled=disabled) for target, label, detail, disabled in sessions]
         super().__init__(
             items,
             title="Harnesses",
             subtitle=_shown(directory),
             footer=f"harness is {state} \u00b7 enter borrow \u00b7 esc close",
-            on_select=lambda item: on_switch(str(item.value)),
+            on_select=lambda item: on_switch(item.value),  # type: ignore[arg-type]
             on_cancel=on_close,
         )

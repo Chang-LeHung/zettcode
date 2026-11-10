@@ -578,29 +578,31 @@ async def test_every_word_the_menu_offers_is_one_the_command_runs(tmp_path: Path
 
 
 def test_the_harness_page_lists_sessions_and_switches_to_the_selected_one(tmp_path: Path):
-    from zettcode.jit_harness.page import HarnessPage
+    from zettcode.jit_harness.page import HarnessPage, HarnessTarget
 
-    switched: list[str] = []
+    switched: list[HarnessTarget] = []
     closed: list[int] = []
+    mine = HarnessTarget("mine", tmp_path / "mine")
+    other = HarnessTarget("other", tmp_path / "other")
     page = HarnessPage(
         state="on",
         directory=tmp_path / "harness",
         sessions=[
-            ("mine", "Mine", "2 repositories · current", False),
-            ("other", "Other", "1 repository", False),
+            (mine, "Mine", "2 repositories · current", False),
+            (other, "Other", "1 repository", False),
         ],
         on_switch=switched.append,
         on_close=lambda: closed.append(1),
     )
 
-    assert [item.value for item in page.list.items] == ["mine", "other"]
-    assert page.list.current is not None and page.list.current.value == "mine", "the current session is selected first"
+    assert [item.value for item in page.list.items] == [mine, other]
+    assert page.list.current is not None and page.list.current.value == mine, "the current session is selected first"
     page.list.activate()
-    assert switched == ["mine"] and closed == [], "Enter on the current row is the page's own switch"
+    assert switched == [mine] and closed == [], "Enter on the current row is the page's own switch"
 
     page.list.select(1)
     page.list.activate()
-    assert switched == ["mine", "other"], "Enter on another row switches to that session"
+    assert switched == [mine, other], "Enter on another row borrows that harness"
 
 
 async def test_the_panel_lists_every_session_harness_and_borrows_on_enter(tmp_path: Path):
@@ -617,15 +619,16 @@ async def test_the_panel_lists_every_session_harness_and_borrows_on_enter(tmp_pa
 
     result, shell = await _run("", client, choices)
     page = result.widget.slots[0].widget  # type: ignore[union-attr]
-    assert [item.value for item in page.list.items] == ["mine", "other"], "the current session is first"
-    assert page.list.current is not None and page.list.current.value == "mine"
+    assert page.list.items[0].value.label == "mine", "the current session is first"
+    assert page.list.current is not None and page.list.current.value.label == "mine"
+    assert page.list.items[1].value.directory == root / "other"
 
     page.list.activate()
     assert shell.closed == 1 and choices.target("mine") is None, "the current row closes the panel"
 
     page.list.select(1)
     page.list.activate()
-    assert choices.target("mine") is not None and choices.target("mine").session_id == "other", (
+    assert choices.target("mine") is not None and choices.target("mine").directory == root / "other", (
         "another row borrows that harness"
     )
 
@@ -645,7 +648,13 @@ async def test_the_panel_says_when_the_chosen_folder_is_gone(tmp_path: Path):
     other.joinpath("notes").rmdir()
     other.rmdir()
 
-    page.list.select(next(index for index, item in enumerate(page.list.items) if item.value == "other"))
+    page.list.select(
+        next(
+            index
+            for index, item in enumerate(page.list.items)
+            if item.value is not None and item.value.directory == other
+        )
+    )
     page.list.activate()
 
     assert shell.closed == 1 and any("folder is gone" in notice for notice in shell.ui.notices)
@@ -658,30 +667,44 @@ async def test_harness_alone_opens_the_panel_and_changes_nothing(tmp_path: Path)
 
     assert result.widget is not None, "no argument is still the page"
     page = result.widget.slots[0].widget  # type: ignore[union-attr]
-    assert [item.value for item in page.list.items] == ["mine"], "the current session is always a row"
-    assert page.list.current is not None and page.list.current.value == "mine"
+    assert [item.value.label for item in page.list.items] == ["mine"], "the current session is always a row"
+    assert page.list.current is not None and page.list.current.value.label == "mine"
     assert "No harness yet" in page.list.current.description
     assert result.message == ""
     assert client.switched == [] and shell.prompts == [], "looking at the harness is not touching it"
+
+
+async def test_the_panel_scans_harnesses_beyond_the_current_workspace(tmp_path: Path):
+    config = _configured(tmp_path)
+    workspace = config.harness_dir / "other-workspace-1234abcd"
+    session = workspace / "someone"
+    (session / "kit").mkdir(parents=True)
+    (session / "kit" / "__init__.py").write_text("", encoding="utf-8")
+
+    result, _ = await _run("", _Switch(config))
+    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    row = next(item for item in page.list.items if item.value is not None and item.value.directory == session)
+    assert row.value.label == "other-workspace-1234abcd/someone"
 
 
 async def test_the_panel_lists_a_legacy_folder_without_moving_it(tmp_path: Path):
     from zettcode.engine.harness_paths import harness_root
 
     config = _configured(tmp_path)
-    legacy = config.harness_dir / "other" / "old"
+    session = config.harness_dir / "other"
+    legacy = session / "old"
     (legacy).mkdir(parents=True)
     (legacy / "__init__.py").write_text("", encoding="utf-8")
 
     result, _ = await _run("", _Switch(config))
     page = result.widget.slots[0].widget  # type: ignore[union-attr]
-    rows = {item.label: item for item in page.list.items}
-    assert "Other" in rows and rows["Other"].value == "other"
+    row = next(item for item in page.list.items if item.value is not None and item.value.directory == session)
+    assert row.value.label == "other"
     assert legacy.is_dir(), "opening the picker reads the legacy folder"
     assert not (harness_root(config) / "other").exists(), "it does not migrate every session just by being listed"
 
 
-async def test_a_harness_folder_without_a_stored_session_is_shown_disabled(tmp_path: Path):
+async def test_a_harness_folder_without_a_stored_session_is_still_listed(tmp_path: Path):
     from zettcode.engine.harness_paths import harness_root
 
     config = _configured(tmp_path)
@@ -690,12 +713,11 @@ async def test_a_harness_folder_without_a_stored_session_is_shown_disabled(tmp_p
     (gone / "old" / "__init__.py").write_text("", encoding="utf-8")
     result, _ = await _run("", _Switch(config))
     page = result.widget.slots[0].widget  # type: ignore[union-attr]
-    row = next(item for item in page.list.items if item.label == "gone")
-    assert row.disabled and row.value is None
-    assert "session gone" in row.description
+    row = next(item for item in page.list.items if item.value is not None and item.value.directory == gone)
+    assert not row.disabled, "the folder is a harness whether or not its session is in the store"
 
 
-async def test_the_panel_says_when_the_session_store_cannot_be_read(tmp_path: Path):
+async def test_the_panel_does_not_use_the_session_store(tmp_path: Path):
     client = _Switch(_configured(tmp_path))
 
     async def broken(*_args, **_kwargs):
@@ -704,29 +726,7 @@ async def test_the_panel_says_when_the_session_store_cannot_be_read(tmp_path: Pa
     client.sessions = type("Sessions", (), {"list": broken})()
 
     result, _ = await _run("", client)
-    page = result.widget.slots[0].widget  # type: ignore[union-attr]
-    row = next(item for item in page.list.items if item.label == "Session store unreadable")
-    assert row.disabled and "RuntimeError" in row.description, "an empty exception message still names the type"
-
-
-async def test_a_folder_beyond_the_newest_thousand_says_so(tmp_path: Path):
-    from zettcode.engine.harness_paths import harness_root
-
-    config = _configured(tmp_path)
-    old = harness_root(config) / "old"
-    (old / "kit").mkdir(parents=True)
-    (old / "kit" / "__init__.py").write_text("", encoding="utf-8")
-    client = _Switch(config)
-
-    async def many(*_args, **_kwargs):
-        return [type("Info", (), {"id": f"stored-{index}", "title": None})() for index in range(1000)]
-
-    client.sessions = type("Sessions", (), {"list": many})()
-
-    result, _ = await _run("", client)
-    page = result.widget.slots[0].widget  # type: ignore[union-attr]
-    row = next(item for item in page.list.items if item.label == "old")
-    assert row.disabled and "outside newest 1000" in row.description
+    assert result.widget is not None, "scanning the harness tree does not depend on a session-store call"
 
 
 async def test_the_panel_borrows_another_sessions_harness(tmp_path: Path):
@@ -734,17 +734,24 @@ async def test_the_panel_borrows_another_sessions_harness(tmp_path: Path):
     from zettcode.jit_harness.selection import HarnessChoices
 
     config = _configured(tmp_path)
-    other = harness_root(config) / "other" / "notes"
+    session = harness_root(config) / "other"
+    other = session / "notes"
     other.mkdir(parents=True)
     (other / "__init__.py").write_text("", encoding="utf-8")
     choices = HarnessChoices()
 
     result, shell = await _run("", _Switch(config), choices)
     page = result.widget.slots[0].widget  # type: ignore[union-attr]
-    page.list.select(next(index for index, item in enumerate(page.list.items) if item.value == "other"))
+    page.list.select(
+        next(
+            index
+            for index, item in enumerate(page.list.items)
+            if item.value is not None and item.value.directory == session
+        )
+    )
     page.list.activate()
 
-    assert choices.target("mine") is not None and choices.target("mine").session_id == "other"
+    assert choices.target("mine") is not None and choices.target("mine").directory == session
     assert shell.closed == 1, "choosing a harness closes the picker"
 
 
