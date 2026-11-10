@@ -27,7 +27,7 @@ from .page import HARNESS_ROWS, HarnessPage
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.engine.plugins.context import PluginContext
-    from zettcode.plugin_api.commands import CommandHost
+    from zettcode.plugin_api.commands import CommandHost, CommandUi
 
 #: The words ``/harness`` takes, in the order the completion menu offers them. Both say ``needs_more``: the menu
 #: offers them, but Enter on the word alone does not run one — ``/harness `` and Enter stays the panel it was, and
@@ -121,9 +121,9 @@ def split_argument(argument: str) -> tuple[str, str]:
 GEN_FLOOR_LAST = """
 ---
 
-The floor above still holds, whatever was asked just now: nothing is written outside this session's harness folder,
-the workspace's own files are not edited, only the tool built here is run, and no permission the session did not
-already have is taken on.
+The floor above still holds for this request, whatever was asked just now: in this turn nothing is written outside
+this session's harness folder, the workspace's own files are not edited, only the tool built here is run, and no
+permission the session did not already have is taken on. Later requests in this session are ordinary ones.
 """
 
 
@@ -193,7 +193,7 @@ class HarnessCommand(TuiPlugin):
         if not word:
             return self._panel(host)
         if word == "gen":
-            return await self._generate(host, rest)
+            return await self._generate(host, rest, ui=context.ui)
         if word == "reset":
             if rest:
                 return CommandResult(message=f"`/harness reset` takes nothing after it.\n\n{self._usage()}")
@@ -214,7 +214,7 @@ class HarnessCommand(TuiPlugin):
         page = HarnessPage(state=state, directory=directory, repositories=repositories, on_close=host.close_page)
         return CommandResult(widget=bottom_panel(page, rows=HARNESS_ROWS))
 
-    async def _generate(self, host: CommandHost, description: str) -> CommandResult:
+    async def _generate(self, host: CommandHost, description: str, *, ui: CommandUi) -> CommandResult:
         """Turn the harness on and hand the model the brief, as one ordinary turn of this conversation.
 
         The switch goes first: the turn mounts the harness's tools when it starts, so a prompt sent before the switch
@@ -229,17 +229,16 @@ class HarnessCommand(TuiPlugin):
         if host.client.session.locked:
             return CommandResult(message=f"{LOCKED}\n\n{NOT_KEPT}" if description.strip() else LOCKED)
         host.client.use_harness(True)
+        asked = description.strip()
+        if len(asked) > MAX_DESCRIPTION:
+            # Said before the turn, not after it: a reader who pasted 6,000 characters has to know that the last 2,000
+            # are not going out before the model builds anything, and the model is told the same in the brief.
+            lost = len(asked) - MAX_DESCRIPTION
+            ui.notice(
+                f"Your description was cut at {MAX_DESCRIPTION} characters: the last {lost} "
+                f"{'character was' if lost == 1 else 'characters were'} not sent."
+            )
         if await host.prompt(brief_for(description), shown=shown_for(description)):
-            asked = description.strip()
-            if len(asked) > MAX_DESCRIPTION:
-                # The model was told where its brief was cut; the reader pasted the text and has to be told too.
-                lost = len(asked) - MAX_DESCRIPTION
-                return CommandResult(
-                    message=(
-                        f"Your description was cut at {MAX_DESCRIPTION} characters: the last {lost} "
-                        f"{'character was' if lost == 1 else 'characters were'} not sent."
-                    )
-                )
             return CommandResult()
         kept = f" {NOT_KEPT}" if description.strip() else ""
         return CommandResult(
@@ -264,7 +263,7 @@ class HarnessCommand(TuiPlugin):
             f"Nothing was deleted: the folder this session's tools live in is still there (`{directory}`). Remove it "
             "yourself if you want them gone, or run `/harness gen` to build on them."
             if directory.is_dir()
-            else f"Nothing was deleted, and this session never wrote a tool: `{directory}` is not there. `/harness "
+            else f"Nothing was deleted: `{directory}` is not there, so there is nothing here to remove. `/harness "
             "gen` builds one when you want it."
         )
         return CommandResult(
