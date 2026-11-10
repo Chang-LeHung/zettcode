@@ -635,6 +635,22 @@ async def test_reset_says_when_the_folder_is_not_there(tmp_path: Path):
 
     assert "there is no folder at" in result.message and "nothing here to remove" in result.message, result.message
     assert "is still there" not in result.message, "nothing is claimed to be there"
+
+
+async def test_reset_says_when_the_path_is_taken_by_something_that_is_not_a_folder(tmp_path: Path):
+    """`is_dir` is false for a file sitting where the folder would be; saying 'no folder there' would be a lie."""
+    from zettcode.engine.harness_paths import session_directory
+
+    config = _configured(tmp_path)
+    mine = session_directory(config, "mine")
+    mine.parent.mkdir(parents=True)
+    mine.write_text("in the way", encoding="utf-8")
+
+    result, _ = await _run("reset", _Switch(config, harness=True))
+
+    assert "is there but is not a folder" in result.message, result.message
+    assert "there is no folder at" not in result.message
+    assert mine.read_text(encoding="utf-8") == "in the way", "and it was left alone"
     assert "never wrote" not in result.message, "and nothing is claimed about what the session did"
 
 
