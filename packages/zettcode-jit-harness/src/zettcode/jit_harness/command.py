@@ -45,6 +45,9 @@ SUBCOMMANDS: tuple[Subcommand, ...] = (
     ),
 )
 
+#: How many stored sessions the picker asks for; hitting the cap changes what a stale row may mean.
+STORE_ROWS = 1000
+
 #: What ``gen`` answers when another process holds the session: a turn cannot start in one, and the switch must not
 #: move for a run that would then do nothing. ``when_busy`` sees this process's requests only. ``reset`` does not ask
 #: — turning a switch off for later requests in this window takes nothing away from the other process.
@@ -220,7 +223,7 @@ class HarnessCommand(TuiPlugin):
         root = harness_root(config)
         error = ""
         try:
-            stored = await host.client.sessions.list(limit=1000)
+            stored = await host.client.sessions.list(limit=STORE_ROWS)
         except Exception as failure:
             stored = []
             error = str(failure) or type(failure).__name__
@@ -235,7 +238,7 @@ class HarnessCommand(TuiPlugin):
             current_title or "Current session",
             current_directory,
             stored,
-            len(stored) >= 1000,
+            len(stored) >= STORE_ROWS,
             root,
             error,
         )
@@ -304,7 +307,7 @@ class HarnessCommand(TuiPlugin):
                 if not path.is_dir() or path.name in seen:
                     continue
                 count = cls._repository_count(path)
-                reason = "outside newest 1000" if capped else "session gone"
+                reason = f"outside newest {STORE_ROWS}" if capped else "session gone"
                 rows.append(
                     (
                         None,
