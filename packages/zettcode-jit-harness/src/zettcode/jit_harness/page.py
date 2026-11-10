@@ -1,8 +1,8 @@
 """The panel ``/harness`` opens: the switch's state, the folder, and this session's repositories.
 
 The two words beside the panel change **this run** — ``gen`` turns the switch on, which every session in the window
-sees, and has a tool built; ``reset`` turns it off and deletes what *this session* kept — while ``/plugins`` is what a
-run starts with. The panel itself writes nothing.
+sees, and has a tool built; ``reset`` turns it off again so later requests use the framework's own harness, and keeps
+what this session wrote — while ``/plugins`` is what a run starts with. The panel itself writes nothing.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def _shown(directory: Path) -> str:
 class HarnessPage(ListPage):
     """What the harness is doing now: on or off, where its files are, and what the model has written.
 
-    The page writes nothing: `/harness gen` and `/harness reset` are what turn it on, build a tool and drop one, and
+    The page writes nothing: `/harness gen` and `/harness reset` are what turn it on and hand it back, and
     `/plugins` is where the harness is switched for the next start. Each repository is one row; selecting any row (or
     Escape) closes the page.
     """
