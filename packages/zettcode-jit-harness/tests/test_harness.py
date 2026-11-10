@@ -469,6 +469,7 @@ class _Shell:
     def __init__(self, client: _Switch) -> None:
         self.client = client
         self.ui = _Ui(client.events)
+        self.transcript = self.ui
         self.prompts: list[tuple[str, str | None]] = []
         self.closed = 0
         self.selected: list[str] = []
@@ -602,8 +603,9 @@ def test_the_harness_page_lists_sessions_and_switches_to_the_selected_one(tmp_pa
     assert switched == ["mine", "other"], "Enter on another row switches to that session"
 
 
-async def test_the_panel_lists_every_session_harness_and_switches_on_enter(tmp_path: Path):
+async def test_the_panel_lists_every_session_harness_and_borrows_on_enter(tmp_path: Path):
     from zettcode.engine.harness_paths import harness_root
+    from zettcode.jit_harness.selection import HarnessChoices
 
     config = _configured(tmp_path)
     root = harness_root(config)
@@ -611,18 +613,42 @@ async def test_the_panel_lists_every_session_harness_and_switches_on_enter(tmp_p
         (root / session_id / repository).mkdir(parents=True)
         (root / session_id / repository / "__init__.py").write_text("", encoding="utf-8")
     client = _Switch(config)
+    choices = HarnessChoices()
 
-    result, shell = await _run("", client)
+    result, shell = await _run("", client, choices)
     page = result.widget.slots[0].widget  # type: ignore[union-attr]
     assert [item.value for item in page.list.items] == ["mine", "other"], "the current session is first"
     assert page.list.current is not None and page.list.current.value == "mine"
 
     page.list.activate()
-    assert shell.closed == 1 and shell.selected == [], "the current row closes the panel"
+    assert shell.closed == 1 and choices.target("mine") is None, "the current row closes the panel"
 
     page.list.select(1)
     page.list.activate()
-    assert shell.selected == ["other"], "another row switches to that session"
+    assert choices.target("mine") is not None and choices.target("mine").session_id == "other", (
+        "another row borrows that harness"
+    )
+
+
+async def test_the_panel_says_when_the_chosen_folder_is_gone(tmp_path: Path):
+    from zettcode.engine.harness_paths import harness_root
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    config = _configured(tmp_path)
+    other = harness_root(config) / "other"
+    (other / "notes").mkdir(parents=True)
+    (other / "notes" / "__init__.py").write_text("", encoding="utf-8")
+    client = _Switch(config)
+    result, shell = await _run("", client, HarnessChoices())
+    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    other.joinpath("notes", "__init__.py").unlink()
+    other.joinpath("notes").rmdir()
+    other.rmdir()
+
+    page.list.select(next(index for index, item in enumerate(page.list.items) if item.value == "other"))
+    page.list.activate()
+
+    assert shell.closed == 1 and any("folder is gone" in notice for notice in shell.ui.notices)
 
 
 async def test_harness_alone_opens_the_panel_and_changes_nothing(tmp_path: Path):
@@ -739,6 +765,20 @@ async def test_the_current_row_returns_to_the_sessions_own_harness(tmp_path: Pat
     assert choices.target("mine") is None
 
 
+def test_selecting_the_same_borrowed_harness_twice_keeps_the_host(tmp_path: Path):
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    choices = HarnessChoices()
+    calls: list[str] = []
+    choices.add_listener(calls.append)
+    target = tmp_path / "other"
+
+    choices.select("mine", "other", target)
+    choices.select("mine", "other", target)
+
+    assert calls == ["mine"], "re-choosing the row already in use does not forget the loaded host"
+
+
 def test_a_borrowed_harness_replaces_the_sessions_directory(tmp_path: Path):
     from zettcode.jit_harness.extension import SwitchedHarness
     from zettcode.jit_harness.selection import HarnessChoices
@@ -751,6 +791,21 @@ def test_a_borrowed_harness_replaces_the_sessions_directory(tmp_path: Path):
     assert extension.session_directory("mine") == other
     choices.clear("mine")
     assert extension.session_directory("mine") == tmp_path / "root" / "mine"
+
+
+async def test_reset_names_the_borrowed_folder(tmp_path: Path):
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    config = _configured(tmp_path)
+    other = tmp_path / "other"
+    (other / "kit").mkdir(parents=True)
+    (other / "kit" / "__init__.py").write_text("", encoding="utf-8")
+    choices = HarnessChoices()
+    choices.select("mine", "other", other)
+
+    result, _ = await _run("reset", _Switch(config, harness=True), choices)
+
+    assert str(other) in result.message and "borrowed" in result.message, "reset names the folder actually in use"
 
 
 async def test_gen_turns_the_harness_on_first_and_asks_for_one_tool_as_one_turn(tmp_path: Path):
