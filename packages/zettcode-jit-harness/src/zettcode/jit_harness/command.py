@@ -255,9 +255,7 @@ class HarnessCommand(TuiPlugin):
         """Scan the harness tree off the event loop: workspace/session rows plus legacy session folders."""
         if choice is not None:
             current_count = cls._repository_count(choice.directory)
-            current_detail = (
-                f"{current_count} repositor{'y' if current_count == 1 else 'ies'} · using {choice.label}"
-            )
+            current_detail = f"{current_count} repositor{'y' if current_count == 1 else 'ies'} · using {choice.label}"
         else:
             current_count = cls._repository_count(current_directory)
             current_detail = (
