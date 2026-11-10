@@ -1899,14 +1899,46 @@ def test_a_shell_level_is_refused_while_the_daemon_is_working_and_nothing_is_wri
     assert Registry().find("01a1").state.permission == "safe", "the record still says what the process runs at"
 
 
-def test_a_level_and_a_name_together_do_not_record_a_level_that_was_not_applied(home):
+def test_a_level_and_a_name_together_are_applied_together(home, monkeypatch):
+    """Stopping for the level frees the session, so the name can be written in the same command."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), permission="safe"))
+    record.beat()
+    running = Registry().find("01a1")
+    order: list[str] = []
+
+    monkeypatch.setattr(process.Daemons, "stop", lambda self, target, **k: order.append("stop") or "stopped")
+    monkeypatch.setattr(process.Daemons, "_rename", lambda self, *a: order.append("rename"))
+
+    def write(self, target, change):
+        order.append("write")
+        return target
+
+    monkeypatch.setattr(process.Daemons, "_write", write)
+    monkeypatch.setattr(
+        process.Daemons,
+        "start",
+        lambda self, workspace, **k: order.append("start") or running,
+    )
+
+    process.Daemons().update(running, title="Taken over", permission="full")
+
+    assert order == ["stop", "rename", "write", "start"], "stopped first so the session can be named"
+
+
+def test_a_turn_that_starts_after_the_check_leaves_the_record_as_it_was(home, monkeypatch):
+    """`stop` is what decides: a daemon that began a turn in between is refused, and nothing is recorded."""
     record = Registry().record(home, "01a1", create=True)
     record.save(replace(state_for(home), permission="safe"))
     record.beat()
     running = Registry().find("01a1")
 
-    with pytest.raises(process.UpdateFailed, match="stop it before naming it") as failed:
-        process.Daemons().update(running, title="Taken over", permission="full")
+    def busy(self, target, **kwargs):
+        raise process.StillWorking("it is working on a turn")
 
-    assert "shell level was not changed" in str(failed.value)
-    assert Registry().find("01a1").state.permission == "safe"
+    monkeypatch.setattr(process.Daemons, "stop", busy)
+
+    with pytest.raises(process.UpdateFailed, match="working on a turn"):
+        process.Daemons().update(running, permission="full")
+
+    assert Registry().find("01a1").state.permission == "safe", "the record still says what the process runs at"

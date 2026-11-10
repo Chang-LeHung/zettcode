@@ -390,13 +390,20 @@ class Daemons:
                     raise UpdateFailed(f"{said}; and {secondary}") from error
                 raise UpdateFailed(f"{said}; the other changes were written") from error
         other = name is not None or wanted_model is not None or wanted_effort is not None or permission is not None
-        if permission is not None and record.alive and state.status == "working":
-            # Refused before anything is written: a level needs the process restarted, and a record that names a
-            # level the running process was not started with is one `daemon list` would report wrongly.
-            raise UpdateFailed(
-                "the daemon is working on a turn; a new shell level starts it again, so wait for the turn to end "
-                "or stop it first"
-            )
+        # A shell level is a restart, and the stop happens before anything is written: a daemon that started a turn
+        # between reading the state and this line is caught by `stop` itself, and the record never names a level the
+        # running process was not started with. Stopping first also frees the session, so a title given with a level
+        # can be applied in the same command.
+        stopped = False
+        if permission is not None and record.alive:
+            try:
+                self.stop(record, keep=True)
+            except StillWorking as error:
+                raise UpdateFailed(
+                    "the daemon is working on a turn; a new shell level starts it again, so wait for the turn to end "
+                    "or stop it first"
+                ) from error
+            stopped = True
 
         def applied(current: State | None, *, title: str | None, level: bool = True) -> State:
             base = current or state
@@ -424,8 +431,8 @@ class Daemons:
             raise UpdateFailed("a title needs at least one character")
         if cleaned is None:
             updated = self._write(record, lambda current: applied(current, title=None))
-            return self._restarted(updated, permission) if permission is not None else updated
-        if record.alive:
+            return self._start_again(updated, permission) if stopped and permission else updated
+        if record.alive and not stopped:
             message = "the daemon is running, and its session is its own; stop it before naming it"
             if other:
                 self._write(record, lambda current: applied(current, title=None, level=False))
@@ -443,12 +450,13 @@ class Daemons:
                 raise UpdateFailed(f"{error}; the other changes were written") from error
             raise
         try:
-            return self._write(record, lambda current: applied(current, title=cleaned))
+            updated = self._write(record, lambda current: applied(current, title=cleaned))
+            return self._start_again(updated, permission) if stopped and permission else updated
         except UpdateFailed as error:
             raise UpdateFailed(f"{error}; the session was renamed, so its record still says the old title") from error
 
-    def _restarted(self, record: Record, permission: str) -> Record:
-        """Put a recorded shell level in force: a running daemon is started again on the same session.
+    def _start_again(self, record: Record, permission: str) -> Record:
+        """Start a daemon that :meth:`update` stopped for its new shell level, on the session it was running.
 
         The level is handed to the process when it starts, so nothing short of a restart changes it. The session
         is the one thing that must survive, and it does: the conversation is on disk and ``resume`` continues it.
@@ -460,12 +468,6 @@ class Daemons:
         state = record.state
         if state is None:
             raise UpdateFailed("this daemon never recorded what it was, so it cannot be started again")
-        if not record.alive:
-            return record  # gone already: the next start reads the level the record now names
-        try:
-            self.stop(record, keep=True)
-        except StillWorking as error:
-            raise UpdateFailed(f"the daemon could not be stopped for its new shell level: {error}") from error
         try:
             return self.start(
                 Path(state.workspace),
