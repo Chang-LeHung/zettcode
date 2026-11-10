@@ -223,7 +223,7 @@ class HarnessCommand(TuiPlugin):
             stored = await host.client.sessions.list(limit=1000)
         except Exception as failure:
             stored = []
-            error = str(failure)
+            error = str(failure) or type(failure).__name__
         titles = {info.id: info.title for info in stored}
         current_title = titles.get(current)
         if current_title is None:
@@ -256,6 +256,8 @@ class HarnessCommand(TuiPlugin):
         current: str,
         current_title: str,
         current_directory: Path,
+        # Structural on purpose: this plugin does not depend on zettcode-sdk, so SessionInfo is not imported here.
+        # A row that does not carry an id is dropped by the getattr below.
         stored: Sequence[object],
         capped: bool,
         root: Path,

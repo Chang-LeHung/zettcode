@@ -664,6 +664,40 @@ async def test_a_harness_folder_without_a_stored_session_is_shown_disabled(tmp_p
     assert "session gone" in row.description
 
 
+async def test_the_panel_says_when_the_session_store_cannot_be_read(tmp_path: Path):
+    client = _Switch(_configured(tmp_path))
+
+    async def broken(*_args, **_kwargs):
+        raise RuntimeError
+
+    client.sessions = type("Sessions", (), {"list": broken})()
+
+    result, _ = await _run("", client)
+    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    row = next(item for item in page.list.items if item.label == "Session store unreadable")
+    assert row.disabled and "RuntimeError" in row.description, "an empty exception message still names the type"
+
+
+async def test_a_folder_beyond_the_newest_thousand_says_so(tmp_path: Path):
+    from zettcode.engine.harness_paths import harness_root
+
+    config = _configured(tmp_path)
+    old = harness_root(config) / "old"
+    (old / "kit").mkdir(parents=True)
+    (old / "kit" / "__init__.py").write_text("", encoding="utf-8")
+    client = _Switch(config)
+
+    async def many(*_args, **_kwargs):
+        return [type("Info", (), {"id": f"stored-{index}", "title": None})() for index in range(1000)]
+
+    client.sessions = type("Sessions", (), {"list": many})()
+
+    result, _ = await _run("", client)
+    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    row = next(item for item in page.list.items if item.label == "old")
+    assert row.disabled and "outside newest 1000" in row.description
+
+
 async def test_gen_turns_the_harness_on_first_and_asks_for_one_tool_as_one_turn(tmp_path: Path):
     client = _Switch(_configured(tmp_path))
 
