@@ -1,7 +1,8 @@
 """The panel ``/harness`` opens: every session's harness, with this session's row selected.
 
-Up and Down move through the rows; Enter switches to the selected session, whose harness then belongs to the current
-conversation. The panel only reads the harness directories; ``/harness gen`` and ``/harness reset`` change the run.
+Up and Down move through the rows; Enter borrows the selected harness for the current session. The row for the current
+session returns it to that session's own harness. The panel only reads the harness directories; ``/harness gen`` and
+``/harness reset`` change the run.
 """
 
 from __future__ import annotations
@@ -27,8 +28,8 @@ def _shown(directory: Path) -> str:
 class HarnessPage(ListPage):
     """Every session that has a harness, with the current one first and selected.
 
-    Rows carry a session id as their value. Enter asks the shell to switch to that session; the panel itself writes
-    nothing. Escape closes it.
+    Rows carry a session id as their value. Enter asks the command to borrow that session's harness; the panel itself
+    writes nothing. Escape closes it.
     """
 
     def __init__(

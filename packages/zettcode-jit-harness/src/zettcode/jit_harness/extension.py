@@ -24,6 +24,8 @@ from zett_agent.tools.base import ToolResult
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.mcp_notice import HARNESS_NOTICE_EVENT_NAME, notice_payload
 
+from .selection import HarnessChoices
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.jit_harness import JITToolHost
 
@@ -47,6 +49,7 @@ class SwitchedHarness(JITHarnessExtension):
         boundary: Callable[[], str] | None = None,
         unbounded: Callable[[], bool] | None = None,
         legacy_root: str | Path | None = None,
+        choices: HarnessChoices | None = None,
     ) -> None:
         """Keep each session's repository under ``root``, and follow ``switch``.
 
@@ -65,6 +68,7 @@ class SwitchedHarness(JITHarnessExtension):
                 wrote then runs with the reader's own access, which they are told once per session.
             legacy_root: The root from before the workspace level, whose session directory is moved under ``root``
                 the first time that session asks for it.
+            choices: A harness another session borrowed; its directory replaces this session's own until cleared.
         """
         super().__init__(root, host_factory=host_factory)
         self._root = Path(root)
@@ -80,6 +84,21 @@ class SwitchedHarness(JITHarnessExtension):
         self._pending: set[str] = set()
         #: Sessions whose current request has the harness, set by ``on_tool`` and cleared when it is released.
         self._engaged: set[str] = set()
+        #: The harness each session borrowed from another session, if any.
+        self._choices = choices
+        if choices is not None:
+            choices.add_listener(self._choice_changed)
+
+    def session_directory(self, session_id: str) -> Path:
+        """Return the borrowed harness directory, or this session's own when it has not borrowed one."""
+        selected = self._choices.directory(session_id) if self._choices is not None else None
+        return selected if selected is not None else super().session_directory(session_id)
+
+    def _choice_changed(self, session_id: str) -> None:
+        """Close the host built for the directory this session used before the choice changed."""
+        if not self._forget(session_id):
+            # The command refuses while a request runs; leave the old host for the release path if one slips through.
+            self._pending.add(session_id)
 
     def engaged(self, context: AgentRunContext) -> bool:
         """Return whether this request was given the harness."""
