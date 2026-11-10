@@ -491,12 +491,16 @@ dict, or `None`), because a daemon passes them through JSON. A declaration with
 a colliding flag or a non-JSON default is skipped with one message, never a
 traceback.
 
-Only **entry-point** plugins can declare these flags. Their declarations are read from the plugin classes before the
-configuration exists; a single `.py` file has no entry point, so its `cli_arguments()` is never consulted. Reading
-the declarations imports every installed plugin class, including a disabled one, on every start — keep that module
-cheap to import. `zettcode --help` deliberately skips discovery and therefore does not list these flags;
+Only **entry-point** plugins can declare these flags. Their declarations are read from the plugin classes when the
+cache is built; a single `.py` file has no entry point, so its `cli_arguments()` is never consulted. Refreshing the
+cache imports every installed plugin class, including a disabled one — keep that module cheap to import. `zettcode --help` deliberately skips discovery and therefore does not list these flags;
 `zettcode daemon spawn --help` does. `~/.zettcode/.ztrc` presets them for a session start only, not for
 `daemon spawn`.
+
+To keep the interactive start fast, the parser reads these declarations from `~/.zettcode/plugin-cli.json` instead of
+importing every plugin. When the cache is missing or stale, a daemon thread imports the plugin classes and refreshes
+it; the first start after installing or changing a plugin therefore has no new flags, and the next start has them.
+A cache miss is accepted rather than waiting.
 
 ## Reading the configuration
 

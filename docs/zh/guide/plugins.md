@@ -434,10 +434,13 @@ limit = ctx.service(PLUGIN_CLI, dict).get("journal", {}).get("limit", "3")
 字典或 `None`），因为 daemon 通过 JSON 传递。声明有重名 flag 或非 JSON 默认值时，只跳过该选项并打印一行，
 不会 traceback。
 
-只有 **entry-point** 插件能声明这些参数。声明在配置还不存在时就从插件类读取；`~/.zettcode/plugins` 里单个
-`.py` 文件没有 entry point，所以它的 `cli_arguments()` 不会被读取。读取声明会在每次启动时导入所有已安装插件的类，
+只有 **entry-point** 插件能声明这些参数。声明在构建缓存时从插件类读取；`~/.zettcode/plugins` 里单个
+`.py` 文件没有 entry point，所以它的 `cli_arguments()` 不会被读取。刷新缓存会导入所有已安装插件的类，
 包括被禁用的插件——让那个模块保持轻量。`zettcode --help` 故意跳过插件发现，所以不会列出这些 flag；
 `zettcode daemon spawn --help` 会。`~/.zettcode/.ztrc` 只为会话启动预置它们，不会作用于 `daemon spawn`。
+
+为了让交互启动快，parser 从 `~/.zettcode/plugin-cli.json` 读这些声明，而不是导入每个插件。缓存缺失或过期时，
+daemon 线程才导入插件类刷新；刚安装或修改插件的第一次启动还没有新 flag，下一次启动才有。读不到缓存时不等待，直接继续。
 
 ## 读配置
 
