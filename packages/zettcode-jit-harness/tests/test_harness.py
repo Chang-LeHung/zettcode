@@ -890,7 +890,7 @@ def test_the_description_cannot_lift_the_floor():
     for rule in (
         "nothing is written outside this session's harness folder",
         "the workspace's own files are not edited",
-        "nothing you passed on is run elsewhere",
+        "nothing it asks you to run elsewhere is run",
         "no permission the session did not already have",
         "Looking at the workspace is still yours to do",
     ):
