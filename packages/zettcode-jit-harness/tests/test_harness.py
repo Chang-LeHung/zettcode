@@ -802,23 +802,88 @@ async def test_a_word_the_command_does_not_take_lists_the_ones_it_does(tmp_path:
     result, shell = await _run("on", client)
 
     assert "not a word" in result.message
-    usage = result.message.split("\n")
-    assert [line.split(" — ")[0] for line in usage if line.startswith("- ")] == [
-        "- `/harness`",
-        "- `/harness gen`",
-        "- `/harness reset`",
-        "- `/plugins`",
-    ], usage
+    forms = ["- `/harness`", "- `/harness gen [description]`", "- `/harness reset`", "- `/plugins`"]
+    positions = [result.message.find(form) for form in forms]
+    assert all(position >= 0 for position in positions), result.message
+    assert positions == sorted(positions), "the words are listed in the order the menu offers them"
     assert client.switched == [] and shell.prompts == [], "a typo changes nothing"
 
 
-async def test_a_subcommand_takes_nothing_after_it(tmp_path: Path):
+async def test_reset_takes_nothing_after_it(tmp_path: Path):
+    """`gen` takes a description; there is nothing to say about a delete, so a word after `reset` is a usage error."""
     client = _Switch(_configured(tmp_path))
 
-    result, shell = await _run("gen now", client)
+    result, shell = await _run("reset now", client)
 
     assert "takes nothing after it" in result.message
     assert client.switched == [] and shell.prompts == [], "nothing runs on a usage error"
+
+
+async def test_gen_passes_what_the_reader_wrote_after_the_word(tmp_path: Path):
+    """The rest of the line is the reader's requirement, not the command's advice: it goes in last, verbatim."""
+    from zettcode.jit_harness.command import GEN_ASKED, GEN_BRIEF
+
+    client = _Switch(_configured(tmp_path))
+
+    result, shell = await _run("gen a tool that lists the TODO markers in docs/", client)
+
+    assert client.events == ["switch:True", "prompt"], "the switch still goes first"
+    (text, shown) = shell.prompts[0]
+    assert text.startswith(GEN_BRIEF) and GEN_ASKED in text, "the brief is the base, the reader's words follow it"
+    assert text.rstrip().endswith("a tool that lists the TODO markers in docs/"), "verbatim, and last"
+    assert text.index(GEN_ASKED) < text.index("TODO markers"), "nothing of the brief can be read as the newer word"
+    assert shown == "/harness gen a tool that lists the TODO markers in docs/"
+    assert result.message == "" and result.widget is None, "the turn is the answer"
+
+
+async def test_gen_without_a_description_reads_the_brief_alone(tmp_path: Path):
+    """The one-word command is what it was: the default brief, and `/harness gen` in the transcript."""
+    from zettcode.jit_harness.command import GEN_BRIEF
+
+    client = _Switch(_configured(tmp_path))
+
+    _, shell = await _run("gen", client)
+
+    assert shell.prompts == [(GEN_BRIEF, "/harness gen")]
+
+
+async def test_a_description_of_only_whitespace_is_no_description(tmp_path: Path):
+    from zettcode.jit_harness.command import GEN_BRIEF
+
+    client = _Switch(_configured(tmp_path))
+
+    _, shell = await _run("gen \t  ", client)
+
+    assert shell.prompts == [(GEN_BRIEF, "/harness gen")], "spaces after the word ask for nothing in particular"
+
+
+async def test_a_chinese_description_with_quotes_and_a_line_break_arrives_verbatim(tmp_path: Path):
+    """The reader's own words are not re-tokenised, so quotes, spacing and a pasted line break all survive."""
+    from zettcode.jit_harness.command import GEN_BRIEF
+
+    asked = '修复  "解析器" 的空指针:\n只读，不要联网，也不要写  docs/'
+    client = _Switch(_configured(tmp_path))
+
+    _, shell = await _run(f"gen  {asked}", client)
+
+    (text, shown) = shell.prompts[0]
+    assert asked in text, text[-400:]
+    assert text.startswith(GEN_BRIEF)
+    assert shown.endswith(asked), shown
+
+
+async def test_a_description_too_long_to_send_is_cut_and_says_so(tmp_path: Path):
+    from zettcode.jit_harness.command import MAX_DESCRIPTION, MAX_SHOWN
+
+    asked = "x" * (MAX_DESCRIPTION + 500)
+    client = _Switch(_configured(tmp_path))
+
+    _, shell = await _run(f"gen {asked}", client)
+
+    (text, shown) = shell.prompts[0]
+    assert f"cut at {MAX_DESCRIPTION} characters" in text, "a cut is said, not left looking like a short request"
+    assert len(text) < MAX_DESCRIPTION + 2000, "the brief does not grow with what was pasted"
+    assert len(shown) == MAX_SHOWN and shown.endswith("\u2026"), "the transcript row stays a row"
 
 
 async def test_the_plugin_hands_the_command_the_harness_it_built(tmp_path: Path, monkeypatch):
