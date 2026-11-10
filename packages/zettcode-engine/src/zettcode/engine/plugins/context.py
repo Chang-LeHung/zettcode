@@ -12,12 +12,14 @@ terminal is a layer above this one, which is why the attribute is untyped here a
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
 from zettcode.plugin_tui import TuiGroup
-from zettcode.providers import Provider
+from zettcode.providers import ProvidedModel, Provider
 
+from ..provided import model_from
 from .commands import CommandGroups
 from .groups import AgentGroups
 from .services import (
@@ -35,7 +37,7 @@ from .state import Contribution, ExtensionFactory
 from .triggers import Trigger, TriggerHandler, TriggerRegistration, check_name
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
     from zett_agent.extensions.base import AgentExtension
 
@@ -86,6 +88,8 @@ class PluginContext:
         }
         self._mentions: list[MentionProvider] = []
         self._providers: list[Provider] = []
+        #: Every name a model is shown by that is taken: the file's entries, and the provided models registered here.
+        self._model_names: set[str] = {model.shown_name for model in config.models}
         self._extensions: list[Contribution] = []
         self._services: dict[str, object] = {}
         self._triggers: list[TriggerRegistration] = []
@@ -150,29 +154,88 @@ class PluginContext:
         return tuple(self._providers)
 
     def register_provider(self, provider: Provider) -> Provider:
-        """Describe a host models can be reached at, so ``/config`` offers it.
+        """Describe a host and the models it serves, so ``/model`` offers them.
 
-        A provider is an address and a protocol; the reader brings the token and the model id. It
-        appears in the ``/config`` picker beside the built-in ones and ``/config add <name>``
-        takes it. Nothing is called or connected to: this only describes a host.
+        The models are usable as soon as the plugin is accepted: the runtime turns each one into the entry a
+        request is built from, with the token read from the variable the provider names. Nothing is called or
+        connected to here.
 
         Args:
-            provider: The host. Its ``name`` must be unique across the application, because it is
-                what ``/config add`` is typed with.
+            provider: The host and its models. Its ``name`` must be unique across the application.
 
         Returns:
             The registered provider, in case the plugin wants to keep it.
 
         Raises:
-            ValueError: When the name is already registered by this plugin, or is one of the
-                built-in providers'.
+            ValueError: When the name is registered already, a model cannot form an entry, or two models would be
+                shown by one name.
         """
         if not isinstance(provider, Provider):
             raise ValueError("A provider must be a zettcode.providers.Provider")
         if provider.name in {existing.name for existing in self._providers}:
             raise ValueError(f"Provider already registered: {provider.name}")
+        self._claim_models(provider, provider.models)
         self._providers.append(provider)
         return provider
+
+    def register_model(self, provider: str | Provider, model: ProvidedModel) -> ProvidedModel:
+        """Offer one more model at a provider this plugin has registered.
+
+        This is the same as putting it in the provider's ``models`` when the provider is registered; it is for a
+        plugin that learns about a model after describing its host.
+
+        Args:
+            provider: The provider, or the name of one this plugin registered.
+            model: The model it serves.
+
+        Returns:
+            The model, in case the plugin wants to keep it.
+
+        Raises:
+            ValueError: When there is no such provider, the model cannot form an entry, or its name is taken.
+        """
+        if not isinstance(model, ProvidedModel):
+            raise ValueError("A model must be a zettcode.providers.ProvidedModel")
+        target = self._provider(provider)
+        self._claim_models(target, (model,))
+        self._providers[self._providers.index(target)] = replace(target, models=(*target.models, model))
+        return model
+
+    def register_models(self, provider: str | Provider, models: Iterable[ProvidedModel]) -> tuple[ProvidedModel, ...]:
+        """Offer several more models at one provider; see :meth:`register_model`."""
+        offered = tuple(models)
+        if any(not isinstance(model, ProvidedModel) for model in offered):
+            raise ValueError("A model must be a zettcode.providers.ProvidedModel")
+        target = self._provider(provider)
+        self._claim_models(target, offered)
+        self._providers[self._providers.index(target)] = replace(target, models=(*target.models, *offered))
+        return offered
+
+    def _provider(self, provider: str | Provider) -> Provider:
+        """Return a provider this plugin registered, by name or by a handle it was given.
+
+        A handle is matched by name, not by value: every registration stores a copy with one more model, so the
+        object a plugin kept from :meth:`register_provider` is equal to the stored one only until the first model
+        is added. Its name is what stays true.
+        """
+        name = provider.name if isinstance(provider, Provider) else provider
+        found = next((existing for existing in self._providers if existing.name == name), None)
+        if found is None:
+            raise ValueError(f"Provider is not registered by this plugin: {name}")
+        return found
+
+    def _claim_models(self, provider: Provider, models: Iterable[ProvidedModel]) -> None:
+        """Refuse a model that cannot form an entry, or one whose shown name is taken.
+
+        The entry is built only to be thrown away: it is the configuration's own rules that decide whether a model
+        is usable, so this cannot drift from what a request would accept.
+        """
+        for model in models:
+            model_from(provider, model)
+            name = model.shown_name
+            if name in self._model_names:
+                raise ValueError(f"A model is already shown as {name!r}")
+            self._model_names.add(name)
 
     def register_extension(self, extension: AgentExtension) -> AgentExtension:
         """Hand the agent one ``zett-agent`` extension of the plugin's own.

@@ -1117,16 +1117,16 @@ class Client:
         """Return the model the next run uses.
 
         Raises:
-            ConfigurationError: No model is configured yet. A front end that paints before there is one asks
+            ConfigurationError: No model is configured or chosen. A front end that paints before there is one asks
                 :attr:`active_model`, which answers ``None`` instead.
         """
-        from zettcode.config import NO_MODEL_REFUSAL
+        from zettcode.config import NO_MODEL_CHOSEN, NO_MODEL_REFUSAL
 
         from .models import model_info
 
         entry = self._agent.active_model
         if entry is None:
-            raise ConfigurationError(NO_MODEL_REFUSAL)
+            raise ConfigurationError(NO_MODEL_CHOSEN if self._agent.models else NO_MODEL_REFUSAL)
         return model_info(entry, active=True)
 
     @property
@@ -1383,7 +1383,7 @@ class Client:
             ``"steered"``, ``"queued"`` or ``"started"``.
 
         Raises:
-            ConfigurationError: No model is configured, or a picture is sent to a model that cannot see.
+            ConfigurationError: No model is configured or chosen, or a picture is sent to a model that cannot see.
             ClientClosedError: The client was closed.
             ValueError: The message is empty, or ``mode`` is neither ``"steer"`` nor ``"followup"``.
         """
@@ -1688,18 +1688,19 @@ class Client:
             raise ConfigurationError(str(error)) from error
 
     async def check_models(self, *, timeout: float = 30.0) -> tuple[ModelCheck, ...]:
-        """Ask every configured model one short question, as ``zettcode doctor`` does, and report which answer.
+        """Ask every available model one short question, as ``zettcode doctor`` does, and report which answer.
 
-        The questions go to the provider adapters directly: no session is written, no tool is offered, and no
-        extension runs, so what is measured is the entry and the endpoint. They are asked at once, and a model that
-        does not answer within ``timeout`` seconds is reported as not answering rather than raised.
+        The file's models and the ones plugins offer are both asked. The questions go to the provider adapters
+        directly: no session is written, no tool is offered, and no extension runs, so what is measured is the entry
+        and the endpoint. They are asked at once, and a model that does not answer within ``timeout`` seconds is
+        reported as not answering rather than raised.
         """
         from zettcode.doctor import diagnose
 
         from .translation import checks_from
 
         self._check_open()
-        return checks_from(await diagnose(self.config.models, timeout=timeout))
+        return checks_from(await diagnose(self._agent.models, timeout=timeout))
 
     # -- running, on the current session --
     def prompt(

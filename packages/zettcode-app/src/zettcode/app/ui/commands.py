@@ -44,10 +44,9 @@ THEME_NOTES = {
 
 #: What ``/config`` takes first, as its description lists them.
 CONFIG_WORDS = (
-    Subcommand("add", "add a model: a provider, then what it needs", needs_more=True),
+    Subcommand("add", "add a model: its protocol, then what it needs", needs_more=True),
     Subcommand("remove", "remove a model by number or name", needs_more=True),
     Subcommand("list", "show the models in the file"),
-    Subcommand("providers", "show the providers and where to get a key"),
 )
 
 
@@ -97,7 +96,7 @@ class ShellCommands(CommandProvider):
             # /resume, /fork, plus the agent's /new, /compact and /export.
             Command(
                 "/config",
-                "add, change or remove models: /config [add|remove|list|providers]",
+                "add, change or remove models: /config [add|remove|list]",
                 "app",
                 self.config,
                 subcommands=CONFIG_WORDS,
@@ -147,10 +146,9 @@ class ShellCommands(CommandProvider):
 
         With nothing after it the command opens the panel, which asks one question at a time and
         is the way to type a token without it being echoed. The words after it do the same job
-        on one line: ``add`` takes a provider and whatever of its settings the line gives, and
-        asks for the rest; ``remove`` takes a number or a name; ``list`` and ``providers`` only
-        show. A refusal \u2014 a bad address, a file that cannot be edited \u2014 is the command's error and
-        nothing is written.
+        on one line: ``add`` takes whatever of a model's settings the line gives, and asks for the
+        rest; ``remove`` takes a number or a name; ``list`` only shows. A refusal \u2014 a bad address, a
+        file that cannot be edited \u2014 is the command's error and nothing is written.
         """
         word, _, rest = context.argument.partition(" ")
         shell = self.shell
@@ -158,14 +156,12 @@ class ShellCommands(CommandProvider):
             return CommandResult(widget=shell.config_page())
         if word == "list":
             return CommandResult(message=shell.config_listing())
-        if word == "providers":
-            return CommandResult(message=shell.config_providers_listing())
         if word == "add":
             done = shell.config_add_from_line(rest)
             return CommandResult(notification=done, relayout=True) if done else CommandResult()
         if word == "remove":
             return CommandResult(notification=shell.config_remove_from_line(rest), relayout=True)
-        raise ValueError("Usage: /config [add <provider> ... | remove <number|name> | list | providers]")
+        raise ValueError("Usage: /config [add [--model ID] ... | remove <number|name> | list]")
 
     async def theme(self, context: CommandContext) -> CommandResult:
         """Switch straight to a named palette and remember it, or open the menu of them.

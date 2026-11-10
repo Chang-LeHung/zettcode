@@ -36,10 +36,10 @@ Except on `/health`, every endpoint requires `Authorization: Bearer <token>` whe
 
 | Method | Path | Body | Answers |
 | --- | --- | --- | --- |
-| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent","web_search","web_search_name","display_model","base_url","api","temperature","can_search","search_name"}], "current"}`; works before a model is configured, where `current` is null. |
+| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent","web_search","web_search_name","display_model","base_url","api","temperature","can_search","search_name","provider","token_env"}], "current"}`. The file's models come first, then the ones plugins offer; `provider` names the plugin host, and is null for a file entry. `token_env` names the variable a provided model wanted but did not have set, and is null otherwise. Works before a model is configured, where `current` is null. |
 | `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "chat"?, "multimodal"?, "temperature"?, "web_search"?, "web_search_name"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201 with the new list. The first model makes the server ready; later ones are available for `PATCH /settings`. Written to the configuration file, with the keys the terminal's `/config add` uses. `web_search` lets the provider search the web for the model; for a DeepSeek model it is refused unless `anthropic` is set, and a misspelt key is a `422`. |
 | `PATCH` | `/models/{name}` | Any of the fields `POST /models` takes | The new list. A key left out stays as it is; the token is kept unless a new one is given. A key sent as `null` is removed from the entry (all but `model` and `token`): `"temperature": null` goes back to the provider's own, and `"anthropic": null` takes the flag out of the file instead of leaving `anthropic = false`. |
-| `DELETE` | `/models/{name}` | — | The remaining models. The last one cannot be removed (`400 invalid`): a client needs one. |
+| `DELETE` | `/models/{name}` | — | The remaining models. The last model in the file cannot be removed (`400 invalid`) unless a plugin offers one; a model a plugin offers is not in the file and is not removed here. |
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions","harness"}`; after a `PATCH` that moved the compaction point it also has `"unsaved"` (see below). |
 | `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?, "harness"?, "compact_percent"?}` | The same as `GET /settings`, after the change. At least one field. `permission` is `deny`, `ask`, `safe` or `full` (`auto` is the old name of `full` and is answered as `full`); `harness` turns the just-in-time tool harness on or off from the next prompt. `compact_percent` is above 0 and at most 100, applies from the next request and is written to the configuration file; when the file cannot be written the answer carries `"unsaved": "<why>"` and the change holds for this run only. Moving `compact_percent` is refused with `409` while a run is in progress; the other fields are not. |
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...], "entries": [{"name","origin","builtin","enabled","failure","setting","switchable","why"}], "triggers": [{"name","scope","state","detail"}]}`: the names, the messages for what failed, every plugin a panel shows — which includes rows a switch cannot move (a failed compiled-in plugin, a group switched off); `switchable` and `why` are those rows. `origin` is the distribution's name and the one a switch is written with; `enabled` says whether the **next start** does its work; `setting` is the configuration key that decides a compiled-in plugin (`"skills.enabled"`), empty for an installed one. A compiled-in plugin with no such key is not listed at all. `triggers` is where each trigger the loaded plugins registered is now, once the runtime has started: `scope` is `process` or `machine`, `state` is `pending`, `standby`, `running`, `skipped`, `finished`, `failed` or `stopped`, and `detail` is why for `standby`, `skipped` and `failed` — empty otherwise. |
@@ -56,6 +56,11 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 ```
 
 A model is named as `/models` lists it (its display name when it has one). The token of a model is never returned.
+
+A server starts its agent from the configuration file: the first `POST /models` entry is what makes it ready and
+loads the plugins, so a model a plugin offers appears in `GET /models` after that and can be chosen with
+`PATCH /settings`. A workspace with no file entry answers every request that needs a model with `409 no_model`
+and the `POST /models` instruction.
 
 ## Sessions
 

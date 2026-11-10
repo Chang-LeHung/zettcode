@@ -193,6 +193,11 @@ class ModelInfo:
         temperature: The sampling temperature the entry sends, or ``None`` for the provider's own.
         can_search: Whether the endpoint serves hosted web search at all (DeepSeek's chat endpoint does not).
         search_name: The tool type search is sent as: the entry's own, or the default for the API it speaks.
+        provider: The name of the plugin host that offered this model, or ``None`` for an entry in the configuration
+            file.
+        token_env: The environment variable the provider named for this model's token when it was not set, or
+            ``None`` when the token is present, no host named one, or the variable was there. A model listed with
+            one cannot make a request until that key is exported and the runtime is started again.
     """
 
     name: str
@@ -210,6 +215,8 @@ class ModelInfo:
     temperature: float | None = None
     can_search: bool = True
     search_name: str = ""
+    provider: str | None = None
+    token_env: str | None = None
 
     @property
     def compaction_max_tokens(self) -> int:

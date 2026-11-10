@@ -99,6 +99,9 @@ from .shell import (
     EMPTY_REPLY,
     FLASH_SECONDS,
     NO_MODEL_ASKED,
+    NO_MODEL_CHOSEN_ASKED,
+    NO_MODEL_CHOSEN_QUESTION,
+    NO_MODEL_CHOSEN_START,
     NO_MODEL_QUESTION,
     NO_MODEL_START,
     PAGE_SCREEN,
@@ -210,7 +213,8 @@ class ZettCodeApp(
         if agent.runtime.active_model is None:
             # The first thing the conversation says on a machine that has never been set up, under the banner and
             # above anything the reader does next: the shell runs, and this is the one command it is waiting for.
-            self.transcript.notice(NO_MODEL_START)
+            chosen = NO_MODEL_CHOSEN_START if self.client.models else NO_MODEL_START
+            self.transcript.notice(chosen)
         for failure in agent.plugin_failures:
             self.transcript.error(f"plugin: {failure}")
         self.projector = TranscriptProjector(
@@ -750,7 +754,7 @@ class ZettCodeApp(
             # Nothing to ask, and no turn is opened for it: one sentence, where /compact gives it, instead of a turn
             # that the stream then fails and a "btw failed" line under it. Its own sentence, not the prompt's: a
             # command clears the composer before its handler runs, so "your words are still in the box" would lie.
-            self.transcript.error(NO_MODEL_QUESTION)
+            self.transcript.error(NO_MODEL_CHOSEN_QUESTION if self.client.models else NO_MODEL_QUESTION)
             self.app.invalidate()
             return
         self.projector.begin_turn(question, side=True)
@@ -1094,7 +1098,7 @@ class ZettCodeApp(
             # the draft away: the words stay in the box, so setting the model up is all that is left to do. This is
             # checked before the parts are taken, because nothing downstream of here has a model to ask about.
             if self.model is None:
-                self.transcript.error(NO_MODEL_ASKED)
+                self.transcript.error(NO_MODEL_CHOSEN_ASKED if self.client.models else NO_MODEL_ASKED)
                 self.app.invalidate()
                 return False
             # The parts are taken before the composer is cleared, and keep the

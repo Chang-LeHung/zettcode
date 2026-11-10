@@ -28,6 +28,20 @@ test("the three APIs are listed in the terminal's order, each with the words tha
     APIS.map((api) => api.value),
     ["chat", "responses", "anthropic"],
   );
+  assert.deepEqual(
+    APIS.map((api) => api.label),
+    ["OpenAI Chat API", "OpenAI Responses API", "Anthropic Messages API"],
+    "the editor and the terminal name the three protocols the same way",
+  );
+  assert.deepEqual(
+    APIS.map((api) => api.detail),
+    [
+      "chat completions",
+      "OpenAI's Responses protocol, with hosted tools",
+      "Anthropic's own protocol, not OpenAI-compatible",
+    ],
+    "the editor and the terminal describe the three protocols the same way",
+  );
   assert.ok(APIS.every((api) => api.label && api.detail));
 });
 

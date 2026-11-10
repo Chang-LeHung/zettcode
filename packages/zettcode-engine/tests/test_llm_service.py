@@ -33,3 +33,12 @@ async def test_model_access_lists_every_configured_model_and_delegates_the_quest
 async def test_model_access_says_the_conversation_is_not_ready_before_binding():
     with pytest.raises(RuntimeError, match="not ready"):
         await ModelAccess(_models()).ask("hello")
+
+
+def test_model_access_takes_the_models_a_plugin_offered_too():
+    access = ModelAccess(_models())
+    provided = ModelConfig(model="acme-large", provider="acme")
+
+    access.replace((*access.models, provided))
+
+    assert access.models[-1] is provided

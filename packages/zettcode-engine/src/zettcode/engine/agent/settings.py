@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
-from zettcode.config import NO_MODEL_REFUSAL, ModelConfig, _read_models
+from zettcode.config import ModelConfig, _read_models
 from zettcode.config_edit import (
     ConfigEditError,
     add_model,
@@ -27,8 +27,8 @@ class SettingsMixin(AgentBase):
 
     @property
     def models(self) -> tuple[ModelConfig, ...]:
-        """Return the models available for selection."""
-        return self.runtime.config.models
+        """Return every model that can be chosen: the file's, then the ones plugins offered."""
+        return self.runtime.models
 
     @property
     def active_model(self) -> ModelConfig | None:
@@ -79,7 +79,7 @@ class SettingsMixin(AgentBase):
             ConfigEditError: When the file cannot be read, is not valid, or lays its models out in
                 a way the editor cannot safely change.
         """
-        text = self._read_config_file(allow_missing=not self.models)
+        text = self._read_config_file(allow_missing=not (self.runtime.file_models or self.runtime.config.models))
         path = self.config_file
         entries = file_entries(text, where=path)
         try:
@@ -101,7 +101,7 @@ class SettingsMixin(AgentBase):
             write_text_atomically(path, text)
         except OSError as error:
             raise ConfigEditError(f"{path} could not be written: {error}") from error
-        models = _read_models(file_entries(text, where=path), path)
+        models = _read_models(file_entries(text, where=path), path, required=False)
         return self.runtime.replace_models(models)
 
     def add_configured_model(self, entry: Mapping[str, object]) -> ModelConfig:
@@ -119,7 +119,11 @@ class SettingsMixin(AgentBase):
             ConfigEditError: When the entry is not a model that can be called, or the file cannot
                 be edited. Nothing is written then.
         """
-        text = add_model(self._read_config_file(allow_missing=not self.models), entry, where=self.config_file)
+        text = add_model(
+            self._read_config_file(allow_missing=not (self.runtime.file_models or self.runtime.config.models)),
+            entry,
+            where=self.config_file,
+        )
         first = self.runtime.active_model is None
         self._commit_models(text)
         model = self.runtime.config.models[-1]
@@ -150,19 +154,29 @@ class SettingsMixin(AgentBase):
         if not 0 < percent <= 100:
             raise ValueError("The compression share must be more than 0 and at most 100.")
         if self.runtime.active_model is None:
-            raise ValueError(NO_MODEL_REFUSAL)
+            raise ValueError(self.runtime.no_model_refusal)
         active = self.runtime.required_model
         value = int(percent) if float(percent).is_integer() else percent
         try:
             for index, (model, entry) in enumerate(self.file_models()):
                 if model == active:
                     return self.update_configured_model(index, {**entry, "compact_percent": value}), None
-            reason = "the model in use is not in the config file"
         except ConfigEditError as error:
             reason = str(error)
+        else:
+            reason = "the model in use is not in the config file"
         edited = replace(active, compact_percent=float(percent))
-        models = tuple(edited if model is active else model for model in self.models)
-        return self.runtime.replace_models(models), reason
+        provided = self.runtime.provided_models
+        if any(model == active for model in provided):
+            return (
+                self.runtime.replace_provided(tuple(edited if model == active else model for model in provided)),
+                "a model a plugin offers has no line in the config file",
+            )
+        # The model in use came from neither list (a runtime a test built by hand): change it for this run.
+        self.runtime.active_model = edited
+        self.runtime.compaction.max_tokens = edited.compaction_max_tokens
+        self.runtime.compaction.keep_recent_tokens = edited.compaction_keep_tokens
+        return edited, reason
 
     def remove_configured_model(self, index: int) -> ModelConfig:
         """Remove model number ``index`` (from zero) from the file and this session.
@@ -171,9 +185,15 @@ class SettingsMixin(AgentBase):
             The model in use afterwards: the one before unless it was the one removed.
 
         Raises:
-            ConfigEditError: When it is the only model, or the file cannot be edited.
+            ConfigEditError: When it is the file's only model and nothing else (a model a plugin offers) could
+                serve a request, or the file cannot be edited.
         """
-        text = remove_model(self._read_config_file(), index, where=self.config_file)
+        text = remove_model(
+            self._read_config_file(),
+            index,
+            where=self.config_file,
+            allow_empty=bool(self.runtime.provided_models),
+        )
         return self._commit_models(text)
 
     @property

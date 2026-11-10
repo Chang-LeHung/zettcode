@@ -37,7 +37,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 from zettcode.config import read_disabled_plugins
-from zettcode.providers import BUILTIN_PROVIDERS
 
 from . import graph
 from .context import PluginContext
@@ -561,7 +560,10 @@ class Loader:
         self._extension_names: set[str] = {HOST_NAME}
         self._mention_kinds: set[str] = set()
         self._trigger_names: set[str] = set()
-        self._provider_names: set[str] = {provider.name for provider in BUILTIN_PROVIDERS}
+        self._provider_names: set[str] = set()
+        #: The names a model is shown by, which `/model` and a session's recorded choice both depend on: the
+        #: file's entries and every provided model accepted so far.
+        self._model_names: set[str] = {model.shown_name for model in config.models}
 
     # -- what a subclass changes --
 
@@ -582,14 +584,27 @@ class Loader:
         )
         if mention_clash is not None:
             return f"mention kind {mention_clash} is already registered"
-        # A name is what `/config add` is typed with, so two hosts sharing one cannot both be
-        # reached; the one that was there first, a built-in or an earlier plugin, keeps it.
+        # A name is what a provider is registered under, so two hosts sharing one cannot both be reached; the one
+        # that was there first, an earlier plugin, keeps it.
         provider_clash = next(
             (provider.name for provider in context.providers if provider.name in self._provider_names),
             None,
         )
         if provider_clash is not None:
             return f"provider {provider_clash} is already registered"
+        # A model is chosen by the name a list shows, and a session records it, so two entries under one name would
+        # make `/model` a guess.
+        model_clash = next(
+            (
+                model.shown_name
+                for provider in context.providers
+                for model in provider.models
+                if model.shown_name in self._model_names
+            ),
+            None,
+        )
+        if model_clash is not None:
+            return f"a model shown as {model_clash!r} is already registered"
         # The agent refuses two extensions with one name, and that would fail the first turn rather than
         # the load, so the clash is caught here; the name of the host itself counts.
         extension_clash = next(
@@ -615,6 +630,7 @@ class Loader:
         self.contributed.extend(context.extensions)
         self.services.update(context.services)
         self._provider_names.update(provider.name for provider in context.providers)
+        self._model_names.update(model.shown_name for provider in context.providers for model in provider.models)
         self.providers.extend(context.providers)
         self._mention_kinds.update(provider.kind for provider in context.mentions)
         self.mentions.extend(context.mentions)

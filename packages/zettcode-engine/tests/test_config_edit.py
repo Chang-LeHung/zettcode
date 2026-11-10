@@ -271,6 +271,14 @@ def test_the_only_model_cannot_be_removed_because_the_program_would_not_start():
         remove_model(text, 0, where=WHERE)
 
 
+def test_the_only_model_can_go_when_the_caller_has_something_else_to_serve():
+    text = '[[models]]\nmodel = "a"\ntoken = "t"\n'
+
+    emptied = remove_model(text, 0, where=WHERE, allow_empty=True)
+
+    assert 'model = "a"' not in emptied
+
+
 def test_removing_a_model_that_is_not_there_is_refused():
     with pytest.raises(ConfigEditError, match="no model number 5"):
         remove_model(HAND_WRITTEN, 4, where=WHERE)

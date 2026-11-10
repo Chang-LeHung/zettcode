@@ -32,6 +32,7 @@ from zett_agent.model import ReasoningEffort
 from zettcode.config import (
     DEFAULT_ANTHROPIC_BASE_URL,
     KEYLESS_TOKEN,
+    NO_MODEL_CHOSEN,
     NO_MODEL_REFUSAL,
     ModelConfig,
     ZettCodeConfig,
@@ -77,6 +78,7 @@ from .extensions.usage import UsageExtension
 from .permission import Permission, ShellPolicy, parse_permission
 from .permission.sandbox import ShellSandbox
 from .pipeline import ImportPipeline
+from .provided import entries, merged
 from .storage import NoLocks, SessionGuard, SessionLocked, SessionLocks, SessionStore
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
@@ -251,7 +253,7 @@ class _ContextPageAdapter(ContextPageService):
     async def snapshot(self, session_id: str) -> ContextPageSnapshot:
         runtime = self._runtime
         if runtime is None or runtime.active_model is None:
-            raise ValueError(NO_MODEL_REFUSAL)
+            raise ValueError(NO_MODEL_REFUSAL if runtime is None else runtime.no_model_refusal)
         model = runtime.active_model
         return ContextPageSnapshot(
             model_name=model.shown_name,
@@ -313,6 +315,10 @@ class ZettCodeEngine:
     #: The plugins' triggers, started with the runtime (see :meth:`start`) and stopped by :meth:`aclose`.
     _triggers: TriggerHost | None = field(default=None, repr=False)
     _models: dict[ModelConfig, Adapter] = field(default_factory=dict)
+    #: The models the configuration file holds, in file order: what `/config` lists and edits.
+    file_models: tuple[ModelConfig, ...] = ()
+    #: The models plugins offered, which can be chosen but are not in the file.
+    provided_models: tuple[ModelConfig, ...] = field(default_factory=tuple, repr=False)
     #: Each session's own self-compaction choice as last read or written; see :meth:`self_compaction_choice`.
     _self_choices: dict[str, bool | None] = field(default_factory=dict, repr=False)
     #: Each session's own permission level as last read or written; see :meth:`permission_choice`.
@@ -368,9 +374,11 @@ class ZettCodeEngine:
                 "ZettCodeEngine.preview(shared=...) may not replace the runtime's own services: " + ", ".join(taken)
             )
         os.chdir(config.workspace)
+        file_models = config.models
         # A machine that has never been set up has no model to start on; the shell opens anyway and says so (see
-        # the invariant S23), and `use_model` sizes this runtime the moment `/config` writes the first entry.
-        selected = config.models[0] if config.models else None
+        # the invariant S23), and `use_model` sizes this runtime the moment `/config` writes the first entry. A
+        # model a plugin offers is not made active on its own: `/model` is where a reader chooses it.
+        selected = file_models[0] if file_models else None
         effort = config.reasoning_effort if selected is None else selected.accepted_effort(config.reasoning_effort)
         # One policy, read by everything that decides whether a command is asked
         # about: the memory lets `safe` and `auto` through, the deny extension
@@ -389,6 +397,7 @@ class ZettCodeEngine:
         delivery = RuntimeDelivery()
         context_reports = _ContextReportAdapter()
         context_page = _ContextPageAdapter()
+        access = ModelAccess(config.models)
         provided: dict[str, object] = {
             POLICY: policy,
             HARNESS: harness,
@@ -400,7 +409,7 @@ class ZettCodeEngine:
             DELIVERY: delivery,
             CONTEXT_REPORT: context_reports,
             CONTEXT_PAGE: context_page,
-            LLM: ModelAccess(config.models),
+            LLM: access,
             PLUGIN_CLI: {},
         }
         if selected is not None:
@@ -409,6 +418,7 @@ class ZettCodeEngine:
             provided[SELECTED_MODEL] = selected
         if shared:
             provided.update(shared)
+        plugins = (load or _load_engine_plugins)(config, provided)
         runtime = cls(
             config=config,
             persistence=persistence,
@@ -420,11 +430,15 @@ class ZettCodeEngine:
             session_id=new_uuid7(),
             active_model=selected,
             compaction_counter=counter,
-            plugins=(load or _load_engine_plugins)(config, provided),
+            plugins=plugins,
             _models=models,
+            file_models=file_models,
+            provided_models=entries(plugins.providers),
         )
         context_reports.bind(runtime)
         context_page.bind(runtime)
+        # The plugins are loaded, so the models they offered are known: a plugin that lists the models sees its own.
+        access.replace(runtime.models)
         # The session a launch starts in is a new one, so this always succeeds; a launch that resumes
         # another moves the lock when it installs it.
         runtime.session_locks.claim(runtime.session_id)
@@ -433,6 +447,20 @@ class ZettCodeEngine:
         # Asked for every request, so a choice made in the middle of a conversation applies to its next one.
         runtime.compaction.self_compact = runtime.self_compacting
         return runtime
+
+    @property
+    def models(self) -> tuple[ModelConfig, ...]:
+        """Return every model that can be chosen: the file's, then the ones plugins offered."""
+        return merged(self.file_models or self.config.models, self.provided_models)
+
+    @property
+    def no_model_refusal(self) -> str:
+        """Return the sentence for a path that needs a model and has none in use.
+
+        A machine with nothing available is told to configure one; one that has models a plugin offers is told
+        to pick one, because ``/config`` edits only the file.
+        """
+        return NO_MODEL_CHOSEN if self.models else NO_MODEL_REFUSAL
 
     def start(self) -> asyncio.Task[ZettCodeEngine]:
         """Build the provider and the client once, whoever asks first.
@@ -461,7 +489,7 @@ class ZettCodeEngine:
             self._triggers = TriggerHost(self.plugins.triggers, self.config.store.parent / "triggers")
             self._triggers.start()
         if self.active_model is None:
-            raise ValueError(NO_MODEL_REFUSAL)
+            raise ValueError(self.no_model_refusal)
         if self._starting is None:
             self._begin_imports()
             self.compaction_counter.start()
@@ -492,9 +520,9 @@ class ZettCodeEngine:
         # only talks to OpenAI-compatible endpoints does not import `anthropic` on a thread that
         # competes with the interface for the interpreter.
         sdks: list[str] = []
-        if any(not model.anthropic for model in config.models):
+        if any(not model.anthropic for model in self.models):
             sdks.extend(OPENAI_WARM_MODULES)
-        if any(model.anthropic for model in config.models):
+        if any(model.anthropic for model in self.models):
             sdks.extend(ANTHROPIC_WARM_MODULES)
         optional = tuple(module for setting, module in WARM_MODULES_WHEN if getattr(config, setting, False))
         return (*sdks, *WARM_MODULES, *optional)
@@ -552,7 +580,7 @@ class ZettCodeEngine:
         if selected is None:
             # Nothing to build a provider for. The shell refuses a request before it gets this far; anything
             # else that asked anyway is told the one thing that changes it.
-            raise ValueError(NO_MODEL_REFUSAL)
+            raise ValueError(self.no_model_refusal)
         model = self._provider(selected)
         # Every extension the agent runs is a plugin's: the built-in ones (the coding tools, the session
         # store, the shell approval, the compaction ... see `zettcode.sdk.builtins`) in the order
@@ -657,7 +685,7 @@ class ZettCodeEngine:
             ValueError: No model is configured.
         """
         if self.active_model is None:
-            raise ValueError(NO_MODEL_REFUSAL)
+            raise ValueError(self.no_model_refusal)
         return self.active_model
 
     def set_event_dispatcher(self, dispatcher: AgentEventDispatcher | None) -> None:
@@ -841,7 +869,7 @@ class ZettCodeEngine:
                 raise ValueError(f"Unknown reasoning effort: {name}. Try one of: {levels}") from None
         active = self.active_model
         if active is None:
-            raise ValueError(NO_MODEL_REFUSAL)
+            raise ValueError(self.no_model_refusal)
         accepted = active.efforts
         if level not in accepted:
             levels = ", ".join(known.value for known in accepted)
@@ -859,27 +887,28 @@ class ZettCodeEngine:
         with, and guessing would move the model under the reader without saying so.
         """
         try:
-            index = model_index(self.config.models, name)
+            index = model_index(self.models, name)
         except ValueError:
             return None
-        return None if index is None else self.config.models[index]
+        return None if index is None else self.models[index]
 
     def use_model(self, name: str | ModelConfig) -> ModelConfig:
-        """Select a configured model for subsequent requests without changing sessions."""
+        """Select a model for subsequent requests without changing sessions."""
+        models = self.models
         if isinstance(name, ModelConfig):
             # The very entry first, so two entries that hold the same settings stay two choices; an
             # equal one is accepted too, because a model read back from the config file is a new
             # object holding what the session's entry holds, and is the same model to a reader.
-            chosen = next((entry for entry in self.config.models if entry is name), None) or next(
-                (entry for entry in self.config.models if entry == name), None
+            chosen = next((entry for entry in models if entry is name), None) or next(
+                (entry for entry in models if entry == name), None
             )
             if chosen is None:
                 raise ValueError("Unknown model selection")
         else:
-            index = model_index(self.config.models, name)
+            index = model_index(models, name)
             if index is None:
                 raise ValueError(f"Unknown model: {name}")
-            chosen = self.config.models[index]
+            chosen = models[index]
         self.active_model = chosen
         # A preview runtime has no provider yet; the model it names is what
         # :meth:`_build` starts from.
@@ -893,6 +922,12 @@ class ZettCodeEngine:
         # with a level its endpoint would reject.
         self.effort = chosen.accepted_effort(self.effort)
         return chosen
+
+    def _refresh_models_service(self) -> None:
+        """Keep the plugin model service in step with the list a front end would show."""
+        access = self.plugins.find(LLM, ModelAccess)
+        if access is not None:
+            access.replace(self.models)
 
     def replace_models(self, models: tuple[ModelConfig, ...]) -> ModelConfig:
         """Adopt a new list of models in this running session, keeping the one in use if it is still there.
@@ -913,15 +948,35 @@ class ZettCodeEngine:
         Returns:
             The model in use afterwards, which is the previous one unless it was removed.
         """
-        if not models:
+        if not models and not self.provided_models:
             raise ValueError("At least one model must stay configured")
         previous = self.active_model
-        old = self.config.models
+        old = self.models
         place = old.index(previous) if previous is not None and previous in old else 0
+        self.file_models = models
         self.config = replace(self.config, models=models)
+        current = self.models
         # The adapters already built stay in the cache even for an entry that is gone: the cache is
         # what shutdown walks to close each client, so dropping one here would leak its connection.
-        chosen = next((entry for entry in models if entry == previous), models[min(place, len(models) - 1)])
+        chosen = next((entry for entry in current if entry == previous), current[min(place, len(current) - 1)])
+        self._refresh_models_service()
+        return self.use_model(chosen)
+
+    def replace_provided(self, models: tuple[ModelConfig, ...]) -> ModelConfig:
+        """Adopt a new list of plugin-provided models, keeping the one in use if it is still there.
+
+        This is the same rule as :meth:`replace_models` for the models that are not in the file; a reader who
+        changes one of their settings (the compaction share, say) changes it for this run only.
+        """
+        previous = self.active_model
+        old = self.models
+        place = old.index(previous) if previous is not None and previous in old else 0
+        current = merged(self.file_models or self.config.models, models)
+        if not current:
+            raise ValueError("At least one model must stay available")
+        self.provided_models = models
+        chosen = next((entry for entry in current if entry == previous), current[min(place, len(current) - 1)])
+        self._refresh_models_service()
         return self.use_model(chosen)
 
     def new_session(self) -> str:

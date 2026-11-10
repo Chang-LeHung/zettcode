@@ -36,7 +36,7 @@ from zettcode.sdk.models import remove_model as remove_model_entry
 from zettcode.sdk.models import update_model as update_model_entry
 from zettcode.version import __version__
 
-from .runner import NoModelError, Runner, prepare, result_payload
+from .runner import NO_MODEL_MESSAGE, NoModelError, Runner, prepare, result_payload
 from .runner import Request as RunRequest
 from .schemas import (
     AnswerOut,
@@ -151,7 +151,7 @@ def stream_of(runner: Runner, request: RunRequest, *, resume: bool = False) -> S
     if runner.busy:
         raise SessionBusyError("A run is already in progress; wait for it or cancel it")
     if not runner.ready:
-        raise NoModelError("No model is configured; add one with POST /models")
+        raise NoModelError(NO_MODEL_MESSAGE)
     prepare(request)
 
     async def frames() -> AsyncIterator[bytes]:
@@ -176,7 +176,7 @@ def message_stream_of(runner: Runner, message_id: str) -> StreamingResponse:
     status line is still possible; what fails once the stream is open becomes an ``error`` frame.
     """
     if not runner.ready:
-        raise NoModelError("No model is configured; add one with POST /models")
+        raise NoModelError(NO_MODEL_MESSAGE)
     try:
         frames = runner.stream_message(message_id)
     except KeyError:
@@ -326,6 +326,8 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
     @protected.get("/settings", response_model=SettingsOut, tags=["models"])
     async def settings_out(runner: RunnerDep) -> SettingsOut:
         """Return the model, effort, permission and harness a run starts with."""
+        if not runner.ready:
+            raise NoModelError(NO_MODEL_MESSAGE)
         client = runner.client
         return SettingsOut(
             model=model_out(client.model),
@@ -572,7 +574,7 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         if runner.busy:
             raise SessionBusyError("A run is already in progress; ask again when it ends")
         if not runner.ready:
-            raise NoModelError("No model is configured; add one with POST /models")
+            raise NoModelError(NO_MODEL_MESSAGE)
 
         async def frames() -> AsyncIterator[bytes]:
             try:

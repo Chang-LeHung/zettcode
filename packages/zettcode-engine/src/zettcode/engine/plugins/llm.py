@@ -8,11 +8,13 @@ from zettcode.config import ModelConfig
 
 
 class ModelAccess:
-    """The configured models, and the side question a plugin may ask of the active one.
+    """The models available, and the side question a plugin may ask of the active one.
 
-    The service is built with the runtime's configuration, so every model the reader configured is available from
-    the moment a plugin activates. The question side is bound later by the front end that owns the conversation;
-    until then :meth:`ask` says the conversation is not ready instead of reaching for a client it does not have.
+    The service is built with the runtime's configuration, and the runtime binds the full list once every plugin
+    has loaded. During ``activate`` a plugin therefore sees only the models the file holds, not the ones its
+    neighbours offer: read :attr:`models` when it is needed rather than keeping the tuple from ``activate``. The
+    question side is bound later by the front end that owns the conversation; until then :meth:`ask` says the
+    conversation is not ready instead of reaching for a client it does not have.
 
     Ask a question with the plugin's name as ``origin``. The exchange is kept out of the conversation and a plugin's
     question is not restored into a resumed transcript, which is what lets a recap or an audit ask for itself.
@@ -25,8 +27,12 @@ class ModelAccess:
 
     @property
     def models(self) -> tuple[ModelConfig, ...]:
-        """Return every model the reader configured, in the order the configuration lists them."""
+        """Return every model that can be chosen, in the order a list shows them."""
         return self._models
+
+    def replace(self, models: Sequence[ModelConfig]) -> None:
+        """Adopt the models available once the plugins have loaded; the runtime is the caller."""
+        self._models = tuple(models)
 
     def bind(self, ask: Callable[..., Awaitable[str]]) -> None:
         """Give the service the conversation's side-question entry point; the front end is the caller."""

@@ -69,6 +69,10 @@ export interface ModelInfo {
   can_search?: boolean;
   /** The tool type search is sent as: the entry's own, or the default for the API it speaks. */
   search_name?: string;
+  /** The plugin host that offered this model; `null` for an entry in the configuration file. */
+  provider?: string | null;
+  /** The environment variable the provider named for a token that was not set; the model cannot run until it is. */
+  token_env?: string | null;
 }
 
 /** One model to add to the configuration file; the keys are the file's own. */

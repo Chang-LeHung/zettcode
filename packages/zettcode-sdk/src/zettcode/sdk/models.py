@@ -42,6 +42,8 @@ def model_info(model: _config.ModelConfig, *, active: bool = False) -> ModelInfo
         temperature=model.temperature,
         can_search=model.can_search,
         search_name=model.search_name,
+        provider=model.provider,
+        token_env=model.token_env,
     )
 
 

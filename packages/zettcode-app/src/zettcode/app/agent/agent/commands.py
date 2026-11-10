@@ -18,7 +18,6 @@ from zettcode.plugin_api.plugin import TuiPlugins
 from zettcode.plugin_api.presenters import Presenters
 from zettcode.plugin_api.state import TurnSegment, UiRow
 from zettcode.presenters.statusline import NAMES, unknown
-from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
 from zettcode.tui import ThemeCatalog
 
 from .settings import AppearanceMixin
@@ -70,11 +69,6 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
     def builtin_plugin_commands(self) -> tuple[Command, ...]:
         """Return the commands the program's own plugins registered: ``/resume``, ``/model``, ``/usage`` and the rest."""
         return self.terminal_plugins.builtin_commands
-
-    @property
-    def providers(self) -> tuple[Provider, ...]:
-        """Return the hosts ``/config`` can offer: the built-in ones, then the plugins' own."""
-        return merge_providers(BUILTIN_PROVIDERS, self.runtime.plugins.providers)
 
     @property
     def themes(self) -> ThemeCatalog:

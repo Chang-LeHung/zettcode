@@ -217,6 +217,10 @@ MAX_MOUSE_SCROLL_SPEED = 20.0
 #: has a fourth wording, ``add one with POST /models``, because that is the instruction over HTTP.
 NO_MODEL_REFUSAL = "No model is configured; add one with /config"
 
+#: What a path that needs a model is refused with when one is available but none has been chosen — a plugin offers
+#: models and the file lists none, so the instruction is the picker, not the file editor.
+NO_MODEL_CHOSEN = "No model is chosen; pick one with /model"
+
 
 @dataclass(frozen=True, slots=True)
 class ModelConfig:
@@ -261,6 +265,11 @@ class ModelConfig:
             tuple, the default, means every level: a provider that cannot express one maps it
             onto its closest, which is what makes the default right for an endpoint whose
             support is unknown. An entry names the subset when the endpoint rejects the rest.
+        provider: The name of the plugin host that offered this model, when it came from one; ``None`` for an entry
+            the reader wrote. It is a record of where the entry came from, not something read to reach the host.
+        token_env: The environment variable a plugin named for this model's token, when it was not set when the
+            runtime was built; ``None`` when the entry carries its token, has no host to name one, or the variable
+            was present. It is shown so a model that cannot work says which key is missing.
     """
 
     model: str
@@ -277,6 +286,8 @@ class ModelConfig:
     temperature: float | None = None
     web_search: bool = False
     web_search_name: str | None = None
+    provider: str | None = None
+    token_env: str | None = None
 
     def __post_init__(self) -> None:
         """Reject a model that cannot be called."""
