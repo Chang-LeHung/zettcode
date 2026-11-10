@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from zettcode.broker.protocol import MAX_IMAGE_BYTES, MAX_IMAGES
-from zettcode.im.bridge import Bridge, BridgeSettings, split
+from zettcode.im.bridge import Bridge, BridgeSettings, _identity, split
 from zettcode.im.guard import DaemonUnavailable
 from zettcode.im.link import LinkError
 from zettcode.im.state import BridgeState
@@ -120,7 +120,7 @@ def test_a_message_becomes_one_turn_and_the_answer_goes_back_to_its_chat(tmp_pat
     assert images == []
     assert im.sent == [("chat", "done", "token")], "the answer goes back with the chat's context token"
     assert link.statuses == ["working", "idle"]
-    assert opened.state.cursor == "cur-9" and opened.state.answered("e1")
+    assert opened.state.cursor == "cur-9" and opened.state.answered(_identity(Message(text="list the files")))
 
 
 def test_a_picture_travels_with_the_prompt_and_an_image_only_message_runs_a_turn(tmp_path: Path) -> None:
@@ -172,7 +172,7 @@ def test_a_daemon_that_cannot_start_is_explained_and_the_message_is_not_asked_ag
 
     assert link.asked == []
     assert "the model rejected the key" in im.sent[0][1]
-    assert opened.state.answered("e1"), "the message is behind us; the sender does not get it twice"
+    assert opened.state.answered(_identity(Message(text="hello"))), "the message is behind us; no second answer"
 
 
 def test_a_link_that_fails_says_so_in_the_chat(tmp_path: Path) -> None:
@@ -271,7 +271,7 @@ def test_an_answer_the_chat_will_not_take_is_not_run_again_for_ever(tmp_path: Pa
         asyncio.run(opened._turn(Message(text="hello"), f"cur-{attempt}"))
 
     assert len(link.asked) == 2, "one answer, then one retry; not a turn per delivery"
-    assert opened.state.answered("e1"), "and then the message is behind us, with the reason in the log"
+    assert opened.state.answered(_identity(Message(text="hello"))), "then the message is behind us, reason in the log"
 
 
 def test_a_chat_is_answered_with_the_context_it_last_had(tmp_path: Path) -> None:
@@ -316,3 +316,38 @@ def test_a_poll_that_hangs_is_abandoned_and_asked_again(tmp_path: Path) -> None:
 
     assert said and "nothing came back" in said[0]
     assert Stuck.calls >= 2, "and it asks again rather than staying on the dead connection"
+
+
+def test_a_new_message_with_a_reused_sequence_number_is_not_taken_for_an_answered_one(tmp_path: Path) -> None:
+    """The platform's fallback id is a per-chat counter that starts at 1 again after every login.
+
+    Remembered alone, "1" named the first message for ever, and every later "1" was silently dropped as a repeat.
+    """
+    im, link = Im(), Link(answer="hi")
+    opened = bridge(tmp_path, im=im, link=link)
+
+    asyncio.run(opened._turn(Message(event_id="1", text="first, before the re-login"), "c1"))
+    asyncio.run(opened._turn(Message(event_id="1", text="a different message with the same number"), "c2"))
+
+    assert len(link.asked) == 2, "the second message ran a turn"
+    assert len(im.sent) == 2
+
+
+def test_a_genuine_redelivery_of_the_same_message_is_still_answered_once(tmp_path: Path) -> None:
+    im, link = Im(), Link(answer="hi")
+    opened = bridge(tmp_path, im=im, link=link)
+
+    asyncio.run(opened._turn(Message(event_id="7", text="hello"), "c1"))
+    asyncio.run(opened._turn(Message(event_id="7", text="hello"), "c1"))
+
+    assert len(link.asked) == 1 and len(im.sent) == 1
+
+
+def test_the_same_number_in_another_chat_is_another_message(tmp_path: Path) -> None:
+    im, link = Im(), Link(answer="hi")
+    opened = bridge(tmp_path, im=im, link=link)
+
+    asyncio.run(opened._turn(Message(event_id="1", chat_id="alice", text="hello"), "c1"))
+    asyncio.run(opened._turn(Message(event_id="1", chat_id="bob", text="hello"), "c2"))
+
+    assert len(link.asked) == 2

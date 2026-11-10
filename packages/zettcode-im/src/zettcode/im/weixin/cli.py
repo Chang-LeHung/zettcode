@@ -177,10 +177,12 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
     credentials = state_now.credentials if state_now is not None else None
     state.handshake = handshake.model_dump(mode="json")
     state.credentials = credentials.model_dump(mode="json") if credentials is not None else {}
-    # A new login is a new connection: the cursor and the reply contexts belong to the old one. The session and
-    # the messages already answered stay, so the conversation and its history carry over.
+    # A new login is a new connection: the cursor, the reply contexts and the answered ids belong to the old one —
+    # the platform numbers messages from the start again, so an id kept across a login can name a new message.
+    # The session stays, so the conversation and its history carry over.
     state.cursor = ""
     state.chats.clear()
+    state.seen.clear()
     # A login renews the connection; the settings are what the reader decided and outlive it. A flag replaces its
     # setting, and a flag that was not given leaves the stored one alone — a re-scan that forgot `--allow` used to
     # wipe the allow-list and turn every message into a refusal.
