@@ -17,6 +17,7 @@ workspace's own files are never touched, and the repositories live under ``confi
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -232,6 +233,7 @@ class HarnessCommand(TuiPlugin):
             current_directory,
             root,
             self.choices.target(current) if self.choices is not None else None,
+            getattr(config, "store", None),
         )
         state = "on" if host.client.harness else "off"
         page = HarnessPage(
@@ -251,38 +253,94 @@ class HarnessCommand(TuiPlugin):
         current_directory: Path,
         root: Path,
         choice: HarnessChoice | None,
+        store: Path | None,
     ) -> list[tuple[HarnessTarget, str, str]]:
-        """Scan the harness tree off the event loop: workspace/session rows plus legacy session folders."""
+        """Scan the harness tree off the event loop, one row per repository."""
+        titles = cls._titles(store)
+        current_label = cls._session_label(current, None if current_title in {"", "Current session"} else current_title)
+        current_target = HarnessTarget(current_label, current_directory)
         if choice is not None:
-            current_count = cls._repository_count(choice.directory)
-            current_detail = f"{current_count} repositor{'y' if current_count == 1 else 'ies'} · using {choice.label}"
+            rows = [(current_target, f"current · {current_label}", f"using {choice.label}")]
         else:
-            current_count = cls._repository_count(current_directory)
-            current_detail = (
-                f"{current_count} repositor{'y' if current_count == 1 else 'ies'} · current"
-                if current_directory.is_dir()
-                else "No harness yet"
-            )
-        rows: list[tuple[HarnessTarget, str, str]] = [
-            (HarnessTarget(current, current_directory), current_title, current_detail)
-        ]
+            rows = cls._repo_rows(current_directory, current_target, f"current · {current_label}")
+            if not rows:
+                rows = [(current_target, f"current · {current_label}", "No harness yet")]
         seen = {current_directory.resolve()}
-        for directory, label in cls._all_harnesses(root):
+        for directory, workspace in cls._all_harnesses(root):
             try:
                 if directory.resolve() in seen:
                     continue
             except OSError:
                 continue
-            count = cls._repository_count(directory)
-            detail = f"{count} repositor{'y' if count == 1 else 'ies'}"
-            if choice is not None and choice.directory == directory:
-                detail += " · in use"
-            rows.append((HarnessTarget(label, directory), label, detail))
+            label = cls._session_label(directory.name, titles.get(directory.name))
+            if workspace:
+                label = f"{workspace}/{label}"
+            target = HarnessTarget(label, directory)
+            detail_prefix = "" if choice is None or choice.directory != directory else " · in use"
+            found = cls._repo_rows(directory, target, label)
+            if not found:
+                found = [(target, label, f"No repositories yet{detail_prefix}")]
+            elif detail_prefix:
+                found = [(target, row_label, f"{detail}{detail_prefix}") for target, row_label, detail in found]
+            rows.extend(found)
         return rows
 
     @classmethod
+    def _repo_rows(cls, directory: Path, target: HarnessTarget, label: str) -> list[tuple[HarnessTarget, str, str]]:
+        """Return one row per repository, with its manifest description when it has one."""
+        from zett_agent.jit_harness import inspect_repository
+
+        try:
+            repositories = sorted(path for path in directory.iterdir() if (path / "__init__.py").is_file())
+        except OSError:
+            return []
+        rows: list[tuple[HarnessTarget, str, str]] = []
+        for repository in repositories:
+            try:
+                policy = inspect_repository(repository)
+            except OSError as error:
+                description = f"cannot be read: {error}"
+            else:
+                if policy.ok and policy.manifest is not None:
+                    description = policy.manifest.description or "(no description)"
+                else:
+                    description = "cannot load: " + "; ".join(policy.problems)
+            rows.append((target, label, f"{repository.name} — {description}"))
+        return rows
+
+    @staticmethod
+    def _titles(store: Path | None) -> dict[str, str]:
+        """Read session titles from the store's metadata files without opening a session."""
+        titles: dict[str, str] = {}
+        if store is None:
+            return titles
+        try:
+            workspaces = [path for path in store.iterdir() if path.is_dir()]
+        except OSError:
+            return titles
+        for workspace in workspaces:
+            try:
+                sessions = [path for path in workspace.iterdir() if path.is_dir()]
+            except OSError:
+                continue
+            for session in sessions:
+                try:
+                    data = json.loads((session / "metadata.json").read_text(encoding="utf-8"))
+                except (OSError, UnicodeError, ValueError):
+                    continue
+                title = data.get("title") if isinstance(data, dict) else None
+                if isinstance(title, str) and title.strip():
+                    titles[session.name] = title
+        return titles
+
+    @staticmethod
+    def _session_label(session_id: str, title: str | None) -> str:
+        """Return the two facts a row needs: the session id and its title, when they differ."""
+        return f"{session_id} · {title}" if title and title != session_id else session_id
+
+    @classmethod
     def _all_harnesses(cls, root: Path) -> list[tuple[Path, str]]:
-        """Return every session directory under ``root``, labelled by workspace when there is one."""
+        """Return every session directory under ``root`` and its workspace name, if any."""
         if not root.is_dir():
             return []
         found: list[tuple[Path, str]] = []
@@ -299,23 +357,15 @@ class HarnessCommand(TuiPlugin):
                 continue
             if direct:
                 # A legacy session directory sits directly under the harness root.
-                found.append((child, child.name))
+                found.append((child, ""))
                 continue
             try:
-                sessions = [path for path in child.iterdir() if path.is_dir() and cls._has_repository(path)]
+                sessions = [path for path in child.iterdir() if path.is_dir()]
             except OSError:
                 continue
             for session in sessions:
-                found.append((session, f"{child.name}/{session.name}"))
+                found.append((session, child.name))
         return found
-
-    @classmethod
-    def _has_repository(cls, directory: Path) -> bool:
-        """Return whether a workspace/session directory holds at least one repository."""
-        try:
-            return any(path.is_dir() and (path / "__init__.py").is_file() for path in directory.iterdir())
-        except OSError:
-            return False
 
     @staticmethod
     def _repository_count(directory: Path) -> int:
@@ -327,7 +377,7 @@ class HarnessCommand(TuiPlugin):
 
     def _switch(self, host: CommandHost, current: str, target: HarnessTarget) -> None:
         """Borrow the selected harness, or close the page on the current row."""
-        if target.label == current or target.directory == existing_session_path(host.client.config, current):
+        if target.directory == existing_session_path(host.client.config, current):
             if self.choices is not None:
                 self.choices.clear(current)
             host.close_page()
