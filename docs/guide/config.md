@@ -15,7 +15,7 @@ setting.
 | --- | --- | --- |
 | `~/.zettcode/config.toml` | Model connections and optional features | Restart ZettCode. |
 | `~/.zettcode/.ztrc` | Extra command-line arguments, one per line | Read on the next start. |
-| `~/.zettcode/plugin-cli.json` | Cache of plugin command-line declarations | Filled in the background; used from the next start. |
+| `~/.zettcode/plugin-cli.json` | Cache of plugin command-line declarations | Filled in the background; one-shot commands fill it synchronously. Used from the next start. |
 | `~/.zettcode/theme.toml` | One set of custom colours, laid over the palette in force | Restart; `/theme` selects a palette during a run. |
 | `~/.zettcode/themes/<name>.toml` | Your own palettes, picked by name | Picked up the next time `/theme` is used. |
 | `~/.zettcode/mcp.json` | External tool servers | Restart after changing server definitions. |

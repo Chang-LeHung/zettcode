@@ -161,6 +161,11 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
     # `upgrade` is another name for `update`; nothing after this point needs to know it was used.
     command = "update" if args.command == "upgrade" else args.command
     options = _OPTIONS.get(command, _plain_options)(parser, args, command)
+    if options.dry_run or command in {"prompt", "doctor"}:
+        # These commands usually end before the delayed background refresh wakes; fill the cache while we are here.
+        from zettcode.engine.plugins.cli import load_cached_options
+
+        load_cached_options(wait=True)
     return replace(
         options,
         plugin_arguments=plugin_values(args, plugin_added) if plugin_values is not None else {},
