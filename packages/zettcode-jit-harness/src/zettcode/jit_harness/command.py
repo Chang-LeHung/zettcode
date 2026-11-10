@@ -92,8 +92,8 @@ it was met, and name the ones that were not and why.
 #: pasting a file into the command line should not turn the conversation into that file.
 MAX_DESCRIPTION = 4000
 
-#: How much of the command the transcript draws, in terminal columns. The whole line is in the message the session
-#: keeps; this is the row.
+#: How much of the command the transcript draws, in terminal columns. The message the session keeps opens with this
+#: row; the description itself follows the brief, cut at `MAX_DESCRIPTION`. This is only the row.
 MAX_SHOWN = 120
 
 
@@ -277,8 +277,8 @@ class HarnessCommand(TuiPlugin):
         """Return the words ``/harness`` takes, for a reader who typed another one.
 
         Two layers are named, because they are easy to confuse: the switch is this run's — every session in this
-        window sees it — while the folder both words name belongs to one session, and neither deletes it.
-        ``/plugins`` is what a run starts with.
+        window sees it — while the folder the panel and ``reset`` name belongs to one session, and neither word deletes
+        it. ``/plugins`` is what a run starts with.
         """
         said = f"`/harness {tried}` is not a word `/harness` takes." if tried else ""
         return (
