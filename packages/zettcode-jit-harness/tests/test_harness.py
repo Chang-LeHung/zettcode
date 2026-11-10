@@ -687,6 +687,30 @@ async def test_the_panel_scans_harnesses_beyond_the_current_workspace(tmp_path: 
     assert row.value.label == "other-workspace-1234abcd/someone"
 
 
+async def test_a_repository_row_names_its_session_and_title(tmp_path: Path):
+    from datetime import datetime, timezone
+
+    from zettcode.engine.harness_paths import harness_root
+    from zettcode.engine.storage.metadata import SESSION_METADATA_FILE, SessionMetadata, write_session_metadata
+
+    config = _configured(tmp_path)
+    other = harness_root(config) / "other"
+    (other / "notes").mkdir(parents=True)
+    (other / "notes" / "__init__.py").write_text("", encoding="utf-8")
+    stored = config.store / "workspace" / "other"
+    stored.mkdir(parents=True)
+    now = datetime.now(timezone.utc)
+    write_session_metadata(
+        stored / SESSION_METADATA_FILE,
+        SessionMetadata(session_id="other", created_at=now, updated_at=now, title="Write docs"),
+    )
+
+    result, _ = await _run("", _Switch(config))
+    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    row = next(item for item in page.list.items if item.value is not None and item.value.directory == other)
+    assert "other · Write docs" in row.label and "notes" in row.description
+
+
 async def test_the_panel_lists_a_legacy_folder_without_moving_it(tmp_path: Path):
     from zettcode.engine.harness_paths import harness_root
 
@@ -717,7 +741,7 @@ async def test_a_harness_folder_without_a_stored_session_is_still_listed(tmp_pat
     assert row.value.directory == gone, "the folder is a harness whether or not its session is in the store"
 
 
-async def test_the_panel_does_not_use_the_session_store(tmp_path: Path):
+async def test_the_panel_does_not_list_sessions_through_sessions_list(tmp_path: Path):
     client = _Switch(_configured(tmp_path))
 
     async def broken(*_args, **_kwargs):
