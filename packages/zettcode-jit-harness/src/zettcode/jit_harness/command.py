@@ -14,6 +14,7 @@ touched, and the repositories live under ``config.harness_dir``, not in the proj
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -41,8 +42,15 @@ SUBCOMMANDS: tuple[Subcommand, ...] = (
 #: the folder one word deletes is where the other process's harness is loaded from, so the command asks the session
 #: for itself before it changes anything at all.
 LOCKED = (
-    "**Nothing was changed**: this session is open in another ZettCode process, which has its harness in use. "
+    "**Nothing was changed**: this session is open in another ZettCode process, which holds it. "
     "Run this command there, or close that one and try again."
+)
+
+#: What ``/harness reset`` answers when this window's own harness for the session is still in a request. It cannot
+#: happen while the shell refuses a busy command, and it is said rather than assumed.
+HARNESS_IN_USE = (
+    "**Nothing was deleted**: this session's harness is still loaded by a request that has not ended. "
+    "Run `/harness reset` again in a moment."
 )
 
 #: What ``/harness gen`` asks the model for. It is one turn of this conversation, so it says what a good tool is and
@@ -70,6 +78,17 @@ class HarnessCommand(TuiPlugin):
     description = (
         "the just-in-time harness: /harness (the panel), gen (build a tool now), reset (drop this session's tools)"
     )
+
+    def __init__(self, release: Callable[[str], bool] | None = None) -> None:
+        """Hold the way to close one session's harness child, which deleting its folder needs.
+
+        Args:
+            release: Called with the session id before the folder goes; ``False`` means a request in flight still
+                holds the child. The plugin passes the extension this process built, so a delete does not have to
+                remove a folder a live child process is working in (Windows refuses that). A command built without
+                one — in a test — has nothing to close.
+        """
+        self._release: Callable[[str], bool] = release or (lambda session_id: True)
 
     def activate(self, ctx: PluginContext) -> None:
         """Register ``/harness``; it takes the request slot, so it is refused while a request runs.
@@ -170,7 +189,7 @@ class HarnessCommand(TuiPlugin):
             return CommandResult(
                 message=(
                     f"**Harness is off for this run**, but its tools were left alone: `{directory}` is a symbolic "
-                    "link, and what it points at is not this session's to delete."
+                    "link, and this command does not delete through a link. Remove it by hand if it is yours."
                 )
             )
         if not self._inside(directory, root):
@@ -182,6 +201,11 @@ class HarnessCommand(TuiPlugin):
                 )
             )
         kept = self._repositories(directory)
+        # The folder is where this session's harness child works, and Windows will not remove a folder a live process
+        # sits in. Closing the child drops the tools it had loaded too, so what is gone is the folder and the tools
+        # alike; the next request builds a new one from whatever is on disk then.
+        if not self._release(host.client.session.id):
+            return CommandResult(message=HARNESS_IN_USE)
         try:
             shutil.rmtree(directory)
         except FileNotFoundError:
@@ -198,7 +222,7 @@ class HarnessCommand(TuiPlugin):
         named = ", ".join(f"`{name}`" for name, _detail in kept) or "the folder held no repository"
         return CommandResult(
             message=(
-                f"**Harness is off for this run**, and this session's folder is gone: {named}.\n\n"
+                f"**Harness is off for this run**, and this session's tools are gone with their folder: {named}.\n\n"
                 f"The folder was `{directory}`; nothing in the workspace was touched, and `/harness gen` builds "
                 "a tool again."
             ),
@@ -207,7 +231,13 @@ class HarnessCommand(TuiPlugin):
 
     @staticmethod
     def _inside(directory: Path, root: Path) -> bool:
-        """Return whether ``directory`` is strictly below ``root``, links and all — the one test the delete rests on."""
+        """Return whether ``directory`` is strictly below ``root``, links and all — the one test the delete rests on.
+
+        ``resolved != resolved_root`` compares a path with its own parent's parent today: ``session_directory_name``
+        never yields an empty name, so the two cannot be equal. It is kept for the change that would make them so — a
+        ``move_session`` that returned the root itself — because the cost of the check is one comparison and the cost
+        of being wrong is a deleted harness folder.
+        """
         resolved, resolved_root = directory.resolve(), root.resolve()
         return resolved != resolved_root and resolved.is_relative_to(resolved_root)
 

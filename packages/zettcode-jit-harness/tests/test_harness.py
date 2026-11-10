@@ -489,14 +489,15 @@ def _configured(tmp_path: Path) -> ZettCodeConfig:
     )
 
 
-async def _run(argument: str, client: _Switch) -> tuple[CommandResult, _Shell]:
+async def _run(argument: str, client: _Switch, *, release: object = None) -> tuple[CommandResult, _Shell]:
     """Run ``/harness`` with ``argument`` and return what it answered, beside the shell it answered through."""
     from zettcode.jit_harness.command import HarnessCommand
     from zettcode.plugin_api.commands import CommandContext
 
     shell = _Shell(client)
     context = CommandContext(argument=argument, ui=_Ui(), host=shell)  # type: ignore[arg-type]
-    return await HarnessCommand().harness(context), shell
+    command = HarnessCommand() if release is None else HarnessCommand(release=release)  # type: ignore[arg-type]
+    return await command.harness(context), shell
 
 
 async def test_the_command_is_offered_with_the_two_words_it_takes():
@@ -700,7 +701,7 @@ async def test_reset_deletes_normally_when_the_harness_folder_itself_is_a_link(t
     result, _ = await _run("reset", _Switch(config, harness=True))
 
     assert not mine.exists(), "the folder the harness keeps goes, wherever `harness_dir` points"
-    assert "folder is gone" in result.message
+    assert "gone with their folder" in result.message
 
 
 async def test_reset_asks_for_the_session_before_it_names_the_folder(tmp_path: Path):
@@ -739,6 +740,61 @@ async def test_reset_still_deletes_when_a_manifest_cannot_be_read(tmp_path: Path
     assert "`kit`" in result.message, "the row that could not be read still names the repository"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="creating a symbolic link needs a privilege on Windows")
+async def test_reset_unlinks_a_link_inside_the_folder_without_following_it(tmp_path: Path):
+    """`rmtree` removes an entry that is a link and never descends into it, so nothing outside the folder goes."""
+    from zettcode.engine.harness_paths import session_directory
+
+    config = _configured(tmp_path)
+    mine = session_directory(config, "mine")
+    (mine / "kit").mkdir(parents=True)
+    (mine / "kit" / "__init__.py").write_text("", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("x", encoding="utf-8")
+    (mine / "escape").symlink_to(outside, target_is_directory=True)
+
+    result, _ = await _run("reset", _Switch(config, harness=True))
+
+    assert (outside / "keep.txt").is_file(), "the link's target is outside the folder and stays"
+    assert not mine.exists(), "the folder goes, link and all"
+    assert "`kit`" in result.message
+
+
+async def test_reset_closes_the_sessions_harness_before_the_folder_goes(tmp_path: Path):
+    """The folder is the child's working directory, and Windows will not remove one a live process sits in."""
+    from zettcode.engine.harness_paths import session_directory
+
+    config = _configured(tmp_path)
+    mine = session_directory(config, "mine")
+    (mine / "kit").mkdir(parents=True)
+    closed: list[str] = []
+
+    def release(session_id: str) -> bool:
+        closed.append(session_id)
+        assert mine.is_dir(), "the child is closed while there is still a folder to work in"
+        return True
+
+    result, _ = await _run("reset", _Switch(config, harness=True), release=release)
+
+    assert closed == ["mine"], "this session's child, once"
+    assert not mine.exists() and "gone with their folder" in result.message
+
+
+async def test_reset_deletes_nothing_when_the_harness_could_not_be_closed(tmp_path: Path):
+    """Unreachable while the shell refuses a busy command, and said rather than assumed."""
+    from zettcode.engine.harness_paths import session_directory
+
+    config = _configured(tmp_path)
+    mine = session_directory(config, "mine")
+    (mine / "kit").mkdir(parents=True)
+
+    result, _ = await _run("reset", _Switch(config, harness=True), release=lambda session_id: False)
+
+    assert mine.is_dir(), "a folder a request is still working in is not removed under it"
+    assert "still loaded by a request" in result.message
+
+
 async def test_a_word_the_command_does_not_take_lists_the_ones_it_does(tmp_path: Path):
     """``on`` and ``off`` used to be this command's; a reader who still types one is pointed at both switches."""
     client = _Switch(_configured(tmp_path))
@@ -746,8 +802,13 @@ async def test_a_word_the_command_does_not_take_lists_the_ones_it_does(tmp_path:
     result, shell = await _run("on", client)
 
     assert "not a word" in result.message
-    for form in ("/harness", "/harness gen", "/harness reset", "/plugins"):
-        assert form in result.message, f"the usage does not name {form}"
+    usage = result.message.split("\n")
+    assert [line.split(" — ")[0] for line in usage if line.startswith("- ")] == [
+        "- `/harness`",
+        "- `/harness gen`",
+        "- `/harness reset`",
+        "- `/plugins`",
+    ], usage
     assert client.switched == [] and shell.prompts == [], "a typo changes nothing"
 
 
@@ -758,3 +819,52 @@ async def test_a_subcommand_takes_nothing_after_it(tmp_path: Path):
 
     assert "takes nothing after it" in result.message
     assert client.switched == [] and shell.prompts == [], "nothing runs on a usage error"
+
+
+async def test_the_plugin_hands_the_command_the_harness_it_built(tmp_path: Path, monkeypatch):
+    """The delete closes this process's own child through the extension the plugin built: nothing else can reach it."""
+    from zettcode.engine.extensions.harness_switch import HarnessSwitch
+    from zettcode.engine.harness_paths import session_directory
+    from zettcode.engine.permission import Permission, ShellPolicy
+    from zettcode.engine.plugins.services import HARNESS
+    from zettcode.engine.plugins.state import AgentBuild
+    from zettcode.jit_harness.plugin import Harness
+    from zettcode.plugin_api.commands import CommandContext
+    from zettcode.plugin_api.host import HOST_LINK, HostLink
+
+    config = _configured(tmp_path)
+    built: dict[str, object] = {}
+
+    class Agent:
+        def register_extension_factory(self, name, factory):
+            built["factory"] = factory
+
+    class Tui:
+        def register_command(self, name, description, handler, *, when_busy="refuse", subcommands=()):
+            built["command"] = handler
+
+    class Context:
+        def __init__(self) -> None:
+            self.config = config
+            self.agent = Agent()
+            self.tui = Tui()
+            self.link = HostLink()
+
+        def service(self, name, kind):
+            return HarnessSwitch() if name == HARNESS else ShellPolicy(Permission.SAFE, workspace=config.workspace)
+
+        def find(self, name, kind):
+            return self.link if name == HOST_LINK else None
+
+    Harness().activate(Context())  # type: ignore[arg-type]
+    extension = built["factory"](AgentBuild(model=object()))  # type: ignore[operator]
+    closed: list[str] = []
+    monkeypatch.setattr(extension, "forget_session", lambda session_id: closed.append(session_id))
+
+    mine = session_directory(config, "mine")
+    (mine / "kit").mkdir(parents=True)
+    command = built["command"]
+    await command(CommandContext(argument="reset", ui=_Ui(), host=_Shell(_Switch(config, harness=True))))  # type: ignore[operator]
+
+    assert closed == ["mine"], "the command closed the extension the plugin built, for this session"
+    assert not mine.exists()

@@ -162,6 +162,16 @@ class SwitchedHarness(JITHarnessExtension):
         self._built.pop(session_id, None)
         self._said_unbounded.discard(session_id)
 
+    def release(self, session_id: str) -> bool:
+        """Close one session's harness now, and say whether it closed.
+
+        The command that deletes a session's tool folder asks for this first: the folder is the child process's
+        working directory, and a live process's folder cannot be removed on Windows. Closing the harness drops the
+        tools it loaded with it, which is what makes "the tools are gone" true of the folder as well. ``False`` means a
+        request in flight still holds it; the command tells the reader to try again.
+        """
+        return self._forget(session_id)
+
     async def on_state(self, context: AgentRunContext) -> None:
         """Adopt late tool registrations, for a request that has the harness."""
         if self.engaged(context):
