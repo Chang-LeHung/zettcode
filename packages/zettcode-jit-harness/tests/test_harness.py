@@ -522,7 +522,7 @@ async def test_the_command_is_offered_with_the_two_words_it_takes():
 
     (command,) = context.tui.registered
     assert command.name == "harness"
-    assert command.when_busy == "refuse", "gen asks for a turn, and reset deletes what a running request has loaded"
+    assert command.when_busy == "refuse", "gen asks for a turn of its own, so the whole command takes the slot"
     assert [word.name for word in command.subcommands] == ["gen", "reset"]
     assert all(word.needs_more for word in command.subcommands), (
         "a menu Enter on the word must not spend a turn or delete a folder by itself"
@@ -587,7 +587,7 @@ async def test_gen_asks_for_the_session_before_it_turns_anything_on(tmp_path: Pa
 
 
 async def test_reset_only_switches_back_and_deletes_nothing(tmp_path: Path):
-    """`reset` means "use the framework's own harness again": it flips the switch and leaves every file where it is."""
+    """`reset` means "no more just-in-time harness": it flips the switch and leaves every file where it is."""
     from zettcode.engine.harness_paths import session_directory
 
     config = _configured(tmp_path)
@@ -603,7 +603,21 @@ async def test_reset_only_switches_back_and_deletes_nothing(tmp_path: Path):
     after = {path.relative_to(mine): path.read_bytes() for path in mine.rglob("*") if path.is_file()}
     assert after == before, "not a byte of the session's tools was touched"
     assert str(mine) in result.message, "the folder is named, so a reader who wants it gone knows what to remove"
-    assert "framework's own harness" in result.message, "and what changes is the next request"
+    assert "later requests have none of its tools" in result.message, "and what changes is the next request"
+
+
+async def test_reset_says_when_the_session_never_wrote_a_tool(tmp_path: Path):
+    """A session that never ran `gen` has no folder, and the answer must not claim its tools are still there."""
+    from zettcode.engine.harness_paths import session_directory
+
+    config = _configured(tmp_path)
+    mine = session_directory(config, "mine")
+    assert not mine.exists()
+
+    result, _ = await _run("reset", _Switch(config, harness=True))
+
+    assert "never wrote a tool" in result.message, result.message
+    assert "tools are still in" not in result.message, "nothing is claimed to be there"
 
 
 async def test_reset_does_not_ask_for_the_session_to_itself(tmp_path: Path):
@@ -640,7 +654,7 @@ async def test_a_word_the_command_does_not_take_lists_the_ones_it_does(tmp_path:
 
 
 async def test_reset_takes_nothing_after_it(tmp_path: Path):
-    """`gen` takes a description; there is nothing to say about a delete, so a word after `reset` is a usage error."""
+    """`gen` takes a description; there is nothing to say about a switch, so a word after `reset` is a usage error."""
     client = _Switch(_configured(tmp_path))
 
     result, shell = await _run("reset now", client)

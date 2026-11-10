@@ -7,8 +7,8 @@ application, and the SDK is only what ``host.client`` is typed as.
 
 ``/harness`` with nothing after it opens the read-only panel. ``gen`` turns the harness on and asks the model, as one
 ordinary turn, to build a small tool for this workspace — the rest of the line, if there is any, is what the reader
-wants built and is handed on as a requirement rather than as advice; ``reset`` turns it off again so later requests use
-the framework's own harness, and deletes nothing. Both words act on the switch and on the harness folder alone: the
+wants built and is handed on as a requirement rather than as advice; ``reset`` turns it off again so later requests
+have none of its tools, and deletes nothing. Both words act on the switch and on the harness folder alone: the
 workspace's own files are never touched, and the repositories live under ``config.harness_dir``, not in the project.
 """
 
@@ -35,7 +35,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 SUBCOMMANDS: tuple[Subcommand, ...] = (
     Subcommand("gen", "turn the harness on and have a tool built; add what you want after the word", needs_more=True),
     Subcommand(
-        "reset", "go back to the framework's own harness, keeping the tools this session wrote", needs_more=True
+        "reset",
+        "turn it off, so later requests have none of its tools, keeping what this session wrote",
+        needs_more=True,
     ),
 )
 
@@ -184,7 +186,7 @@ class HarnessCommand(TuiPlugin):
         else — including the ``on`` and ``off`` this command used to take — is answered with the words it does take,
         rather than changing the harness behind a typo. ``gen`` takes the rest of the line as the reader's own
         description of what they want built; ``reset`` takes nothing after the word, because there is nothing to say
-        about a delete.
+        about a switch.
         """
         host = context.require_host()
         word, rest = split_argument(context.argument)
@@ -216,11 +218,10 @@ class HarnessCommand(TuiPlugin):
         """Turn the harness on and hand the model the brief, as one ordinary turn of this conversation.
 
         The switch goes first: the turn mounts the harness's tools when it starts, so a prompt sent before the switch
-        moved would be the one request that cannot build anything. The session is asked for before that, for the same
-        reason ``reset`` asks: a turn cannot start in a session another process holds, and turning the switch on for a
-        run that then does nothing is a change nobody asked for. The turn is awaited here, the way ``/code-review``
-        awaits its own, because the row it draws is the command's answer and the slot stays the command's until it
-        ends.
+        moved would be the one request that cannot build anything. The session is asked for before that: a turn cannot
+        start in a session another process holds, and turning the switch on for a run that then does nothing is a
+        change nobody asked for. The turn is awaited here, the way ``/code-review`` awaits its own, because the row it
+        draws is the command's answer and the slot stays the command's until it ends.
 
         ``description`` is what the reader typed after ``gen``, kept as they typed it: it is handed to the model after
         the brief, marked as a requirement, and what the transcript shows is the command with it rather than the brief.
@@ -241,19 +242,23 @@ class HarnessCommand(TuiPlugin):
     def _reset(self, host: CommandHost) -> CommandResult:
         """Turn the just-in-time harness off, and leave everything it wrote where it is.
 
-        ``/harness reset`` means what the reader said when they asked for it: from the next request on, the model
-        works with the framework's own harness again. Nothing is deleted — the folder this session's tools live in is
-        the model's work, and a command whose job is to flip a switch does not get to throw it away. The path is named
-        so that a reader who does want it gone knows exactly what to remove.
+        ``/harness reset`` means what the reader said when they asked for it: no more just-in-time harness — later
+        requests have none of its tools, which is what the framework ships before a reader asks for one. Nothing is
+        deleted: the folder this session's tools live in is the model's work, and a command whose job is to flip a
+        switch does not get to throw it away. The path is named, and whether it is there at all, so a reader who does
+        want it gone knows exactly what to remove.
         """
         host.client.use_harness(False)
         directory = directory_of(host)
+        kept = (
+            f"Nothing was deleted: this session's tools are still in `{directory}`. Remove that folder yourself if "
+            "you want them gone, or run `/harness gen` to build on them."
+            if directory.is_dir()
+            else f"Nothing was deleted, and this session never wrote a tool: `{directory}` is not there. `/harness "
+            "gen` builds one when you want it."
+        )
         return CommandResult(
-            message=(
-                "**Harness is off for this run**: the next request uses the framework's own harness.\n\n"
-                f"Nothing was deleted: this session's tools are still in `{directory}`. Remove that folder yourself "
-                "if you want them gone, or run `/harness gen` to build on them."
-            ),
+            message=f"**Harness is off for this run**: later requests have none of its tools.\n\n{kept}",
             notification="Harness reset",
         )
 
@@ -271,8 +276,8 @@ class HarnessCommand(TuiPlugin):
             "- `/harness` — the panel: whether it is on, where its files are, and this session's repositories\n"
             "- `/harness gen [description]` — turn it on (for this run) and have a tool built; anything you write after\n"
             "  the word says what you want, and the model is told to treat it as a requirement\n"
-            "- `/harness reset` — turn it off (for this run) so later requests use the framework's own harness; the\n"
-            "  tools this session wrote stay where they are\n"
+            "- `/harness reset` — turn it off (for this run), so later requests have none of its tools; what this\n"
+            "  session wrote stays where it is\n"
             "- `/plugins` — whether a run starts with it on, from `harness.jit`"
         ).strip()
 
