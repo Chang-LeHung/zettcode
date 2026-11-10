@@ -588,8 +588,8 @@ def test_the_harness_page_lists_sessions_and_switches_to_the_selected_one(tmp_pa
         state="on",
         directory=tmp_path / "harness",
         sessions=[
-            (mine, "Mine", "2 repositories · current", False),
-            (other, "Other", "1 repository", False),
+            (mine, "Mine", "2 repositories · current"),
+            (other, "Other", "1 repository"),
         ],
         on_switch=switched.append,
         on_close=lambda: closed.append(1),
@@ -714,7 +714,7 @@ async def test_a_harness_folder_without_a_stored_session_is_still_listed(tmp_pat
     result, _ = await _run("", _Switch(config))
     page = result.widget.slots[0].widget  # type: ignore[union-attr]
     row = next(item for item in page.list.items if item.value is not None and item.value.directory == gone)
-    assert not row.disabled, "the folder is a harness whether or not its session is in the store"
+    assert row.value.directory == gone, "the folder is a harness whether or not its session is in the store"
 
 
 async def test_the_panel_does_not_use_the_session_store(tmp_path: Path):
