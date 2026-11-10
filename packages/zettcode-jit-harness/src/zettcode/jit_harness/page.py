@@ -1,8 +1,8 @@
-"""The panel ``/harness`` opens: every session's harness, with this session's row selected.
+"""The panel ``/harness`` opens: every repository under the harness root, with this session's rows selected.
 
-Up and Down move through the rows; Enter borrows the selected harness for the current session. The row for the current
-session returns it to that session's own harness. The panel only reads the harness directories; ``/harness gen`` and
-``/harness reset`` change the run.
+Up and Down move through the rows; Enter borrows the selected session's harness for the current session. The current
+session's rows come first and choosing one returns to that session's own harness. The panel only reads the harness
+directories; ``/harness gen`` and ``/harness reset`` change the run.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ def _shown(directory: Path) -> str:
 
 
 class HarnessPage(ListPage):
-    """Every session that has a harness, with the current one first and selected.
+    """Every repository under the harness root, with the current session's rows first and selected.
 
     Rows carry a :class:`HarnessTarget`. Enter asks the command to borrow that directory; the panel itself writes
     nothing. Escape closes it.

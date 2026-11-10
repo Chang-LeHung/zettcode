@@ -9661,7 +9661,7 @@ def test_a_row_on_screen_is_drawn_by_the_presenter_a_plugin_registered():
 
 
 async def test_the_harness_command_lists_sessions_with_harnesses(tmp_path):
-    """`/harness` is a session picker: the current session first, and every other session that has a harness."""
+    """`/harness` lists repositories with their session, name and manifest description."""
     from zettcode.engine.harness_paths import harness_root, session_directory
 
     app = build_app()
@@ -9679,6 +9679,10 @@ async def test_the_harness_command_lists_sessions_with_harnesses(tmp_path):
         repository = folder / name
         repository.mkdir(parents=True)
         (repository / "__init__.py").write_text("", encoding="utf-8")
+    (folder / "kit" / "MANIFEST").write_text(
+        'name = "kit"\nversion = "1.0"\ndescription = "small helpers"\ntools = ["slug"]\n',
+        encoding="utf-8",
+    )
     other = harness_root(app.agent.runtime.config) / "other"
     (other / "notes").mkdir(parents=True)
     (other / "notes" / "__init__.py").write_text("", encoding="utf-8")
@@ -9686,5 +9690,6 @@ async def test_the_harness_command_lists_sessions_with_harnesses(tmp_path):
     await _type_command(app, harness, "/harness")
 
     said = harness.render().text
-    assert "3 repositories" in said and "current" in said, said
-    assert "other" in said and "1 repository" in said, said
+    assert "current ·" in said and "kit" in said and "small helpers" in said, said
+    assert "old" in said and "hollow" in said, "a repository that cannot load is still a row"
+    assert "other" in said and "notes" in said, said
