@@ -296,6 +296,7 @@ class MapMentions(MentionProvider):
 @dataclass
 class FakeConfig:
     workspace: Path = Path("/tmp/workspace")
+    store: Path = Path("/tmp/zettcode-sessions")
     models: tuple[ModelConfig, ...] = (
         ModelConfig(model="gpt-5-mini", token="test-token"),
         ModelConfig(model="gpt-4o", display_model="GPT-4o", token="test-token", multimodal=True),
