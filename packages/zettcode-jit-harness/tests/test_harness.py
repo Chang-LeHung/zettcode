@@ -915,6 +915,22 @@ async def test_a_description_too_long_to_send_is_cut_and_says_so(tmp_path: Path)
     assert display_width(shown) == MAX_SHOWN and shown.endswith("\u2026"), "the transcript row stays one row wide"
 
 
+async def test_the_row_is_clamped_by_columns_so_a_wide_description_fits(tmp_path: Path):
+    """120 Chinese characters are 240 columns: the budget is the row's width, not the string's length."""
+    from zettcode.jit_harness.command import MAX_SHOWN
+    from zettcode.tui.render import display_width
+
+    asked = "修" * 200
+    client = _Switch(_configured(tmp_path))
+
+    _, shell = await _run(f"gen {asked}", client)
+
+    (_, shown) = shell.prompts[0]
+    assert shown.endswith("\u2026"), "a cut row says it was cut"
+    assert display_width(shown) <= MAX_SHOWN, "the row fits the budget in columns"
+    assert len(shown) < MAX_SHOWN, "so it holds fewer characters than the budget: this is what columns means"
+
+
 async def test_the_plugin_hands_the_command_the_harness_it_built(tmp_path: Path, monkeypatch):
     """The delete closes this process's own child through the extension the plugin built: nothing else can reach it."""
     from zettcode.engine.harness_paths import session_directory
