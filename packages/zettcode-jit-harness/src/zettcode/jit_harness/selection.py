@@ -39,7 +39,10 @@ class HarnessChoices:
         return None if choice is None else choice.directory
 
     def select(self, session_id: str, target: str, directory: Path) -> None:
-        """Borrow ``target``'s harness for ``session_id``."""
+        """Borrow ``target``'s harness for ``session_id``, unless it already is the choice."""
+        current = self._choices.get(session_id)
+        if current is not None and current.session_id == target and current.directory == directory:
+            return
         self._choices[session_id] = HarnessChoice(target, directory)
         self._changed(session_id)
 

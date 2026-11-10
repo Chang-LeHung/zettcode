@@ -341,11 +341,15 @@ class HarnessCommand(TuiPlugin):
             host.close_page()
             return
         if self.choices is None:
-            host.select_session(session_id)
+            host.transcript.notice("Harness borrowing is unavailable in this window.")
+            host.close_page()
             return
         directory = existing_session_path(host.client.config, session_id)
-        if directory.is_dir():
-            self.choices.select(current, session_id, directory)
+        if not directory.is_dir():
+            host.transcript.notice(f"That harness folder is gone: `{directory}`.")
+            host.close_page()
+            return
+        self.choices.select(current, session_id, directory)
         host.close_page()
 
     async def _generate(self, host: CommandHost, description: str, *, ui: CommandUi) -> CommandResult:
@@ -392,21 +396,24 @@ class HarnessCommand(TuiPlugin):
         want it gone knows exactly what to remove.
         """
         host.client.use_harness(False)
-        directory = directory_of(host)
+        current = host.client.session.id
+        choice = self.choices.target(current) if self.choices is not None else None
+        directory = choice.directory if choice is not None else directory_of(host)
+        borrowed = f" It is borrowed from session `{choice.session_id}`." if choice is not None else ""
         if directory.is_dir():
             kept = (
-                f"Nothing was deleted: the folder this session's tools live in is still there (`{directory}`). Remove "
-                "it yourself if you want them gone — on Windows close ZettCode first, because the harness's child "
-                "process works in there — or run `/harness gen` to build on them."
+                f"Nothing was deleted: the folder this session's tools live in is still there (`{directory}`).{borrowed} "
+                "Remove it yourself if you want them gone — on Windows close ZettCode first, because the harness's "
+                "child process works in there — or run `/harness gen` to build on them."
             )
         elif directory.exists() or directory.is_symlink():
             kept = (
-                f"Nothing was deleted: `{directory}` is there but is not a folder, so it was left as it is. "
+                f"Nothing was deleted: `{directory}` is there but is not a folder, so it was left as it is.{borrowed} "
                 "`/harness gen` cannot make the folder while that is in the way: move it aside first."
             )
         else:
             kept = (
-                f"Nothing was deleted: there is no folder at `{directory}`, so there is nothing here to remove. "
+                f"Nothing was deleted: there is no folder at `{directory}`, so there is nothing here to remove.{borrowed} "
                 "`/harness gen` builds one when you want it."
             )
         return CommandResult(
