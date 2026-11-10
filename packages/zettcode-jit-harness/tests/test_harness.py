@@ -572,13 +572,24 @@ async def test_reset_leaves_the_folder_alone_while_another_process_holds_the_ses
 
 
 async def test_gen_says_so_when_no_turn_could_be_started(tmp_path: Path):
-    """A locked session or a window still starting answers ``False``: the harness stays on and the reader is told."""
+    """Nothing else refuses a prompt here, but a turn that did not start is said: the switch stays on, the reader knows."""
     client = _Switch(_configured(tmp_path), started=False)
 
     result, _ = await _run("gen", client)
 
     assert client.harness is True, "the switch moved before the turn was refused"
-    assert "no turn was started" in result.message and "/harness gen" in result.message
+    assert "turn did not start" in result.message and "/harness gen" in result.message
+
+
+async def test_gen_asks_for_the_session_before_it_turns_anything_on(tmp_path: Path):
+    """A turn cannot start in a session another process holds, so the switch does not move for one that cannot."""
+    client = _Switch(_configured(tmp_path), locked=True)
+
+    result, shell = await _run("gen", client)
+
+    assert client.switched == [], "no switch for a run that would do nothing"
+    assert shell.prompts == []
+    assert "another ZettCode process" in result.message
 
 
 async def test_reset_turns_the_harness_off_and_deletes_only_this_sessions_folder(tmp_path: Path):
@@ -654,6 +665,56 @@ async def test_reset_reports_a_session_folder_that_is_itself_a_link_instead_of_f
     assert linked.is_symlink(), "the link itself is left in place"
     assert "left alone" in result.message and str(linked) in result.message
     assert client.harness is False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="creating a symbolic link needs a privilege on Windows")
+async def test_reset_leaves_a_link_that_points_inside_the_harness_folder_alone(tmp_path: Path):
+    """Inside the root or outside it, a link is not a folder to delete: `rmtree` refuses both, the second wordlessly."""
+    from zettcode.engine.harness_paths import session_directory
+
+    config = _configured(tmp_path)
+    other = session_directory(config, "other")
+    (other / "kit").mkdir(parents=True)
+    linked = session_directory(config, "mine")
+    linked.symlink_to(other, target_is_directory=True)
+
+    result, _ = await _run("reset", _Switch(config, harness=True))
+
+    assert (other / "kit").is_dir(), "the target is another session's folder"
+    assert linked.is_symlink(), "the link is left where it is"
+    assert "symbolic link" in result.message and "left alone" in result.message
+
+
+@pytest.mark.skipif(os.name == "nt", reason="creating a symbolic link needs a privilege on Windows")
+async def test_reset_deletes_normally_when_the_harness_folder_itself_is_a_link(tmp_path: Path):
+    """A `harness_dir` that is a link *is* the harness folder — resolved on both sides — so its session folder goes."""
+    from zettcode.engine.harness_paths import session_directory
+
+    config = _configured(tmp_path)
+    real = tmp_path / "elsewhere"
+    real.mkdir()
+    (tmp_path / "harness").symlink_to(real, target_is_directory=True)
+    mine = session_directory(config, "mine")
+    (mine / "kit").mkdir(parents=True)
+
+    result, _ = await _run("reset", _Switch(config, harness=True))
+
+    assert not mine.exists(), "the folder the harness keeps goes, wherever `harness_dir` points"
+    assert "folder is gone" in result.message
+
+
+async def test_reset_asks_for_the_session_before_it_names_the_folder(tmp_path: Path):
+    """Naming the folder can *move* a pre-workspace one into place, which is a write: a refusal must come first."""
+    from zett_agent.jit_harness.repo import session_directory_name
+
+    config = _configured(tmp_path)
+    legacy = config.harness_dir / session_directory_name("mine")
+    (legacy / "kit").mkdir(parents=True)
+
+    result, _ = await _run("reset", _Switch(config, harness=True, locked=True))
+
+    assert (legacy / "kit").is_dir(), "the legacy folder is where it was: nothing was moved by a command that refused"
+    assert "another ZettCode process" in result.message
 
 
 async def test_reset_still_deletes_when_a_manifest_cannot_be_read(tmp_path: Path, monkeypatch):
