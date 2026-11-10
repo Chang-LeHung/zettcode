@@ -893,6 +893,29 @@ async def test_reset_says_a_folder_that_held_nothing_held_no_repository(tmp_path
     assert "no repository in it" in result.message
 
 
+async def test_reset_says_so_when_the_folder_will_not_go(tmp_path: Path, monkeypatch):
+    """The one real failure left — a permission, a file where the folder was — with the switch off and nothing claimed."""
+    from zettcode.engine.harness_paths import session_directory
+    from zettcode.jit_harness import command as command_module
+
+    config = _configured(tmp_path)
+    mine = session_directory(config, "mine")
+    (mine / "kit").mkdir(parents=True)
+
+    def refused(path, *args, **kwargs):
+        raise OSError("Permission denied")
+
+    monkeypatch.setattr(command_module.shutil, "rmtree", refused)
+    client = _Switch(config, harness=True)
+
+    result, _ = await _run("reset", client)
+
+    assert mine.is_dir(), "nothing was deleted, so nothing is claimed to be"
+    assert client.harness is False, "the switch is off whatever the delete did"
+    assert "could not be deleted" in result.message and "gone" not in result.message
+    assert "/harness reset" in result.message, "and what to do about it"
+
+
 def _plugin_registrations(config: ZettCodeConfig) -> dict[str, object]:
     """Activate the real plugin against a stand-in container and return what it registered."""
     from zettcode.engine.extensions.harness_switch import HarnessSwitch
