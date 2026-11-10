@@ -16,9 +16,9 @@ HARNESS_CHOICES = "harness-choices"
 
 @dataclass(frozen=True, slots=True)
 class HarnessChoice:
-    """One borrowed harness: the session it belongs to and its directory."""
+    """One borrowed harness: the row label it came from and its directory."""
 
-    session_id: str
+    label: str
     directory: Path
 
 
@@ -38,12 +38,12 @@ class HarnessChoices:
         choice = self._choices.get(session_id)
         return None if choice is None else choice.directory
 
-    def select(self, session_id: str, target: str, directory: Path) -> None:
-        """Borrow ``target``'s harness for ``session_id``, unless it already is the choice."""
+    def select(self, session_id: str, label: str, directory: Path) -> None:
+        """Borrow the harness named by ``label`` for ``session_id``, unless it already is the choice."""
         current = self._choices.get(session_id)
-        if current is not None and current.session_id == target and current.directory == directory:
+        if current is not None and current.label == label and current.directory == directory:
             return
-        self._choices[session_id] = HarnessChoice(target, directory)
+        self._choices[session_id] = HarnessChoice(label, directory)
         self._changed(session_id)
 
     def clear(self, session_id: str) -> None:

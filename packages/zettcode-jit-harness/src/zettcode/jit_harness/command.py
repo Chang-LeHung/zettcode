@@ -251,12 +251,12 @@ class HarnessCommand(TuiPlugin):
         current_directory: Path,
         root: Path,
         choice: HarnessChoice | None,
-    ) -> list[tuple[HarnessTarget | None, str, str, bool]]:
+    ) -> list[tuple[HarnessTarget, str, str]]:
         """Scan the harness tree off the event loop: workspace/session rows plus legacy session folders."""
         if choice is not None:
             current_count = cls._repository_count(choice.directory)
             current_detail = (
-                f"{current_count} repositor{'y' if current_count == 1 else 'ies'} · using {choice.session_id}"
+                f"{current_count} repositor{'y' if current_count == 1 else 'ies'} · using {choice.label}"
             )
         else:
             current_count = cls._repository_count(current_directory)
@@ -265,8 +265,8 @@ class HarnessCommand(TuiPlugin):
                 if current_directory.is_dir()
                 else "No harness yet"
             )
-        rows: list[tuple[HarnessTarget | None, str, str, bool]] = [
-            (HarnessTarget(current, current_directory), current_title, current_detail, False)
+        rows: list[tuple[HarnessTarget, str, str]] = [
+            (HarnessTarget(current, current_directory), current_title, current_detail)
         ]
         seen = {current_directory.resolve()}
         for directory, label in cls._all_harnesses(root):
@@ -279,7 +279,7 @@ class HarnessCommand(TuiPlugin):
             detail = f"{count} repositor{'y' if count == 1 else 'ies'}"
             if choice is not None and choice.directory == directory:
                 detail += " · in use"
-            rows.append((HarnessTarget(label, directory), label, detail, False))
+            rows.append((HarnessTarget(label, directory), label, detail))
         return rows
 
     @classmethod
@@ -392,7 +392,7 @@ class HarnessCommand(TuiPlugin):
         current = host.client.session.id
         choice = self.choices.target(current) if self.choices is not None else None
         directory = choice.directory if choice is not None else directory_of(host)
-        borrowed = f" It is borrowed from session `{choice.session_id}`." if choice is not None else ""
+        borrowed = f" It is borrowed from `{choice.label}`." if choice is not None else ""
         if directory.is_dir():
             kept = (
                 f"Nothing was deleted: the folder this session's tools live in is still there (`{directory}`).{borrowed} "

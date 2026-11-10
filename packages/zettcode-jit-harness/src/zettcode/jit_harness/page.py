@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from zettcode.tui import ListItem, ListPage
 
@@ -46,17 +47,17 @@ class HarnessPage(ListPage):
         *,
         state: str,
         directory: Path,
-        sessions: Sequence[tuple[HarnessTarget | None, str, str, bool]],
+        sessions: Sequence[tuple[HarnessTarget, str, str]],
         on_switch: Callable[[HarnessTarget], None],
         on_close: Callable[[], None],
     ) -> None:
-        """Build the rows from ``(target, label, detail, disabled)``, current session first."""
-        items = [ListItem(target, label, detail, disabled=disabled) for target, label, detail, disabled in sessions]
+        """Build the rows from ``(target, label, detail)``, current session first."""
+        items = [ListItem(target, label, detail) for target, label, detail in sessions]
         super().__init__(
             items,
             title="Harnesses",
             subtitle=_shown(directory),
             footer=f"harness is {state} \u00b7 enter borrow \u00b7 esc close",
-            on_select=lambda item: on_switch(item.value),  # type: ignore[arg-type]
+            on_select=lambda item: on_switch(cast(HarnessTarget, item.value)),
             on_cancel=on_close,
         )
