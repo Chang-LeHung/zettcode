@@ -128,7 +128,7 @@ def test_the_commands_parse_the_settings_a_login_writes(tmp_path: Path, capsys: 
     from zettcode.im.weixin.cli import build_parser, main
 
     parsed = build_parser().parse_args(["login", "--state-dir", str(tmp_path), "--allow", "u1", "--allow", "u2"])
-    assert parsed.permission == "safe", "a program that asks nobody does not hand out a full shell"
+    assert parsed.permission is None, "not given means the stored one, or safe on a first login"
     assert parsed.allow == ["u1", "u2"]
     assert build_parser().parse_args([]).command is None, "no command is the login"
 
@@ -285,3 +285,30 @@ def test_a_scan_that_finishes_replaces_the_running_bridge(tmp_path: Path, monkey
     assert ScanWorker.calls == ["stop", "start"], "the old process is stopped, then a new one starts"
     saved = BridgeState.load(tmp_path / "state.json")
     assert saved.token() == "t" and saved.allow == ["u1"]
+
+
+def test_a_second_scan_keeps_the_settings_the_first_one_set(tmp_path: Path, monkeypatch) -> None:
+    """Re-scanning renews the connection; it does not silently empty the allow-list somebody set."""
+    from agim.models import LoginStatus
+
+    from zettcode.im.state import BridgeState
+    from zettcode.im.weixin import cli
+
+    stored = BridgeState.load(tmp_path / "state.json")
+    stored.allow = ["u1"]
+    stored.workspace = "/w"
+    stored.permission = "deny"
+    stored.save()
+    ScanWorker.calls = []
+    ScanWorker.running_now = False
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+    monkeypatch.setattr("agim.wechat.client.WeChatClient", lambda *a, **k: ScanClient([LoginStatus.CONNECTED]))
+
+    assert (
+        asyncio.run(cli._login(cli.build_parser().parse_args(["login", "--state-dir", str(tmp_path)]), tmp_path)) == 0
+    )
+
+    after = BridgeState.load(tmp_path / "state.json")
+    assert after.allow == ["u1"], "the allow-list survived the scan"
+    assert after.workspace == "/w" and after.permission == "deny"
+    assert after.token() == "t", "and the new login replaced the token"

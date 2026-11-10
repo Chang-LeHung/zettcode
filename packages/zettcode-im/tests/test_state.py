@@ -90,3 +90,25 @@ def test_the_token_is_read_from_where_the_im_client_puts_it(tmp_path: Path) -> N
 
     state.credentials = {"config": {}}
     assert state.token() == "" and not state.logged_in, "a login without a token is not a login"
+
+
+def test_a_running_bridge_does_not_write_its_own_settings_back_over_newer_ones(tmp_path: Path) -> None:
+    """A worker holds the settings it started with; a reader who changes the allow-list must keep the change."""
+    path = tmp_path / "state.json"
+    running = BridgeState.load(path)
+    running.allow = ["old"]
+    running.workspace = "/old"
+    running.save()
+
+    edited = BridgeState.load(path)
+    edited.allow = ["new"]
+    edited.workspace = "/new"
+    edited.permission = "deny"
+    edited.save()
+
+    running.remember("e1", cursor="c1", chat_id="chat", reply_token="t")
+    running.save_runtime(path)
+
+    after = BridgeState.load(path)
+    assert after.allow == ["new"] and after.workspace == "/new" and after.permission == "deny"
+    assert after.cursor == "c1" and after.answered("e1"), "what the worker produces is written"

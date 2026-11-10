@@ -270,7 +270,7 @@ class Bridge:
     def _save(self) -> None:
         """Write the state, and say so if it cannot be written: a lost cursor is a re-answered batch."""
         try:
-            self.state.save(self.path)
+            self.state.save_runtime(self.path)
         except OSError as error:
             self.error(f"the state at {self.path} could not be written: {error}")
 
