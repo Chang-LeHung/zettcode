@@ -589,7 +589,7 @@ async def test_gen_says_so_when_no_turn_could_be_started(tmp_path: Path):
     with_description, _ = await _run("gen fix the  parser", _Switch(_configured(tmp_path), started=False))
 
     assert "not sent" in with_description.message and "press Up" in with_description.message, (
-        "the line never went out, and it is still in the composer's history"
+        "the line never went out, and the message says Up brings it back (test_composer_lock holds the recall)"
     )
 
 
@@ -798,6 +798,21 @@ async def test_a_description_too_long_to_send_is_cut_and_says_so(tmp_path: Path)
     allowed = len(GEN_BRIEF) + len(GEN_ASKED) + len(GEN_FLOOR_LAST) + MAX_DESCRIPTION + 120
     assert len(text) <= allowed, "the brief does not grow with a paste"
     assert display_width(shown) == MAX_SHOWN and shown.endswith("\u2026"), "the transcript row stays one row wide"
+
+
+async def test_a_description_exactly_at_the_limit_is_sent_whole(tmp_path: Path):
+    """`>` is the boundary A16 promises: at the limit nothing is cut, one character past it is."""
+    from zettcode.jit_harness.command import MAX_DESCRIPTION
+
+    asked = "x" * MAX_DESCRIPTION
+    client = _Switch(_configured(tmp_path))
+
+    _, shell = await _run(f"gen {asked}", client)
+
+    (text, _) = shell.prompts[0]
+    assert shell.ui.notices == [], "a description that fits is not said to be cut"
+    assert "cut at" not in text, "and the brief does not carry a cut marker"
+    assert asked in text, "all of it was sent"
 
 
 async def test_the_row_is_clamped_by_columns_so_a_wide_description_fits(tmp_path: Path):
