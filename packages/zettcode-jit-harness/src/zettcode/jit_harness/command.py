@@ -7,20 +7,17 @@ application, and the SDK is only what ``host.client`` is typed as.
 
 ``/harness`` with nothing after it opens the read-only panel. ``gen`` turns the harness on and asks the model, as one
 ordinary turn, to build a small tool for this workspace — the rest of the line, if there is any, is what the reader
-wants built and is handed on as a requirement rather than as advice; ``reset`` turns it off again and deletes what this
-session's harness kept. Both words act on the session and on the harness folder alone: the workspace's own files are
-never touched, and the repositories live under ``config.harness_dir``, not in the project.
+wants built and is handed on as a requirement rather than as advice; ``reset`` turns it off again so later requests use
+the framework's own harness, and deletes nothing. Both words act on the switch and on the harness folder alone: the
+workspace's own files are never touched, and the repositories live under ``config.harness_dir``, not in the project.
 """
 
 from __future__ import annotations
 
-import shutil
-from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zettcode.engine.harness_paths import harness_root, session_directory
-from zettcode.error_text import describe_error
+from zettcode.engine.harness_paths import session_directory
 from zettcode.plugin_api.commands import CommandContext, CommandResult, Subcommand
 from zettcode.plugin_api.panels import bottom_panel
 from zettcode.plugin_api.plugin import TuiPlugin
@@ -29,31 +26,25 @@ from zettcode.tui.render import truncate
 from .page import HARNESS_ROWS, HarnessPage
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zettcode.config import ZettCodeConfig
     from zettcode.engine.plugins.context import PluginContext
     from zettcode.plugin_api.commands import CommandHost
 
 #: The words ``/harness`` takes, in the order the completion menu offers them. Both say ``needs_more``: the menu
 #: offers them, but Enter on the word alone does not run one — ``/harness `` and Enter stays the panel it was, and
-#: ``gen`` (a paid turn) or ``reset`` (a delete) takes a second Enter once the word is in the draft.
+#: ``gen`` (a paid turn) takes a second Enter once the word is in the draft.
 SUBCOMMANDS: tuple[Subcommand, ...] = (
     Subcommand("gen", "turn the harness on and have a tool built; add what you want after the word", needs_more=True),
-    Subcommand("reset", "turn it off and delete the tools this session kept", needs_more=True),
+    Subcommand(
+        "reset", "go back to the framework's own harness, keeping the tools this session wrote", needs_more=True
+    ),
 )
 
-#: What both words answer when another process holds the session. ``when_busy`` sees this process's requests only, and
-#: the folder one word deletes is where the other process's harness is loaded from, so the command asks the session
-#: for itself before it changes anything at all.
+#: What ``gen`` answers when another process holds the session: a turn cannot start in one, and the switch must not
+#: move for a run that would then do nothing. ``when_busy`` sees this process's requests only. ``reset`` does not ask
+#: — turning a switch off for later requests in this window takes nothing away from the other process.
 LOCKED = (
     "**Nothing was changed**: this session is open in another ZettCode process, which holds it. "
     "Run this command there, or close that one and try again."
-)
-
-#: What ``/harness reset`` answers when this window's own harness for the session is still in a request. It cannot
-#: happen while the shell refuses a busy command, and it is said rather than assumed.
-HARNESS_IN_USE = (
-    "**Harness is off for this run**, and nothing was deleted: this session's harness is still loaded by a request "
-    "that has not ended. Run `/harness reset` again in a moment."
 )
 
 #: Said when a turn this reader asked for did not start and they had written something: the line never went out, and a
@@ -104,12 +95,17 @@ MAX_DESCRIPTION = 4000
 MAX_SHOWN = 120
 
 
+def directory_of(host: CommandHost) -> Path:
+    """Return this session's harness folder — the one the panel lists and ``reset`` names rather than empties."""
+    return session_directory(host.client.config, host.client.session.id)
+
+
 def split_argument(argument: str) -> tuple[str, str]:
     """Return the word after the command and the rest of the line as the reader wrote it.
 
     ``/harness gen  fix the  parser`` gives ``("gen", "fix the  parser")``: the spacing inside a description belongs to
     the reader, so only the whitespace between the word and the description is dropped. A line of nothing but spaces
-    has no word at all, which is the panel; and a description of only whitespace is no description at all (A17).
+    has no word at all, which is the panel; and a description of only whitespace is no description at all (A16).
     """
     pieces = argument.split(None, 1)
     if not pieces:
@@ -161,32 +157,21 @@ class HarnessCommand(TuiPlugin):
 
     name = "harness-command"
     description = (
-        "the just-in-time harness: /harness (the panel), gen [what you want] (build a tool), reset (drop its tools)"
+        "the just-in-time harness: /harness (the panel), gen [what you want] (build a tool), reset (switch back)"
     )
-
-    def __init__(self, release: Callable[[str], bool] | None = None) -> None:
-        """Hold the way to close one session's harness child, which deleting its folder needs.
-
-        Args:
-            release: Called with the session id before the folder goes; ``False`` means a request in flight still
-                holds the child. The plugin passes the extension this process built, so a delete does not have to
-                remove a folder a live child process is working in (Windows refuses that). A command built without
-                one — in a test — has nothing to close.
-        """
-        self._release: Callable[[str], bool] = release if release is not None else (lambda session_id: True)
 
     def activate(self, ctx: PluginContext) -> None:
         """Register ``/harness``; it takes the request slot, so it is refused while a request runs.
 
         Reading the files costs nothing, and a command that only reports may run beside a request (``/context``
         does); this one draws a panel over the conversation. Its two words need the slot as well: ``gen`` asks for a
-        turn of its own, and ``reset`` deletes the folder a request in flight has a harness loaded from.
+        turn of its own, and ``reset`` is a switch the next request reads.
         """
         if ctx.tui is None:
             return
         ctx.tui.register_command(
             "harness",
-            "the just-in-time harness: the panel, and the words that build or drop this session's tools",
+            "the just-in-time harness: the panel, and the words that turn it on or hand it back",
             self.harness,
             when_busy="refuse",
             subcommands=SUBCOMMANDS,
@@ -221,7 +206,7 @@ class HarnessCommand(TuiPlugin):
         page changes anything; the repositories are read with
         :func:`zett_agent.jit_harness.inspect_repository`, which imports nothing.
         """
-        directory = session_directory(host.client.config, host.client.session.id)
+        directory = directory_of(host)
         state = "on" if host.client.harness else "off"
         repositories = self._repositories(directory)
         page = HarnessPage(state=state, directory=directory, repositories=repositories, on_close=host.close_page)
@@ -254,115 +239,31 @@ class HarnessCommand(TuiPlugin):
         )
 
     def _reset(self, host: CommandHost) -> CommandResult:
-        """Turn the harness off and delete the folder this session's harness kept.
+        """Turn the just-in-time harness off, and leave everything it wrote where it is.
 
-        Nothing is asked first: the folder holds what the model wrote for this session and nothing else, and it is
-        rebuilt by ``/harness gen``. Two things are asked *of* it, though, and in this order. The session has to be
-        this process's — the folder is where another process's harness is loaded from, and ``when_busy`` cannot see
-        that process — before the path is even worked out, because naming it can move a pre-workspace folder into
-        place. And the folder has to be inside the harness root: one that is itself a link, resolves elsewhere, or is
-        a pre-workspace installation the move could not merge is reported with its path and left alone. A
-        ``harness_dir`` that is itself a link is not that case; it is the harness folder, resolved on both sides. A
-        copy the move could not take — it failed, or it merged only part of a folder — is named in the answer instead
-        of being called gone, because the next request folds it back in.
+        ``/harness reset`` means what the reader said when they asked for it: from the next request on, the model
+        works with the framework's own harness again. Nothing is deleted — the folder this session's tools live in is
+        the model's work, and a command whose job is to flip a switch does not get to throw it away. The path is named
+        so that a reader who does want it gone knows exactly what to remove.
         """
-        if host.client.session.locked:
-            return CommandResult(message=LOCKED)
         host.client.use_harness(False)
-        config = host.client.config
-        root = harness_root(config)
-        directory = session_directory(config, host.client.session.id)
-        # Deleted as written, after two checks. A session folder that is itself a link is refused here, in a sentence:
-        # `rmtree` refuses it too, but as a bare OSError. Resolution then decides whether the folder `rmtree` would
-        # reach is one the harness root names — deleting the unresolved path is what keeps a link a refusal rather
-        # than a delete of its target. The steps are not atomic — a link swapped in between them would not be seen —
-        # which is the same window every delete by path has.
-        if directory.is_symlink():
-            return CommandResult(
-                message=(
-                    f"**Harness is off for this run**, but its tools were left alone: `{directory}` is a symbolic "
-                    "link, and this command does not delete through a link. Remove it by hand if it is yours."
-                )
-            )
-        if not self._inside(directory, root):
-            return CommandResult(
-                message=(
-                    f"**Harness is off for this run**, but its tools were left alone: this session's folder is "
-                    f"`{directory}`, which is not inside the harness folder `{root}`. Delete it by hand if it is the "
-                    "one you mean."
-                )
-            )
-        kept = self._repositories(directory)
-        # The folder is where this session's harness child works, and Windows will not remove a folder a live process
-        # sits in. Closing the child drops the tools it had loaded too, so what is gone is the folder and the tools
-        # alike; the next request builds a new one from whatever is on disk then.
-        if not self._release(host.client.session.id):
-            return CommandResult(message=HARNESS_IN_USE)
-        try:
-            shutil.rmtree(directory)
-        except FileNotFoundError:
-            return CommandResult(
-                message=(
-                    f"**Harness is off for this run.** This session had no tools in `{directory}`, so there was "
-                    "nothing to delete."
-                )
-            )
-        except OSError as error:
-            return CommandResult(
-                message=(
-                    f"**Harness is off for this run**, but `{directory}` could not be deleted: "
-                    f"{describe_error(error)}. Fix what stopped it and run `/harness reset` again."
-                )
-            )
-        named = ", ".join(f"`{name}`" for name, _detail in kept) or "no repository in it"
-        leaving = self._legacy(config, host.client.session.id)
-        if leaving is not None:
-            # The move merges what it can and leaves the rest: the next request folds that copy back in, so the folder
-            # is not the whole story and the message must not say it is.
-            return CommandResult(
-                message=(
-                    f"**Harness is off for this run**, and `{directory}` is gone ({named}).\n\n"
-                    f"A copy from before the workspace level is still at `{leaving}`; the next request merges it back "
-                    "in, so run `/harness reset` again to drop that one too. Nothing in the workspace was touched."
-                ),
-                notification="Harness reset",
-            )
+        directory = directory_of(host)
         return CommandResult(
             message=(
-                f"**Harness is off for this run**, and this session's tools are gone with their folder: {named}.\n\n"
-                f"The folder was `{directory}`; nothing in the workspace was touched, and `/harness gen` builds "
-                "a tool again."
+                "**Harness is off for this run**: the next request uses the framework's own harness.\n\n"
+                f"Nothing was deleted: this session's tools are still in `{directory}`. Remove that folder yourself "
+                "if you want them gone, or run `/harness gen` to build on them."
             ),
             notification="Harness reset",
         )
-
-    @staticmethod
-    def _legacy(config: ZettCodeConfig, session_id: str) -> Path | None:
-        """Return a pre-workspace copy of this session's folder that the delete leaves behind, if there is one."""
-        from zett_agent.jit_harness.repo import session_directory_name
-
-        copy = config.harness_dir / session_directory_name(session_id)
-        return copy if copy.is_dir() else None
-
-    @staticmethod
-    def _inside(directory: Path, root: Path) -> bool:
-        """Return whether ``directory`` is strictly below ``root``, links and all — the one test the delete rests on.
-
-        ``resolved != resolved_root`` compares a path with its own parent today: ``session_directory_name`` never
-        yields an empty name, so the two cannot be equal. It is kept for the change that would make them so — a
-        ``move_session`` that returned the root itself — because the cost of the check is one comparison and the cost
-        of being wrong is a deleted harness folder.
-        """
-        resolved, resolved_root = directory.resolve(), root.resolve()
-        return resolved != resolved_root and resolved.is_relative_to(resolved_root)
 
     @staticmethod
     def _usage(tried: str = "") -> str:
         """Return the words ``/harness`` takes, for a reader who typed another one.
 
         Two layers are named, because they are easy to confuse: the switch is this run's — every session in this
-        window sees it — while the folder ``reset`` deletes belongs to one session. ``/plugins`` is what a run starts
-        with.
+        window sees it — while the folder both words name belongs to one session, and neither deletes it.
+        ``/plugins`` is what a run starts with.
         """
         said = f"`/harness {tried}` is not a word `/harness` takes." if tried else ""
         return (
@@ -370,7 +271,8 @@ class HarnessCommand(TuiPlugin):
             "- `/harness` — the panel: whether it is on, where its files are, and this session's repositories\n"
             "- `/harness gen [description]` — turn it on (for this run) and have a tool built; anything you write after\n"
             "  the word says what you want, and the model is told to treat it as a requirement\n"
-            "- `/harness reset` — turn it off (for this run) and delete the tools this session kept\n"
+            "- `/harness reset` — turn it off (for this run) so later requests use the framework's own harness; the\n"
+            "  tools this session wrote stay where they are\n"
             "- `/plugins` — whether a run starts with it on, from `harness.jit`"
         ).strip()
 

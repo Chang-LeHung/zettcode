@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
 
 import pytest
@@ -489,15 +488,14 @@ def _configured(tmp_path: Path) -> ZettCodeConfig:
     )
 
 
-async def _run(argument: str, client: _Switch, *, release: object = None) -> tuple[CommandResult, _Shell]:
+async def _run(argument: str, client: _Switch) -> tuple[CommandResult, _Shell]:
     """Run ``/harness`` with ``argument`` and return what it answered, beside the shell it answered through."""
     from zettcode.jit_harness.command import HarnessCommand
     from zettcode.plugin_api.commands import CommandContext
 
     shell = _Shell(client)
     context = CommandContext(argument=argument, ui=_Ui(), host=shell)  # type: ignore[arg-type]
-    command = HarnessCommand() if release is None else HarnessCommand(release=release)  # type: ignore[arg-type]
-    return await command.harness(context), shell
+    return await HarnessCommand().harness(context), shell
 
 
 async def test_the_command_is_offered_with_the_two_words_it_takes():
@@ -556,22 +554,6 @@ async def test_gen_turns_the_harness_on_first_and_asks_for_one_tool_as_one_turn(
     assert result.message == "" and result.widget is None, "the turn is the answer"
 
 
-async def test_reset_leaves_the_folder_alone_while_another_process_holds_the_session(tmp_path: Path):
-    """`when_busy` sees this process's requests, not another window's: the lock is what says the folder is in use."""
-    from zettcode.engine.harness_paths import session_directory
-
-    config = _configured(tmp_path)
-    mine = session_directory(config, "mine")
-    (mine / "kit").mkdir(parents=True)
-    client = _Switch(config, harness=True, locked=True)
-
-    result, _ = await _run("reset", client)
-
-    assert (mine / "kit").is_dir(), "another process's harness is loaded from there"
-    assert client.switched == [], "not even the switch is touched"
-    assert "another ZettCode process" in result.message
-
-
 async def test_gen_says_so_when_no_turn_could_be_started(tmp_path: Path):
     """Nothing else refuses a prompt here, but a turn that did not start is said: the switch stays on, the reader knows."""
     client = _Switch(_configured(tmp_path), started=False)
@@ -604,206 +586,34 @@ async def test_gen_asks_for_the_session_before_it_turns_anything_on(tmp_path: Pa
     assert "not sent" in with_description.message
 
 
-async def test_reset_turns_the_harness_off_and_deletes_only_this_sessions_folder(tmp_path: Path):
+async def test_reset_only_switches_back_and_deletes_nothing(tmp_path: Path):
+    """`reset` means "use the framework's own harness again": it flips the switch and leaves every file where it is."""
     from zettcode.engine.harness_paths import session_directory
 
     config = _configured(tmp_path)
-    (config.workspace / "main.py").write_text("print(1)", encoding="utf-8")
     mine = session_directory(config, "mine")
     (mine / "kit").mkdir(parents=True)
-    (mine / "kit" / "__init__.py").write_text("", encoding="utf-8")
-    (mine / "scratch").mkdir()
-    theirs = session_directory(config, "theirs")
-    (theirs / "tool").mkdir(parents=True)
-
-    result, _ = await _run("reset", _Switch(config, harness=True))
-
-    assert not mine.exists(), "this session's folder is gone, not merely the repositories in it"
-    assert (theirs / "tool").is_dir(), "another session's tools are not this command's"
-    assert (config.workspace / "main.py").read_text(encoding="utf-8") == "print(1)", "the workspace is never touched"
-    assert "`kit`" in result.message, "the report names what it dropped"
-    assert "nothing in the workspace was touched" in result.message
-
-
-async def test_reset_reports_the_switch_even_when_there_was_nothing_to_delete(tmp_path: Path):
-    client = _Switch(_configured(tmp_path), harness=True)
-
-    result, _ = await _run("reset", client)
-
-    assert client.harness is False and client.switched == [False]
-    assert "nothing to delete" in result.message
-
-
-async def test_reset_deletes_nothing_that_is_not_inside_the_harness_root(tmp_path: Path, monkeypatch):
-    """A session folder that resolves elsewhere is reported, not removed: the check is what makes the delete safe."""
-    from zettcode.jit_harness import command as command_module
-
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    (elsewhere / "keep.txt").write_text("x", encoding="utf-8")
-    monkeypatch.setattr(command_module, "session_directory", lambda config, session_id: elsewhere)
-    client = _Switch(_configured(tmp_path), harness=True)
-
-    result, _ = await _run("reset", client)
-
-    assert (elsewhere / "keep.txt").is_file(), "nothing outside the harness folder is deleted, however it got there"
-    assert client.harness is False, "the switch still goes off"
-    assert "left alone" in result.message and str(elsewhere) in result.message
-
-
-@pytest.mark.skipif(os.name == "nt", reason="creating a symbolic link needs a privilege on Windows")
-async def test_reset_reports_a_session_folder_that_is_itself_a_link_instead_of_failing(tmp_path: Path):
-    """The folder a link points at is not this session's storage: it is named, not deleted, and the switch still goes off.
-
-    A link *inside* the folder is a different matter and is safe by construction — ``rmtree`` unlinks an entry it
-    finds and never descends into one — so this is the case the resolved check is for.
-    """
-    from zettcode.engine.harness_paths import harness_root, session_directory
-
-    config = _configured(tmp_path)
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    (outside / "keep.txt").write_text("x", encoding="utf-8")
-    root = harness_root(config)
-    root.mkdir(parents=True)
-    (root / "mine").symlink_to(outside, target_is_directory=True)
-    linked = session_directory(config, "mine")
-    assert linked.resolve() == outside.resolve()
+    (mine / "kit" / "__init__.py").write_text("print(1)\n", encoding="utf-8")
+    before = {path.relative_to(mine): path.read_bytes() for path in mine.rglob("*") if path.is_file()}
     client = _Switch(config, harness=True)
 
     result, _ = await _run("reset", client)
 
-    assert (outside / "keep.txt").is_file(), "what the link points at is not this session's to delete"
-    assert linked.is_symlink(), "the link itself is left in place"
-    assert "left alone" in result.message and str(linked) in result.message
-    assert client.harness is False
+    assert client.harness is False and client.switched == [False], "the switch is the whole of it"
+    after = {path.relative_to(mine): path.read_bytes() for path in mine.rglob("*") if path.is_file()}
+    assert after == before, "not a byte of the session's tools was touched"
+    assert str(mine) in result.message, "the folder is named, so a reader who wants it gone knows what to remove"
+    assert "framework's own harness" in result.message, "and what changes is the next request"
 
 
-@pytest.mark.skipif(os.name == "nt", reason="creating a symbolic link needs a privilege on Windows")
-async def test_reset_leaves_a_link_that_points_inside_the_harness_folder_alone(tmp_path: Path):
-    """Inside the root or outside it, a link is not a folder to delete: `rmtree` refuses both, the second wordlessly."""
-    from zettcode.engine.harness_paths import session_directory
+async def test_reset_does_not_ask_for_the_session_to_itself(tmp_path: Path):
+    """Flipping this window's own switch takes nothing from another process, so a held session is no reason to refuse."""
+    client = _Switch(_configured(tmp_path), harness=True, locked=True)
 
-    config = _configured(tmp_path)
-    other = session_directory(config, "other")
-    (other / "kit").mkdir(parents=True)
-    linked = session_directory(config, "mine")
-    linked.symlink_to(other, target_is_directory=True)
+    result, _ = await _run("reset", client)
 
-    result, _ = await _run("reset", _Switch(config, harness=True))
-
-    assert (other / "kit").is_dir(), "the target is another session's folder"
-    assert linked.is_symlink(), "the link is left where it is"
-    assert "symbolic link" in result.message and "left alone" in result.message
-
-
-@pytest.mark.skipif(os.name == "nt", reason="creating a symbolic link needs a privilege on Windows")
-async def test_reset_deletes_normally_when_the_harness_folder_itself_is_a_link(tmp_path: Path):
-    """A `harness_dir` that is a link *is* the harness folder — resolved on both sides — so its session folder goes."""
-    from zettcode.engine.harness_paths import session_directory
-
-    config = _configured(tmp_path)
-    real = tmp_path / "elsewhere"
-    real.mkdir()
-    (tmp_path / "harness").symlink_to(real, target_is_directory=True)
-    mine = session_directory(config, "mine")
-    (mine / "kit").mkdir(parents=True)
-
-    result, _ = await _run("reset", _Switch(config, harness=True))
-
-    assert not mine.exists(), "the folder the harness keeps goes, wherever `harness_dir` points"
-    assert "gone with their folder" in result.message
-
-
-async def test_reset_asks_for_the_session_before_it_names_the_folder(tmp_path: Path):
-    """Naming the folder can *move* a pre-workspace one into place, which is a write: a refusal must come first."""
-    from zett_agent.jit_harness.repo import session_directory_name
-
-    config = _configured(tmp_path)
-    legacy = config.harness_dir / session_directory_name("mine")
-    (legacy / "kit").mkdir(parents=True)
-
-    result, _ = await _run("reset", _Switch(config, harness=True, locked=True))
-
-    assert (legacy / "kit").is_dir(), "the legacy folder is where it was: nothing was moved by a command that refused"
-    assert "another ZettCode process" in result.message
-
-
-async def test_reset_still_deletes_when_a_manifest_cannot_be_read(tmp_path: Path, monkeypatch):
-    """Reporting what is about to go must never be the reason it does not go: an unreadable file is one row."""
-    import zett_agent.jit_harness
-
-    from zettcode.engine.harness_paths import session_directory
-
-    config = _configured(tmp_path)
-    mine = session_directory(config, "mine")
-    (mine / "kit").mkdir(parents=True)
-    (mine / "kit" / "__init__.py").write_text("", encoding="utf-8")
-
-    def unreadable(path):
-        raise OSError("Permission denied")
-
-    monkeypatch.setattr(zett_agent.jit_harness, "inspect_repository", unreadable)
-
-    result, _ = await _run("reset", _Switch(config, harness=True))
-
-    assert not mine.exists(), "the delete is not held up by a file it could not describe"
-    assert "`kit`" in result.message, "the row that could not be read still names the repository"
-
-
-@pytest.mark.skipif(os.name == "nt", reason="creating a symbolic link needs a privilege on Windows")
-async def test_reset_unlinks_a_link_inside_the_folder_without_following_it(tmp_path: Path):
-    """`rmtree` removes an entry that is a link and never descends into it, so nothing outside the folder goes."""
-    from zettcode.engine.harness_paths import session_directory
-
-    config = _configured(tmp_path)
-    mine = session_directory(config, "mine")
-    (mine / "kit").mkdir(parents=True)
-    (mine / "kit" / "__init__.py").write_text("", encoding="utf-8")
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    (outside / "keep.txt").write_text("x", encoding="utf-8")
-    (mine / "escape").symlink_to(outside, target_is_directory=True)
-
-    result, _ = await _run("reset", _Switch(config, harness=True))
-
-    assert (outside / "keep.txt").is_file(), "the link's target is outside the folder and stays"
-    assert not mine.exists(), "the folder goes, link and all"
-    assert "`kit`" in result.message
-
-
-async def test_reset_closes_the_sessions_harness_before_the_folder_goes(tmp_path: Path):
-    """The folder is the child's working directory, and Windows will not remove one a live process sits in."""
-    from zettcode.engine.harness_paths import session_directory
-
-    config = _configured(tmp_path)
-    mine = session_directory(config, "mine")
-    (mine / "kit").mkdir(parents=True)
-    closed: list[str] = []
-
-    def release(session_id: str) -> bool:
-        closed.append(session_id)
-        assert mine.is_dir(), "the child is closed while there is still a folder to work in"
-        return True
-
-    result, _ = await _run("reset", _Switch(config, harness=True), release=release)
-
-    assert closed == ["mine"], "this session's child, once"
-    assert not mine.exists() and "gone with their folder" in result.message
-
-
-async def test_reset_deletes_nothing_when_the_harness_could_not_be_closed(tmp_path: Path):
-    """Unreachable while the shell refuses a busy command, and said rather than assumed."""
-    from zettcode.engine.harness_paths import session_directory
-
-    config = _configured(tmp_path)
-    mine = session_directory(config, "mine")
-    (mine / "kit").mkdir(parents=True)
-
-    result, _ = await _run("reset", _Switch(config, harness=True), release=lambda session_id: False)
-
-    assert mine.is_dir(), "a folder a request is still working in is not removed under it"
-    assert "still loaded by a request" in result.message
+    assert client.switched == [False], "the switch moves even when the session is held elsewhere"
+    assert "another ZettCode process" not in result.message
 
 
 async def test_a_word_the_command_does_not_take_lists_the_ones_it_does(tmp_path: Path):
@@ -931,138 +741,8 @@ async def test_the_row_is_clamped_by_columns_so_a_wide_description_fits(tmp_path
     assert len(shown) < MAX_SHOWN, "so it holds fewer characters than the budget: this is what columns means"
 
 
-async def test_the_plugin_hands_the_command_the_harness_it_built(tmp_path: Path, monkeypatch):
-    """The delete closes this process's own child through the extension the plugin built: nothing else can reach it."""
-    from zettcode.engine.harness_paths import session_directory
-    from zettcode.engine.plugins.state import AgentBuild
-    from zettcode.plugin_api.commands import CommandContext
-
-    config = _configured(tmp_path)
-    built = _plugin_registrations(config)
-    extension = built["factory"](AgentBuild(model=object()))  # type: ignore[operator]
-    closed: list[str] = []
-    monkeypatch.setattr(extension, "forget_session", lambda session_id: closed.append(session_id))
-
-    mine = session_directory(config, "mine")
-    (mine / "kit").mkdir(parents=True)
-    command = built["command"]
-    await command(CommandContext(argument="reset", ui=_Ui(), host=_Shell(_Switch(config, harness=True))))  # type: ignore[operator]
-
-    assert closed == ["mine"], "the command closed the extension the plugin built, for this session"
-    assert not mine.exists()
-
-
-async def test_reset_deletes_with_nothing_built_yet(tmp_path: Path):
-    """A runtime with no model never calls the factory, so there is no child to close — and the delete still works."""
-    from zettcode.engine.harness_paths import session_directory
-    from zettcode.plugin_api.commands import CommandContext
-
-    config = _configured(tmp_path)
-    built = _plugin_registrations(config)
-    mine = session_directory(config, "mine")
-    (mine / "kit").mkdir(parents=True)
-
-    command = built["command"]
-    await command(CommandContext(argument="reset", ui=_Ui(), host=_Shell(_Switch(config, harness=True))))  # type: ignore[operator]
-
-    assert not mine.exists(), "an empty handle is not an IndexError"
-
-
-async def test_reset_names_a_pre_workspace_copy_it_cannot_drop(tmp_path: Path, monkeypatch):
-    """The move merges what it can and leaves the rest, and the next request folds it back: the answer says so."""
-    from zett_agent.jit_harness.repo import session_directory_name
-
-    from zettcode.engine.harness_paths import harness_root
-    from zettcode.jit_harness import command as command_module
-
-    config = _configured(tmp_path)
-    legacy = config.harness_dir / session_directory_name("mine")
-    (legacy / "kit").mkdir(parents=True)
-    (legacy / "kit" / "__init__.py").write_text("", encoding="utf-8")
-    mine = harness_root(config) / session_directory_name("mine")
-    (mine / "new").mkdir(parents=True)
-    monkeypatch.setattr(command_module, "session_directory", lambda config, session_id: mine)
-
-    result, _ = await _run("reset", _Switch(config, harness=True))
-
-    assert not mine.exists(), "the folder it did delete is gone"
-    assert (legacy / "kit").is_dir(), "the copy it could not take stays where it is"
-    assert str(legacy) in result.message and "merges it back in" in result.message
-
-
-async def test_reset_says_a_folder_that_held_nothing_held_no_repository(tmp_path: Path):
-    from zettcode.engine.harness_paths import session_directory
-
-    config = _configured(tmp_path)
-    mine = session_directory(config, "mine")
-    mine.mkdir(parents=True)
-
-    result, _ = await _run("reset", _Switch(config, harness=True))
-
-    assert not mine.exists()
-    assert "no repository in it" in result.message
-
-
-async def test_reset_says_so_when_the_folder_will_not_go(tmp_path: Path, monkeypatch):
-    """The one real failure left — a permission, a file where the folder was — with the switch off and nothing claimed."""
-    from zettcode.engine.harness_paths import session_directory
-    from zettcode.jit_harness import command as command_module
-
-    config = _configured(tmp_path)
-    mine = session_directory(config, "mine")
-    (mine / "kit").mkdir(parents=True)
-
-    def refused(path, *args, **kwargs):
-        raise OSError("Permission denied")
-
-    monkeypatch.setattr(command_module.shutil, "rmtree", refused)
-    client = _Switch(config, harness=True)
-
-    result, _ = await _run("reset", client)
-
-    assert mine.is_dir(), "nothing was deleted, so nothing is claimed to be"
-    assert client.harness is False, "the switch is off whatever the delete did"
-    assert "could not be deleted" in result.message and "gone" not in result.message
-    assert "/harness reset" in result.message, "and what to do about it"
-
-
-def _plugin_registrations(config: ZettCodeConfig) -> dict[str, object]:
-    """Activate the real plugin against a stand-in container and return what it registered."""
-    from zettcode.engine.extensions.harness_switch import HarnessSwitch
-    from zettcode.engine.permission import Permission, ShellPolicy
-    from zettcode.engine.plugins.services import HARNESS
-    from zettcode.jit_harness.plugin import Harness
-    from zettcode.plugin_api.host import HOST_LINK, HostLink
-
-    built: dict[str, object] = {}
-
-    class Agent:
-        def register_extension_factory(self, name, factory):
-            built["factory"] = factory
-
-    class Tui:
-        def register_command(self, name, description, handler, *, when_busy="refuse", subcommands=()):
-            built["command"] = handler
-
-    class Context:
-        def __init__(self) -> None:
-            self.config = config
-            self.agent = Agent()
-            self.tui = Tui()
-            self.link = HostLink()
-
-        def service(self, name, kind):
-            return HarnessSwitch() if name == HARNESS else ShellPolicy(Permission.SAFE, workspace=config.workspace)
-
-        def find(self, name, kind):
-            return self.link if name == HOST_LINK else None
-
-    Harness().activate(Context())  # type: ignore[arg-type]
-    return built
-
-
 async def test_a_description_outranks_the_brief_and_the_report_answers_it():
-    """What A17 promises in words: the description wins, its prohibitions hold, and the report has to answer for both."""
+    """What A16 promises in words: the description wins, its prohibitions hold, and the report has to answer for both."""
     from zettcode.jit_harness.command import brief_for
 
     text = brief_for("only the two slow tests, and no network")

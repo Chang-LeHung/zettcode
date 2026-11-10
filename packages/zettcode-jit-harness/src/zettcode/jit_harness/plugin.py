@@ -17,8 +17,6 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
     from zettcode.engine.plugins.state import AgentBuild
 
-    from .extension import SwitchedHarness
-
 
 class Harness(Plugin[PluginContext]):
     """The just-in-time harness: the model keeps small Python tools of its own, when the reader has it on.
@@ -64,15 +62,10 @@ class Harness(Plugin[PluginContext]):
             sandbox = policy.jit_sandbox()
             return "none" if sandbox is None else type(sandbox).__name__ + str(id(sandbox))
 
-        #: The extension this process built, once the agent is built. The command that deletes a session's tool folder
-        #: has to close that session's child first — the folder is the child's working directory, and a live process's
-        #: folder cannot be removed on Windows — and this is the only handle on it.
-        built: list[SwitchedHarness] = []
-
         def build(_: AgentBuild) -> AgentExtension:
             from .extension import SwitchedHarness
 
-            harness = SwitchedHarness(
+            return SwitchedHarness(
                 root,
                 switch,
                 host_factory=host,
@@ -80,12 +73,6 @@ class Harness(Plugin[PluginContext]):
                 unbounded=policy.sandbox_missing,
                 legacy_root=ctx.config.harness_dir,
             )
-            built.append(harness)
-            return harness
-
-        def release(session_id: str) -> bool:
-            """Close a session's harness child, or say there is none to close."""
-            return built[-1].release(session_id) if built else True
 
         ctx.agent.register_extension_factory("SwitchedHarness", build)
 
@@ -94,4 +81,4 @@ class Harness(Plugin[PluginContext]):
         if ctx.tui is not None and ctx.find(HOST_LINK, HostLink) is not None:
             from .command import HarnessCommand
 
-            HarnessCommand(release=release).activate(ctx)
+            HarnessCommand().activate(ctx)
