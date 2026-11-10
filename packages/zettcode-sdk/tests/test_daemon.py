@@ -1825,3 +1825,61 @@ def test_a_kept_stop_of_a_daemon_that_left_without_taking_its_own_heartbeat_take
     assert not record.beating(), "the record reads dead by the rule, not by a pid that can be reused"
     gone = Registry().find("01a1")
     assert gone is not None and gone.status == "dead"
+
+
+# -- the shell level a daemon runs at -------------------------------------------------------------------------------
+def test_a_new_shell_level_is_recorded_and_put_in_force_by_a_restart_on_the_same_session(home, monkeypatch):
+    """The level is handed to the process at start, so the daemon is stopped and started again — same session."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+    record = Registry().find("01a1")  # read afresh: aliveness is decided when the record is made
+    assert record is not None and record.alive
+    calls: list[tuple[str, dict]] = []
+
+    def stop(self, target, **kwargs):
+        calls.append(("stop", {"keep": kwargs.get("keep")}))
+        return "stopped; its record was kept"
+
+    def start(self, workspace, **kwargs):
+        calls.append(("start", {"permission": kwargs.get("permission"), "resume": kwargs.get("resume")}))
+        again = Registry().record(workspace, "01a1", create=True)
+        # The real start writes the level it was given into the state it makes.
+        again.save(replace(state_for(workspace), permission=kwargs.get("permission")))
+        return again
+
+    monkeypatch.setattr(process.Daemons, "stop", stop)
+    monkeypatch.setattr(process.Daemons, "start", start)
+
+    updated = process.Daemons().update(record, permission="deny")
+
+    assert [name for name, _ in calls] == ["stop", "start"], "a restart, in that order"
+    assert calls[0][1] == {"keep": True}, "the record stays, so the session can be resumed"
+    assert calls[1][1] == {"permission": "deny", "resume": "01a1"}, "the same conversation, the new level"
+    assert updated.state is not None and updated.state.permission == "deny", "and the record says so"
+
+
+def test_a_shell_level_for_a_daemon_that_is_gone_is_only_recorded(home, monkeypatch):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home, status="dead"))
+    called: list[str] = []
+    monkeypatch.setattr(process.Daemons, "start", lambda *a, **k: called.append("start"))
+
+    updated = process.Daemons().update(record, permission="safe")
+
+    assert called == [], "nothing to restart"
+    assert updated.state is not None and updated.state.permission == "safe"
+
+
+def test_a_shell_level_this_program_does_not_have_is_refused(home):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+
+    with pytest.raises(process.UpdateFailed, match="permission is one of"):
+        process.Daemons().update(record, permission="root")
+
+
+def test_the_default_level_of_a_model_is_the_middle_of_the_ones_it_takes(home):
+    from zettcode.sdk.daemons import default_effort
+
+    assert default_effort() == "high", "the model here lists all eight levels"

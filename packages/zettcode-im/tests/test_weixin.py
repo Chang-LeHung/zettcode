@@ -296,3 +296,58 @@ def test_a_second_scan_keeps_the_settings_the_first_one_set(tmp_path: Path, monk
     assert after.allow == ["u1"], "the allow-list survived the scan"
     assert after.workspace == "/w" and after.permission == "deny"
     assert after.token() == "t", "and the new login replaced the token"
+
+
+def test_set_writes_the_settings_and_restarts_what_holds_the_old_ones(tmp_path: Path, monkeypatch, capsys) -> None:
+    """A running daemon was started at the old level, and the process read the file once: both are remade."""
+    from zettcode.im.state import BridgeState
+    from zettcode.im.weixin import cli
+
+    state = BridgeState.load(tmp_path / "state.json")
+    state.credentials = {"secrets": {"bot_token": "t"}}
+    state.session_id = "01a1"
+    state.save()
+    ScanWorker.calls = []
+    ScanWorker.running_now = True
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+    stopped: list[str] = []
+
+    async def stop_daemon(session_id, *, keep=False):
+        stopped.append(session_id)
+        return "stopped; its record was kept"
+
+    monkeypatch.setattr("zettcode.sdk.daemons.stop_daemon", stop_daemon)
+
+    status = cli.main(["set", "--state-dir", str(tmp_path), "--permission", "deny", "--allow", "u1"])
+
+    assert status == 0
+    saved = BridgeState.load(tmp_path / "state.json")
+    assert saved.permission == "deny" and saved.allow == ["u1"]
+    assert stopped == ["01a1"], "the daemon is stopped so the next message starts it at the new level"
+    assert ScanWorker.calls == ["stop", "start"], "and the background process reads the file again"
+
+
+def test_start_brings_the_background_process_back_without_a_scan(tmp_path: Path, monkeypatch, capsys) -> None:
+    from zettcode.im.state import BridgeState
+    from zettcode.im.weixin import cli
+
+    state = BridgeState.load(tmp_path / "state.json")
+    state.credentials = {"secrets": {"bot_token": "t"}}
+    state.save()
+    ScanWorker.calls = []
+    ScanWorker.running_now = False
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+
+    assert cli.main(["start", "--state-dir", str(tmp_path)]) == 0
+    assert ScanWorker.calls == ["start"]
+
+
+def test_start_refuses_when_there_is_no_login(tmp_path: Path, monkeypatch, capsys) -> None:
+    from zettcode.im.weixin import cli
+
+    ScanWorker.calls = []
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+
+    assert cli.main(["start", "--state-dir", str(tmp_path)]) == 2
+    assert ScanWorker.calls == []
+    assert "no login" in capsys.readouterr().out

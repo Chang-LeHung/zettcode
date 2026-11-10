@@ -199,6 +199,16 @@ def _build_parser(
         default=None,
         help="the reasoning level it runs from the next turn on (a running daemon)",
     )
+    update.add_argument(
+        "--permission",
+        metavar="LEVEL",
+        choices=PERMISSIONS,
+        default=None,
+        help=(
+            "its shell level: deny, safe or full. The daemon is restarted on the same session to take it, so the "
+            "conversation is kept and a turn in flight is not"
+        ),
+    )
     update.add_argument("--json", action="store_true", help="print the daemon as JSON, for a program to read")
 
     prompt = commands.add_parser(
@@ -382,13 +392,17 @@ def _record_json(record: Record) -> dict[str, object]:
 
 def _spawn(args: argparse.Namespace, plugin_arguments: dict[str, dict[str, object]]) -> int:
     """Start one daemon, wait until it can be messaged, and print what to do with it."""
+    from zettcode.sdk.daemons import default_effort
+
     from .process import Daemons, SpawnFailed
 
     try:
         record = Daemons().start(
             args.workspace,
             model=args.model,
-            effort=args.effort,
+            # Nobody named a level: the middle of what this model takes, so the daemon reasons as much as the
+            # provider is willing to by default instead of the model's own (often the cheapest) setting.
+            effort=args.effort or default_effort(args.model) or None,
             resume=args.resume,
             name=args.name,
             title=args.title,
@@ -534,8 +548,14 @@ def _update(args: argparse.Namespace) -> int:
     from .process import Daemons, UpdateFailed
     from .state import Registry
 
-    if args.title is None and args.name is None and args.model is None and args.effort is None:
-        sys.stderr.write("nothing to change: give --title, --name, --model or --effort\n")
+    if (
+        args.title is None
+        and args.name is None
+        and args.model is None
+        and args.effort is None
+        and args.permission is None
+    ):
+        sys.stderr.write("nothing to change: give --title, --name, --model, --effort or --permission\n")
         return EXIT_USAGE
     registry = Registry()
     record = registry.find(args.session)
@@ -544,7 +564,12 @@ def _update(args: argparse.Namespace) -> int:
         return EXIT_FAILED
     try:
         updated = Daemons(registry).update(
-            record, title=args.title, name=args.name, model=args.model, effort=args.effort
+            record,
+            title=args.title,
+            name=args.name,
+            model=args.model,
+            effort=args.effort,
+            permission=args.permission,
         )
     except UpdateFailed as error:
         sys.stderr.write(f"zettcode daemon: {error}\n")
@@ -558,6 +583,7 @@ def _update(args: argparse.Namespace) -> int:
         print(f"name     {state.name or '-'}")
         print(f"title    {state.title or '-'}")
         print(f"model    {state.model or '?'}" + (f" · effort {state.effort}" if state.effort else ""))
+        print(f"shell    {state.permission or '?'}")
         if state.requested_model is not None or state.requested_effort is not None:
             wanted = state.requested_model or state.model or "?"
             level = f" · effort {state.requested_effort}" if state.requested_effort is not None else ""

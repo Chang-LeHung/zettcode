@@ -122,3 +122,17 @@ def asyncio_run(coroutine):
     import asyncio
 
     return asyncio.run(coroutine)
+
+
+def test_a_daemon_started_from_a_chat_runs_full_and_reasons_in_the_middle_of_its_model(tmp_path, daemons, monkeypatch):
+    """Nobody is at the terminal to answer a sandbox, and not every provider takes every level."""
+    from zettcode.sdk import daemons as module
+
+    monkeypatch.setattr(module, "default_effort", lambda model=None, **_k: "high")
+    state = BridgeState.load(tmp_path / "state.json")
+
+    asyncio_run(guard(tmp_path, state).ensure())
+
+    started = daemons.spawned[0]
+    assert started["permission"] == "full", "the default the daemon command line uses too"
+    assert started["effort"] == "high", "the middle of the levels, not the model's own"

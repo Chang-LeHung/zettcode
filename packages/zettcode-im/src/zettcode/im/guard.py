@@ -47,8 +47,10 @@ class DaemonGuard:
         workspace: The directory the daemon works in.
         state: Where the session id lives between runs; the guard writes it when it learns one.
         model: The model by name, or ``None`` for the first configured.
-        effort: The reasoning level, or ``None`` for the model's own.
-        permission: The shell level the daemon gets: ``deny``, ``safe`` or ``full``.
+        effort: The reasoning level, or ``None`` for the middle of the ones the model takes — providers do not all
+            accept every level, and a daemon nobody is watching should reason as much as its model will by default.
+        permission: The shell level the daemon gets: ``deny``, ``safe`` or ``full``. ``full`` by default, the same
+            one ``zettcode daemon spawn`` starts with: there is nobody to answer a sandbox's questions from a chat.
         name: The label recorded beside the daemon, so a reader finds it in ``zettcode daemon list``.
         waits: The waits between failed starts, in order; the last one repeats.
     """
@@ -57,7 +59,7 @@ class DaemonGuard:
     state: BridgeState
     model: str | None = None
     effort: str | None = None
-    permission: str = "safe"
+    permission: str = "full"
     name: str = "chat bridge"
     waits: tuple[float, ...] = ()
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
@@ -119,12 +121,12 @@ class DaemonGuard:
 
     async def _start(self, session: str | None) -> str:
         """Start a daemon, resuming ``session`` when there is one, and return its session id."""
-        from zettcode.sdk.daemons import spawn_daemon
+        from zettcode.sdk.daemons import default_effort, spawn_daemon
 
         info = await spawn_daemon(
             Path(self.workspace),
             model=self.model,
-            effort=self.effort,
+            effort=self.effort or default_effort(self.model) or None,
             resume=session,
             name=self.name,
             permission=self.permission,

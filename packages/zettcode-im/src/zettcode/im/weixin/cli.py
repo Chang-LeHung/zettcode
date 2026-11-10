@@ -47,13 +47,21 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command")
     for name, help_line in (
         ("login", "scan a QR code and start the background process (the default)"),
+        ("start", "start the background process with the stored login, without scanning"),
+        ("set", "change the settings the daemon is started with, and apply them now"),
         ("run", "run the bridge in this terminal (what the background process does)"),
         ("status", "say whether a bridge is running and what it is doing"),
         ("stop", "stop the background process"),
         ("logs", "print the end of the background process's log"),
     ):
         sub = commands.add_parser(name, help=help_line, description=help_line)
-        _common(sub, login=name == "login", run=name == "run")
+        _common(sub, login=name in ("login", "set"), run=name == "run")
+        if name == "set":
+            sub.add_argument(
+                "--keep-daemon",
+                action="store_true",
+                help="leave a running daemon alone; by default it is stopped so the new settings take effect",
+            )
         if name == "login":
             sub.add_argument(
                 "--login-timeout",
@@ -85,7 +93,7 @@ def _common(sub: argparse.ArgumentParser, *, login: bool, run: bool) -> None:
             "--permission",
             choices=("deny", "safe", "full"),
             default=None,
-            help="the daemon's shell level (default: the one already stored, or safe)",
+            help="the daemon's shell level (default: the one already stored, or full)",
         )
         sub.add_argument(
             "--allow",
@@ -114,6 +122,10 @@ def main(argv: list[str] | None = None) -> int:
     state_dir: Path = arguments.state_dir.expanduser()
     if arguments.command == "login":
         return asyncio.run(_login(arguments, state_dir))
+    if arguments.command == "start":
+        return _start(state_dir)
+    if arguments.command == "set":
+        return _set(arguments, state_dir)
     if arguments.command == "run":
         return asyncio.run(_run(arguments, state_dir))
     if arguments.command == "status":
@@ -186,22 +198,7 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
     # A login renews the connection; the settings are what the reader decided and outlive it. A flag replaces its
     # setting, and a flag that was not given leaves the stored one alone — a re-scan that forgot `--allow` used to
     # wipe the allow-list and turn every message into a refusal.
-    if arguments.workspace is not None:
-        state.workspace = str(Path(arguments.workspace).expanduser().resolve())
-    elif not state.workspace:
-        state.workspace = str(Path.cwd())
-    if arguments.model is not None:
-        state.model = arguments.model
-    if arguments.effort is not None:
-        state.effort = arguments.effort
-    if arguments.permission is not None:
-        state.permission = arguments.permission
-    elif not state.permission:
-        state.permission = "safe"
-    if arguments.allow is not None:
-        state.allow = list(arguments.allow)
-    if arguments.allow_all is not None:
-        state.allow_all = bool(arguments.allow_all)
+    _apply_settings(state, arguments)
     if not state.token():
         # A login without a token is a bridge that cannot send or receive, and a background process that says
         # nothing about it. Better to say so here, where the reader is still watching the phone.
@@ -280,7 +277,7 @@ async def _run(arguments: argparse.Namespace, state_dir: Path) -> int:
             state=state,
             model=state.model or None,
             effort=state.effort or None,
-            permission=state.permission or "safe",
+            permission=state.permission or "full",
             name="weixin bridge",
         )
         await link.start()
@@ -325,6 +322,104 @@ def _bridge_id(state_dir: Path) -> str:
     import hashlib
 
     return "im-weixin-" + hashlib.sha1(str(state_dir.resolve()).encode("utf-8")).hexdigest()[:8]
+
+
+# -- settings ------------------------------------------------------------------------------------------
+def _apply_settings(state: object, arguments: argparse.Namespace) -> None:
+    """Take the flags that were given and leave the ones that were not: a re-scan renews the connection, not the
+    decisions.
+
+    ``None`` is how the parser says "not given" for every one of these, which is why ``--allow`` defaults to
+    ``None`` rather than to an empty list: an empty list means "nobody is allowed", and forgetting a flag must not
+    mean that.
+    """
+    if arguments.workspace is not None:
+        state.workspace = str(Path(arguments.workspace).expanduser().resolve())  # type: ignore[attr-defined]
+    elif not state.workspace:  # type: ignore[attr-defined]
+        state.workspace = str(Path.cwd())  # type: ignore[attr-defined]
+    if arguments.model is not None:
+        state.model = arguments.model  # type: ignore[attr-defined]
+    if arguments.effort is not None:
+        state.effort = arguments.effort  # type: ignore[attr-defined]
+    if arguments.permission is not None:
+        state.permission = arguments.permission  # type: ignore[attr-defined]
+    elif not state.permission:  # type: ignore[attr-defined]
+        state.permission = "full"  # type: ignore[attr-defined]
+    if arguments.allow is not None:
+        state.allow = list(arguments.allow)  # type: ignore[attr-defined]
+    if arguments.allow_all is not None:
+        state.allow_all = bool(arguments.allow_all)  # type: ignore[attr-defined]
+
+
+def _start(state_dir: Path) -> int:
+    """Start the background process with the login that is already stored: what a scan ends with, without the scan."""
+    from ..state import BridgeState
+
+    state = BridgeState.load(state_dir / "state.json")
+    if not state.logged_in:
+        print(f"no login in {state_dir}: run `zettcode-weixin` to scan one")
+        return 2
+    worker = Worker(state_dir)
+    if worker.running():
+        print(f"the bridge is already running (pid {worker.pid()})")
+        return 0
+    try:
+        pid = worker.start(command("--state-dir", str(state_dir)))
+    except RuntimeError as error:
+        print(f"the bridge did not start: {error}")
+        return 3
+    print(
+        f"bridge running (pid {pid}); allows: {', '.join(state.allow) or ('anyone' if state.allow_all else 'nobody')}"
+    )
+    return 0
+
+
+def _set(arguments: argparse.Namespace, state_dir: Path) -> int:
+    """Write the settings a daemon is started with, and put them in force now.
+
+    Two things keep the old values alive if this only wrote the file: a running daemon was started with the old
+    level, and the background process read the file once at its own start. So the daemon is stopped (the bridge
+    starts it again with the stored settings on the next message) and the process is restarted.
+    """
+    import asyncio
+
+    from ..state import BridgeState
+
+    state = BridgeState.load(state_dir / "state.json")
+    if not state.logged_in:
+        print(f"no login in {state_dir}: run `zettcode-weixin` to scan one")
+        return 2
+    _apply_settings(state, arguments)
+    state.save()
+    print(f"workspace  {state.workspace or Path.cwd()}")
+    print(f"model      {state.model or '(the first configured)'}")
+    print(f"effort     {state.effort or '(the middle of what the model takes)'}")
+    print(f"shell      {state.permission}")
+    if state.allow_all:
+        print("allows     anyone who can message the bot")
+    else:
+        print(f"allows     {', '.join(state.allow) or 'nobody'}")
+
+    worker = Worker(state_dir)
+    if state.session_id and not arguments.keep_daemon:
+        from zettcode.sdk.daemons import stop_daemon
+
+        try:
+            said = asyncio.run(stop_daemon(state.session_id, keep=True))
+        except Exception as error:  # noqa: BLE001 - an absent daemon is not a failure of this command
+            said = f"the daemon was left alone: {error}"
+        print(f"daemon     {said}")
+    if worker.running():
+        print(worker.stop(), "\u2014 and it starts again with the new settings")
+        try:
+            pid = worker.start(command("--state-dir", str(state_dir)))
+        except RuntimeError as error:
+            print(f"the bridge did not start again: {error}")
+            return 3
+        print(f"bridge     running (pid {pid})")
+    else:
+        print("bridge     not running; `zettcode-weixin start` reads the new settings")
+    return 0
 
 
 def _on_signals(stop: object) -> None:

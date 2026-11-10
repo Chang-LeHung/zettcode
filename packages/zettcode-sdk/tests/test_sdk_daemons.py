@@ -193,7 +193,7 @@ async def test_spawn_refuses_what_it_can_see_is_wrong_before_it_starts_anything(
         await daemons.spawn_daemon(folders / "absent")
 
 
-async def test_spawn_starts_with_the_level_given_and_safe_when_none_is(folders, monkeypatch):
+async def test_spawn_starts_with_the_level_given_and_full_when_none_is(folders, monkeypatch):
     started: list[dict[str, object]] = []
 
     def start(self, workspace, **options):
@@ -215,10 +215,10 @@ async def test_spawn_starts_with_the_level_given_and_safe_when_none_is(folders, 
             "resume": None,
             "name": "review",
             "title": "Fix the parser",
-            "permission": "safe",
+            "permission": "full",
         }
     ]
-    assert made.session_id == "01made" and made.permission == "safe" and made.name == "review"
+    assert made.session_id == "01made" and made.permission == "full" and made.name == "review"
 
 
 async def test_a_daemons_label_can_be_changed_and_one_that_is_not_there_says_so(folders):
