@@ -374,14 +374,51 @@ def _start(state_dir: Path) -> int:
     return 0
 
 
+def _setting_problem(arguments: argparse.Namespace, state: object) -> str:
+    """Return what is wrong with the settings asked for, or an empty string.
+
+    Checked before anything is stopped or written: a level or a model the machine does not have would otherwise be
+    saved and fail on the next message, with the old daemon already gone and a chat waiting for an answer.
+    """
+    from zettcode.sdk.models import list_models
+
+    if arguments.workspace is not None and not Path(arguments.workspace).expanduser().is_dir():
+        return f"no such directory: {arguments.workspace}"
+    try:
+        models = list(list_models())
+    except (OSError, ValueError) as error:
+        return f"the model configuration cannot be read: {error}"
+    wanted = arguments.model if arguments.model is not None else getattr(state, "model", "")
+    chosen = None
+    if wanted:
+        matched = [info for info in models if info.name == wanted or info.model == wanted]
+        if len(matched) != 1:
+            return f"no model named {wanted!r}; `zettcode daemon model` lists the ones there are"
+        chosen = matched[0]
+    elif models:
+        chosen = models[0]
+    if arguments.effort is not None and chosen is not None:
+        levels = [str(level) for level in chosen.efforts]
+        if arguments.effort not in levels:
+            return f"{chosen.name} takes {', '.join(levels) or 'no level'}, not {arguments.effort!r}"
+    return ""
+
+
 def _set(arguments: argparse.Namespace, state_dir: Path) -> int:
     """Write the settings a daemon is started with, and put them in force now.
 
     Two things keep the old values alive if this only wrote the file: a running daemon was started with the old
     level, and the background process read the file once at its own start. So the daemon is stopped (the bridge
     starts it again with the stored settings on the next message) and the process is restarted.
+
+    The daemon is stopped *before* the file is written, and a daemon that is busy stops the whole command: it would
+    otherwise keep running with the old settings while the file describes new ones, and the bridge would find it
+    alive and never start the one the reader asked for.
     """
     import asyncio
+
+    from zettcode.sdk.daemons import stop_daemon
+    from zettcode.sdk.errors import ConfigurationError
 
     from ..state import BridgeState
 
@@ -389,7 +426,33 @@ def _set(arguments: argparse.Namespace, state_dir: Path) -> int:
     if not state.logged_in:
         print(f"no login in {state_dir}: run `zettcode-weixin` to scan one")
         return 2
+    problem = _setting_problem(arguments, state)
+    if problem:
+        print(f"not changed: {problem}")
+        return 2
+
+    worker = Worker(state_dir)
+    was_running = worker.running()
+    if was_running:
+        print(worker.stop())
+    if state.session_id and not arguments.keep_daemon:
+        try:
+            said = asyncio.run(stop_daemon(state.session_id, keep=True))
+        except ConfigurationError as error:
+            print(f"not changed: the daemon is still doing what it was: {error}")
+            if was_running:
+                _restart_worker(worker, state_dir)
+            return 3
+        except Exception as error:  # noqa: BLE001 - an absent daemon is not a failure of this command
+            said = f"the daemon was left alone: {error}"
+        print(f"daemon     {said}")
+
+    previous_workspace = state.workspace
     _apply_settings(state, arguments)
+    if state.workspace != previous_workspace:
+        # A session lives in one workspace; carrying its id over would resume a conversation that is not there.
+        state.session_id = ""
+        state.chats.clear()
     state.save()
     print(f"workspace  {state.workspace or Path.cwd()}")
     print(f"model      {state.model or '(the first configured)'}")
@@ -400,26 +463,24 @@ def _set(arguments: argparse.Namespace, state_dir: Path) -> int:
     else:
         print(f"allows     {', '.join(state.allow) or 'nobody'}")
 
-    worker = Worker(state_dir)
-    if state.session_id and not arguments.keep_daemon:
-        from zettcode.sdk.daemons import stop_daemon
-
-        try:
-            said = asyncio.run(stop_daemon(state.session_id, keep=True))
-        except Exception as error:  # noqa: BLE001 - an absent daemon is not a failure of this command
-            said = f"the daemon was left alone: {error}"
-        print(f"daemon     {said}")
-    if worker.running():
-        print(worker.stop(), "\u2014 and it starts again with the new settings")
-        try:
-            pid = worker.start(command("--state-dir", str(state_dir)))
-        except RuntimeError as error:
-            print(f"the bridge did not start again: {error}")
+    if was_running:
+        pid = _restart_worker(worker, state_dir)
+        if pid is None:
             return 3
         print(f"bridge     running (pid {pid})")
     else:
         print("bridge     not running; `zettcode-weixin start` reads the new settings")
     return 0
+
+
+def _restart_worker(worker: Worker, state_dir: Path) -> int | None:
+    """Start the background process again and return its pid, or say why it did not start."""
+    try:
+        pid = worker.start(command("--state-dir", str(state_dir)))
+    except RuntimeError as error:
+        print(f"the bridge did not start again: {error}")
+        return None
+    return pid
 
 
 def _on_signals(stop: object) -> None:
