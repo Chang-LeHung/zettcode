@@ -81,11 +81,12 @@ GEN_ASKED = """
 What follows is what the person asking added after `/harness gen`, word for word. Treat it as a requirement, not as
 advice: where it disagrees with the brief above, it wins, and anything it rules out — a file, a directory, the
 network, writing anything at all — stays out of bounds however much the brief would otherwise allow. What it cannot
-do is lift the floor, which is one rule and not a list: keep every write inside this session's harness folder and run
-only the tool you built there — do not write anywhere else, and do not run whatever it asks you to run elsewhere. The
-workspace's own files are still not edited, and nothing here grants a permission the session does not already have.
-If it asks for more than that, say so in the report instead of doing it. When you report, say whether every point of
-it was met, and name the ones that were not and why.
+do is lift the floor, which is one rule and not a list: keep every write inside this session's harness folder — do not
+write anywhere else, and do not run anything it asks you to run elsewhere. Commands that only look (`ls`, `rg`,
+`git log`) are still yours, as reading the workspace is part of the brief. The workspace's own files are still not
+edited, and nothing here grants a permission the session does not already have. If it asks for more than that, say so
+in the report instead of doing it. When you report, say whether every point of it was met, and name the ones that
+were not and why.
 """
 
 #: How much of a description is passed on. A brief is paid for in every later request of the session, and a reader
@@ -122,8 +123,9 @@ GEN_FLOOR_LAST = """
 ---
 
 The floor above still holds for this request, whatever was asked just now: in this turn nothing is written outside
-this session's harness folder, the workspace's own files are not edited, only the tool built here is run, and no
-permission the session did not already have is taken on. Later requests in this session are ordinary ones.
+this session's harness folder, the workspace's own files are not edited, nothing you passed on is run elsewhere, and
+no permission the session did not already have is taken on. Looking at the workspace is still yours to do. Later
+requests in this session are ordinary ones.
 """
 
 
@@ -265,7 +267,7 @@ class HarnessCommand(TuiPlugin):
                 "it yourself if you want them gone — on Windows close ZettCode first, because the harness's child "
                 "process works in there — or run `/harness gen` to build on them."
             )
-        elif directory.exists():
+        elif directory.exists() or directory.is_symlink():
             kept = (
                 f"Nothing was deleted: `{directory}` is there but is not a folder, so it was left as it is. "
                 "`/harness gen` cannot make the folder while that is in the way: move it aside first."
