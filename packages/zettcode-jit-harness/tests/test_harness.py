@@ -579,27 +579,29 @@ async def test_gen_says_so_when_no_turn_could_be_started(tmp_path: Path):
     result, _ = await _run("gen", client)
     assert client.harness is True, "the switch moved before the turn was refused"
     assert "turn did not start" in result.message and "/harness gen" in result.message
-    assert "not kept" not in result.message, "a reader who wrote nothing is not told their nothing was lost"
+    assert "not sent" not in result.message, "a reader who wrote nothing is not told their nothing went nowhere"
 
     with_description, _ = await _run("gen fix the  parser", _Switch(_configured(tmp_path), started=False))
 
-    assert "not kept" in with_description.message, "a description is gone with the refusal, and that is said"
+    assert "not sent" in with_description.message and "press Up" in with_description.message, (
+        "the line never went out, and it is still in the composer's history"
+    )
 
 
 async def test_gen_asks_for_the_session_before_it_turns_anything_on(tmp_path: Path):
     """A turn cannot start in a session another process holds, so the switch does not move for one that cannot, and a
-    description that went with the draft is said to be gone rather than silently lost."""
+    description that went with the draft is said not to have been sent rather than silently dropped."""
     client = _Switch(_configured(tmp_path), locked=True)
 
     result, shell = await _run("gen", client)
     assert client.switched == [], "no switch for a run that would do nothing"
     assert shell.prompts == []
     assert "another ZettCode process" in result.message
-    assert "not kept" not in result.message, "a reader who wrote nothing lost nothing"
+    assert "not sent" not in result.message, "a reader who wrote nothing sent nothing"
 
     with_description, _ = await _run("gen fix the  parser", _Switch(_configured(tmp_path), locked=True))
 
-    assert "not kept" in with_description.message
+    assert "not sent" in with_description.message
 
 
 async def test_reset_turns_the_harness_off_and_deletes_only_this_sessions_folder(tmp_path: Path):
@@ -897,6 +899,7 @@ async def test_a_chinese_description_with_quotes_and_a_line_break_arrives_verbat
 
 async def test_a_description_too_long_to_send_is_cut_and_says_so(tmp_path: Path):
     from zettcode.jit_harness.command import GEN_ASKED, GEN_BRIEF, GEN_FLOOR_LAST, MAX_DESCRIPTION, MAX_SHOWN
+    from zettcode.tui.render import display_width
 
     asked = "x" * (MAX_DESCRIPTION + 500)
     client = _Switch(_configured(tmp_path))
@@ -909,7 +912,7 @@ async def test_a_description_too_long_to_send_is_cut_and_says_so(tmp_path: Path)
     assert f"cut at {MAX_DESCRIPTION} characters" in text, "a cut is said, not left looking like a short request"
     allowed = len(GEN_BRIEF) + len(GEN_ASKED) + len(GEN_FLOOR_LAST) + MAX_DESCRIPTION + 120
     assert len(text) <= allowed, "the brief does not grow with a paste"
-    assert len(shown) == MAX_SHOWN and shown.endswith("\u2026"), "the transcript row stays a row"
+    assert display_width(shown) == MAX_SHOWN and shown.endswith("\u2026"), "the transcript row stays one row wide"
 
 
 async def test_the_plugin_hands_the_command_the_harness_it_built(tmp_path: Path, monkeypatch):

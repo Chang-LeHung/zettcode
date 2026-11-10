@@ -3050,7 +3050,8 @@ async def test_the_harness_command_asks_for_a_tool_when_gen_is_the_word(tmp_path
 
 
 async def test_the_harness_command_carries_the_description_the_reader_typed(tmp_path):
-    """The rest of the line is the reader's requirement: the transcript shows the command, the model reads it last."""
+    """The rest of the line is the reader's requirement: the transcript shows the command, the model reads the
+    description after the brief, under a heading that says whose words these are."""
     from zettcode.jit_harness.command import GEN_BRIEF
 
     app = build_app([AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="built it")])
@@ -3065,8 +3066,13 @@ async def test_the_harness_command_carries_the_description_the_reader_typed(tmp_
     (message,) = app.agent.runtime.client.messages
     said = repr(message)
     assert GEN_BRIEF.splitlines()[0] in said, "the brief is still the base"
-    assert "What follows is what the person asking added" in said and asked in said, "the reader's words are last"
-    assert said.rindex(asked) > said.index("What follows is what the person asking added"), "and after the heading"
+    assert "What follows is what the person asking added" in said and asked in said
+    heading = said.index("What follows is what the person asking added")
+    assert said.index(GEN_BRIEF.splitlines()[0]) < heading, "the brief comes first"
+    assert said.rindex(asked) > heading, "and the reader's words come after it, verbatim"
+    assert said.index("/harness gen") < said.index(GEN_BRIEF.splitlines()[0]), (
+        "the turn's head line is the command, so the model sees that collapsed copy before the brief"
+    )
 
 
 def test_the_harness_command_is_registered_by_the_part_only_where_the_shell_is(tmp_path):

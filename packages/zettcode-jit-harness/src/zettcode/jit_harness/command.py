@@ -24,6 +24,7 @@ from zettcode.error_text import describe_error
 from zettcode.plugin_api.commands import CommandContext, CommandResult, Subcommand
 from zettcode.plugin_api.panels import bottom_panel
 from zettcode.plugin_api.plugin import TuiPlugin
+from zettcode.tui.render import truncate
 
 from .page import HARNESS_ROWS, HarnessPage
 
@@ -55,9 +56,10 @@ HARNESS_IN_USE = (
     "that has not ended. Run `/harness reset` again in a moment."
 )
 
-#: Said when a turn this reader asked for did not start and they had written something: their words went with the
-#: draft, and a reader who pasted a paragraph has to be told to paste it again rather than find out by looking.
-NOT_KEPT = "What you wrote after the word was not kept."
+#: Said when a turn this reader asked for did not start and they had written something: the line never went out, and a
+#: reader who pasted a paragraph has to be told that rather than find out by looking. The draft is in the composer's
+#: history, so one Up brings it back.
+NOT_KEPT = "What you wrote after the word was not sent — press Up to bring the line back."
 
 #: What ``/harness gen`` asks the model for. It is one turn of this conversation, so it says what a good tool is and
 #: what a report of one has to contain; the reader sees only the command in the transcript.
@@ -97,7 +99,8 @@ it was met, and name the ones that were not and why.
 #: pasting a file into the command line should not turn the conversation into that file.
 MAX_DESCRIPTION = 4000
 
-#: How much of the command the transcript draws. The whole line is in the message the session keeps; this is the row.
+#: How much of the command the transcript draws, in terminal columns. The whole line is in the message the session
+#: keeps; this is the row.
 MAX_SHOWN = 120
 
 
@@ -145,11 +148,12 @@ def shown_for(description: str) -> str:
     """Return what the transcript draws for the turn: the command, on one row, shortened when it is long.
 
     The row is one line because a conversation row is: a description pasted with its own line breaks is drawn with the
-    breaks as single spaces, while the model reads it exactly as it was written.
+    breaks as single spaces, while the model reads it exactly as it was written. The budget is columns, not characters:
+    a row of 120 Chinese characters is 240 columns, and the framework's own `truncate` is what knows the difference.
     """
-    asked = description.strip().replace("\r", " ").replace("\n", " ").replace("\t", " ")
+    asked = description.strip().replace("\r\n", " ").replace("\r", " ").replace("\n", " ").replace("\t", " ")
     line = f"/harness gen {asked}" if asked else "/harness gen"
-    return line if len(line) <= MAX_SHOWN else line[: MAX_SHOWN - 1] + "\u2026"
+    return truncate(line, MAX_SHOWN)
 
 
 class HarnessCommand(TuiPlugin):
