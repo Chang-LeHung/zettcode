@@ -53,7 +53,7 @@ class DaemonCompanions(Companions):
                     effort=state.effort,
                     resume=state.session_id,
                     name=state.name,
-                    permission=state.permission or "safe",
+                    permission=state.permission or "full",
                 )
             except SpawnFailed as error:
                 results.append((False, f"{state.session_id}  could not be started again: {error}"))

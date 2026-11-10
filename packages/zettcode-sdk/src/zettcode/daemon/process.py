@@ -452,6 +452,10 @@ class Daemons:
 
         The level is handed to the process when it starts, so nothing short of a restart changes it. The session
         is the one thing that must survive, and it does: the conversation is on disk and ``resume`` continues it.
+
+        What does not survive is the plugin arguments a daemon was started with: they are not written into the
+        record, so a restart starts the plugins on their own defaults. Restarting a daemon that a plugin shaped is
+        the same gap the companion restarts have, and closing it means keeping those values in the record.
         """
         state = record.state
         if state is None:
