@@ -24,7 +24,7 @@
 | `/effort` | 用轨道上的小圆点选择模型的推理强度：`/effort` 打开，← → 滑动，`Enter` 应用；`/effort high` 直接设置。当前模型不支持的档位（见 [`reasoning_efforts`](/zh/guide/config#reasoning-levels-a-model-takes)）会被拒绝，并列出它支持的档位。 |
 | `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。`safe` 把每条命令放进只能写工作区和 `/tmp` 的沙箱里跑，`full` 用你自己的权限跑。档位属于这个会话：下次打开它就从这一档开始，新会话则从本次运行开始时的档位开始。 |
 | `/plugins` | 打开插件开关：`Space`/`←`/`→` 切换一个，`Enter` 写入，`Esc` 取消，改动从下次启动生效。`/plugins disable <名字>` 和 `/plugins enable <名字>` 按名字切换一个（同样下次启动生效）；`disable` 写进 `config.toml` 的 `[plugins] disable`。见[关掉一个插件](/zh/guide/plugins#关掉一个插件)。 |
-| `/harness` | 打开一个只读面板：harness 是否开启、本会话的目录，以及仓库和它们 `MANIFEST`、`BAN_TOOLS` 里写的内容——没有 `MANIFEST` 的仓库加载不了。面板旁边还有两个词：`/harness gen` 为本次运行打开 harness（这个窗口里的所有会话都看得见），并让模型以一轮对话的方式用 `repo_create` 给这个工作区造一个工具；`/harness reset` 关掉它并删掉本会话的工具——这些工具在 harness 目录里，从不在你的工程里。`/plugins` 决定的是下次启动时的默认值。请求进行中不接受。见[可选参数参考](/zh/guide/config#可选参数参考)。 |
+| `/harness` | 打开一个只读面板：harness 是否开启、本会话的目录，以及仓库和它们 `MANIFEST`、`BAN_TOOLS` 里写的内容——没有 `MANIFEST` 的仓库加载不了。面板旁边还有两个词：`/harness gen` 为本次运行打开 harness（这个窗口里的所有会话都看得见），并让模型以一轮对话的方式用 `repo_create` 给这个工作区造一个工具；`/harness reset` 为本次运行关掉它，并删掉本会话的工具——这些工具在 harness 目录里，从不在你的工程里。`/plugins` 决定的是下次启动时的默认值。请求进行中不接受。见[可选参数参考](/zh/guide/config#可选参数参考)。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |
 | `/code-review` | 请人评审尚未提交的改动：`/code-review` 评审现有的改动，`/code-review <文本>` 说明重点看什么。它写一段提示 —— 改了什么、怎么收集、评审要说出什么 —— 当成一轮对话交给模型，等同于你亲手打了一遍；会建议另一个 reviewer，起不来时模型自己评审。见[从一次评审开始](/zh/guide/daemons#从一次评审开始)。 |
 | `/bash` | 在工作区里打开一个全屏命令行：`/bash` 打开空面板，`/bash git status` 打开后立即运行这条命令。有历史、Tab 补全和彩色输出；因为是你自己在敲，所以不需要任何权限确认。见[Shell 面板](#bash)。 |

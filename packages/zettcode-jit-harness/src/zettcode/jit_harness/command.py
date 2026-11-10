@@ -37,6 +37,14 @@ SUBCOMMANDS: tuple[Subcommand, ...] = (
     Subcommand("reset", "turn it off and delete the tools this session kept", needs_more=True),
 )
 
+#: What both words answer when another process holds the session. ``when_busy`` sees this process's requests only, and
+#: the folder one word deletes is where the other process's harness is loaded from, so the command asks the session
+#: for itself before it changes anything at all.
+LOCKED = (
+    "**Nothing was changed**: this session is open in another ZettCode process, which has its harness in use. "
+    "Run this command there, or close that one and try again."
+)
+
 #: What ``/harness gen`` asks the model for. It is one turn of this conversation, so it says what a good tool is and
 #: what a report of one has to contain; the reader sees only ``/harness gen`` in the transcript.
 GEN_BRIEF = """Build one small tool for this workspace in the just-in-time harness, then report it.
@@ -118,21 +126,21 @@ class HarnessCommand(TuiPlugin):
         """Turn the harness on and hand the model the brief, as one ordinary turn of this conversation.
 
         The switch goes first: the turn mounts the harness's tools when it starts, so a prompt sent before the switch
-        moved would be the one request that cannot build anything. The turn is awaited here, the way ``/code-review``
+        moved would be the one request that cannot build anything. The session is asked for before that, for the same
+        reason ``reset`` asks: a turn cannot start in a session another process holds, and turning the switch on for a
+        run that then does nothing is a change nobody asked for. The turn is awaited here, the way ``/code-review``
         awaits its own, because the row it draws is the command's answer and the slot stays the command's until it
         ends.
         """
-        try:
-            host.client.use_harness(True)
-        except Exception as error:  # noqa: BLE001 - a switch that will not move is a line for the reader, not a crash
-            return CommandResult(message=f"**/harness gen** could not turn the harness on: {describe_error(error)}")
+        if host.client.session.locked:
+            return CommandResult(message=LOCKED)
+        host.client.use_harness(True)
         if await host.prompt(GEN_BRIEF, shown="/harness gen"):
             return CommandResult()
         return CommandResult(
             message=(
-                "**The harness is on**, but no turn was started. Either this session is open in another ZettCode "
-                "process — run `/harness gen` there, or close it — or the window is still starting up; run "
-                "`/harness gen` again."
+                "**The harness is on**, but the turn did not start. What refused it is in the line above; when the "
+                "window is free, run `/harness gen` again."
             )
         )
 
@@ -140,36 +148,37 @@ class HarnessCommand(TuiPlugin):
         """Turn the harness off and delete the folder this session's harness kept.
 
         Nothing is asked first: the folder holds what the model wrote for this session and nothing else, and it is
-        rebuilt by ``/harness gen``. Two things are asked *of* it, though. The session has to be this process's — the
-        folder is where another process's harness is loaded from, and ``when_busy`` cannot see that process — and the
-        folder has to be inside the harness root: one that resolves elsewhere (a folder that is itself a link, or a
-        pre-workspace installation the move could not merge) is reported with its path and left alone. A
+        rebuilt by ``/harness gen``. Two things are asked *of* it, though, and in this order. The session has to be
+        this process's — the folder is where another process's harness is loaded from, and ``when_busy`` cannot see
+        that process — before the path is even worked out, because naming it can move a pre-workspace folder into
+        place. And the folder has to be inside the harness root: one that is itself a link, resolves elsewhere, or is
+        a pre-workspace installation the move could not merge is reported with its path and left alone. A
         ``harness_dir`` that is itself a link is not that case; it is the harness folder, resolved on both sides.
         """
         if host.client.session.locked:
-            return CommandResult(
-                message=(
-                    "**/harness reset** left everything as it was: this session is open in another ZettCode process, "
-                    "which is using the folder this would delete. Run it there, or close that one and try again."
-                )
-            )
-        try:
-            host.client.use_harness(False)
-        except Exception as error:  # noqa: BLE001 - the reader gets a line, not a traceback
-            return CommandResult(message=f"**/harness reset** could not turn the harness off: {describe_error(error)}")
+            return CommandResult(message=LOCKED)
+        host.client.use_harness(False)
         config = host.client.config
         root = harness_root(config)
         directory = session_directory(config, host.client.session.id)
-        # Compared after resolution and deleted as written. Resolving is what turns a session folder that is itself a
-        # link into a sentence instead of an error: `rmtree` refuses a link either way, but as "could not be deleted".
-        # Deleting the unresolved path is what keeps it a refusal rather than a delete of the link's target. The two
-        # steps are not atomic — a link swapped in between them would not be seen — which is the same window every
-        # delete by path has.
+        # Deleted as written, after two checks. A session folder that is itself a link is refused here, in a sentence:
+        # `rmtree` refuses it too, but as a bare OSError. Resolution then decides whether the folder `rmtree` would
+        # reach is one the harness root names — deleting the unresolved path is what keeps a link a refusal rather
+        # than a delete of its target. The steps are not atomic — a link swapped in between them would not be seen —
+        # which is the same window every delete by path has.
+        if directory.is_symlink():
+            return CommandResult(
+                message=(
+                    f"**Harness is off for this run**, but its tools were left alone: `{directory}` is a symbolic "
+                    "link, and what it points at is not this session's to delete."
+                )
+            )
         if not self._inside(directory, root):
             return CommandResult(
                 message=(
-                    f"**Harness is off**, but its tools were left alone: this session's folder is `{directory}`, "
-                    f"which is not inside the harness folder `{root}`. Delete it by hand if it is the one you mean."
+                    f"**Harness is off for this run**, but its tools were left alone: this session's folder is "
+                    f"`{directory}`, which is not inside the harness folder `{root}`. Delete it by hand if it is the "
+                    "one you mean."
                 )
             )
         kept = self._repositories(directory)
@@ -177,16 +186,19 @@ class HarnessCommand(TuiPlugin):
             shutil.rmtree(directory)
         except FileNotFoundError:
             return CommandResult(
-                message=f"**Harness is off.** This session had no tools in `{directory}`, so there was nothing to delete."
+                message=(
+                    f"**Harness is off for this run.** This session had no tools in `{directory}`, so there was "
+                    "nothing to delete."
+                )
             )
         except OSError as error:
             return CommandResult(
-                message=f"**Harness is off**, but `{directory}` could not be deleted: {describe_error(error)}"
+                message=f"**Harness is off for this run**, but `{directory}` could not be deleted: {describe_error(error)}"
             )
         named = ", ".join(f"`{name}`" for name, _detail in kept) or "the folder held no repository"
         return CommandResult(
             message=(
-                f"**Harness is off**, and this session's tools are gone: {named}.\n\n"
+                f"**Harness is off for this run**, and this session's folder is gone: {named}.\n\n"
                 f"The folder was `{directory}`; nothing in the workspace was touched, and `/harness gen` builds "
                 "a tool again."
             ),
