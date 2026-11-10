@@ -230,6 +230,15 @@ class HarnessCommand(TuiPlugin):
             return CommandResult(message=f"{LOCKED}\n\n{NOT_KEPT}" if description.strip() else LOCKED)
         host.client.use_harness(True)
         if await host.prompt(brief_for(description), shown=shown_for(description)):
+            asked = description.strip()
+            if len(asked) > MAX_DESCRIPTION:
+                # The model was told where its brief was cut; the reader pasted the text and has to be told too.
+                return CommandResult(
+                    message=(
+                        f"Your description was cut at {MAX_DESCRIPTION} characters: the last "
+                        f"{len(asked) - MAX_DESCRIPTION} were not sent."
+                    )
+                )
             return CommandResult()
         kept = f" {NOT_KEPT}" if description.strip() else ""
         return CommandResult(
@@ -251,8 +260,8 @@ class HarnessCommand(TuiPlugin):
         host.client.use_harness(False)
         directory = directory_of(host)
         kept = (
-            f"Nothing was deleted: this session's tools are still in `{directory}`. Remove that folder yourself if "
-            "you want them gone, or run `/harness gen` to build on them."
+            f"Nothing was deleted: the folder this session's tools live in is still there (`{directory}`). Remove it "
+            "yourself if you want them gone, or run `/harness gen` to build on them."
             if directory.is_dir()
             else f"Nothing was deleted, and this session never wrote a tool: `{directory}` is not there. `/harness "
             "gen` builds one when you want it."
