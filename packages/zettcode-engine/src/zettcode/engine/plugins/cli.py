@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import logging
 import os
 import sys
 import threading
@@ -20,6 +21,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from zettcode.paths import DEFAULT_PLUGIN_CLI_CACHE
+
+logger = logging.getLogger("zettcode.plugins")
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Iterable
@@ -242,7 +245,7 @@ def _refresh(target: Path, delay: float = 0.0) -> None:
         _write_cache(target, {"version": _CACHE_VERSION, "fingerprint": fingerprint, "options": rows})
     except Exception as error:
         # The next start tries again; a cache miss is already an accepted outcome, but say why once.
-        sys.stderr.write(f"zettcode: could not cache plugin CLI options: {error}\n")
+        logger.warning("plugins.cli_cache_failed", extra={"reason": str(error)})
     finally:
         with _refresh_lock:
             _refreshing.discard(target)
