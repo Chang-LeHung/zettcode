@@ -43,6 +43,7 @@ GEN_BRIEF = """Build one small tool for this workspace in the just-in-time harne
 
 - Call `repo_create` to make the repository and write a focused tool in it with your file tools; a `MANIFEST` that
   declares the tool in `tools = [...]` is what makes `repo_load` check your work. Load it before you claim it works.
+  A session keeps one repository: if this one already has it, reuse it rather than creating a second.
 - Keep it small and specific: something this workspace needed more than once, one or two tools, the standard library
   where it is enough, and output a reader can use without reading the whole workspace.
 - Run it at least once on this workspace and look at what came back, so the report says it works rather than that it
@@ -122,16 +123,9 @@ class HarnessCommand(TuiPlugin):
         ends.
         """
         try:
-            on = host.client.use_harness(True)
+            host.client.use_harness(True)
         except Exception as error:  # noqa: BLE001 - a switch that will not move is a line for the reader, not a crash
             return CommandResult(message=f"**/harness gen** could not turn the harness on: {describe_error(error)}")
-        if not on:
-            return CommandResult(
-                message=(
-                    "**/harness gen**: the harness did not turn on, so nothing was generated. "
-                    "`/plugins` says whether this build offers it at all."
-                )
-            )
         if await host.prompt(GEN_BRIEF, shown="/harness gen"):
             return CommandResult()
         return CommandResult(
@@ -145,12 +139,20 @@ class HarnessCommand(TuiPlugin):
     def _reset(self, host: CommandHost) -> CommandResult:
         """Turn the harness off and delete the folder this session's harness kept.
 
-        Nothing is asked first: the folder holds what the model wrote for this session and nothing else, it is
-        rebuilt by ``/harness gen``, and the command is only reachable with no request running. What it will not do is
-        delete anything outside the harness root — if the session's folder resolves elsewhere (a ``harness_dir`` that
-        is a symbolic link out of the harness folder, a pre-workspace installation the move could not merge), the
-        reader is told the path instead and deletes it by hand.
+        Nothing is asked first: the folder holds what the model wrote for this session and nothing else, and it is
+        rebuilt by ``/harness gen``. Two things are asked *of* it, though. The session has to be this process's — the
+        folder is where another process's harness is loaded from, and ``when_busy`` cannot see that process — and the
+        folder has to be inside the harness root: one that resolves elsewhere (a folder that is itself a link, or a
+        pre-workspace installation the move could not merge) is reported with its path and left alone. A
+        ``harness_dir`` that is itself a link is not that case; it is the harness folder, resolved on both sides.
         """
+        if host.client.session.locked:
+            return CommandResult(
+                message=(
+                    "**/harness reset** left everything as it was: this session is open in another ZettCode process, "
+                    "which is using the folder this would delete. Run it there, or close that one and try again."
+                )
+            )
         try:
             host.client.use_harness(False)
         except Exception as error:  # noqa: BLE001 - the reader gets a line, not a traceback
@@ -158,11 +160,11 @@ class HarnessCommand(TuiPlugin):
         config = host.client.config
         root = harness_root(config)
         directory = session_directory(config, host.client.session.id)
-        # Compared after resolution and deleted as written. Resolving is what catches an ancestor that is a link: the
-        # folder `rmtree` would reach is not the one the harness root names. Deleting the unresolved path is what
-        # keeps a folder that is *itself* a link a refusal (`rmtree` will not follow it) instead of deleting its
-        # target. The two steps are not atomic — a link swapped in between them would not be seen — which is the same
-        # window every delete by path has.
+        # Compared after resolution and deleted as written. Resolving is what turns a session folder that is itself a
+        # link into a sentence instead of an error: `rmtree` refuses a link either way, but as "could not be deleted".
+        # Deleting the unresolved path is what keeps it a refusal rather than a delete of the link's target. The two
+        # steps are not atomic — a link swapped in between them would not be seen — which is the same window every
+        # delete by path has.
         if not self._inside(directory, root):
             return CommandResult(
                 message=(
@@ -201,16 +203,17 @@ class HarnessCommand(TuiPlugin):
     def _usage(tried: str = "") -> str:
         """Return the words ``/harness`` takes, for a reader who typed another one.
 
-        Two layers are named, because they are easy to confuse: the two words change **this session**, and
-        ``/plugins`` is what a run starts with. A reader who still types ``/harness on`` is looking for the second.
+        Two layers are named, because they are easy to confuse: the switch is this run's — every session in this
+        window sees it — while the folder ``reset`` deletes belongs to one session. ``/plugins`` is what a run starts
+        with.
         """
         said = f"`/harness {tried}` is not a word `/harness` takes." if tried else ""
         return (
             f"{said}\n\n"
             "- `/harness` — the panel: whether it is on, where its files are, and this session's repositories\n"
-            "- `/harness gen` — turn it on (this session) and have a tool built for this workspace\n"
-            "- `/harness reset` — turn it off (this session) and delete the tools this session kept\n"
-            "- `/plugins` — whether the harness is offered at all, and whether a run starts with it on"
+            "- `/harness gen` — turn it on (for this run) and have a tool built for this workspace\n"
+            "- `/harness reset` — turn it off (for this run) and delete the tools this session kept\n"
+            "- `/plugins` — whether a run starts with it on, from `harness.jit`"
         ).strip()
 
     def _repositories(self, directory: Path) -> list[tuple[str, str]]:

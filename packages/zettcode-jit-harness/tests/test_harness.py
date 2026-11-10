@@ -430,9 +430,11 @@ def test_a_repository_present_on_both_sides_stays_in_the_legacy_folder(tmp_path:
 class _Switch:
     """The bit of the SDK client ``/harness`` reads: the config, the session, the switch and one turn's worth of SDK."""
 
-    def __init__(self, config: ZettCodeConfig, *, harness: bool = False, started: bool = True) -> None:
+    def __init__(
+        self, config: ZettCodeConfig, *, harness: bool = False, started: bool = True, locked: bool = False
+    ) -> None:
         self.config = config
-        self.session = type("Session", (), {"id": "mine"})()
+        self.session = type("Session", (), {"id": "mine", "locked": locked})()
         self.harness = harness
         self.started = started
         #: What happened, in the order the command made it happen: the switch or the turn it asked for.
@@ -553,18 +555,20 @@ async def test_gen_turns_the_harness_on_first_and_asks_for_one_tool_as_one_turn(
     assert result.message == "" and result.widget is None, "the turn is the answer"
 
 
-async def test_gen_says_so_when_the_switch_did_not_move(tmp_path: Path):
-    class Deaf(_Switch):
-        def use_harness(self, on: bool) -> bool:
-            super().use_harness(on)
-            return False
+async def test_reset_leaves_the_folder_alone_while_another_process_holds_the_session(tmp_path: Path):
+    """`when_busy` sees this process's requests, not another window's: the lock is what says the folder is in use."""
+    from zettcode.engine.harness_paths import session_directory
 
-    client = Deaf(_configured(tmp_path))
+    config = _configured(tmp_path)
+    mine = session_directory(config, "mine")
+    (mine / "kit").mkdir(parents=True)
+    client = _Switch(config, harness=True, locked=True)
 
-    result, shell = await _run("gen", client)
+    result, _ = await _run("reset", client)
 
-    assert "did not turn on" in result.message
-    assert shell.prompts == [], "nothing is generated for a harness that is not on"
+    assert (mine / "kit").is_dir(), "another process's harness is loaded from there"
+    assert client.switched == [], "not even the switch is touched"
+    assert "another ZettCode process" in result.message
 
 
 async def test_gen_says_so_when_no_turn_could_be_started(tmp_path: Path):
