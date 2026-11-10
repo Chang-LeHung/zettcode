@@ -632,7 +632,7 @@ async def test_reset_says_when_the_folder_is_not_there(tmp_path: Path):
 
     result, _ = await _run("reset", _Switch(config, harness=True))
 
-    assert "is not there, so there is nothing here to remove" in result.message, result.message
+    assert "there is no folder at" in result.message and "nothing here to remove" in result.message, result.message
     assert "is still there" not in result.message, "nothing is claimed to be there"
     assert "never wrote" not in result.message, "and nothing is claimed about what the session did"
 

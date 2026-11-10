@@ -261,10 +261,11 @@ class HarnessCommand(TuiPlugin):
         directory = directory_of(host)
         kept = (
             f"Nothing was deleted: the folder this session's tools live in is still there (`{directory}`). Remove it "
-            "yourself if you want them gone, or run `/harness gen` to build on them."
+            "yourself if you want them gone — on Windows close ZettCode first, because the harness's child process "
+            "works in there — or run `/harness gen` to build on them."
             if directory.is_dir()
-            else f"Nothing was deleted: `{directory}` is not there, so there is nothing here to remove. `/harness "
-            "gen` builds one when you want it."
+            else f"Nothing was deleted: there is no folder at `{directory}`, so there is nothing here to remove. "
+            "`/harness gen` builds one when you want it."
         )
         return CommandResult(
             message=f"**Harness is off for this run**: later requests have none of its tools.\n\n{kept}",
