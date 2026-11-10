@@ -456,6 +456,7 @@ class _Shell:
         self.ui = _Ui(client.events)
         self.prompts: list[tuple[str, str | None]] = []
         self.closed = 0
+        self.selected: list[str] = []
 
     async def prompt(self, text: str, *, shown: str | None = None, cache: str | None = None) -> bool:
         self.client.events.append("prompt")
@@ -464,6 +465,9 @@ class _Shell:
 
     def close_page(self) -> None:
         self.closed += 1
+
+    def select_session(self, session_id: str) -> None:
+        self.selected.append(session_id)
 
 
 class _Ui:
@@ -550,6 +554,55 @@ async def test_every_word_the_menu_offers_is_one_the_command_runs(tmp_path: Path
     for word in SUBCOMMANDS:
         result, _ = await _run(word.name, _Switch(_configured(tmp_path)))
         assert "is not a word" not in result.message, f"the menu offers {word.name} but the command does not run it"
+
+
+def test_the_harness_page_lists_sessions_and_switches_to_the_selected_one(tmp_path: Path):
+    from zettcode.jit_harness.page import HarnessPage
+
+    switched: list[str] = []
+    closed: list[int] = []
+    page = HarnessPage(
+        state="on",
+        directory=tmp_path / "harness",
+        sessions=[
+            ("mine", "Mine", "2 repositories · current"),
+            ("other", "Other", "1 repository"),
+        ],
+        on_switch=switched.append,
+        on_close=lambda: closed.append(1),
+    )
+
+    assert [item.value for item in page.list.items] == ["mine", "other"]
+    assert page.list.current is not None and page.list.current.value == "mine", "the current session is selected first"
+    page.list.activate()
+    assert switched == ["mine"] and closed == [], "Enter on the current row is the page's own switch"
+
+    page.list.select(1)
+    page.list.activate()
+    assert switched == ["mine", "other"], "Enter on another row switches to that session"
+
+
+async def test_the_panel_lists_every_session_harness_and_switches_on_enter(tmp_path: Path):
+    from zettcode.engine.harness_paths import harness_root
+
+    config = _configured(tmp_path)
+    root = harness_root(config)
+    for session_id, repository in (("mine", "kit"), ("other", "notes")):
+        (root / session_id / repository).mkdir(parents=True)
+        (root / session_id / repository / "__init__.py").write_text("", encoding="utf-8")
+    client = _Switch(config)
+
+    result, shell = await _run("", client)
+    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    assert [item.value for item in page.list.items] == ["mine", "other"], "the current session is first"
+    assert page.list.current is not None and page.list.current.value == "mine"
+
+    page.list.activate()
+    assert shell.closed == 1 and shell.selected == [], "the current row closes the panel"
+
+    page.list.select(1)
+    page.list.activate()
+    assert shell.selected == ["other"], "another row switches to that session"
 
 
 async def test_harness_alone_opens_the_panel_and_changes_nothing(tmp_path: Path):
