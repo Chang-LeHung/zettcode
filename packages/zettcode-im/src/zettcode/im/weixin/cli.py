@@ -198,7 +198,11 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
     # A login renews the connection; the settings are what the reader decided and outlive it. A flag replaces its
     # setting, and a flag that was not given leaves the stored one alone — a re-scan that forgot `--allow` used to
     # wipe the allow-list and turn every message into a refusal.
+    previous_workspace = state.workspace
     _apply_settings(state, arguments)
+    if state.workspace != previous_workspace:
+        # A session lives in one workspace: its id in another would resume a conversation that is not there.
+        state.session_id = ""
     if not state.token():
         # A login without a token is a bridge that cannot send or receive, and a background process that says
         # nothing about it. Better to say so here, where the reader is still watching the phone.

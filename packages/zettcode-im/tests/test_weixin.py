@@ -452,3 +452,32 @@ def test_the_default_level_of_a_model_this_machine_does_not_have_is_nothing(tmp_
     assert default_effort() == "medium", "the middle of low, medium, high"
     assert default_effort("Quick") == "low"
     assert default_effort("nope") == "", "a name that matches nothing does not quietly become the first model"
+
+
+def test_a_scan_that_moves_the_workspace_starts_a_new_session(tmp_path: Path, monkeypatch) -> None:
+    from agim.models import LoginStatus
+
+    from zettcode.im.state import BridgeState
+    from zettcode.im.weixin import cli
+
+    stored = BridgeState.load(tmp_path / "state.json")
+    stored.session_id = "01a1"
+    stored.workspace = str(tmp_path)
+    stored.save()
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    ScanWorker.calls = []
+    ScanWorker.running_now = False
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+    monkeypatch.setattr("agim.wechat.client.WeChatClient", lambda *a, **k: ScanClient([LoginStatus.CONNECTED]))
+
+    assert (
+        asyncio.run(
+            cli._login(
+                cli.build_parser().parse_args(["login", "--state-dir", str(tmp_path), "-w", str(other)]), tmp_path
+            )
+        )
+        == 0
+    )
+
+    assert BridgeState.load(tmp_path / "state.json").session_id == ""
