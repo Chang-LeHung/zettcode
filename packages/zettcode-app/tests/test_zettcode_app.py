@@ -3003,7 +3003,7 @@ async def test_a_wrong_permission_name_lists_the_right_ones_and_changes_nothing(
     )
 
 
-async def test_the_harness_command_opens_a_read_only_panel():
+async def test_the_harness_command_opens_the_panel_and_changes_nothing():
     app = build_app()
     harness = _harness(app)
     assert app.agent.harness is False, "off unless asked for"
@@ -3016,6 +3016,37 @@ async def test_the_harness_command_opens_a_read_only_panel():
 
     harness.press("escape")
     assert "Harness is off" not in harness.render().text
+
+
+async def test_enter_straight_after_the_space_on_harness_stays_the_panel(tmp_path):
+    """Both words say `needs_more`, so a menu Enter cannot run one: no turn is spent, nothing is deleted."""
+    app = build_app()
+    harness = _harness(app)
+    app.agent.runtime.config.harness_dir = tmp_path / "harness"
+
+    await _type_command(app, harness, "/harness ")
+
+    assert app.agent.harness is False, "no word ran"
+    assert app.agent.runtime.client.messages == [], "no turn was started for a menu Enter"
+    assert "Harness is off" in harness.render().text, "the bare command is what it was: the panel"
+
+
+async def test_the_harness_command_asks_for_a_tool_when_gen_is_the_word(tmp_path):
+    """`/harness gen` moves the switch and starts one ordinary turn; the reader sees the command, not the brief."""
+    from zettcode.jit_harness.command import GEN_BRIEF
+
+    app = build_app([AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="built it")])
+    harness = _harness(app)
+    app.agent.runtime.config.harness_dir = tmp_path / "harness"
+
+    await _type_command(app, harness, "/harness gen")
+
+    assert app.agent.harness is True, "the turn mounts the harness's tools, so the switch went on first"
+    shown = [entry.text for entry in app.transcript.entries if entry.kind == "user"]
+    assert shown == ["/harness gen"], shown
+    assert len(app.agent.runtime.client.messages) == 1, "exactly one turn was started"
+    assert GEN_BRIEF.splitlines()[0] in repr(app.agent.runtime.client.messages[-1])
+    assert "built it" in harness.render().text
 
 
 def test_the_harness_command_is_registered_by_the_part_only_where_the_shell_is(tmp_path):
