@@ -440,8 +440,8 @@ limit = ctx.service(PLUGIN_CLI, dict).get("journal", {}).get("limit", "3")
 `zettcode daemon spawn --help` 会。`~/.zettcode/.ztrc` 只为会话启动预置它们，不会作用于 `daemon spawn`。
 
 为了让交互启动快，parser 从 `~/.zettcode/plugin-cli.json` 读这些声明，而不是导入每个插件。缓存缺失或过期时，
-daemon 线程才导入插件类刷新；刚安装或修改插件的第一次启动还没有新 flag，下一次启动才有。读不到缓存时不等待，直接继续。如果 `.ztrc` 在缓存存在前写了插件 flag，这次启动会丢掉这个未知 flag，其他选项照常生效；
-下一次启动就认识了。
+daemon 线程才导入插件类刷新；刚安装或修改插件的第一次启动还没有新 flag，下一次启动才有。读不到缓存时不等待，直接继续。如果 `.ztrc` 在缓存存在前写了插件 flag，这一次启动会同步刷新声明并应用，
+不会丢掉这个预置项。
 
 ## 读配置
 
