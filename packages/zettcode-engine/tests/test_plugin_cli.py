@@ -74,6 +74,20 @@ def test_the_cache_returns_options_without_importing_a_plugin(tmp_path, monkeypa
     assert found[0][0] == "example" and found[0][1].flags == ("--example-depth",)
 
 
+def test_a_warm_refresh_does_not_import_plugins(tmp_path, monkeypatch):
+    from zettcode.engine.plugins.cli import _refresh
+
+    cache = tmp_path / "plugin-cli.json"
+    cache.write_text(json.dumps({"version": 1, "fingerprint": [], "options": []}), encoding="utf-8")
+    monkeypatch.setattr("zettcode.engine.plugins.loader.installed_entry_points", lambda: ())
+    monkeypatch.setattr(
+        "zettcode.engine.plugins.cli.installed_options",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("refresh imported plugins")),
+    )
+
+    _refresh(cache)
+
+
 def test_a_colliding_or_non_json_option_is_skipped_with_one_line(capsys):
     parser = argparse.ArgumentParser()
     parser.add_argument("--depth")

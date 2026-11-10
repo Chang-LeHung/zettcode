@@ -118,7 +118,8 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
     words = list(sys.argv[1:] if argv is None else argv)
     plugin_values: Callable[..., dict[str, dict[str, object]]] | None = None
     plugin_added: tuple[tuple[str, CliOption, str], ...] = ()
-    if not any(word in {"-h", "--help", "-v", "-V", "--version"} for word in words):
+    head = words[: words.index("--")] if "--" in words else words
+    if not any(word in {"-h", "--help", "-v", "-V", "--version"} for word in head):
         from zettcode.engine.plugins.cli import add_options, load_cached_options
         from zettcode.engine.plugins.cli import values as plugin_values
 
@@ -160,8 +161,10 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
     # `upgrade` is another name for `update`; nothing after this point needs to know it was used.
     command = "update" if args.command == "upgrade" else args.command
     options = _OPTIONS.get(command, _plain_options)(parser, args, command)
-    assert plugin_values is not None
-    return replace(options, plugin_arguments=plugin_values(args, plugin_added))
+    return replace(
+        options,
+        plugin_arguments=plugin_values(args, plugin_added) if plugin_values is not None else {},
+    )
 
 
 def _rc_arguments(path: Path) -> list[str]:

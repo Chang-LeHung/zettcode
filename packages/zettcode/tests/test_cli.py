@@ -174,12 +174,17 @@ def test_a_plugin_can_add_a_startup_option(tmp_path: Path, monkeypatch):
     assert options.plugin_arguments == {"demo": {"depth": "5"}}
 
 
-def test_help_with_a_bad_rc_file_still_prints_help(tmp_path: Path):
+def test_help_with_a_bad_rc_file_still_prints_help(tmp_path: Path, capsys):
     rc = tmp_path / ".ztrc"
     rc.write_text("--nope\n", encoding="utf-8")
 
     with pytest.raises(SystemExit):
         parse_args(["--help"], rc=rc)
+    assert "usage:" in capsys.readouterr().out
+
+
+def test_a_word_after_double_dash_is_not_a_help_flag():
+    assert parse_args(["resume", "--", "-v"]).workspace == Path.cwd()
 
 
 def test_the_rc_file_presets_arguments_one_per_line(tmp_path: Path):
