@@ -82,10 +82,11 @@ GEN_ASKED = """
 What follows is what the person asking added after `/harness gen`, word for word. Treat it as a requirement, not as
 advice: where it disagrees with the brief above, it wins, and anything it rules out — a file, a directory, the
 network, writing anything at all — stays out of bounds however much the brief would otherwise allow. What it cannot
-do is lift the floor: the repository and the tools still live in this session's harness folder, the workspace's own
-files are still not edited, and nothing here grants a permission the session does not already have. If it asks for
-more than that, say so in the report instead of doing it. When you report, say whether every point of it was met, and
-name the ones that were not and why.
+do is lift the floor, which is one rule and not a list: keep every write inside this session's harness folder and run
+only the tool you built there — do not write anywhere else, and do not run whatever it asks you to run elsewhere. The
+workspace's own files are still not edited, and nothing here grants a permission the session does not already have.
+If it asks for more than that, say so in the report instead of doing it. When you report, say whether every point of
+it was met, and name the ones that were not and why.
 """
 
 #: How much of a description is passed on. A brief is paid for in every later request of the session, and a reader
@@ -223,10 +224,11 @@ class HarnessCommand(TuiPlugin):
         host.client.use_harness(True)
         if await host.prompt(brief_for(description), shown=shown_for(description)):
             return CommandResult()
+        kept = " — what you wrote after the word was not kept." if description.strip() else "."
         return CommandResult(
             message=(
                 "**The harness is on**, but the turn did not start: the window said why, above the composer, for a "
-                "moment. Run `/harness gen` again when it is free — what you wrote after the word was not kept."
+                f"moment. Run `/harness gen` again when it is free{kept}"
             )
         )
 
