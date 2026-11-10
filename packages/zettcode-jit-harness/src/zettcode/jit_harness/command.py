@@ -6,13 +6,15 @@ against the plugin contract — the context, the result and ``bottom_panel`` —
 application, and the SDK is only what ``host.client`` is typed as.
 
 ``/harness`` with nothing after it opens the read-only panel. ``gen`` turns the harness on and asks the model, as one
-ordinary turn, to build a small tool for this workspace; ``reset`` turns it off again and deletes what this session's
-harness kept. Both words act on the session and on the harness folder alone: the workspace's own files are never
-touched, and the repositories live under ``config.harness_dir``, not in the project.
+ordinary turn, to build a small tool for this workspace — the rest of the line, if there is any, is what the reader
+wants built and is handed on as a requirement rather than as advice; ``reset`` turns it off again and deletes what this
+session's harness kept. Both words act on the session and on the harness folder alone: the workspace's own files are
+never touched, and the repositories live under ``config.harness_dir``, not in the project.
 """
 
 from __future__ import annotations
 
+import re
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -35,7 +37,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 #: offers them, but Enter on the word alone does not run one — ``/harness `` and Enter stays the panel it was, and
 #: ``gen`` (a paid turn) or ``reset`` (a delete) takes a second Enter once the word is in the draft.
 SUBCOMMANDS: tuple[Subcommand, ...] = (
-    Subcommand("gen", "turn the harness on and have a tool built for this workspace", needs_more=True),
+    Subcommand("gen", "turn the harness on and have a tool built; add what you want after the word", needs_more=True),
     Subcommand("reset", "turn it off and delete the tools this session kept", needs_more=True),
 )
 
@@ -55,7 +57,7 @@ HARNESS_IN_USE = (
 )
 
 #: What ``/harness gen`` asks the model for. It is one turn of this conversation, so it says what a good tool is and
-#: what a report of one has to contain; the reader sees only ``/harness gen`` in the transcript.
+#: what a report of one has to contain; the reader sees only the command in the transcript.
 GEN_BRIEF = """Build one small tool for this workspace in the just-in-time harness, then report it.
 
 - Call `repo_create` to make the repository and write a focused tool in it with your file tools; a `MANIFEST` that
@@ -71,13 +73,70 @@ GEN_BRIEF = """Build one small tool for this workspace in the just-in-time harne
   and anything a later reader should know before relying on it.
 """
 
+#: What follows the brief when the reader wrote something after ``gen``. It has to read as a change of author, because
+#: that is what it is: the brief is the command's advice, and what comes after is the person who asked.
+GEN_ASKED = """
+---
+
+What follows is what the person asking added after `/harness gen`, word for word. Treat it as a requirement, not as
+advice: where it disagrees with the brief above, it wins, and anything it rules out — a file, a directory, the
+network, writing anything at all — stays out of bounds however much the brief would otherwise allow. If it asks for
+something this session cannot do, say so in the report instead of quietly doing something else. When you report, say
+whether every point of it was met, and name the ones that were not and why.
+"""
+
+#: How much of a description is passed on. A brief is paid for in every later request of the session, and a reader
+#: pasting a file into the command line should not turn the conversation into that file.
+MAX_DESCRIPTION = 4000
+
+#: How much of the command the transcript draws. The whole line is in the message the session keeps; this is the row.
+MAX_SHOWN = 120
+
+
+def split_argument(argument: str) -> tuple[str, str]:
+    """Return the word after the command and the rest of the line as the reader wrote it.
+
+    ``/harness gen  fix the  parser`` gives ``("gen", "fix the  parser")``: the spacing inside a description belongs to
+    the reader, so only the whitespace between the word and the description is dropped. A line of nothing but spaces
+    has no word at all, which is the panel; a command whose only argument is whitespace is a command with none (§
+    "only whitespace is no description").
+    """
+    text = argument.strip()
+    if not text:
+        return "", ""
+    match = re.match(r"(\S+)\s*(.*)", text, re.DOTALL)
+    if match is None:  # impossible: a non-blank string starts with a non-space
+        return "", ""
+    return match.group(1).lower(), match.group(2).strip()
+
+
+def brief_for(description: str) -> str:
+    """Return what the model reads: the brief, then the reader's own words when they wrote any.
+
+    The reader's text goes in verbatim and last, so nothing in the brief can be read as the newer instruction. A cut
+    description says it was cut instead of ending mid-sentence.
+    """
+    asked = description.strip()
+    if not asked:
+        return GEN_BRIEF
+    if len(asked) > MAX_DESCRIPTION:
+        asked = asked[:MAX_DESCRIPTION] + f"\n\n[cut at {MAX_DESCRIPTION} characters; the rest was not sent]"
+    return f"{GEN_BRIEF}{GEN_ASKED}\n{asked}\n"
+
+
+def shown_for(description: str) -> str:
+    """Return what the transcript draws for the turn: the command as typed, shortened to a row when it is long."""
+    asked = description.strip()
+    line = f"/harness gen {asked}" if asked else "/harness gen"
+    return line if len(line) <= MAX_SHOWN else line[: MAX_SHOWN - 1] + "\u2026"
+
 
 class HarnessCommand(TuiPlugin):
     """``/harness``: what the harness is doing now, and the two words that change it."""
 
     name = "harness-command"
     description = (
-        "the just-in-time harness: /harness (the panel), gen (build a tool now), reset (drop this session's tools)"
+        "the just-in-time harness: /harness (the panel), gen [what you want] (build a tool), reset (drop its tools)"
     )
 
     def __init__(self, release: Callable[[str], bool] | None = None) -> None:
@@ -113,20 +172,21 @@ class HarnessCommand(TuiPlugin):
 
         No word opens the read-only panel; ``gen`` and ``reset`` are the two things a reader may do here. Anything
         else — including the ``on`` and ``off`` this command used to take — is answered with the words it does take,
-        rather than changing the harness behind a typo.
+        rather than changing the harness behind a typo. ``gen`` takes the rest of the line as the reader's own
+        description of what they want built; ``reset`` takes nothing after the word, because there is nothing to say
+        about a delete.
         """
         host = context.require_host()
-        words = context.argument.split()
-        if not words:
+        word, rest = split_argument(context.argument)
+        if not word:
             return self._panel(host)
-        word = words[0].lower()
-        if word not in {subcommand.name for subcommand in SUBCOMMANDS}:
-            return CommandResult(message=self._usage(tried=word))
-        if len(words) > 1:
-            return CommandResult(message=f"`/harness {word}` takes nothing after it.\n\n{self._usage()}")
         if word == "gen":
-            return await self._generate(host)
-        return self._reset(host)
+            return await self._generate(host, rest)
+        if word == "reset":
+            if rest:
+                return CommandResult(message=f"`/harness reset` takes nothing after it.\n\n{self._usage()}")
+            return self._reset(host)
+        return CommandResult(message=self._usage(tried=word))
 
     def _panel(self, host: CommandHost) -> CommandResult:
         """Open a read-only panel on the just-in-time harness.
@@ -142,7 +202,7 @@ class HarnessCommand(TuiPlugin):
         page = HarnessPage(state=state, directory=directory, repositories=repositories, on_close=host.close_page)
         return CommandResult(widget=bottom_panel(page, rows=HARNESS_ROWS))
 
-    async def _generate(self, host: CommandHost) -> CommandResult:
+    async def _generate(self, host: CommandHost, description: str = "") -> CommandResult:
         """Turn the harness on and hand the model the brief, as one ordinary turn of this conversation.
 
         The switch goes first: the turn mounts the harness's tools when it starts, so a prompt sent before the switch
@@ -151,11 +211,14 @@ class HarnessCommand(TuiPlugin):
         run that then does nothing is a change nobody asked for. The turn is awaited here, the way ``/code-review``
         awaits its own, because the row it draws is the command's answer and the slot stays the command's until it
         ends.
+
+        ``description`` is what the reader typed after ``gen``, kept as they typed it: it is handed to the model after
+        the brief, marked as a requirement, and what the transcript shows is the command with it rather than the brief.
         """
         if host.client.session.locked:
             return CommandResult(message=LOCKED)
         host.client.use_harness(True)
-        if await host.prompt(GEN_BRIEF, shown="/harness gen"):
+        if await host.prompt(brief_for(description), shown=shown_for(description)):
             return CommandResult()
         return CommandResult(
             message=(
@@ -279,7 +342,8 @@ class HarnessCommand(TuiPlugin):
         return (
             f"{said}\n\n"
             "- `/harness` — the panel: whether it is on, where its files are, and this session's repositories\n"
-            "- `/harness gen` — turn it on (for this run) and have a tool built for this workspace\n"
+            "- `/harness gen [description]` — turn it on (for this run) and have a tool built; anything you write after\n"
+            "  the word says what you want, and the model is told to treat it as a requirement\n"
             "- `/harness reset` — turn it off (for this run) and delete the tools this session kept\n"
             "- `/plugins` — whether a run starts with it on, from `harness.jit`"
         ).strip()

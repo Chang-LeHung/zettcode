@@ -3049,6 +3049,26 @@ async def test_the_harness_command_asks_for_a_tool_when_gen_is_the_word(tmp_path
     assert "built it" in harness.render().text
 
 
+async def test_the_harness_command_carries_the_description_the_reader_typed(tmp_path):
+    """The rest of the line is the reader's requirement: the transcript shows the command, the model reads it last."""
+    from zettcode.jit_harness.command import GEN_BRIEF
+
+    app = build_app([AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="built it")])
+    harness = _harness(app)
+    app.agent.runtime.config.harness_dir = tmp_path / "harness"
+    asked = 'a tool that lists "TODO" markers, and do not touch src/'
+
+    await _type_command(app, harness, f"/harness gen {asked}")
+
+    shown = [entry.text for entry in app.transcript.entries if entry.kind == "user"]
+    assert shown == [f"/harness gen {asked}"], shown
+    (message,) = app.agent.runtime.client.messages
+    said = repr(message)
+    assert GEN_BRIEF.splitlines()[0] in said, "the brief is still the base"
+    assert "What follows is what the person asking added" in said and asked in said, "the reader's words are last"
+    assert said.rindex(asked) > said.index("What follows is what the person asking added"), "and after the heading"
+
+
 def test_the_harness_command_is_registered_by_the_part_only_where_the_shell_is(tmp_path):
     """The part owns the command, and registers it only where a terminal and the shell's link exist.
 
