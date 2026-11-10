@@ -422,7 +422,7 @@ def _set(arguments: argparse.Namespace, state_dir: Path) -> int:
     import asyncio
 
     from zettcode.sdk.daemons import stop_daemon
-    from zettcode.sdk.errors import ConfigurationError
+    from zettcode.sdk.errors import ConfigurationError, SessionNotFoundError
 
     from ..state import BridgeState
 
@@ -439,16 +439,25 @@ def _set(arguments: argparse.Namespace, state_dir: Path) -> int:
     was_running = worker.running()
     if was_running:
         print(worker.stop())
+        if worker.running():
+            # It would read the old file and write its own copy back over the new one.
+            print("not changed: the bridge did not stop; stop it by hand and run the command again")
+            return 3
     if state.session_id and not arguments.keep_daemon:
         try:
             said = asyncio.run(stop_daemon(state.session_id, keep=True))
+        except SessionNotFoundError:
+            said = "no daemon was running for it"
         except ConfigurationError as error:
             print(f"not changed: the daemon is still doing what it was: {error}")
             if was_running:
                 _restart_worker(worker, state_dir)
             return 3
-        except Exception as error:  # noqa: BLE001 - an absent daemon is not a failure of this command
-            said = f"the daemon was left alone: {error}"
+        except Exception as error:  # noqa: BLE001 - any other failure is still a stop that did not happen
+            print(f"not changed: the daemon could not be stopped: {error}")
+            if was_running:
+                _restart_worker(worker, state_dir)
+            return 3
         print(f"daemon     {said}")
 
     previous_workspace = state.workspace
@@ -457,11 +466,14 @@ def _set(arguments: argparse.Namespace, state_dir: Path) -> int:
         # A session lives in one workspace; carrying its id over would resume a conversation that is not there.
         state.session_id = ""
         state.chats.clear()
+    dropped = _drop_incompatible_effort(state)
     state.save()
     print(f"workspace  {state.workspace or Path.cwd()}")
     print(f"model      {state.model or '(the first configured)'}")
     print(f"effort     {state.effort or '(the middle of what the model takes)'}")
     print(f"shell      {state.permission}")
+    if dropped:
+        print(f"note       {dropped}")
     if state.allow_all:
         print("allows     anyone who can message the bot")
     else:
@@ -475,6 +487,35 @@ def _set(arguments: argparse.Namespace, state_dir: Path) -> int:
     else:
         print("bridge     not running; `zettcode-weixin start` reads the new settings")
     return 0
+
+
+def _drop_incompatible_effort(state: object) -> str:
+    """Clear a stored level the model it now runs on does not take, and say so; return an empty string otherwise.
+
+    A level belongs to a model. Keeping ``high`` after moving to a model that stops at ``low`` would fail at the
+    next start, with the old daemon already gone — so the level goes, and the middle of the new model's list
+    applies instead.
+    """
+    from zettcode.sdk.models import list_models
+
+    effort = getattr(state, "effort", "")
+    if not effort:
+        return ""
+    try:
+        models = list(list_models())
+    except (OSError, ValueError):
+        return ""
+    wanted = getattr(state, "model", "")
+    chosen = next((info for info in models if wanted and (info.name == wanted or info.model == wanted)), None)
+    if chosen is None:
+        chosen = models[0] if models else None
+    if chosen is None:
+        return ""
+    levels = [str(level) for level in chosen.efforts]
+    if effort in levels:
+        return ""
+    state.effort = ""  # type: ignore[attr-defined]
+    return f"the level {effort!r} is not one {chosen.name} takes ({', '.join(levels) or 'none'}), so it is unset"
 
 
 def _restart_worker(worker: Worker, state_dir: Path) -> int | None:

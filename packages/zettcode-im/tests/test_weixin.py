@@ -481,3 +481,73 @@ def test_a_scan_that_moves_the_workspace_starts_a_new_session(tmp_path: Path, mo
     )
 
     assert BridgeState.load(tmp_path / "state.json").session_id == ""
+
+
+def test_moving_to_a_model_that_does_not_take_the_stored_level_unsets_it(tmp_path: Path, monkeypatch) -> None:
+    """A level belongs to a model; keeping `high` on a model that stops at `low` fails at the next start."""
+    from zettcode.im.state import BridgeState
+    from zettcode.im.weixin import cli
+
+    state = BridgeState.load(tmp_path / "state.json")
+    state.credentials = {"secrets": {"bot_token": "t"}}
+    state.model = "Deep"
+    state.effort = "high"
+    state.save()
+    ScanWorker.calls = []
+    ScanWorker.running_now = False
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+    monkeypatch.setattr("zettcode.sdk.models.list_models", lambda *a, **k: _models())
+
+    assert cli.main(["set", "--state-dir", str(tmp_path), "--model", "Quick"]) == 0
+
+    saved = BridgeState.load(tmp_path / "state.json")
+    assert saved.model == "Quick"
+    assert saved.effort == "", "so the middle of Quick's levels applies instead"
+
+
+def test_set_does_not_save_when_the_daemon_could_not_be_stopped(tmp_path: Path, monkeypatch) -> None:
+    """A stop that failed for a reason other than 'no such daemon' leaves the old settings in force."""
+    from zettcode.im.state import BridgeState
+    from zettcode.im.weixin import cli
+
+    state = BridgeState.load(tmp_path / "state.json")
+    state.credentials = {"secrets": {"bot_token": "t"}}
+    state.session_id = "01a1"
+    state.permission = "safe"
+    state.save()
+    ScanWorker.calls = []
+    ScanWorker.running_now = True
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+    monkeypatch.setattr("zettcode.sdk.models.list_models", lambda *a, **k: _models())
+
+    async def broken(session_id, *, keep=False):
+        raise OSError("the process could not be signalled")
+
+    monkeypatch.setattr("zettcode.sdk.daemons.stop_daemon", broken)
+
+    assert cli.main(["set", "--state-dir", str(tmp_path), "--permission", "deny"]) == 3
+    assert BridgeState.load(tmp_path / "state.json").permission == "safe"
+    assert ScanWorker.running_now, "the bridge is back, with what it had"
+
+
+def test_set_does_not_save_when_the_bridge_did_not_stop(tmp_path: Path, monkeypatch) -> None:
+    from zettcode.im.state import BridgeState
+    from zettcode.im.weixin import cli
+
+    state = BridgeState.load(tmp_path / "state.json")
+    state.credentials = {"secrets": {"bot_token": "t"}}
+    state.permission = "safe"
+    state.save()
+
+    class Stubborn(ScanWorker):
+        def stop(self, **_kwargs) -> str:
+            ScanWorker.calls.append("stop")
+            return "the bridge did not stop in 15 seconds; it was killed"
+
+    monkeypatch.setattr(cli, "Worker", Stubborn)
+    monkeypatch.setattr("zettcode.sdk.models.list_models", lambda *a, **k: _models())
+    Stubborn.calls = []
+    Stubborn.running_now = True
+
+    assert cli.main(["set", "--state-dir", str(tmp_path), "--permission", "deny"]) == 3
+    assert BridgeState.load(tmp_path / "state.json").permission == "safe"
