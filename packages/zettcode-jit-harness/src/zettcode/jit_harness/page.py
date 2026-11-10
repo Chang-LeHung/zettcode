@@ -12,10 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from zettcode.tui import ListItem, ListPage
+from zettcode.tui import Canvas, ListItem, ListPage, Rect, Style
 
 #: Rows the panel asks for when it is anchored to the bottom edge.
 HARNESS_ROWS = 12
+
+#: The columns every row follows: session id and title, then the repository and its manifest description.
+HEADER = "SESSION · REPOSITORY — DESCRIPTION"
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,4 +63,25 @@ class HarnessPage(ListPage):
             footer=f"harness is {state} \u00b7 enter borrow \u00b7 esc close",
             on_select=lambda item: on_switch(cast(HarnessTarget, item.value)),
             on_cancel=on_close,
+        )
+
+    def layout(self, rect: Rect) -> None:
+        """Leave one row under the title for the column header."""
+        super().layout(rect)
+        list_rect = self.list.rect
+        self.list.layout(Rect(list_rect.x, list_rect.y + 1, list_rect.width, max(0, list_rect.height - 1)))
+
+    def render(self, canvas: Canvas) -> None:
+        """Draw the page and the column header above the rows."""
+        super().render(canvas)
+        if self.rect.empty:
+            return
+        over = 1 if self.subtitle is not None else 0
+        style = Style(foreground=self.theme.muted, background=self.theme.surface_alt)
+        canvas.draw_text(
+            self.rect.x + 2,
+            self.rect.y + 3 + over,
+            HEADER,
+            style,
+            max_width=max(0, self.rect.width - 4),
         )
