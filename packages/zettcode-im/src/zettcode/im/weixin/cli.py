@@ -76,23 +76,27 @@ def _common(sub: argparse.ArgumentParser, *, login: bool, run: bool) -> None:
             "-w",
             "--workspace",
             type=Path,
-            default=Path.cwd(),
-            help="directory the agent works in (default: the current one)",
+            default=None,
+            help="directory the agent works in (default: the one already stored, or the current directory)",
         )
-        sub.add_argument("--model", default="", help="the model the daemon runs on (default: the first configured)")
-        sub.add_argument("--effort", default="", help="the reasoning level (default: the model's own)")
+        sub.add_argument("--model", default=None, help="the model the daemon runs on (default: the one already stored)")
+        sub.add_argument("--effort", default=None, help="the reasoning level (default: the one already stored)")
         sub.add_argument(
             "--permission",
             choices=("deny", "safe", "full"),
-            default="safe",
-            help="the daemon's shell level (default: safe, every command in a sandbox)",
+            default=None,
+            help="the daemon's shell level (default: the one already stored, or safe)",
         )
         sub.add_argument(
-            "--allow", action="append", default=[], help="a sender id allowed to drive the agent; repeatable"
+            "--allow",
+            action="append",
+            default=None,
+            help="a sender id allowed to drive the agent, replacing the stored list; repeatable",
         )
         sub.add_argument(
             "--allow-all",
             action="store_true",
+            default=None,
             help="let anyone who can message the bot drive the agent (it has a shell and this machine's files)",
         )
     if run:
@@ -177,12 +181,25 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
     # the messages already answered stay, so the conversation and its history carry over.
     state.cursor = ""
     state.chats.clear()
-    state.workspace = str(Path(arguments.workspace).expanduser().resolve())
-    state.model = arguments.model or ""
-    state.effort = arguments.effort or ""
-    state.permission = arguments.permission
-    state.allow = list(arguments.allow)
-    state.allow_all = bool(arguments.allow_all)
+    # A login renews the connection; the settings are what the reader decided and outlive it. A flag replaces its
+    # setting, and a flag that was not given leaves the stored one alone — a re-scan that forgot `--allow` used to
+    # wipe the allow-list and turn every message into a refusal.
+    if arguments.workspace is not None:
+        state.workspace = str(Path(arguments.workspace).expanduser().resolve())
+    elif not state.workspace:
+        state.workspace = str(Path.cwd())
+    if arguments.model is not None:
+        state.model = arguments.model
+    if arguments.effort is not None:
+        state.effort = arguments.effort
+    if arguments.permission is not None:
+        state.permission = arguments.permission
+    elif not state.permission:
+        state.permission = "safe"
+    if arguments.allow is not None:
+        state.allow = list(arguments.allow)
+    if arguments.allow_all is not None:
+        state.allow_all = bool(arguments.allow_all)
     if not state.token():
         # A login without a token is a bridge that cannot send or receive, and a background process that says
         # nothing about it. Better to say so here, where the reader is still watching the phone.
@@ -207,6 +224,10 @@ async def _login(arguments: argparse.Namespace, state_dir: Path) -> int:
     print(f"  stop:   zettcode-weixin stop --state-dir {state_dir}")
     if not state.allow and not state.allow_all:
         print("  note:   no sender is allowed yet \u2014 each message is refused and names the id to allow")
+    elif state.allow_all:
+        print("  allows: anyone who can message the bot")
+    else:
+        print(f"  allows: {', '.join(state.allow)}")
     return 0
 
 
@@ -277,6 +298,13 @@ async def _run(arguments: argparse.Namespace, state_dir: Path) -> int:
         )
         _on_signals(bridge.stop)
         print(f"weixin bridge running for {state.workspace or Path.cwd()}; ctrl-c stops it")
+        if state.allow_all:
+            print("allows anyone who can message the bot")
+        elif state.allow:
+            print(f"allows: {', '.join(state.allow)}")
+        else:
+            print("allows nobody yet: each message is refused and names the id to allow")
+        print(f"daemon session: {state.session_id or '(starts on the first message)'}")
         await bridge.run()
         return 0
     finally:

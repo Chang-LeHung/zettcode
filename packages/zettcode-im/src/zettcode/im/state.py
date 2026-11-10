@@ -130,6 +130,24 @@ class BridgeState:
         state.allow_all = raw.get("allow_all") is True
         return state
 
+    def save_runtime(self, path: Path | None = None) -> None:
+        """Write what a running bridge produces, keeping the settings whoever is looking at the file set.
+
+        A worker holds the state it started with; a reader who changes the allow-list, the workspace or the shell
+        level while it runs must not have that change written back to the old value on the next message. So the
+        settings are taken from the file as it is now, and only the cursor, the answers and the login are written.
+        """
+        target = path or self.path
+        on_disk = BridgeState.load(target) if target is not None else None
+        if on_disk is not None:
+            self.allow = on_disk.allow
+            self.allow_all = on_disk.allow_all
+            self.workspace = on_disk.workspace or self.workspace
+            self.model = on_disk.model
+            self.effort = on_disk.effort
+            self.permission = on_disk.permission or self.permission
+        self.save(target)
+
     def save(self, path: Path | None = None) -> None:
         """Write the state to ``path`` (this state's own file by default), all at once, readable by this user only.
 
