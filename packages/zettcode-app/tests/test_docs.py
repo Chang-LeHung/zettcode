@@ -228,8 +228,8 @@ def test_the_harness_row_promises_the_limits_the_command_uses(path):
     (row,) = [
         line for line in (ROOT / path).read_text(encoding="utf-8").splitlines() if line.startswith("| `/harness` |")
     ]
-    assert str(MAX_DESCRIPTION) in row, row
-    assert str(MAX_SHOWN) in row, row
+    for number in (MAX_DESCRIPTION, MAX_SHOWN):
+        assert re.search(rf"(?<!\d){number}(?!\d)", row), row
 
 
 def test_the_terminal_preview_is_offline_deterministic_and_leaves_no_workspace(render_terminal, monkeypatch):
