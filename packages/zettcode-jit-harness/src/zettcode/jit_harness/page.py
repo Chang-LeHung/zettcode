@@ -1,8 +1,8 @@
 """The panel ``/harness`` opens: the switch's state, the folder, and this session's repositories.
 
 The two words beside the panel change **this run** — ``gen`` turns the switch on, which every session in the window
-sees, and has a tool built; ``reset`` turns it off again so later requests use the framework's own harness, and keeps
-what this session wrote — while ``/plugins`` is what a run starts with. The panel itself writes nothing.
+sees, and has a tool built; ``reset`` turns it off again, so later requests have none of its tools, and keeps what this
+session wrote — while ``/plugins`` is what a run starts with. The panel itself writes nothing.
 """
 
 from __future__ import annotations

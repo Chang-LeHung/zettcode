@@ -3019,7 +3019,7 @@ async def test_the_harness_command_opens_the_panel_and_changes_nothing():
 
 
 async def test_enter_straight_after_the_space_on_harness_stays_the_panel(tmp_path):
-    """Both words say `needs_more`, so a menu Enter cannot run one: no turn is spent, nothing is deleted."""
+    """Both words say `needs_more`, so a menu Enter cannot run one: no turn is spent and nothing is switched."""
     app = build_app()
     harness = _harness(app)
     app.agent.runtime.config.harness_dir = tmp_path / "harness"
