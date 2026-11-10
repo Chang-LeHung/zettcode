@@ -164,7 +164,7 @@ def test_a_plugin_can_add_a_startup_option(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(
         plugin_cli,
-        "installed_options",
+        "load_cached_options",
         lambda: (("demo", CliOption(("--demo-depth",), "depth", default="2", metavar="N")),),
     )
 

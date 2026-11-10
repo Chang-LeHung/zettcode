@@ -18,6 +18,10 @@ CONFIG_FILE = Path.home() / ".zettcode" / "config.toml"
 #: commands need without asking the reader to type them at every start.
 DEFAULT_RC = Path.home() / ".zettcode" / ".ztrc"
 
+#: The plugin command-line declarations, cached so a start does not import every installed plugin. A missing or
+#: stale file is refreshed on a daemon thread and is used from the next start.
+DEFAULT_PLUGIN_CLI_CACHE = Path.home() / ".zettcode" / "plugin-cli.json"
+
 #: Session storage is an application default, not a model setting.
 DEFAULT_STORE = Path.home() / ".zettcode" / "sessions"
 

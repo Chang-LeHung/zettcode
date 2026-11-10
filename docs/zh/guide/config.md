@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | `~/.zettcode/config.toml` | 模型连接和可选功能 | 重启 ZettCode。 |
 | `~/.zettcode/.ztrc` | 额外的命令行参数，一行一个 | 下次启动时读取。 |
+| `~/.zettcode/plugin-cli.json` | 插件命令行声明的缓存 | 后台填充；从下次启动开始使用。 |
 | `~/.zettcode/theme.toml` | 一组自定义颜色，叠在当前主题之上 | 重启；运行中可用 `/theme` 选择主题。 |
 | `~/.zettcode/themes/<name>.toml` | 你自己的主题，按名字选用 | 下次使用 `/theme` 时就能看到。 |
 | `~/.zettcode/mcp.json` | 外部工具服务器 | 修改服务器定义后重启。 |

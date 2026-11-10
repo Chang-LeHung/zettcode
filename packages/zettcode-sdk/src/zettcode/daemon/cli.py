@@ -243,9 +243,9 @@ def _build_parser(
     run.add_argument("--permission", default="full", choices=PERMISSIONS, help=argparse.SUPPRESS)
     if not with_plugins:
         return parser, ()
-    from zettcode.engine.plugins.cli import add_options, installed_options
+    from zettcode.engine.plugins.cli import add_options, load_cached_options
 
-    return parser, add_options(spawn, installed_options())
+    return parser, add_options(spawn, load_cached_options())
 
 
 def daemon_program(argv: Sequence[str] | None = None) -> int:

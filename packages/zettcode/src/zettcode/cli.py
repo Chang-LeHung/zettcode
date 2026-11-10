@@ -118,10 +118,10 @@ def parse_args(argv: list[str] | None = None, *, rc: Path | None = DEFAULT_RC) -
     words = list(sys.argv[1:] if argv is None else argv)
     plugin_added: tuple[tuple[str, CliOption, str], ...] = ()
     if not any(word in {"-h", "--help", "-v", "-V", "--version"} for word in words):
-        from zettcode.engine.plugins.cli import add_options, installed_options
+        from zettcode.engine.plugins.cli import add_options, load_cached_options
         from zettcode.engine.plugins.cli import values as plugin_values
 
-        plugin_added = add_options(parser, installed_options())
+        plugin_added = add_options(parser, load_cached_options())
     if rc is not None:
         preset = _rc_arguments(rc)
         if preset:

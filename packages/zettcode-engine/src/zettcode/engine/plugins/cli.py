@@ -10,9 +10,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+from zettcode.paths import DEFAULT_PLUGIN_CLI_CACHE
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Iterable
@@ -88,6 +93,139 @@ def installed_options(entry_points: Iterable[EntryPoint] | None = None) -> tuple
                 continue
             found.append((point.name, option))
     return tuple(found)
+
+
+#: Format of the plugin-declaration cache. Bump when the JSON shape changes.
+_CACHE_VERSION = 1
+_refresh_lock = threading.Lock()
+_refreshing: set[Path] = set()
+
+
+def load_cached_options(path: Path | None = None) -> tuple[tuple[str, CliOption], ...]:
+    """Return the cached declarations, or no options and a background refresh when the cache is missing or stale.
+
+    A start must not import every installed plugin just to discover flags. The first start after installing a
+    plugin therefore has no plugin flags; the daemon thread writes them for the next start. This is deliberate:
+    a restart is cheaper than paying every plugin's import cost on the interactive path.
+    """
+    target = path if path is not None else DEFAULT_PLUGIN_CLI_CACHE
+    try:
+        from .loader import installed_entry_points
+
+        points = tuple(installed_entry_points())
+    except Exception:
+        return ()
+    fingerprint = _fingerprint(points)
+    cached = _read_cache(target)
+    if cached is not None and cached.get("version") == _CACHE_VERSION and cached.get("fingerprint") == fingerprint:
+        return _options_from_cache(cached)
+    _refresh_later(target, points, fingerprint)
+    return ()
+
+
+def _fingerprint(points: Iterable[EntryPoint]) -> list[list[str]]:
+    """Return what makes the cached declarations stale: the program version and every entry point."""
+    result: list[list[str]] = []
+    for point in points:
+        dist = getattr(getattr(point, "dist", None), "version", "") or ""
+        result.append([str(getattr(point, "name", "")), str(getattr(point, "value", "")), str(dist)])
+    return sorted(result)
+
+
+def _read_cache(path: Path) -> dict[str, object] | None:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _options_from_cache(data: dict[str, object]) -> tuple[tuple[str, CliOption], ...]:
+    rows = data.get("options")
+    if not isinstance(rows, list):
+        return ()
+    found: list[tuple[str, CliOption]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            flags = tuple(str(flag) for flag in row["flags"])
+            choices = tuple(str(value) for value in row["choices"]) if row.get("choices") is not None else None
+            found.append(
+                (
+                    str(row["origin"]),
+                    CliOption(
+                        flags=flags,
+                        dest=str(row["dest"]),
+                        help=str(row.get("help", "")),
+                        default=row.get("default"),
+                        action=str(row.get("action", "store")),
+                        choices=choices,
+                        metavar=row.get("metavar"),
+                    ),
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return tuple(found)
+
+
+def _refresh_later(target: Path, points: Iterable[EntryPoint], fingerprint: list[list[str]]) -> None:
+    """Refresh the cache on a daemon thread, once per process and cache path."""
+    with _refresh_lock:
+        if target in _refreshing:
+            return
+        _refreshing.add(target)
+    thread = threading.Thread(
+        target=_refresh,
+        args=(target, points, fingerprint),
+        name="zettcode-plugin-cli-cache",
+        daemon=True,
+    )
+    thread.start()
+
+
+def _refresh(target: Path, points: Iterable[EntryPoint], fingerprint: list[list[str]]) -> None:
+    try:
+        rows: list[dict[str, object]] = []
+        for origin, option in installed_options(points):
+            try:
+                json.dumps(option.default)
+            except (TypeError, ValueError):
+                continue
+            rows.append(
+                {
+                    "origin": origin,
+                    "flags": list(option.flags),
+                    "dest": option.dest,
+                    "help": option.help,
+                    "default": option.default,
+                    "action": option.action,
+                    "choices": list(option.choices) if option.choices is not None else None,
+                    "metavar": option.metavar,
+                }
+            )
+        _write_cache(target, {"version": _CACHE_VERSION, "fingerprint": fingerprint, "options": rows})
+    except Exception:
+        # The next start tries again; a cache miss is already an accepted outcome.
+        pass
+    finally:
+        with _refresh_lock:
+            _refreshing.discard(target)
+
+
+def _write_cache(path: Path, data: dict[str, object]) -> None:
+    """Write the cache atomically, so a concurrent start sees either the old file or the new one."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        temporary.write_text(json.dumps(data, separators=(",", ":"), sort_keys=True), encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
 
 
 def add_options(
