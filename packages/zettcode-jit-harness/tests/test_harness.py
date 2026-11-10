@@ -869,11 +869,13 @@ async def test_a_chinese_description_with_quotes_and_a_line_break_arrives_verbat
     (text, shown) = shell.prompts[0]
     assert asked in text, text[-400:]
     assert text.startswith(GEN_BRIEF)
-    assert shown.endswith(asked), shown
+    assert shown == '/harness gen 修复  "解析器" 的空指针: 只读，不要联网，也不要写  docs/', (
+        "the row is one line, and the reader's own spacing is still theirs"
+    )
 
 
 async def test_a_description_too_long_to_send_is_cut_and_says_so(tmp_path: Path):
-    from zettcode.jit_harness.command import MAX_DESCRIPTION, MAX_SHOWN
+    from zettcode.jit_harness.command import GEN_ASKED, GEN_BRIEF, MAX_DESCRIPTION, MAX_SHOWN
 
     asked = "x" * (MAX_DESCRIPTION + 500)
     client = _Switch(_configured(tmp_path))
@@ -881,8 +883,10 @@ async def test_a_description_too_long_to_send_is_cut_and_says_so(tmp_path: Path)
     _, shell = await _run(f"gen {asked}", client)
 
     (text, shown) = shell.prompts[0]
+    assert asked[:MAX_DESCRIPTION] in text, "everything up to the limit is sent"
+    assert asked[: MAX_DESCRIPTION + 1] not in text, "and not one character more"
     assert f"cut at {MAX_DESCRIPTION} characters" in text, "a cut is said, not left looking like a short request"
-    assert len(text) < MAX_DESCRIPTION + 2000, "the brief does not grow with what was pasted"
+    assert len(text) <= len(GEN_BRIEF) + len(GEN_ASKED) + MAX_DESCRIPTION + 120, "the brief does not grow with a paste"
     assert len(shown) == MAX_SHOWN and shown.endswith("\u2026"), "the transcript row stays a row"
 
 
