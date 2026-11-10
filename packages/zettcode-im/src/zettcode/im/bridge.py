@@ -142,9 +142,9 @@ class Bridge:
                     self.im.receive(self.state.cursor or None), timeout=max(1.0, self.settings.poll_timeout)
                 )
             except asyncio.TimeoutError:
-                self.error(
-                    f"nothing came back from the chat app in {int(self.settings.poll_timeout)} seconds; asking again"
-                )
+                # The usual end of a quiet chat, not a fault: the IM client's own poll never returns without a
+                # message, so this fires every `poll_timeout` seconds for as long as nobody writes.
+                logger.debug("no message in %d seconds; polling again", int(self.settings.poll_timeout))
                 continue
             except asyncio.CancelledError:
                 raise

@@ -305,8 +305,8 @@ def test_a_poll_that_hangs_is_abandoned_and_asked_again(tmp_path: Path) -> None:
 
     async def scenario() -> None:
         running = asyncio.ensure_future(opened.run())
-        for _ in range(200):
-            if said:
+        for _ in range(300):
+            if Stuck.calls >= 2:
                 break
             await asyncio.sleep(0.01)
         opened.stop()
@@ -314,8 +314,8 @@ def test_a_poll_that_hangs_is_abandoned_and_asked_again(tmp_path: Path) -> None:
 
     asyncio.run(scenario())
 
-    assert said and "nothing came back" in said[0]
-    assert Stuck.calls >= 2, "and it asks again rather than staying on the dead connection"
+    assert Stuck.calls >= 2, "it asks again rather than staying on the dead connection"
+    assert said == [], "and a quiet chat is not reported as a fault"
 
 
 def test_a_new_message_with_a_reused_sequence_number_is_not_taken_for_an_answered_one(tmp_path: Path) -> None:
