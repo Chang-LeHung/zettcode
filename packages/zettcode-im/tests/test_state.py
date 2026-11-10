@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import stat
+import sys
 from pathlib import Path
+
+import pytest
 
 from zettcode.im.state import CHATS_LIMIT, SEEN_LIMIT, BridgeState
 
@@ -32,6 +35,7 @@ def test_a_saved_state_reads_back_with_everything_a_restart_needs(tmp_path: Path
     assert again.allow == ["u1"] and again.answered("event-1")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no owner-only file mode to check")
 def test_the_state_file_is_readable_by_this_user_only(tmp_path: Path) -> None:
     path = tmp_path / "state.json"
     state = BridgeState.load(path)

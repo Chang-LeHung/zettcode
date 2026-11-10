@@ -26,9 +26,12 @@ class Fix:
             [
                 sys.executable,
                 "-c",
-                "import fcntl, sys, time\n"
-                "handle = open(sys.argv[1], 'a+b')\n"
-                "fcntl.lockf(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+                # The repository's own lock, which is the one `Worker.running` asks about and works on every platform.
+                "import sys, time\n"
+                "from pathlib import Path\n"
+                "from zettcode.filelock import SingletonLock\n"
+                "lock = SingletonLock(Path(sys.argv[1]))\n"
+                "assert lock.acquire()\n"
                 "print('held', flush=True)\n"
                 "time.sleep(30)\n",
                 str(path),
@@ -73,7 +76,6 @@ def test_a_worker_that_is_not_there_says_so_and_has_no_pid(tmp_path: Path) -> No
 
 def test_the_pid_is_read_only_while_the_lock_says_the_process_is_there(tmp_path: Path) -> None:
     """The lock is held by another process, which is what "running" means; a pid file alone proves nothing."""
-    import subprocess
     import time
 
     worker = Worker(tmp_path)
@@ -81,30 +83,12 @@ def test_the_pid_is_read_only_while_the_lock_says_the_process_is_there(tmp_path:
 
     assert worker.pid() is None, "a stale pid file is not a running bridge"
 
-    holder = subprocess.Popen(  # noqa: S603 - this test's own holder, with the file it is given
-        [
-            sys.executable,
-            "-c",
-            "import fcntl, sys, time\n"
-            "handle = open(sys.argv[1], 'a+b')\n"
-            "fcntl.lockf(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
-            "print('held', flush=True)\n"
-            "time.sleep(30)\n",
-            str(worker.lock),
-        ],
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    try:
-        assert holder.stdout is not None and holder.stdout.readline().strip() == "held"
+    with Fix(worker.lock):
         for _ in range(100):
             if worker.running():
                 break
             time.sleep(0.02)
         assert worker.running() and worker.pid() == 424242
-    finally:
-        holder.kill()
-        holder.wait()
 
 
 def test_a_process_that_dies_before_it_is_ready_is_reported_with_its_log(tmp_path: Path) -> None:
