@@ -99,7 +99,12 @@ def _build_parser(
     spawn.add_argument(
         "--model", metavar="NAME", default=None, help="the model to run on (default: the first configured)"
     )
-    spawn.add_argument("--effort", metavar="LEVEL", default=None, help="the reasoning level (default: the model's own)")
+    spawn.add_argument(
+        "--effort",
+        metavar="LEVEL",
+        default=None,
+        help="the reasoning level (default: the middle of the ones the model takes)",
+    )
     spawn.add_argument(
         "-n",
         "--name",

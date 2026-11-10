@@ -390,12 +390,21 @@ class Daemons:
                     raise UpdateFailed(f"{said}; and {secondary}") from error
                 raise UpdateFailed(f"{said}; the other changes were written") from error
         other = name is not None or wanted_model is not None or wanted_effort is not None or permission is not None
+        if permission is not None and record.alive and state.status == "working":
+            # Refused before anything is written: a level needs the process restarted, and a record that names a
+            # level the running process was not started with is one `daemon list` would report wrongly.
+            raise UpdateFailed(
+                "the daemon is working on a turn; a new shell level starts it again, so wait for the turn to end "
+                "or stop it first"
+            )
 
-        def applied(current: State | None, *, title: str | None) -> State:
+        def applied(current: State | None, *, title: str | None, level: bool = True) -> State:
             base = current or state
             if name is not None:
                 base = dataclasses.replace(base, name=label)
-            if permission is not None:
+            if permission is not None and level:
+                # Only where the command can finish what it started: a path that raises still has a daemon running
+                # with the old level, and a record that says otherwise is a lie `daemon list` repeats.
                 base = dataclasses.replace(base, permission=permission)
             if wanted_model is not None:
                 base = dataclasses.replace(base, requested_model=wanted_model)
@@ -410,7 +419,7 @@ class Daemons:
 
         if title is not None and not cleaned:
             if other:
-                self._write(record, lambda current: applied(current, title=None))
+                self._write(record, lambda current: applied(current, title=None, level=False))
                 raise UpdateFailed("a title needs at least one character; the other changes were written")
             raise UpdateFailed("a title needs at least one character")
         if cleaned is None:
@@ -419,18 +428,18 @@ class Daemons:
         if record.alive:
             message = "the daemon is running, and its session is its own; stop it before naming it"
             if other:
-                self._write(record, lambda current: applied(current, title=None))
+                self._write(record, lambda current: applied(current, title=None, level=False))
                 message += "; the other changes were written"
                 if permission is not None:
-                    # Written, not applied: this path never restarts, and saying "written" alone would suggest the
-                    # level is in force when the process is still running with the old one.
-                    message += ", and the shell level takes effect when the daemon is started again"
+                    # Not written either: this path never restarts, and a record naming a level the running
+                    # process was not started with is what `daemon list` would report wrongly.
+                    message += ", and the shell level was not changed"
             raise UpdateFailed(message)
         try:
             self._rename(record.session_id, state.workspace, cleaned)
         except UpdateFailed as error:
             if other:
-                self._write(record, lambda current: applied(current, title=None))
+                self._write(record, lambda current: applied(current, title=None, level=False))
                 raise UpdateFailed(f"{error}; the other changes were written") from error
             raise
         try:
@@ -452,14 +461,15 @@ class Daemons:
         try:
             self.stop(record, keep=True)
         except StillWorking as error:
-            raise UpdateFailed(
-                f"the shell level is recorded, and it takes effect when the daemon starts again: {error}"
-            ) from error
+            raise UpdateFailed(f"the daemon could not be stopped for its new shell level: {error}") from error
         try:
             return self.start(
                 Path(state.workspace),
-                model=state.requested_model or state.model,
-                effort=state.requested_effort or state.effort,
+                # What the daemon is actually running, not what it was asked to move to: a pending model or level is
+                # applied by the daemon after it starts, and restarting onto a pair that does not go together would
+                # leave nothing running at all.
+                model=state.model,
+                effort=state.effort,
                 resume=record.session_id,
                 name=state.name,
                 permission=permission,

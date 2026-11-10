@@ -1883,3 +1883,30 @@ def test_the_default_level_of_a_model_is_the_middle_of_the_ones_it_takes(home):
     from zettcode.sdk.daemons import default_effort
 
     assert default_effort() == "high", "the model here lists all eight levels"
+
+
+def test_a_shell_level_is_refused_while_the_daemon_is_working_and_nothing_is_written(home):
+    """The record must never name a level the running process was not started with."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home, status="working"), permission="safe"))
+    record.beat()
+    before = Registry().find("01a1")
+
+    with pytest.raises(process.UpdateFailed, match="working on a turn"):
+        process.Daemons().update(before, permission="full")
+
+    assert before is not None and before.state is not None
+    assert Registry().find("01a1").state.permission == "safe", "the record still says what the process runs at"
+
+
+def test_a_level_and_a_name_together_do_not_record_a_level_that_was_not_applied(home):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), permission="safe"))
+    record.beat()
+    running = Registry().find("01a1")
+
+    with pytest.raises(process.UpdateFailed, match="stop it before naming it") as failed:
+        process.Daemons().update(running, title="Taken over", permission="full")
+
+    assert "shell level was not changed" in str(failed.value)
+    assert Registry().find("01a1").state.permission == "safe"

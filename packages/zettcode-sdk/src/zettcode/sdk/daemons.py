@@ -71,7 +71,12 @@ def default_effort(model: str | None = None, *, path: str | Path | None = None) 
         return ""
     chosen = listed[0]
     if model:
-        chosen = next((info for info in listed if info.name == model or info.model == model), chosen)
+        matched = [info for info in listed if info.name == model or info.model == model]
+        if len(matched) != 1:
+            # A name this machine does not have, or one two entries answer to: no level is the honest answer, and
+            # the start that follows says which models there are.
+            return ""
+        chosen = matched[0]
     levels = [str(level) for level in chosen.efforts]
     return levels[len(levels) // 2] if levels else ""
 

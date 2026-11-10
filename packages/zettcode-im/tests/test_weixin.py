@@ -351,3 +351,104 @@ def test_start_refuses_when_there_is_no_login(tmp_path: Path, monkeypatch, capsy
     assert cli.main(["start", "--state-dir", str(tmp_path)]) == 2
     assert ScanWorker.calls == []
     assert "no login" in capsys.readouterr().out
+
+
+def _models() -> list:
+    """Two models, so a test can say what a name or a level resolves to without the reader's own config."""
+
+    class Info:
+        def __init__(self, name: str, levels: list[str]) -> None:
+            self.name = name
+            self.model = name.lower()
+            self.efforts = levels
+
+    return [Info("Deep", ["low", "medium", "high"]), Info("Quick", ["low"])]
+
+
+def test_set_refuses_a_busy_daemon_and_writes_nothing(tmp_path: Path, monkeypatch) -> None:
+    """A daemon mid-turn keeps running with the old level; a file that says otherwise would hide that."""
+    from zettcode.im.state import BridgeState
+    from zettcode.im.weixin import cli
+    from zettcode.sdk.errors import ConfigurationError
+
+    state = BridgeState.load(tmp_path / "state.json")
+    state.credentials = {"secrets": {"bot_token": "t"}}
+    state.session_id = "01a1"
+    state.permission = "safe"
+    state.save()
+    ScanWorker.calls = []
+    ScanWorker.running_now = True
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+    monkeypatch.setattr("zettcode.sdk.models.list_models", lambda *a, **k: _models())
+
+    async def busy(session_id, *, keep=False):
+        raise ConfigurationError("it is working on a turn")
+
+    monkeypatch.setattr("zettcode.sdk.daemons.stop_daemon", busy)
+
+    status = cli.main(["set", "--state-dir", str(tmp_path), "--permission", "deny"])
+
+    assert status == 3, "not a success: the settings were not put in force"
+    assert ScanWorker.running_now, "and the bridge is back up with what it had"
+    assert BridgeState.load(tmp_path / "state.json").permission == "safe", "the file still says what runs"
+
+
+def test_set_to_another_workspace_starts_a_new_session(tmp_path: Path, monkeypatch) -> None:
+    """A session lives in one workspace; its id would resume a conversation that is not there."""
+    from zettcode.im.state import BridgeState
+    from zettcode.im.weixin import cli
+
+    state = BridgeState.load(tmp_path / "state.json")
+    state.credentials = {"secrets": {"bot_token": "t"}}
+    state.session_id = "01a1"
+    state.workspace = str(tmp_path)
+    state.chats = {"chat": "token"}
+    state.save()
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    ScanWorker.calls = []
+    ScanWorker.running_now = False
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+    monkeypatch.setattr("zettcode.sdk.models.list_models", lambda *a, **k: _models())
+
+    async def stop_daemon(session_id, *, keep=False):
+        return "stopped; its record was kept"
+
+    monkeypatch.setattr("zettcode.sdk.daemons.stop_daemon", stop_daemon)
+
+    assert cli.main(["set", "--state-dir", str(tmp_path), "--workspace", str(other)]) == 0
+
+    saved = BridgeState.load(tmp_path / "state.json")
+    assert saved.workspace == str(other.resolve())
+    assert saved.session_id == "", "the next message starts a session of that workspace"
+    assert saved.chats == {}
+
+
+def test_set_refuses_a_level_or_a_model_this_machine_does_not_have(tmp_path: Path, monkeypatch, capsys) -> None:
+    from zettcode.im.state import BridgeState
+    from zettcode.im.weixin import cli
+
+    state = BridgeState.load(tmp_path / "state.json")
+    state.credentials = {"secrets": {"bot_token": "t"}}
+    state.save()
+    ScanWorker.calls = []
+    ScanWorker.running_now = True
+    monkeypatch.setattr(cli, "Worker", ScanWorker)
+    monkeypatch.setattr("zettcode.sdk.models.list_models", lambda *a, **k: _models())
+
+    assert cli.main(["set", "--state-dir", str(tmp_path), "--effort", "ultra"]) == 2
+    assert "takes low, medium, high" in capsys.readouterr().out
+
+    assert cli.main(["set", "--state-dir", str(tmp_path), "--model", "nope"]) == 2
+    assert "no model named" in capsys.readouterr().out
+    assert ScanWorker.calls == [], "nothing was stopped for a setting that would not be taken"
+
+
+def test_the_default_level_of_a_model_this_machine_does_not_have_is_nothing(tmp_path: Path, monkeypatch) -> None:
+    from zettcode.sdk.daemons import default_effort
+
+    monkeypatch.setattr("zettcode.sdk.models.list_models", lambda *a, **k: _models())
+
+    assert default_effort() == "medium", "the middle of low, medium, high"
+    assert default_effort("Quick") == "low"
+    assert default_effort("nope") == "", "a name that matches nothing does not quietly become the first model"
