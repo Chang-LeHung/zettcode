@@ -9,10 +9,12 @@ handed back as the ``PLUGIN_CLI`` service, a mapping from the plugin's entry-poi
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -101,34 +103,56 @@ _refresh_lock = threading.Lock()
 _refreshing: set[Path] = set()
 
 
-def load_cached_options(path: Path | None = None) -> tuple[tuple[str, CliOption], ...]:
+def load_cached_options(path: Path | None = None, *, wait: bool = False) -> tuple[tuple[str, CliOption], ...]:
     """Return the cached declarations, or no options and a background refresh when the cache is missing or stale.
 
-    A start must not import every installed plugin just to discover flags. The first start after installing a
-    plugin therefore has no plugin flags; the daemon thread writes them for the next start. This is deliberate:
-    a restart is cheaper than paying every plugin's import cost on the interactive path.
+    A start must not import every installed plugin just to discover flags. The first start after installing or
+    changing a plugin therefore has no new flags; the daemon thread writes them for the next start. This is
+    deliberate: a restart is cheaper than paying every plugin's import cost on the interactive path.
+
+    ``wait`` is for a non-interactive caller such as ``zettcode daemon spawn``: it collects synchronously and returns
+    the fresh declarations, so a process that exits immediately cannot leave the cache empty forever.
     """
     target = path if path is not None else DEFAULT_PLUGIN_CLI_CACHE
-    try:
-        from .loader import installed_entry_points
-
-        points = tuple(installed_entry_points())
-    except Exception:
-        return ()
-    fingerprint = _fingerprint(points)
     cached = _read_cache(target)
-    if cached is not None and cached.get("version") == _CACHE_VERSION and cached.get("fingerprint") == fingerprint:
+    if cached is not None and cached.get("version") == _CACHE_VERSION:
+        # Never touch importlib.metadata or a plugin module on this path; the thread verifies the fingerprint.
+        if wait:
+            _refresh(target)
+            refreshed = _read_cache(target)
+            return _options_from_cache(refreshed) if refreshed is not None else ()
+        _refresh_later(target)
         return _options_from_cache(cached)
-    _refresh_later(target, points, fingerprint)
+    if wait:
+        _refresh(target)
+        refreshed = _read_cache(target)
+        return _options_from_cache(refreshed) if refreshed is not None else ()
+    _refresh_later(target)
     return ()
 
 
 def _fingerprint(points: Iterable[EntryPoint]) -> list[list[str]]:
-    """Return what makes the cached declarations stale: the program version and every entry point."""
+    """Return what makes the cache stale: every entry point and its module file stamp.
+
+    The stamp sees an editable plugin whose ``cli_arguments`` changed without a version bump. Resolving the spec may
+    import the module's parent package, but not the plugin module itself.
+    """
     result: list[list[str]] = []
     for point in points:
         dist = getattr(getattr(point, "dist", None), "version", "") or ""
-        result.append([str(getattr(point, "name", "")), str(getattr(point, "value", "")), str(dist)])
+        value = str(getattr(point, "value", ""))
+        module = str(getattr(point, "module", "") or value.partition(":")[0])
+        origin = ""
+        stamp = ""
+        try:
+            spec = importlib.util.find_spec(module)
+            if spec is not None and spec.origin:
+                origin = spec.origin
+                stat = Path(origin).stat()
+                stamp = f"{stat.st_mtime_ns}:{stat.st_size}"
+        except Exception:
+            pass
+        result.append([str(getattr(point, "name", "")), value, str(dist), origin, stamp])
     return sorted(result)
 
 
@@ -170,7 +194,7 @@ def _options_from_cache(data: dict[str, object]) -> tuple[tuple[str, CliOption],
     return tuple(found)
 
 
-def _refresh_later(target: Path, points: Iterable[EntryPoint], fingerprint: list[list[str]]) -> None:
+def _refresh_later(target: Path) -> None:
     """Refresh the cache on a daemon thread, once per process and cache path."""
     with _refresh_lock:
         if target in _refreshing:
@@ -178,15 +202,22 @@ def _refresh_later(target: Path, points: Iterable[EntryPoint], fingerprint: list
         _refreshing.add(target)
     thread = threading.Thread(
         target=_refresh,
-        args=(target, points, fingerprint),
+        args=(target, 0.5),
         name="zettcode-plugin-cli-cache",
         daemon=True,
     )
     thread.start()
 
 
-def _refresh(target: Path, points: Iterable[EntryPoint], fingerprint: list[list[str]]) -> None:
+def _refresh(target: Path, delay: float = 0.0) -> None:
     try:
+        if delay:
+            # Let the first frame paint before importing a tree of plugin modules in this process.
+            time.sleep(delay)
+        from .loader import installed_entry_points
+
+        points = tuple(installed_entry_points())
+        fingerprint = _fingerprint(points)
         rows: list[dict[str, object]] = []
         for origin, option in installed_options(points):
             try:

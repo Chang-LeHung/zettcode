@@ -245,7 +245,7 @@ def _build_parser(
         return parser, ()
     from zettcode.engine.plugins.cli import add_options, load_cached_options
 
-    return parser, add_options(spawn, load_cached_options())
+    return parser, add_options(spawn, load_cached_options(wait=True))
 
 
 def daemon_program(argv: Sequence[str] | None = None) -> int:
