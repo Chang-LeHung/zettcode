@@ -452,6 +452,7 @@ class _Shell:
 
     def __init__(self, client: _Switch) -> None:
         self.client = client
+        self.ui = _Ui()
         self.prompts: list[tuple[str, str | None]] = []
         self.closed = 0
 
@@ -465,11 +466,17 @@ class _Shell:
 
 
 class _Ui:
-    """The surfaces a command may write to; ``/harness`` answers in its result instead."""
+    """The surfaces a command may write to, recording what reached them."""
 
-    def markdown(self, text: str) -> None: ...
+    def __init__(self) -> None:
+        self.notices: list[str] = []
+        self.messages: list[str] = []
 
-    def notice(self, text: str) -> None: ...
+    def markdown(self, text: str) -> None:
+        self.messages.append(text)
+
+    def notice(self, text: str) -> None:
+        self.notices.append(text)
 
     def error(self, text: str) -> None: ...
 
@@ -489,12 +496,15 @@ def _configured(tmp_path: Path) -> ZettCodeConfig:
 
 
 async def _run(argument: str, client: _Switch) -> tuple[CommandResult, _Shell]:
-    """Run ``/harness`` with ``argument`` and return what it answered, beside the shell it answered through."""
+    """Run ``/harness`` with ``argument`` and return what it answered, beside the shell it answered through.
+
+    What the command wrote to the reader's surfaces is on ``shell.ui``, so a test can read a notice as well as a result.
+    """
     from zettcode.jit_harness.command import HarnessCommand
     from zettcode.plugin_api.commands import CommandContext
 
     shell = _Shell(client)
-    context = CommandContext(argument=argument, ui=_Ui(), host=shell)  # type: ignore[arg-type]
+    context = CommandContext(argument=argument, ui=shell.ui, host=shell)  # type: ignore[arg-type]
     return await HarnessCommand().harness(context), shell
 
 
@@ -604,12 +614,13 @@ async def test_reset_only_switches_back_and_deletes_nothing(tmp_path: Path):
     assert after == before, "not a byte of the session's tools was touched"
     assert str(mine) in result.message, "the folder is named, so a reader who wants it gone knows what to remove"
     assert "folder this session's tools live in is still there" in result.message, "the folder it kept is reported"
-    assert "never wrote a tool" not in result.message, "a session that did write one is not told it did not"
+    assert "is not there" not in result.message, "the folder it found is not called missing"
     assert "later requests have none of its tools" in result.message, "and what changes is the next request"
 
 
-async def test_reset_says_when_the_session_never_wrote_a_tool(tmp_path: Path):
-    """A session that never ran `gen` has no folder, and the answer must not claim its tools are still there."""
+async def test_reset_says_when_the_folder_is_not_there(tmp_path: Path):
+    """A session with no folder is a folder that is not there — not a claim about what it ever wrote, which this
+    command cannot see (`harness_dir` may have moved, or the reader may have deleted it)."""
     from zettcode.engine.harness_paths import session_directory
 
     config = _configured(tmp_path)
@@ -618,8 +629,9 @@ async def test_reset_says_when_the_session_never_wrote_a_tool(tmp_path: Path):
 
     result, _ = await _run("reset", _Switch(config, harness=True))
 
-    assert "never wrote a tool" in result.message, result.message
+    assert "is not there, so there is nothing here to remove" in result.message, result.message
     assert "is still there" not in result.message, "nothing is claimed to be there"
+    assert "never wrote" not in result.message, "and nothing is claimed about what the session did"
 
 
 async def test_reset_does_not_ask_for_the_session_to_itself(tmp_path: Path):
@@ -757,24 +769,27 @@ async def test_the_row_is_clamped_by_columns_so_a_wide_description_fits(tmp_path
     assert len(shown) < MAX_SHOWN, "so it holds fewer characters than the budget: this is what columns means"
 
 
-async def test_a_description_that_was_cut_says_so_to_the_reader_too(tmp_path: Path):
-    """The model is told where its brief was cut; a reader who pasted 4,500 characters is told how much went."""
+async def test_a_description_that_was_cut_says_so_to_the_reader_before_the_turn(tmp_path: Path):
+    """The model is told where its brief was cut, and the reader is told before the turn goes out, not after."""
     from zettcode.jit_harness.command import MAX_DESCRIPTION
 
-    result, _ = await _run(f"gen {'x' * (MAX_DESCRIPTION + 500)}", _Switch(_configured(tmp_path)))
-    assert f"cut at {MAX_DESCRIPTION} characters" in result.message, result.message
-    assert "500 characters were not sent" in result.message
+    result, shell = await _run(f"gen {'x' * (MAX_DESCRIPTION + 500)}", _Switch(_configured(tmp_path)))
+    (notice,) = shell.ui.notices
+    assert f"cut at {MAX_DESCRIPTION} characters" in notice and "500 characters were not sent" in notice
+    assert shell.prompts, "the notice came with the turn, not instead of it"
+    assert result.message == "", "and the turn is still the answer"
 
-    one, _ = await _run(f"gen {'x' * (MAX_DESCRIPTION + 1)}", _Switch(_configured(tmp_path)))
-    assert "1 character was not sent" in one.message, one.message
+    _, one = await _run(f"gen {'x' * (MAX_DESCRIPTION + 1)}", _Switch(_configured(tmp_path)))
+    assert "1 character was not sent" in one.ui.notices[0], one.ui.notices
 
 
 async def test_a_description_short_enough_to_send_adds_no_note(tmp_path: Path):
     client = _Switch(_configured(tmp_path))
 
-    result, _ = await _run("gen fix the  parser", client)
+    result, shell = await _run("gen fix the  parser", client)
 
     assert result.message == "", "a turn that ran with all of the description is its own answer"
+    assert shell.ui.notices == []
 
 
 async def test_a_description_outranks_the_brief_and_the_report_answers_it():
