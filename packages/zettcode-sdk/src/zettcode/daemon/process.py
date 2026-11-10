@@ -319,6 +319,7 @@ class Daemons:
         name: str | None = None,
         model: str | None = None,
         effort: str | None = None,
+        permission: str | None = None,
     ) -> Record:
         """Change what is recorded about one daemon: its label, its session's title, or what it runs on.
 
@@ -332,16 +333,23 @@ class Daemons:
         puts it in force before its next turn (or within a beat), keeping the conversation. A daemon that is gone
         cannot be moved to another model — it has no process to move.
 
+        A permission is not a request but a restart: the shell level is handed to the process when it starts, so the
+        daemon is stopped and started again on the same session with the new level. The conversation survives it; a
+        turn in flight does not, which is why a daemon in the middle of one is refused rather than interrupted.
+
         This blocks while it writes the session's metadata, so it is called where no event loop runs — the CLI
         calls it directly and the SDK from a worker thread.
 
         Raises:
             UpdateFailed: There is no state to change, the daemon still runs, its session is open in another
-                process, its record cannot be written, the title is not one a session can carry, or the model or
-                the effort is not one this machine has configured.
+                process, its record cannot be written, the title is not one a session can carry, the model or
+                the effort is not one this machine has configured, or the permission is not one of
+                :data:`~zettcode.daemon.PERMISSIONS` (or could not be put in force by restarting).
         """
-        if title is None and name is None and model is None and effort is None:
+        if title is None and name is None and model is None and effort is None and permission is None:
             return record
+        if permission is not None and permission not in PERMISSIONS:
+            raise UpdateFailed(f"A daemon's permission is one of {', '.join(PERMISSIONS)}, not {permission!r}")
         state = record.state
         if state is None:
             raise UpdateFailed("this daemon never recorded what it was, so there is nothing to change")
@@ -381,12 +389,14 @@ class Daemons:
                 except UpdateFailed as secondary:
                     raise UpdateFailed(f"{said}; and {secondary}") from error
                 raise UpdateFailed(f"{said}; the other changes were written") from error
-        other = name is not None or wanted_model is not None or wanted_effort is not None
+        other = name is not None or wanted_model is not None or wanted_effort is not None or permission is not None
 
         def applied(current: State | None, *, title: str | None) -> State:
             base = current or state
             if name is not None:
                 base = dataclasses.replace(base, name=label)
+            if permission is not None:
+                base = dataclasses.replace(base, permission=permission)
             if wanted_model is not None:
                 base = dataclasses.replace(base, requested_model=wanted_model)
             if wanted_effort is not None:
@@ -404,7 +414,8 @@ class Daemons:
                 raise UpdateFailed("a title needs at least one character; the other changes were written")
             raise UpdateFailed("a title needs at least one character")
         if cleaned is None:
-            return self._write(record, lambda current: applied(current, title=None))
+            updated = self._write(record, lambda current: applied(current, title=None))
+            return self._restarted(updated, permission) if permission is not None else updated
         if record.alive:
             message = "the daemon is running, and its session is its own; stop it before naming it"
             if other:
@@ -422,6 +433,37 @@ class Daemons:
             return self._write(record, lambda current: applied(current, title=cleaned))
         except UpdateFailed as error:
             raise UpdateFailed(f"{error}; the session was renamed, so its record still says the old title") from error
+
+    def _restarted(self, record: Record, permission: str) -> Record:
+        """Put a recorded shell level in force: a running daemon is started again on the same session.
+
+        The level is handed to the process when it starts, so nothing short of a restart changes it. The session
+        is the one thing that must survive, and it does: the conversation is on disk and ``resume`` continues it.
+        """
+        state = record.state
+        if state is None:
+            raise UpdateFailed("this daemon never recorded what it was, so it cannot be started again")
+        if not record.alive:
+            return record  # gone already: the next start reads the level the record now names
+        try:
+            self.stop(record, keep=True)
+        except StillWorking as error:
+            raise UpdateFailed(
+                f"the shell level is recorded, and it takes effect when the daemon starts again: {error}"
+            ) from error
+        try:
+            return self.start(
+                Path(state.workspace),
+                model=state.requested_model or state.model,
+                effort=state.requested_effort or state.effort,
+                resume=record.session_id,
+                name=state.name,
+                permission=permission,
+            )
+        except SpawnFailed as error:
+            raise UpdateFailed(
+                f"the daemon was stopped for its new shell level and did not start again: {error}"
+            ) from error
 
     @staticmethod
     def _check_runnable(state: State, model: str | None, effort: str | None) -> None:

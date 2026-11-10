@@ -37,7 +37,7 @@ send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
 | --- | --- |
 | `-w DIR` | The directory it works in (default: the current one) |
 | `--model NAME` | The model to run on, by the name `daemon model` lists (default: the first configured) |
-| `--effort LEVEL` | The reasoning level (default: the model's own) |
+| `--effort LEVEL` | The reasoning level (default: the middle of the ones the model takes) |
 | `-n LABEL`, `--name LABEL` | What this daemon is for, recorded beside the session and shown by `daemon list` (default: none) |
 | `--title TEXT` | What to call the session (default: it names itself from its first answer) |
 | `--permission LEVEL` | Its shell level: `safe` (every command in a sandbox), `deny` (no shell at all) or `full` (default). There is no `ask`: nobody is there to answer |
@@ -145,6 +145,22 @@ so is a level the model does not take. A daemon that is not running cannot be mo
 model and level it should use. While the request is pending, `daemon list` shows it on a `next` line; if the daemon
 cannot take it up (the configuration it was started with differs from yours, say), it says so on an `error` line
 and the request is not tried again.
+
+`--effort` is the level the model takes, and the one a daemon starts at when nobody names one is the **middle of
+that model's list**: providers do not all accept every level, and the middle is the answer that means "as much as
+this model does by default" whichever list it publishes. For the eight levels zettcode knows, that is `high`.
+
+## Changing its shell level
+
+A shell level is given to the process when it starts, so changing one is a restart, not a request:
+
+```
+zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --permission safe
+```
+
+The session survives it — the daemon is started again with `--resume`, so its conversation and history are the
+ones it had — and the turn in flight does not, which is why a daemon in the middle of one is refused: wait for it to
+finish, or stop it and start it again yourself. `daemon list` shows the level on its `shell` line.
 
 
 ## Talking to one
