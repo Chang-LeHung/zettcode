@@ -146,6 +146,10 @@ class State:
     output_tokens: int | None = None
     context_tokens: int | None = None
     context_window: int | None = None
+    #: The values a plugin's command-line options parsed, by entry-point name, as the daemon was started with them.
+    #: Kept so a restart (a new shell level, a companion coming back) starts the same agent, not one whose plugins
+    #: fell back to their defaults.
+    plugin_arguments: dict[str, dict[str, object]] | None = None
     keep: bool = False
     protocol: int = PROTOCOL
 

@@ -1942,3 +1942,20 @@ def test_a_turn_that_starts_after_the_check_leaves_the_record_as_it_was(home, mo
         process.Daemons().update(running, permission="full")
 
     assert Registry().find("01a1").state.permission == "safe", "the record still says what the process runs at"
+
+
+def test_a_restart_for_a_level_keeps_the_plugin_values_it_was_started_with(home, monkeypatch):
+    """A restart must not quietly change what the agent is made of."""
+    record = Registry().record(home, "01a1", create=True)
+    level = {"journal-limit": 5}
+    record.save(replace(state_for(home), permission="safe", plugin_arguments={"journal": level}))
+    record.beat()
+    running = Registry().find("01a1")
+    started: list[dict] = []
+
+    monkeypatch.setattr(process.Daemons, "stop", lambda self, target, **k: "stopped")
+    monkeypatch.setattr(process.Daemons, "start", lambda self, workspace, **k: started.append(k) or running)
+
+    process.Daemons().update(running, permission="full")
+
+    assert started[0]["plugin_arguments"] == {"journal": level}

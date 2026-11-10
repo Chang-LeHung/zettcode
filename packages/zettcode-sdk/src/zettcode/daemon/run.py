@@ -455,6 +455,7 @@ class Daemon:
             context_tokens=context,
             context_window=self._window(),
             broker=self._connected(),
+            plugin_arguments={key: dict(value) for key, value in self.options.plugin_arguments.items()} or None,
         )
         # The lock is tried, not waited for: this runs on the event loop, and a reader changing a label holds it for
         # a moment. A write that missed is made by the next mark — the turn did not fail for it.
