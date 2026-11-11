@@ -15,6 +15,11 @@ The two clients share a page, not a transport.
   Capacitor's allowed origin rules and `*` as a local-server authority, but no Capacitor script is injected into the
   remote page.
 
+**Release boundary.** The APK contains the Capacitor shell, the server picker (`clients/mobile/web`), the launcher
+assets and `MainActivity`. The gateway page is the one built from `clients/gateway` into the gateway's `static/` and
+served at the gateway origin: changing Vue/TS/HTML/CSS there needs a gateway deploy, never an APK. A new APK is only for
+a change under `clients/mobile` — the picker, Capacitor config, native Back or assets.
+
 ```
 clients/gateway/src ──build --app──► renderer/ ──► Electron (app://-)
         │                                           server list + safeStorage

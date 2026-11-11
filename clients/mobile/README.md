@@ -5,6 +5,15 @@ loads that gateway's page at the gateway's origin, so its sign-in cookie, fetche
 same-origin ones. The app stores addresses only; the token is typed on the gateway's sign-in page and kept by the
 WebView cookie.
 
+## What ships where
+
+The APK carries only the Capacitor shell, the small server list in `web/`, the launcher assets and the native Back
+handler. The gateway page itself — Vue, TypeScript, HTML, CSS, and every UI change in `clients/gateway` — is built into
+`packages/zettcode-gateway/src/zettcode/gateway/static` and served by the running gateway. Changing that page therefore
+needs a gateway deploy (or a new `zettcode` release), not a new APK; the WebView loads the new page the next time it
+opens. A new APK is needed only when `clients/mobile/web/index.html`, `capacitor.config.ts`, the Android project or
+`MainActivity` changes.
+
 ## Build
 
 Needs Node 20+, JDK 21+ and the Android SDK with `compileSdk 36`.
