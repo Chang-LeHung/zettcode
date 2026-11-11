@@ -21,8 +21,8 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "zettcode-broker",
-  "zettcode-gateway",
+  "zettcode-broker>=0.4,<0.5",
+  "zettcode-gateway>=0.4,<0.5",
 ]
 
 [project.urls]
@@ -42,7 +42,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "../zettcode-engine/src/zettcode/version.py"
+path = "src/zettcode/code_agents/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zettcode"]

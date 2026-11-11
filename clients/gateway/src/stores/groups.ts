@@ -161,7 +161,6 @@ export async function sendToGroup(name: string, text: string): Promise<string> {
   }
 }
 
-
 /** Join a group so the composer can write to it; the graph refresh updates membership. */
 export async function joinGroup(name: string): Promise<string> {
   groupChat.sending = true;
