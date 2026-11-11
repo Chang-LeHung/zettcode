@@ -321,6 +321,18 @@ def test_external_agent_endpoints_list_types_and_refuse_an_unknown_one(parts):
     assert client.delete("/api/agents/missing").status_code == 404
 
 
+def test_a_group_can_be_joined_without_writing(parts):
+    client, backend, _ = parts
+    signed_in(client)
+    backend.graph_data["groups"] = [{"name": "review", "created": 1.0, "members": [], "last": None}]
+
+    joined = client.post("/api/groups/review/join", json={})
+
+    assert joined.status_code == 200 and joined.json() == {"group": "review"}
+    assert backend.joined == ["review"]
+    assert client.post("/api/groups/missing/join", json={}).status_code == 404
+
+
 def test_the_folder_picker_and_the_configuration_answer(parts):
     client, _, work = parts
     signed_in(client)

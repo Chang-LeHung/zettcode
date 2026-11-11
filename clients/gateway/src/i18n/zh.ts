@@ -17,6 +17,8 @@ export const ZH: Record<string, string> = {
   "Type": "类型",
   "Title": "标题",
   "Join group": "加入群组",
+  "Joining…": "加入中…",
+  "You are not in this group. You can read it; join to write.": "你不在这个群里。你可以阅读，加入后即可发言。",
   "Optional, without #": "可选，不需要 #",
   "Start external agent": "启动外部智能体",
   "Starting…": "启动中…",

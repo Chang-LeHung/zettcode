@@ -367,6 +367,9 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         given = await body(request)
         return await gateway.send_group(request.path_params["name"], str(given.get("text") or ""))
 
+    async def join_group(request: Request) -> Any:
+        return await gateway.join_group(request.path_params["name"])
+
     async def timeline(request: Request) -> Any:
         query = request.query_params
         return await gateway.timeline(query.get("since"), query.get("until"), query.get("limit"))
@@ -504,6 +507,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/threads/{id}/send", api(send), methods=["POST"]),
         Route("/api/threads/{id}/pictures/{picture}", api(picture)),
         Route("/api/groups/{name}/send", api(send_group), methods=["POST"]),
+        Route("/api/groups/{name}/join", api(join_group), methods=["POST"]),
         Route("/api/daemons", api(spawn), methods=["POST"]),
         Route("/api/daemons/{id}", api(delete), methods=["DELETE"]),
         Route("/api/daemons/{id}/stop", api(stop), methods=["POST"]),
