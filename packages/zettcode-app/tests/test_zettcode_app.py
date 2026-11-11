@@ -9689,7 +9689,7 @@ async def test_the_harness_command_lists_sessions_with_harnesses(tmp_path):
 
     await _type_command(app, harness, "/harness")
     said = harness.render().text
-    assert "No harness yet" in said and "SESSION · REPOSITORY" in said, said
+    assert "No harness yet" in said and "SESSION" in said and "REPOSITORY" in said, said
     harness.press("escape")
 
     for name in ("kit", "old", "hollow"):
@@ -9707,6 +9707,11 @@ async def test_the_harness_command_lists_sessions_with_harnesses(tmp_path):
     await _type_command(app, harness, "/harness")
 
     said = harness.render().text
+    lines = said.splitlines()
+    header = next(line for line in lines if "SESSION" in line)
+    row = next(line for line in lines if "kit —" in line)
+    assert header.index("SESSION") == row.index("current"), "the session header starts over the session column"
+    assert header.index("REPOSITORY") == row.index("kit"), "the repository header starts over the repository column"
     assert "current ·" in said and "kit" in said and "small helpers" in said, said
     assert "old" in said and "hollow" in said, "a repository that cannot load is still a row"
     assert "other" in said and "notes" in said, said
