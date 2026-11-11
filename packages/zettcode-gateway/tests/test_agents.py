@@ -71,6 +71,28 @@ async def test_a_duplicate_or_unknown_type_is_refused(tmp_path: pathlib.Path):
     await manager.close()
 
 
+async def test_the_manager_caps_the_agents_it_starts(tmp_path: pathlib.Path, monkeypatch):
+    from zettcode.gateway import agents as module
+
+    monkeypatch.setattr(module, "MAX_AGENTS", 2)
+    manager = AgentManager(tmp_path, [FakePlugin()])
+    await manager.create("echo", "one", "agent-1")
+    await manager.create("echo", "two", "agent-2")
+    with pytest.raises(AgentError):
+        await manager.create("echo", "three", "agent-3")
+    await manager.close()
+
+
+async def test_a_plugin_factory_that_raises_is_reported(tmp_path: pathlib.Path):
+    class BrokenCreate(FakePlugin):
+        def create(self, session_id: str, title: str) -> FakeSession:  # type: ignore[override]
+            raise RuntimeError("bad factory")
+
+    manager = AgentManager(tmp_path, [BrokenCreate()])
+    with pytest.raises(AgentError):
+        await manager.create("echo", "broken")
+
+
 async def test_a_failed_connect_is_closed_and_reported(tmp_path: pathlib.Path):
     class Broken(FakePlugin):
         def create(self, session_id: str, title: str) -> FakeSession:  # type: ignore[override]

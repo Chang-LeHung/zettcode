@@ -42,7 +42,7 @@ HOST_FILE = "host.json"
 
 
 class GatewayStartError(ZettCodeError):
-    """The gateway could not become a session: no model is configured, or another gateway is running."""
+    """The gateway could not become an external session, or another gateway already holds it."""
 
 
 class Backend(ABC):

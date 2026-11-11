@@ -8,6 +8,8 @@ import pytest
 
 from broker_helpers import Host, Inbox, client_for, eventually, session
 from zettcode.gateway.external_backend import ExternalBackend
+from zettcode.gateway.service import GatewayError
+from zettcode.sdk.errors import SendError
 from zettcode.sdk.types import IncomingMessage, Receipt
 
 A = "01a10b75-aaaa-7000-8000-000000000001"
@@ -49,6 +51,13 @@ async def test_the_backend_registers_receives_and_replies(host, tmp_path):
         assert delivered.disposition == "delivered"
         await eventually(lambda: seen)
         assert seen[0].text == "hello"
+        assert backend.stamp(sender.session.session_id, "") is not None
+        history = await backend.history(sender.session.session_id, "")
+        assert history and history[0].text == "hello"
+        assert [peer.session_id for peer in backend.peers()] == [sender.session.session_id]
+
+        with pytest.raises(SendError):
+            await backend.send(sender.session.session_id, "x", direct=True)
 
         await backend.send(sender.session.session_id, "back")
         await eventually(lambda: inbox.messages)
@@ -56,3 +65,9 @@ async def test_the_backend_registers_receives_and_replies(host, tmp_path):
         await sender.close()
     finally:
         await backend.close()
+
+
+async def test_owner_reads_report_a_closed_broker(tmp_path):
+    backend = ExternalBackend(tmp_path / "gw")
+    with pytest.raises(GatewayError):
+        await backend.graph()
