@@ -54,7 +54,8 @@ An async handler is acked `queued` before it runs, so it cannot refuse the messa
 awaiting if the decision is a refusal.
 
 The session is registered with `kind="external"` by default. It can exchange one-to-one messages and appears in the
-roster, but the broker still denies groups, its own history, and the `direct` chat-window semantics.
+roster. The broker's owner may add it to a group; then it receives the group's messages and may write to it. It cannot
+create or manage groups with its own key, read a group's history, or use the `direct` chat-window semantics.
 
 A trusted gateway plugin can pass `kind="zettcode"`; then `send_group`, `join_group` and `groups` are available and
 its messages use `via="agent"`. Only installed gateway code should use that kind.

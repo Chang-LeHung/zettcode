@@ -28,7 +28,6 @@ from typing import Any, NamedTuple
 from .protocol import (
     ACK_TIMEOUT,
     KIND_EXTERNAL,
-    KIND_ZETTCODE,
     MAX_GROUP_MEMBERS,
     MAX_GROUPS,
     MAX_GROUPS_PER_SESSION,
@@ -425,7 +424,7 @@ class Hub:
         found = self.store.group(name)
         if found is None:
             raise Refused("unknown", f"there is no group #{name}")
-        if sender.external or sender.info.session_id not in found["members"]:
+        if sender.info.session_id not in found["members"]:
             raise Refused("denied", f"only a member of #{name} may write to it")
         targets: list[tuple[Session, Entry]] = []
         for member in found["members"]:
@@ -542,7 +541,8 @@ class Hub:
 
         ``action`` is ``create``, ``add``, ``remove``, ``leave`` or ``delete``; ``name`` is the group and ``members``
         the sessions (handles or ids) an ``add``, ``remove`` or ``create`` concerns. A request without a key is the
-        owner of the broker and may do all of it but ``leave``.
+        owner of the broker and may do all of it but ``leave``. A registered external session cannot manage a group
+        with its own key; the owner can still add it.
 
         Raises:
             Refused: ``invalid``, ``duplicate`` for a name taken, ``unknown`` for a group or session that is not there,
@@ -636,7 +636,7 @@ class Hub:
 
     def _tell_groups(self, session: Session) -> None:
         entry = self.roster.of(session.number)
-        mine = self.groups_of(entry.session_id) if entry is not None and entry.kind == KIND_ZETTCODE else []
+        mine = self.groups_of(entry.session_id) if entry is not None else []
         session.push({"op": "groups", "groups": mine})
 
     def _announce_groups(self) -> None:

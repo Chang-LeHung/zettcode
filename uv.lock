@@ -3173,6 +3173,7 @@ requires-dist = [{ name = "zettcode-engine", editable = "packages/zettcode-engin
 name = "zettcode-gateway"
 source = { editable = "packages/zettcode-gateway" }
 dependencies = [
+    { name = "httpx" },
     { name = "starlette", version = "1.7.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "starlette", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "uvicorn" },
@@ -3183,6 +3184,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.27,<1" },
     { name = "starlette", specifier = ">=0.51,<2" },
     { name = "uvicorn", specifier = ">=0.35,<1" },
     { name = "zettcode-broker", editable = "packages/zettcode-broker" },

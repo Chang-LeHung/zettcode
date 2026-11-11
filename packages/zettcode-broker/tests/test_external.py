@@ -124,8 +124,8 @@ async def test_a_closed_session_does_not_wait_or_change_status(host):
 
 async def test_a_trusted_external_session_joins_and_writes_to_a_group(host):
     async with (
-        ExternalSession(A, "Build bot", kind="zettcode", directory=host.directory) as first,
-        ExternalSession(B, "Alert bot", kind="zettcode", directory=host.directory) as second,
+        ExternalSession(A, "Build bot", directory=host.directory) as first,
+        ExternalSession(B, "Alert bot", directory=host.directory) as second,
     ):
         note = read_note(host.directory)
         assert note is not None

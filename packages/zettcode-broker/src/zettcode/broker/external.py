@@ -57,9 +57,10 @@ class ExternalSession:
     separate entry in the broker's roster. The broker gives it a handle derived from ``title``, which other sessions
     address with ``@handle``.
 
-    The program is an ``external`` session: it can exchange one-to-one messages, but it cannot use group chats,
-    read the broker's history through its own key, or use the ``direct`` chat-window semantics. Those are limits of
-    the broker's permission model, not of this wrapper.
+    The program is an ``external`` session by default: it can exchange one-to-one messages and, when the broker's
+    owner adds it, receive and write to groups. It cannot create or manage groups with its own key, read a group's
+    history, or use the ``direct`` chat-window semantics; those are limits of the broker's permission model, not
+    this wrapper.
 
     Args:
         session_id: The stable id this program registers with. It must be a broker session id (letters, digits,
@@ -190,6 +191,27 @@ class ExternalSession:
     def roster(self) -> tuple[PeerInfo, ...]:
         """Every registered session, this one included, as of the last update."""
         return self._client.roster
+
+    @property
+    def limits(self) -> Any:
+        """What the broker accepts from a sender, as announced at connection."""
+        return self._client.limits
+
+    def watch(self, session_id: str) -> None:
+        """Ask the broker to stream another session's turn."""
+        self._client.watch(session_id)
+
+    def unwatch(self, session_id: str) -> None:
+        """Stop streaming another session's turn."""
+        self._client.unwatch(session_id)
+
+    def on_stream(self, callback: Callable[[str, dict[str, Any]], None] | None) -> None:
+        """Receive the stream lines of watched sessions."""
+        self._client.on_stream = callback
+
+    def observe(self, callback: Callable[[dict[str, Any]], None] | None) -> None:
+        """Receive every message that passes through the broker."""
+        self._client.observe(callback)
 
     @property
     def groups(self) -> tuple[GroupInfo, ...]:
