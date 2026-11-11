@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from zettcode.plugin_api import Api, Plugin, PluginContext, ProvidedModel, Provider
+from zettcode.plugin_api import Plugin, PluginContext, ProvidedModel, Provider
 
 #: The one place the version is written; ``pyproject.toml`` reads it from here.
 __version__ = "0.1.0"
@@ -41,7 +41,7 @@ class Vendor:
     label: str
     env: tuple[str, ...]
     base_url: str
-    api: Api
+    api: str
     model: str
     display: str
     context_window: int
@@ -64,7 +64,7 @@ VENDORS: tuple[Vendor, ...] = (
         "OpenAI",
         ("OPENAI_API_KEY",),
         "https://api.openai.com/v1",
-        Api.CHAT,
+        "chat",
         "gpt-6.1-sol",
         "GPT-6.1 Sol",
         1_050_000,
@@ -75,7 +75,7 @@ VENDORS: tuple[Vendor, ...] = (
         "Anthropic",
         ("ANTHROPIC_API_KEY",),
         "https://api.anthropic.com",
-        Api.ANTHROPIC,
+        "anthropic",
         "claude-opus-5-5",
         "Claude Opus 5.5",
         1_000_000,
@@ -86,7 +86,7 @@ VENDORS: tuple[Vendor, ...] = (
         "DeepSeek",
         ("DEEPSEEK_API_KEY",),
         "https://api.deepseek.com",
-        Api.CHAT,
+        "chat",
         "deepseek-v4.1-flash",
         "DeepSeek V4.1 Flash",
         1_000_000,
@@ -96,7 +96,7 @@ VENDORS: tuple[Vendor, ...] = (
         "Z.AI",
         ("ZAI_API_KEY", "ZHIPUAI_API_KEY", "ZHIPU_API_KEY"),
         "https://api.z.ai/api/paas/v4",
-        Api.CHAT,
+        "chat",
         "glm-5.3",
         "GLM-5.3",
         1_000_000,
@@ -109,7 +109,8 @@ def _provider(vendor: Vendor, variable: str) -> Provider:
     return Provider(
         vendor.name,
         vendor.label,
-        api=vendor.api,
+        # The vendor names the protocol as the word Provider parses.
+        api=vendor.api,  # type: ignore[arg-type]
         base_url=vendor.base_url,
         token_env=variable,
         models=(
