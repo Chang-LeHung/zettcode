@@ -54,6 +54,9 @@ async def test_the_backend_registers_receives_and_replies(host, tmp_path):
         assert backend.stamp(sender.session.session_id, "") is not None
         history = await backend.history(sender.session.session_id, "")
         assert history and history[0].text == "hello"
+        with pytest.raises(GatewayError) as refused:
+            await backend.history("unknown-session", "")
+        assert refused.value.code == "unknown"
         assert [peer.session_id for peer in backend.peers()] == [sender.session.session_id]
 
         with pytest.raises(SendError):

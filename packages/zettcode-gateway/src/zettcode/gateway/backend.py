@@ -49,6 +49,11 @@ class Backend(ABC):
     """The agent as the gateway sees it: who is there, what they said, and how to speak to them."""
 
     @property
+    def external(self) -> bool:
+        """Whether this backend is an external broker session rather than a model-backed one."""
+        return False
+
+    @property
     @abstractmethod
     def gateway_id(self) -> str:
         """Return the id the gateway is registered under: what a daemon replies to."""

@@ -102,6 +102,7 @@ class ExternalBackend(Backend):
         if owner is not None:
             await owner.aclose()
         session, self._session = self._session, None
+        self._versions.clear()
         if session is not None:
             await session.close()
 
@@ -111,6 +112,10 @@ class ExternalBackend(Backend):
         if self._session is None:
             raise GatewayStartError("the gateway has not started")
         return self._session
+
+    @property
+    def external(self) -> bool:
+        return True
 
     @property
     def gateway_id(self) -> str:
@@ -207,7 +212,7 @@ class ExternalBackend(Backend):
             body = None
         if response.status_code != 200:
             refusal = body.get("error") if isinstance(body, dict) else None
-            reason = refusal.get("code") if isinstance(refusal, dict) else "broker"
+            reason = refusal.get("reason") if isinstance(refusal, dict) else "broker"
             message = refusal.get("message") if isinstance(refusal, dict) else "the broker refused the read"
             raise _gateway_error(
                 503 if response.status_code >= 500 else response.status_code, str(reason), str(message)
