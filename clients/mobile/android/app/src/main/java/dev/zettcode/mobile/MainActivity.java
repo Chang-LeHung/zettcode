@@ -2,6 +2,7 @@ package dev.zettcode.mobile;
 
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.webkit.WebBackForwardList;
 import android.webkit.WebHistoryItem;
 import android.webkit.WebView;
@@ -51,7 +52,7 @@ public class MainActivity extends BridgeActivity {
                                 return;
                             }
                         }
-                        long now = System.currentTimeMillis();
+                        long now = SystemClock.elapsedRealtime();
                         if (current.toString().equals(lastBackUrl) && now - lastBackAt < 2000L) {
                             leave();
                             return;
@@ -77,6 +78,13 @@ public class MainActivity extends BridgeActivity {
                 && second != null
                 && Objects.equals(first.getScheme(), second.getScheme())
                 && Objects.equals(first.getHost(), second.getHost())
-                && first.getPort() == second.getPort();
+                && portOf(first) == portOf(second);
+    }
+
+    private static int portOf(Uri uri) {
+        if (uri.getPort() != -1) return uri.getPort();
+        if ("http".equals(uri.getScheme())) return 80;
+        if ("https".equals(uri.getScheme())) return 443;
+        return -1;
     }
 }
