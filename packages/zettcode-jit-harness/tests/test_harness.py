@@ -614,6 +614,29 @@ def test_the_page_tabs_to_tools_and_marks_banned_and_active_rows(tmp_path: Path)
     assert [item.current for item in page.list.items] == [False, True, False]
 
 
+def test_tools_from_the_request_and_the_jit_manifest_are_classified(tmp_path: Path):
+    from zettcode.jit_harness.command import HarnessCommand
+
+    repository = tmp_path / "kit"
+    repository.mkdir()
+    (repository / "__init__.py").write_text("", encoding="utf-8")
+    (repository / "MANIFEST").write_text(
+        'name = "kit"\nversion = "1"\ndescription = "helpers"\ntools = ["read", "delete"]\n',
+        encoding="utf-8",
+    )
+    (repository / "BAN_TOOLS").write_text("delete\n", encoding="utf-8")
+    offered = type("Tool", (), {"name": "read", "description": "read a file"})()
+    context = type("Context", (), {"tools": (offered,)})()
+    runtime = type("Runtime", (), {"context": context})()
+    host = type("Host", (), {"agent": type("Agent", (), {"runtime": runtime})()})()
+
+    rows = HarnessCommand._tool_rows(host, "mine", tmp_path)
+
+    assert any(row.cells == ("read", "base", "active", "read a file") and row.current for row in rows)
+    assert any(row.cells[:3] == ("delete", "jit/kit", "banned") and row.danger for row in rows)
+    assert any(row.cells[:3] == ("read", "jit/kit", "active") and row.current for row in rows)
+
+
 def test_markdown_files_are_listed_with_their_size(tmp_path: Path):
     from zettcode.jit_harness.command import HarnessCommand
 
