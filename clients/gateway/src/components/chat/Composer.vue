@@ -18,6 +18,7 @@ const confirmed = new Set<string>();
 
 const typesByEnter = !matchMedia("(pointer: coarse)").matches;
 const limits = computed(() => lobby.status?.limits);
+const external = computed(() => lobby.status?.external === true);
 const asking = computed(() => wantsReply(props.thread));
 const pictures = ref<Picture[]>([]);
 const picker = ref<HTMLInputElement | null>(null);
@@ -26,7 +27,7 @@ const room = computed(() => roomOf(limits.value));
 /** A session that runs a chat's text as its own prompt takes pictures if its model reads them. A model this page cannot see
  * (a plugin's) is let through: the gateway and the daemon both refuse a picture they cannot use, with the reason. */
 const model = computed(() => settings.data?.models.find((m) => m.name === props.thread.model));
-const readsPictures = computed(() => props.thread.direct && (model.value?.multimodal ?? true));
+const readsPictures = computed(() => !external.value && props.thread.direct && (model.value?.multimodal ?? true));
 const pictureHint = computed(() =>
   !props.thread.direct
     ? t("This session cannot be sent a picture.")
@@ -155,7 +156,7 @@ function onKey(event: KeyboardEvent): void {
   >
     <input ref="picker" class="composer-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple @change="picked" />
     <button
-      v-if="thread.direct"
+      v-if="thread.direct && !external"
       type="button"
       class="composer-attach"
       :disabled="!readsPictures"
