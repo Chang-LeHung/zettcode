@@ -10,6 +10,8 @@ export const ZH: Record<string, string> = {
   Messages: "消息",
   Legend: "图例",
   "This session": "当前会话",
+  "from you": "你发出的",
+  "for you": "发给你的",
   "Full screen": "全屏",
   "Exit full screen": "退出全屏",
   User: "用户",

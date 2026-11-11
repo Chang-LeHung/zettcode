@@ -60,3 +60,24 @@ export function closeTopSheet(): boolean {
   closeSheet(top.id);
   return true;
 }
+
+/** A full-screen or otherwise closable layer that is not a sheet; its close is called by Escape on top of the stack. */
+const overlays: (() => void)[] = [];
+
+/** Register a layer's close; returns the function that takes it off the stack. */
+export function openOverlay(close: () => void): () => void {
+  overlays.push(close);
+  return () => {
+    const at = overlays.lastIndexOf(close);
+    if (at >= 0) overlays.splice(at, 1);
+  };
+}
+
+/** Close the top sheet, otherwise the top overlay; say whether anything was closed. */
+export function closeTopOverlay(): boolean {
+  if (closeTopSheet()) return true;
+  const close = overlays.pop();
+  if (!close) return false;
+  close();
+  return true;
+}

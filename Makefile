@@ -6,7 +6,7 @@ CODE ?= code
 #: Homebrew put it by default. `ANDROID_SDK=/path make mobile-apk` overrides it, and an existing
 #: `clients/mobile/android/local.properties` is left to Gradle.
 ANDROID_SDKS := $(HOME)/Library/Android/sdk $(HOME)/Android/Sdk /opt/homebrew/share/android-commandlinetools \
-	/usr/local/share/android-sdk /opt/android-sdk
+	/usr/local/share/android-commandlinetools /usr/local/share/android-sdk /usr/lib/android-sdk /opt/android-sdk
 ifndef ANDROID_SDK
 ANDROID_SDK := $(strip $(or $(ANDROID_HOME),$(ANDROID_SDK_ROOT),$(firstword $(wildcard $(ANDROID_SDKS)))))
 endif
@@ -181,9 +181,9 @@ mobile: $(MOBILE_DEPS)
 	cd clients/mobile && npm run check && npm run sync
 
 mobile-apk: mobile
-	@test -n "$(ANDROID_SDK)" -o -f clients/mobile/android/local.properties || { \
+	@test -d "$(ANDROID_SDK)" -o -f clients/mobile/android/local.properties || { \
 		echo "set ANDROID_HOME (or write clients/mobile/android/local.properties with sdk.dir=..., or pass ANDROID_SDK=...)"; exit 1; }
-	@if [ -n "$(ANDROID_SDK)" ]; then export ANDROID_HOME="$(ANDROID_SDK)" ANDROID_SDK_ROOT="$(ANDROID_SDK)"; fi; \
+	@if [ -n "$(ANDROID_SDK)" ]; then export ANDROID_HOME="$(ANDROID_SDK)"; fi; \
 		cd clients/mobile/android && ./gradlew assembleDebug
 	@echo "APK: clients/mobile/android/app/build/outputs/apk/debug/app-debug.apk"
 

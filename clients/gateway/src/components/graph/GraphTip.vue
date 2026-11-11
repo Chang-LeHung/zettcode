@@ -5,6 +5,7 @@ import { duration, folderName } from "../../lib/format";
 import {
   edgeOf,
   groupByName,
+  isSelf,
   messagePreview,
   nodeOf,
   pairMessages,
@@ -43,7 +44,7 @@ const group = computed(() => (props.tip.kind === "group" ? groupByName(graph, pr
       <b>{{ node.handle }}</b>
       <span class="gt-chip" :class="node.status">{{ node.ghost ? t("offline") : t(node.status) }}</span>
       <span v-if="node.kind === 'external'" class="gt-chip">{{ t("external") }}</span>
-      <span v-if="node.session_id === meId" class="gt-chip me">{{ t("This session") }}</span>
+      <span v-if="isSelf(node.session_id, meId)" class="gt-chip me">{{ t("This session") }}</span>
     </div>
     <div v-if="node.title" class="gt-sub">{{ node.title }}</div>
     <div v-if="node.workspace" class="gt-row"><span>{{ t("Workspace") }}</span><span>{{ folderName(node.workspace) }}</span></div>
