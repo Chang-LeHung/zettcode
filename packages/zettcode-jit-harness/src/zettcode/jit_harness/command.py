@@ -254,7 +254,7 @@ class HarnessCommand(TuiPlugin):
                     tools,
                     "accent = active · error colour = banned · esc close",
                 ),
-                TableView("Files", ("FILE", "KIND", "SIZE", "PATH"), files),
+                TableView("Files", ("FILE", "DESCRIPTION", "SIZE", "PATH"), files),
             ),
             on_switch=lambda target: self._switch(host, current, target),
             on_close=host.close_page,
@@ -395,8 +395,36 @@ class HarnessCommand(TuiPlugin):
                 size = path.stat().st_size
             except OSError:
                 continue
-            rows.append(TableRow(None, (relative.name, "markdown", f"{size:,} B", str(relative.parent))))
+            rows.append(
+                TableRow(
+                    None,
+                    (relative.name, HarnessCommand._markdown_description(path), f"{size:,} B", str(relative.parent)),
+                )
+            )
         return rows or [TableRow(None, ("No Markdown files yet", "", "", ""))]
+
+    @staticmethod
+    def _markdown_description(path: Path) -> str:
+        """Return the first heading, paragraph or front-matter description in a Markdown file."""
+        try:
+            with path.open(encoding="utf-8", errors="replace") as handle:
+                lines = [handle.readline() for _ in range(30)]
+        except OSError as error:
+            return f"cannot be read: {error}"
+        title = ""
+        for line in lines:
+            text = line.strip()
+            if text.startswith("description:"):
+                return text.partition(":")[2].strip().strip("\"'") or "(no description)"
+            if text.startswith("title:") and not title:
+                title = text.partition(":")[2].strip().strip("\"'")
+                continue
+            if not text or text in {"---", "..."} or text.startswith(("```", "<!--")):
+                continue
+            text = text.lstrip("#").lstrip(">*- ").strip()
+            if text:
+                return text[:120]
+        return title or "(no description)"
 
     @staticmethod
     def _titles(store: Path, names: set[str]) -> dict[str, str]:

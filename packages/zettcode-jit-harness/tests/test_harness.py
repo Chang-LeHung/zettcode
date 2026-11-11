@@ -612,6 +612,10 @@ def test_the_page_tabs_to_tools_and_marks_banned_and_active_rows(tmp_path: Path)
     assert page.title.startswith("Tools")
     assert [item.danger for item in page.list.items] == [True, False, False]
     assert [item.current for item in page.list.items] == [False, True, False]
+    from zettcode.tui import DARK
+
+    parts = page._tab_parts(DARK)
+    assert ("[Tools]", DARK.accent) in parts and ("Harnesses", DARK.muted) in parts
 
 
 def test_tools_from_the_request_and_the_jit_manifest_are_classified(tmp_path: Path):
@@ -672,7 +676,7 @@ def test_markdown_files_are_listed_with_their_size(tmp_path: Path):
 
     (row,) = HarnessCommand._file_rows(tmp_path)
 
-    assert row.cells[:2] == ("README.md", "markdown")
+    assert row.cells[:2] == ("README.md", "hello")
     assert row.cells[2] == "6 B" and row.cells[3] == "notes"
     assert row.target is None
 

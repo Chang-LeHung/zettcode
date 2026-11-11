@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from zettcode.tui import Canvas, KeyEvent, ListItem, ListPage, Rect, Style
+from zettcode.tui import Canvas, KeyEvent, ListItem, ListPage, Rect, Style, Theme
 from zettcode.tui.render import display_width
 
 #: The gap between the table's columns.
@@ -87,6 +87,7 @@ class HarnessPage(ListPage):
             self._items(self.views[0]),
             title=f"{self.views[0].title} · harness is {state}",
             subtitle=f"{_shown(directory)}  ·  {self._tabs()}",
+            subtitle_parts=self._tab_parts,
             footer=self._footer(),
             on_select=lambda item: on_switch(cast(HarnessTarget, item.value)) if item.value is not None else None,
             on_cancel=on_close,
@@ -118,6 +119,16 @@ class HarnessPage(ListPage):
             f"[{view.title}]" if index == self.index else view.title for index, view in enumerate(self.views)
         )
 
+    def _tab_parts(self, theme: Theme) -> list[tuple[str, str | None]]:
+        """Return the tab strip with the active tab in the accent colour."""
+        parts: list[tuple[str, str | None]] = []
+        for index, view in enumerate(self.views):
+            if index:
+                parts.append(("  ", None))
+            text = f"[{view.title}]" if index == self.index else view.title
+            parts.append((text, theme.accent if index == self.index else theme.muted))
+        return parts
+
     def _footer(self) -> str:
         """Return the legend the active tab declares."""
         return self.views[self.index].footer
@@ -130,6 +141,7 @@ class HarnessPage(ListPage):
         self._widths = self._measure(view)
         self.title = f"{view.title} · harness is {self.state}"
         self.subtitle = f"{_shown(self.directory)}  ·  {self._tabs()}"
+        self.subtitle_parts = self._tab_parts
         self.footer = self._footer()
         self.list.set_items(self._items(view))
         self.invalidate()
