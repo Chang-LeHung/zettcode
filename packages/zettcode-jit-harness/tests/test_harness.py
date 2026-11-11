@@ -632,9 +632,36 @@ def test_tools_from_the_request_and_the_jit_manifest_are_classified(tmp_path: Pa
 
     rows = HarnessCommand._tool_rows(host, "mine", tmp_path)
 
-    assert any(row.cells == ("read", "base", "active", "read a file") and row.current for row in rows)
+    assert any(row.cells == ("read", "jit/kit", "active", "helpers") and row.current for row in rows)
+    assert not any(row.cells[0] == "read" and row.cells[1] == "request" for row in rows), "no duplicate base row"
     assert any(row.cells[:3] == ("delete", "jit/kit", "banned") and row.danger for row in rows)
-    assert any(row.cells[:3] == ("read", "jit/kit", "active") and row.current for row in rows)
+    assert all(row.target is None for row in rows), "tool rows are not harness targets"
+
+
+def test_enter_on_a_tool_or_file_row_keeps_the_page(tmp_path: Path):
+    from zettcode.jit_harness.page import HarnessPage, HarnessTarget, TableRow, TableView
+
+    switched: list[HarnessTarget] = []
+    target = HarnessTarget("mine", tmp_path / "mine")
+    page = HarnessPage(
+        state="on",
+        directory=tmp_path / "harness",
+        views=(
+            TableView("Harnesses", ("A", "B", "C", "D"), [TableRow(target, ("mine", "", "", ""))]),
+            TableView("Tools", ("A", "B", "C", "D"), [TableRow(None, ("read", "request", "active", ""))]),
+            TableView("Files", ("A", "B", "C", "D"), [TableRow(None, ("README.md", "markdown", "1 B", ""))]),
+        ),
+        on_switch=switched.append,
+        on_close=lambda: None,
+    )
+
+    page._show(1)
+    page.list.activate()
+    page._show(2)
+    page.list.activate()
+    page._show(3)
+
+    assert switched == [] and page.index == 0, "only harness rows act, and Tab wraps"
 
 
 def test_markdown_files_are_listed_with_their_size(tmp_path: Path):
@@ -647,6 +674,7 @@ def test_markdown_files_are_listed_with_their_size(tmp_path: Path):
 
     assert row.cells[:2] == ("README.md", "markdown")
     assert row.cells[2] == "6 B" and row.cells[3] == "notes"
+    assert row.target is None
 
 
 def test_the_harness_page_lists_sessions_and_switches_to_the_selected_one(tmp_path: Path):

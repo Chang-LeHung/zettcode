@@ -120,6 +120,15 @@ def test_a_current_row_is_drawn_in_the_accent_colour():
     assert styled[1][0].style.foreground == DARK.accent
 
 
+def test_a_banned_row_is_drawn_in_the_error_colour():
+    """A row marked danger reads in the theme's error colour."""
+    styled = (
+        Harness(ListView([ListItem("a", label="delete", danger=True)], wrap=False), width=20, height=1).render().styled
+    )
+
+    assert styled[0][0].style.foreground == DARK.error
+
+
 def test_list_view_tucks_a_description_behind_its_label_when_space_runs_out():
     """A row too narrow for a column of its own keeps the description inline."""
     items = [ListItem("a", label="abcdef", description="note")]
