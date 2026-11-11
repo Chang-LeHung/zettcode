@@ -724,8 +724,11 @@ def test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it():
         settings = tomllib.loads(project.read_text(encoding="utf-8"))
         if not settings.get("tool", {}).get("zettcode", {}).get("plugin"):
             continue
-        checked += 1
         name = settings["project"]["name"]
+        if name == "zettcode-code-agents":
+            # A gateway plugin, not a terminal plugin: it uses the gateway's AgentPlugin contract, not plugin-api.
+            continue
+        checked += 1
         ours = [
             requirement
             for requirement in map(Requirement, settings["project"]["dependencies"])
@@ -1398,7 +1401,7 @@ def test_a_part_the_program_is_made_of_is_never_discoverable_as_a_plugin():
     for name in parts:
         settings = tomllib.loads((ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8"))
         assert not settings.get("tool", {}).get("zettcode", {}).get("plugin"), name
-    for name in ("zettcode-models", "zettcode-monitor", "zettcode-recap"):
+    for name in ("zettcode-code-agents", "zettcode-models", "zettcode-monitor", "zettcode-recap"):
         settings = tomllib.loads((ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8"))
         assert settings["tool"]["zettcode"]["plugin"] is True, name
 
@@ -1505,7 +1508,12 @@ def test_the_distributions_that_may_publish_the_programs_groups_are_the_ones_tha
     marked = {
         settings["project"]["name"] for settings in listed if settings.get("tool", {}).get("zettcode", {}).get("plugin")
     }
-    assert marked == {"zettcode-models", "zettcode-monitor", "zettcode-recap"}, "the plugin line covers every plugin"
+    assert marked == {
+        "zettcode-code-agents",
+        "zettcode-models",
+        "zettcode-monitor",
+        "zettcode-recap",
+    }, "the plugin line covers every plugin"
     agent, terminal = PROGRAM_DISTRIBUTIONS[AGENT_ROLE], PROGRAM_DISTRIBUTIONS[TERMINAL_ROLE]
     assert agent and terminal and not (agent & terminal), "a distribution has one role"
 

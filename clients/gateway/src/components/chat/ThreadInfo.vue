@@ -2,6 +2,8 @@
 import { computed } from "vue";
 import { t } from "../../i18n";
 import { duration } from "../../lib/format";
+import { openSheet } from "../../stores/ui";
+import ProfileSheet from "./ProfileSheet.vue";
 import type { Thread } from "../../types";
 
 const props = defineProps<{ thread: Thread }>();
@@ -25,6 +27,11 @@ const rows = computed(() => {
 
 <template>
   <div class="card info-card">
+    <div class="actions">
+      <button class="btn sm ghost" type="button" @click="openSheet(t('Edit profile'), ProfileSheet, { thread })">
+        {{ t("Edit profile") }}
+      </button>
+    </div>
     <div v-for="[label, value] in rows" :key="label" class="kv">
       <span>{{ label }}</span>
       <span class="mono">{{ value }}</span>
