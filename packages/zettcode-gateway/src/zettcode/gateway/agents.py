@@ -10,6 +10,7 @@ program uses ``kind="external"`` and keeps the broker's narrower permissions.
 
 from __future__ import annotations
 
+import base64
 import logging
 import secrets
 from abc import ABC, abstractmethod
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from zettcode.broker.external import ExternalSession
+from zettcode.broker.protocol import sniff_image
 
 logger = logging.getLogger("zettcode.gateway")
 
@@ -27,6 +29,60 @@ ENTRY_POINT = "zettcode.gateway.external"
 
 #: How many agents one gateway may keep running. A page cannot grow the roster without bound.
 MAX_AGENTS = 64
+
+#: The largest avatar a plugin may contribute, encoded as a data URL.
+MAX_AVATAR = 300_000
+
+#: The suffix to media type for an image file whose first bytes do not identify it.
+_IMAGE_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+}
+
+
+def avatar_data(value: str) -> str:
+    """Return an avatar as a data URL from a data URL, a local file path, or a base64 image.
+
+    A plugin may name a file beside its code, pass a data URL, or pass ``base64:<data>``. A missing or unreadable
+    file, an image that is too large, and a string that is none of these become an empty avatar; a broken optional
+    picture must not stop the plugin from being listed.
+    """
+    value = value.strip()
+    if not value:
+        return ""
+    if value.startswith("data:image/"):
+        return value if len(value) <= MAX_AVATAR else ""
+    raw: bytes | None = None
+    mime = ""
+    if value.startswith("base64:"):
+        raw = _decode(value[7:])
+    else:
+        path = Path(value).expanduser()
+        try:
+            if path.is_file():
+                raw = path.read_bytes()
+                mime = _IMAGE_TYPES.get(path.suffix.lower(), "")
+        except OSError:
+            raw = None
+    if raw is None or not raw or len(raw) > MAX_AVATAR:
+        return ""
+    mime = sniff_image(raw) or mime
+    if not mime:
+        return ""
+    encoded = base64.b64encode(raw).decode("ascii")
+    result = f"data:{mime};base64,{encoded}"
+    return result if len(result) <= MAX_AVATAR else ""
+
+
+def _decode(value: str) -> bytes | None:
+    try:
+        return base64.b64decode(value, validate=True)
+    except ValueError:
+        return None
 
 
 class AgentError(Exception):
@@ -40,9 +96,15 @@ class AgentType:
     name: str
     title: str
     description: str = ""
+    avatar: str = ""
 
     def to_dict(self) -> dict[str, str]:
-        return {"name": self.name, "title": self.title, "description": self.description}
+        return {
+            "name": self.name,
+            "title": self.title,
+            "description": self.description,
+            "avatar": avatar_data(self.avatar),
+        }
 
 
 class AgentPlugin(ABC):
@@ -55,6 +117,8 @@ class AgentPlugin(ABC):
     name: str = ""
     title: str = ""
     description: str = ""
+    #: A data URL shown for the agent when the page has no profile picture of its own.
+    avatar: str = ""
 
     @abstractmethod
     def create(self, session_id: str, title: str) -> ExternalSession:
@@ -78,8 +142,14 @@ class AgentManager:
     def available(self) -> list[AgentType]:
         """Return the agent types a page may create."""
         return [
-            AgentType(plugin.name, plugin.title or plugin.name, plugin.description) for plugin in self._plugins.values()
+            AgentType(plugin.name, plugin.title or plugin.name, plugin.description, avatar_data(plugin.avatar))
+            for plugin in self._plugins.values()
         ]
+
+    def avatar(self, kind: str) -> str:
+        """Return the default picture a type offers, or an empty string."""
+        plugin = self._plugins.get(kind)
+        return avatar_data(plugin.avatar) if plugin is not None else ""
 
     def running(self) -> dict[str, ExternalSession]:
         """Return the agents this gateway started, by session id."""

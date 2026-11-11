@@ -6,7 +6,7 @@ import pathlib
 
 import pytest
 
-from zettcode.gateway.agents import AgentError, AgentManager, AgentPlugin
+from zettcode.gateway.agents import AgentError, AgentManager, AgentPlugin, avatar_data
 
 
 class FakeSession:
@@ -108,3 +108,14 @@ async def test_a_failed_connect_is_closed_and_reported(tmp_path: pathlib.Path):
 
 async def _fail() -> None:
     raise RuntimeError("no broker")
+
+
+def test_an_avatar_can_be_a_local_file_or_base64(tmp_path):
+    picture = tmp_path / "mark.png"
+    picture.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+
+    assert avatar_data(str(picture)).startswith("data:image/png;base64,")
+    assert avatar_data("base64:" + __import__("base64").b64encode(picture.read_bytes()).decode()).startswith(
+        "data:image/png;base64,"
+    )
+    assert avatar_data(str(tmp_path / "missing.png")) == ""

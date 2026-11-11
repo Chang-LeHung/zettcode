@@ -61,6 +61,9 @@ from .settings import Settings
 #: Seconds between two looks at the daemons, the roster and the stored conversations when nothing woke the watcher.
 POLL_SECONDS = 1.5
 
+#: Where a page-visible name and picture for a thread are kept, by session id.
+PROFILE_FILE = "profiles.json"
+
 #: How long a probe of "does another process have this session open" is kept before it is asked again.
 LOCK_PROBE_SECONDS = 5.0
 
@@ -296,6 +299,7 @@ class Gateway:
         self._watching: set[str] = set()
         self.roots = tuple(root.expanduser().resolve() for root in settings.roots)
         self._views: dict[str, dict[str, Any]] = {}
+        self._profiles: dict[str, dict[str, str]] = self._load_profiles()
         self._meta: dict[str, Meta] = {}
         self._inbox: dict[str, deque[dict[str, Any]]] = {}
         self._senders: dict[str, str] = {}
@@ -462,8 +466,19 @@ class Gateway:
             kind = "external" if peer.kind == "external" else "session"
         else:
             kind = "external" if session_id.startswith("external:") else "session"
-        title = (daemon.title if daemon is not None else None) or (peer.title if peer is not None else "")
-        name = (daemon.name if daemon is not None else None) or title or (peer.handle if peer else "") or sender
+        profiled = self._profiles.get(session_id, {})
+        title = (
+            profiled.get("name")
+            or (daemon.title if daemon is not None else None)
+            or (peer.title if peer is not None else "")
+        )
+        name = (
+            profiled.get("name")
+            or (daemon.name if daemon is not None else None)
+            or title
+            or (peer.handle if peer else "")
+            or sender
+        )
         stored = meta.stamp is not None
         said = meta.spoken if stored else len(self._inbox.get(session_id, ()))
         # A stored conversation that is new to us is read up to now (see ``_baseline``); what reached us in this run is
@@ -489,6 +504,7 @@ class Gateway:
             "unread": unread,
             "direct": peer is not None and peer.direct,
             "locked": peer is None and stored and self._locked(session_id, self._workspace_of(daemon, peer)),
+            "avatar": profiled.get("avatar", ""),
         }
 
     def _locked(self, session_id: str, workspace: str) -> bool:
@@ -525,6 +541,61 @@ class Gateway:
         return daemon.status if daemon.status in ("starting", "stopping", "dead") else "offline"
 
     # -- what a page asks -------------------------------------------------------------------------
+    def _load_profiles(self) -> dict[str, dict[str, str]]:
+        try:
+            data = json.loads((self.settings.directory / PROFILE_FILE).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        found: dict[str, dict[str, str]] = {}
+        for session_id, value in data.items():
+            if not isinstance(session_id, str) or not isinstance(value, dict):
+                continue
+            profile = {key: str(value[key]) for key in ("name", "avatar") if isinstance(value.get(key), str)}
+            if profile:
+                found[session_id] = profile
+        return found
+
+    def _save_profiles(self) -> None:
+        self.settings.directory.mkdir(parents=True, exist_ok=True)
+        temporary = self.settings.directory / f".{PROFILE_FILE}.{os.getpid()}.tmp"
+        temporary.write_text(json.dumps(self._profiles, ensure_ascii=False), encoding="utf-8")
+        os.replace(temporary, self.settings.directory / PROFILE_FILE)
+
+    async def update_profile(self, session_id: str, data: Mapping[str, Any]) -> dict[str, Any]:
+        """Set a thread's display name and picture; an empty value removes that override."""
+        if session_id not in self._views:
+            await self.refresh()
+        if session_id not in self._views:
+            raise GatewayError(404, "not_found", "No such session is listed")
+        profile = dict(self._profiles.get(session_id, {}))
+        if "name" in data:
+            name = data["name"]
+            if not isinstance(name, str) or len(name) > 80:
+                raise GatewayError(400, "invalid", "name is a string of at most 80 characters")
+            if name.strip():
+                profile["name"] = name.strip()
+            else:
+                profile.pop("name", None)
+        if "avatar" in data:
+            avatar = data["avatar"]
+            if not isinstance(avatar, str) or len(avatar) > 300_000:
+                raise GatewayError(400, "invalid", "avatar is a small image data URL")
+            if avatar and not avatar.startswith("data:image/"):
+                raise GatewayError(400, "invalid", "avatar is an image data URL")
+            if avatar:
+                profile["avatar"] = avatar
+            else:
+                profile.pop("avatar", None)
+        if profile:
+            self._profiles[session_id] = profile
+        else:
+            self._profiles.pop(session_id, None)
+        self._save_profiles()
+        await self.refresh()
+        return {"thread": self._views.get(session_id)}
+
     def threads(self) -> list[dict[str, Any]]:
         """Return the threads in two groups, the online ones first, each with the most recently active first."""
         return sorted(self._views.values(), key=lambda view: (not view["online"], -float(view["updated_at"])))
@@ -1133,6 +1204,10 @@ class Gateway:
             session = await self.agents.create(kind, title, session_id, group)
         except AgentError as error:
             raise GatewayError(400, "agent", str(error)) from error
+        avatar = self.agents.avatar(kind)
+        if avatar:
+            self._profiles[session.session_id] = {"avatar": avatar}
+            self._save_profiles()
         await self.refresh()
         return {
             "agent": {"session_id": session.session_id, "kind": session.kind, "handle": session.handle},

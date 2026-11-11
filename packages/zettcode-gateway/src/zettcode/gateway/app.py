@@ -382,6 +382,9 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
     async def recheck(request: Request) -> Any:
         return {"thread": await gateway.recheck(request.path_params["id"])}
 
+    async def profile(request: Request) -> Any:
+        return await gateway.update_profile(request.path_params["id"], await body(request))
+
     async def send(request: Request) -> Any:
         data = await body(request, MAX_SEND_BODY)
         text = data.get("text")
@@ -496,6 +499,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/threads", api(threads)),
         Route("/api/threads/{id}", api(thread)),
         Route("/api/threads/{id}/read", api(read), methods=["POST"]),
+        Route("/api/threads/{id}/profile", api(profile), methods=["PATCH"]),
         Route("/api/threads/{id}/recheck", api(recheck), methods=["POST"]),
         Route("/api/threads/{id}/send", api(send), methods=["POST"]),
         Route("/api/threads/{id}/pictures/{picture}", api(picture)),

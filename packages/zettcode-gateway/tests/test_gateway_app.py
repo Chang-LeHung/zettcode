@@ -314,7 +314,8 @@ def test_external_agent_endpoints_list_types_and_refuse_an_unknown_one(parts):
     client, _, _ = parts
     signed_in(client)
 
-    assert client.get("/api/agents").json() == {"agents": []}
+    agents = client.get("/api/agents").json()["agents"]
+    assert all({"name", "title", "description", "avatar"} <= set(agent) for agent in agents)
     unknown = client.post("/api/agents", json={"kind": "missing"})
     assert unknown.status_code == 400 and unknown.json()["error"]["code"] == "agent"
     assert client.delete("/api/agents/missing").status_code == 404
@@ -328,6 +329,22 @@ def test_the_folder_picker_and_the_configuration_answer(parts):
     assert client.get("/api/dirs", params={"path": "/"}).status_code == 403
     config = client.get("/api/config").json()
     assert config["allow_full"] is False and config["models"][0]["default"] is True
+
+
+def test_a_thread_profile_sets_a_name_and_picture(parts):
+    client, _, _ = parts
+    signed_in(client)
+
+    updated = client.patch(
+        "/api/threads/01d/profile", json={"name": "Build bot", "avatar": "data:image/png;base64,AA=="}
+    )
+    assert updated.status_code == 200
+    thread = updated.json()["thread"]
+    assert (thread["name"], thread["avatar"]) == ("Build bot", "data:image/png;base64,AA==")
+
+    cleared = client.patch("/api/threads/01d/profile", json={"name": "", "avatar": ""})
+    assert cleared.json()["thread"]["name"] == "d"
+    assert cleared.json()["thread"]["avatar"] == ""
 
 
 def test_the_log_is_read(parts):

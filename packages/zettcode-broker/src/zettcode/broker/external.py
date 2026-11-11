@@ -284,7 +284,7 @@ class ExternalSession:
             )
         )
 
-    async def on_message(self, message: Incoming) -> Receipt:
+    async def on_message(self, message: Incoming) -> Receipt | str | None:
         """Default handler: put the message on :attr:`inbox` and accept it.
 
         The ack means the message is in this process's queue, not that it was handled. When the queue is full the
