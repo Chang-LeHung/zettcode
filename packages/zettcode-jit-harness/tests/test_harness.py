@@ -578,7 +578,7 @@ async def test_every_word_the_menu_offers_is_one_the_command_runs(tmp_path: Path
 
 
 def test_the_harness_page_lists_sessions_and_switches_to_the_selected_one(tmp_path: Path):
-    from zettcode.jit_harness.page import HarnessPage, HarnessTarget
+    from zettcode.jit_harness.page import HarnessPage, HarnessRow, HarnessTarget
 
     switched: list[HarnessTarget] = []
     closed: list[int] = []
@@ -588,8 +588,8 @@ def test_the_harness_page_lists_sessions_and_switches_to_the_selected_one(tmp_pa
         state="on",
         directory=tmp_path / "harness",
         sessions=[
-            (mine, "Mine", "2 repositories · current"),
-            (other, "Other", "1 repository"),
+            HarnessRow(mine, "mine", "Mine", "kit", "small helpers"),
+            HarnessRow(other, "other", "Other", "notes", "project notes"),
         ],
         on_switch=switched.append,
         on_close=lambda: closed.append(1),
@@ -708,7 +708,7 @@ async def test_a_repository_row_names_its_session_and_title(tmp_path: Path):
     result, _ = await _run("", _Switch(config))
     page = result.widget.slots[0].widget  # type: ignore[union-attr]
     row = next(item for item in page.list.items if item.value is not None and item.value.directory == other)
-    assert "other · Write docs" in row.label and "notes" in row.description
+    assert "other" in row.label and "Write docs" in row.label and "notes" in row.description
 
 
 async def test_the_panel_lists_a_legacy_folder_without_moving_it(tmp_path: Path):

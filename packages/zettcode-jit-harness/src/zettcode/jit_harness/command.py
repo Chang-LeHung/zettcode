@@ -26,7 +26,7 @@ from zettcode.plugin_api.panels import bottom_panel
 from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.tui.render import truncate
 
-from .page import HARNESS_ROWS, HarnessPage, HarnessTarget
+from .page import HARNESS_ROWS, HarnessPage, HarnessRow, HarnessTarget
 from .selection import HARNESS_CHOICES, HarnessChoice, HarnessChoices
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -253,18 +253,27 @@ class HarnessCommand(TuiPlugin):
         root: Path,
         choice: HarnessChoice | None,
         store: Path,
-    ) -> list[tuple[HarnessTarget, str, str]]:
+    ) -> list[HarnessRow]:
         """Scan the harness tree off the event loop, one row per repository."""
         harnesses = cls._all_harnesses(root)
         titles = cls._titles(store, {current, *(directory.name for directory, _ in harnesses)})
         current_label = cls._session_label(current, current_title)
         current_target = HarnessTarget(current_label, current_directory)
+        current_title = current_title or ""
         if choice is not None:
-            rows = [(current_target, f"current · {current_label}", f"using {choice.label}")]
+            rows = [
+                HarnessRow(
+                    current_target,
+                    current,
+                    current_title,
+                    "",
+                    f"using {choice.label}",
+                )
+            ]
         else:
-            rows = cls._repo_rows(current_directory, current_target, f"current · {current_label}")
+            rows = cls._repo_rows(current_directory, current_target, current, current_title)
             if not rows:
-                rows = [(current_target, f"current · {current_label}", "No harness yet")]
+                rows = [HarnessRow(current_target, current, current_title, "", "No harness yet")]
         seen = {current_directory.resolve()}
         for directory, workspace in harnesses:
             try:
@@ -272,21 +281,25 @@ class HarnessCommand(TuiPlugin):
                     continue
             except OSError:
                 continue
-            label = cls._session_label(directory.name, titles.get(directory.name))
+            title = titles.get(directory.name, "")
+            label = cls._session_label(directory.name, title)
             if workspace:
                 label = f"{workspace}/{label}"
             target = HarnessTarget(label, directory)
             detail_prefix = "" if choice is None or choice.directory != directory else " · in use"
-            found = cls._repo_rows(directory, target, label)
+            found = cls._repo_rows(directory, target, directory.name, title)
             if not found:
-                found = [(target, label, f"No repositories yet{detail_prefix}")]
+                found = [HarnessRow(target, directory.name, title, "", f"No repositories yet{detail_prefix}")]
             elif detail_prefix:
-                found = [(target, row_label, f"{detail}{detail_prefix}") for target, row_label, detail in found]
+                found = [
+                    HarnessRow(row.target, row.session, row.title, row.repository, f"{row.description}{detail_prefix}")
+                    for row in found
+                ]
             rows.extend(found)
         return rows
 
     @classmethod
-    def _repo_rows(cls, directory: Path, target: HarnessTarget, label: str) -> list[tuple[HarnessTarget, str, str]]:
+    def _repo_rows(cls, directory: Path, target: HarnessTarget, session: str, title: str) -> list[HarnessRow]:
         """Return one row per repository, with its manifest description when it has one."""
         from zett_agent.jit_harness import inspect_repository
 
@@ -295,8 +308,8 @@ class HarnessCommand(TuiPlugin):
         try:
             repositories = sorted(path for path in directory.iterdir() if (path / "__init__.py").is_file())
         except OSError as error:
-            return [(target, label, f"cannot be read: {error}")]
-        rows: list[tuple[HarnessTarget, str, str]] = []
+            return [HarnessRow(target, session, title, "", f"cannot be read: {error}")]
+        rows: list[HarnessRow] = []
         for repository in repositories:
             try:
                 policy = inspect_repository(repository)
@@ -307,7 +320,7 @@ class HarnessCommand(TuiPlugin):
                     description = policy.manifest.description or "(no description)"
                 else:
                     description = "cannot load: " + "; ".join(policy.problems)
-            rows.append((target, label, f"{repository.name} — {description}"))
+            rows.append(HarnessRow(target, session, title, repository.name, description))
         return rows
 
     @staticmethod
