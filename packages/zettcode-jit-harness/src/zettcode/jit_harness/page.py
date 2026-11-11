@@ -13,12 +13,14 @@ from pathlib import Path
 from typing import cast
 
 from zettcode.tui import Canvas, ListItem, ListPage, Rect, Style
+from zettcode.tui.render import display_width
 
 #: Rows the panel asks for when it is anchored to the bottom edge.
 HARNESS_ROWS = 12
 
-#: The columns every row follows: session id and title, then the repository and its manifest description.
-HEADER = "SESSION · REPOSITORY — DESCRIPTION"
+#: The column labels above the rows.
+HEADER_SESSION = "SESSION"
+HEADER_REPOSITORY = "REPOSITORY — DESCRIPTION"
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,10 +80,16 @@ class HarnessPage(ListPage):
             return
         over = 1 if self.subtitle is not None else 0
         style = Style(foreground=self.theme.muted, background=self.theme.surface_alt)
-        canvas.draw_text(
-            self.rect.x + 2,
-            self.rect.y + 3 + over,
-            HEADER,
-            style,
-            max_width=max(0, self.rect.width - 4),
-        )
+        y = self.rect.y + 3 + over
+        column = max((display_width(item.label) for item in self.list.items), default=0)
+        label_x = self.list.rect.x + self.list.MARKER_WIDTH
+        description_x = label_x + column + self.list.COLUMN_GAP
+        canvas.draw_text(label_x, y, HEADER_SESSION, style, max_width=max(0, self.rect.right - label_x))
+        if description_x < self.rect.right:
+            canvas.draw_text(
+                description_x,
+                y,
+                HEADER_REPOSITORY,
+                style,
+                max_width=max(0, self.rect.right - description_x),
+            )
