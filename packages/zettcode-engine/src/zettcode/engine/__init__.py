@@ -12,6 +12,10 @@ from __future__ import annotations
 import importlib
 from typing import TYPE_CHECKING
 
+from zettcode._compat import _patch_typing_eval_type
+
+_patch_typing_eval_type()
+
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
     "ZettCodeEngine": ".core",

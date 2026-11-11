@@ -8,4 +8,4 @@ of the dependency graph: everything else may import `zettcode.version`, nothing 
 from __future__ import annotations
 
 #: The version of the program and of every distribution built beside it.
-__version__ = "0.4.3"
+__version__ = "0.4.4"
