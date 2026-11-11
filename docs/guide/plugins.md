@@ -791,6 +791,28 @@ takes no key, such as a local server. A model a plugin offers is listed by `/mod
 the file already uses, or by one an earlier plugin offered, is refused, and the plugin is reported like
 any other plugin that cannot load.
 
+### Official models from your environment {#official-models}
+
+`zettcode-models` is a plugin that does this for the four vendors most readers already have a key for:
+OpenAI, Anthropic, DeepSeek and Z.AI. Install it as an extra and enable it once:
+
+```bash
+pip install "zettcode[models]"
+```
+
+```toml
+[plugins]
+enable = ["models"]
+```
+
+With `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY` or `ZAI_API_KEY` set (`ZHIPUAI_API_KEY` and
+`ZHIPU_API_KEY` are accepted aliases), it registers that host with its current official model — `GPT-6.1 Sol`,
+`Claude Opus 5.5`, `DeepSeek V4.1 Flash` or `GLM-5.3`. No endpoint is called at start: the list is static, so a key in
+the environment costs no network round trip. The model appears in `/model` with `from the openai plugin` (or
+`anthropic`, `deepseek`, `zai`); the token comes from the environment and is never written to the file. The plugin
+is off by default: a set of ambient keys should not change a model list unless you enable it. When a vendor
+moves on, the table in `zettcode/models/__init__.py` is the one place to edit.
+
 ## Offering a palette {#themes}
 
 A plugin can add palettes to `/theme`. Each one is listed in the menu, previewed as you move through

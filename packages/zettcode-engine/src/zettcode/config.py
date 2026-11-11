@@ -695,9 +695,9 @@ def _setting(data: dict[str, object], key: str, expected: type, default: object 
     return _typed(value, f"Config key {key!r}", expected)
 
 
-def _entry_model(entry: dict[str, object], index: int) -> ModelConfig:
+def _entry_model(entry: dict[str, object], index: int, *, label: str | None = None) -> ModelConfig:
     """Build one model from a ``[[models]]`` table, rejecting unknown keys."""
-    label = f"Config models[{index}]"
+    label = label or f"Config models[{index}]"
     unknown = sorted(set(entry) - MODEL_KEYS)
     if unknown:
         raise ValueError(f"Unknown config keys in {label}: {', '.join(unknown)}")
@@ -738,6 +738,11 @@ def _entry_model(entry: dict[str, object], index: int) -> ModelConfig:
         # The same model id can be configured twice against different endpoints,
         # so which entry a rule refused has to be in the message.
         raise ValueError(f"{label}: {error}") from error
+
+
+def model_from_entry(entry: dict[str, object], *, label: str = "The entry you are adding") -> ModelConfig:
+    """Build one model through the same reader ``load_config`` uses, for a form validating its draft."""
+    return _entry_model(entry, 1, label=label)
 
 
 def _reject_shared_display_names(models: tuple[ModelConfig, ...], source: Path) -> None:

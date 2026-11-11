@@ -183,14 +183,19 @@ def model_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
     """Offer the configured models by the name ``/model`` accepts.
 
     A name two entries share is left out (``/model`` refuses it as ambiguous), and so is one with a space in it,
-    which would not stay one word. Before there is a shell there is nothing to offer.
+    which would not stay one word. The line beside it says where the model came from and which protocol it speaks,
+    because two entries can share a model id and the name alone tells neither. Before there is a shell there is
+    nothing to offer.
     """
     if host is None:
         return ()
     models = host.client.models
     shown = [model.display_model or model.model for model in models]
     return tuple(
-        Subcommand(name, model.model)
+        Subcommand(
+            name,
+            f"{'plugin ' + model.provider if model.provider is not None else 'file'} · {model.api} · {model.model}",
+        )
         for name, model in zip(shown, models, strict=True)
         if shown.count(name) == 1 and not any(character.isspace() for character in name)
     )

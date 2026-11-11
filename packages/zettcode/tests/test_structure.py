@@ -446,10 +446,10 @@ def test_each_extra_names_a_plugin_this_workspace_builds_in_a_range_that_admits_
     """
     project = tomllib.loads((PROJECT / "pyproject.toml").read_text(encoding="utf-8"))
     extras = project["project"]["optional-dependencies"]
-    assert set(extras) == {"all", "monitor", "recap"}, "one extra per plugin this repository publishes"
+    assert set(extras) == {"all", "models", "monitor", "recap"}, "one extra per plugin this repository publishes"
 
     built = {path.name for path in (ROOT / "packages").iterdir() if (path / "pyproject.toml").is_file()}
-    plugins = {"monitor": "zettcode-monitor", "recap": "zettcode-recap"}
+    plugins = {"models": "zettcode-models", "monitor": "zettcode-monitor", "recap": "zettcode-recap"}
     for extra, distribution in plugins.items():
         assert distribution in built, f"packages/{distribution} is what the {extra!r} extra names"
     carried = {Requirement(line) for extra in plugins for line in extras[extra]}
@@ -1328,6 +1328,7 @@ KNOWS_THE_CONTRACT = {
     "zettcode-app",
     "zettcode-commands",
     "zettcode-jit-harness",
+    "zettcode-models",
     "zettcode-monitor",
     "zettcode-pets",
     "zettcode-plugin-api",
@@ -1397,7 +1398,7 @@ def test_a_part_the_program_is_made_of_is_never_discoverable_as_a_plugin():
     for name in parts:
         settings = tomllib.loads((ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8"))
         assert not settings.get("tool", {}).get("zettcode", {}).get("plugin"), name
-    for name in ("zettcode-monitor", "zettcode-recap"):
+    for name in ("zettcode-models", "zettcode-monitor", "zettcode-recap"):
         settings = tomllib.loads((ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8"))
         assert settings["tool"]["zettcode"]["plugin"] is True, name
 
@@ -1504,7 +1505,7 @@ def test_the_distributions_that_may_publish_the_programs_groups_are_the_ones_tha
     marked = {
         settings["project"]["name"] for settings in listed if settings.get("tool", {}).get("zettcode", {}).get("plugin")
     }
-    assert marked == {"zettcode-monitor", "zettcode-recap"}, "the plugin line covers the two plugins"
+    assert marked == {"zettcode-models", "zettcode-monitor", "zettcode-recap"}, "the plugin line covers every plugin"
     agent, terminal = PROGRAM_DISTRIBUTIONS[AGENT_ROLE], PROGRAM_DISTRIBUTIONS[TERMINAL_ROLE]
     assert agent and terminal and not (agent & terminal), "a distribution has one role"
 

@@ -695,6 +695,26 @@ provider 继续添加模型。
 插件提供的模型只出现在 `/model`，`/config` 只编辑配置文件。模型显示名在整个应用里唯一：与文件里的
 名字重复、或与更早插件提供的名字重复，都会拒绝加载，并像其他加载失败的插件一样报告。
 
+### 从环境变量得到官方模型 {#official-models}
+
+`zettcode-models` 为四个大多数读者已经有 key 的厂商做这件事：OpenAI、Anthropic、DeepSeek 和 Z.AI。
+作为 extra 安装一次，再启用一次：
+
+```bash
+pip install "zettcode[models]"
+```
+
+```toml
+[plugins]
+enable = ["models"]
+```
+
+设置了 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY` 或 `ZAI_API_KEY`（也接受
+`ZHIPUAI_API_KEY` 和 `ZHIPU_API_KEY` 两个别名）时，它会注册该 host 和它当前的官方模型：`GPT-6.1 Sol`、
+`Claude Opus 5.5`、`DeepSeek V4.1 Flash` 或 `GLM-5.3`。启动时不请求任何端点，这份列表是静态的，所以环境里的 key
+不会带来网络往返。模型会出现在 `/model` 里，标着 `from the openai plugin`（或 `anthropic`、`deepseek`、`zai`）；
+token 从环境读取，不会写进配置文件。插件默认关闭：环境里碰巧存在的 key 不应该自己改动模型列表。厂商更新模型时，只需改 `zettcode/models/__init__.py` 里的那张表。
+
 ## 提供配色 {#themes}
 
 插件可以给 `/theme` 添加配色。每个配色都会出现在菜单里，光标移到它时就预览，用 `/theme <名字>` 切换。

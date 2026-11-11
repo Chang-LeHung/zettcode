@@ -1,0 +1,59 @@
+[project]
+name = "zettcode-models"
+description = "A ZettCode plugin: an official model for each vendor API key found in the environment"
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version"]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Chang-LeHung"}]
+keywords = ["zettcode", "plugin", "models", "providers", "environment"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Topic :: Software Development :: User Interfaces",
+  "Typing :: Typed",
+]
+dependencies = [
+  # The plugin contract only: the Provider and ProvidedModel the plugin registers, and the PluginContext it activates
+  # with. The API this release uses is the one that lets a plugin offer models, new in 0.4.
+  "zettcode-plugin-api>=0.4,<0.5",
+]
+
+[project.urls]
+Repository = "https://github.com/Chang-LeHung/zettcode/tree/main/packages/zettcode-models"
+Issues = "https://github.com/Chang-LeHung/zettcode/issues"
+
+[project.entry-points."zettcode.plugin"]
+models = "zettcode.models:ModelsPlugin"
+
+[tool.zettcode]
+# Published on its own line, installed by a reader who wants it, and off until `[plugins] enable` names it.
+plugin = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/zettcode/models/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zettcode"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/README.md", "/LICENSE", "/pyproject.toml"]
+
+[dependency-groups]
+# What the tests import beyond the plugin itself. The workspace's own dev group carries the same names for `make test`;
+# this one is what the release workflow installs into the fresh environment it tests the built plugin in.
+dev = ["pytest>=8,<9"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

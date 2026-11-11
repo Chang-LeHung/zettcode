@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, cast
 
+from zettcode.config import DEFAULT_COMPACT_PERCENT, DEFAULT_CONTEXT_WINDOW, model_from_entry
 from zettcode.presenters.text import compact_path
 from zettcode.providers import API_FLAG_KEYS, Api, check_url
 from zettcode.sdk.errors import ConfigurationError
@@ -208,6 +209,42 @@ class ConfigMixin(ShellState):
                 + " Leave it empty to send none.",
             )
         )
+        fields.append(
+            Field(
+                "multimodal",
+                "Images",
+                switch=("text only", "accepted"),
+                value=1 if draft.multimodal else 0,
+                hint="Left and Right turn it over; text only is the default.",
+            )
+        )
+        fields.append(
+            Field(
+                "web_search",
+                "Web search",
+                switch=("off", "on"),
+                value=1 if draft.web_search else 0,
+                hint="Left and Right turn it over; off is the default.",
+            )
+        )
+        fields.append(
+            Field(
+                "context_window",
+                "Context window",
+                initial="" if draft.context_window is None else f"{draft.context_window:,}",
+                placeholder=f"{DEFAULT_CONTEXT_WINDOW:,} tokens",
+                hint="Tokens the model can carry: 128000, 128k or 1m. Leave it empty for 128,000.",
+            )
+        )
+        fields.append(
+            Field(
+                "compact_percent",
+                "Compress at",
+                initial="" if draft.compact_percent is None else f"{whole_if_whole(draft.compact_percent)}%",
+                placeholder=f"{whole_if_whole(DEFAULT_COMPACT_PERCENT)}%",
+                hint="Share of the window at which a conversation is summarized: 80 or 80%. Leave it empty for 80.",
+            )
+        )
         page = FormPage(
             f"Add a model \u2014 {draft.api.label}",
             fields,
@@ -239,9 +276,55 @@ class ConfigMixin(ShellState):
                 return ("temperature", str(error))
         else:
             draft.temperature = None
+        draft.multimodal = values["multimodal"] == "yes"
+        draft.web_search = values["web_search"] == "yes"
+        if values["context_window"].strip():
+            try:
+                draft.context_window = parse_tokens(values["context_window"])
+            except ValueError as error:
+                return ("context_window", str(error))
+        else:
+            draft.context_window = None
+        if values["compact_percent"].strip():
+            try:
+                draft.compact_percent = parse_percent(values["compact_percent"])
+            except ValueError as error:
+                return ("compact_percent", str(error))
+        else:
+            draft.compact_percent = None
+        shown = draft.name.strip() or draft.model.strip()
+        if shown and any(model.name == shown for model, _ in self.client.model_entries()):
+            return ("name", f"a model is already shown as {shown!r}; choose another shown name")
+        try:
+            entry = entry_for(draft)
+            model_from_entry(entry)
+        except ValueError as error:
+            # The rules the loader will read (a DeepSeek chat endpoint cannot search, say) are asked before
+            # anything is written, so the row that caused it keeps the form and everything typed into it.
+            return (self._refusal_key(draft, error), str(error))
         draft.given.add("token")
         self._config_write(draft)
         return None
+
+    @staticmethod
+    def _refusal_key(draft: Draft, error: ValueError) -> str:
+        """Return the form row a loader refusal belongs to, by the rule it names."""
+        if (
+            draft.web_search
+            and draft.api is not Api.ANTHROPIC
+            and ("deepseek" in draft.model.lower() or "deepseek" in (draft.url or "").lower())
+        ):
+            return "web_search"
+        # The three parsers above refuse these values before the loader sees them; these are a floor for a
+        # rule the form does not word yet.
+        message = str(error).lower()
+        if "context_window" in message or "context window" in message:
+            return "context_window"
+        if "compact_percent" in message or "compact percent" in message:
+            return "compact_percent"
+        if "temperature" in message:
+            return "temperature"
+        return ""
 
     def _config_ask_api(self, draft: Draft, *, replace: bool = True) -> None:
         """Ask which protocol the endpoint speaks."""
