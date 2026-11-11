@@ -61,6 +61,7 @@ export const gateway = {
     ),
   sendGroup: (name: string, text: string) =>
     request<{ delivered: { to: string; disposition: string }[] }>("POST", `/api/groups/${id(name)}/send`, { text }),
+  joinGroup: (name: string) => request<{ group: string }>("POST", `/api/groups/${id(name)}/join`, {}),
   timeline: (since: number, until: number, limit = 20000) =>
     request<Timeline>("GET", `/api/graph/timeline?since=${since}&until=${until}&limit=${limit}`),
   directories: (path: string) => request<DirectoryListing>("GET", `/api/dirs?path=${encodeURIComponent(path)}`),

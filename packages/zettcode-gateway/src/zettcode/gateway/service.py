@@ -1221,6 +1221,20 @@ class Gateway:
         await self.refresh()
         return {"ok": True}
 
+    async def join_group(self, name: str) -> dict[str, Any]:
+        """Join a group as the gateway's external session, without writing to it."""
+        name = name.lstrip("#")
+        try:
+            await self.backend.join_group(name)
+        except SendError as error:
+            raise GatewayError(
+                404 if error.reason == "unknown" else SEND_STATUS.get(error.reason, 400),
+                error.reason,
+                str(error),
+            ) from error
+        await self.refresh()
+        return {"group": name}
+
     async def send_group(self, name: str, text: str) -> dict[str, Any]:
         """Write to a group chat as the person at the gateway, joining the group first when this gateway is not in it.
 

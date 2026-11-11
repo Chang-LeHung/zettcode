@@ -5,7 +5,7 @@ import { computed, reactive } from "vue";
 import { gateway } from "../api/gateway";
 import { ApiError } from "../api/http";
 import type { GraphGroup, GraphMessage } from "../types";
-import { graph, onGraphApplied } from "./graph";
+import { graph, loadGraph, onGraphApplied } from "./graph";
 import { lobby, threadOf } from "./threads";
 
 /** A group is addressed as `#name` in the page's address, which no session id can look like. */
@@ -153,6 +153,21 @@ export async function sendToGroup(name: string, text: string): Promise<string> {
   groupChat.sending = true;
   try {
     await gateway.sendGroup(name, text);
+    return "";
+  } catch (error) {
+    return error instanceof ApiError ? error.message : String(error);
+  } finally {
+    groupChat.sending = false;
+  }
+}
+
+
+/** Join a group so the composer can write to it; the graph refresh updates membership. */
+export async function joinGroup(name: string): Promise<string> {
+  groupChat.sending = true;
+  try {
+    await gateway.joinGroup(name);
+    await loadGraph();
     return "";
   } catch (error) {
     return error instanceof ApiError ? error.message : String(error);

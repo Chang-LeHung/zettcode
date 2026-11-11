@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { t } from "../../i18n";
 import { clockTime } from "../../lib/format";
-import { closeGroup, groupChat, groupNamed, loadEarlierGroup, membersOf, openGroup, senderName, sendToGroup } from "../../stores/groups";
+import { closeGroup, groupChat, groupNamed, joinGroup, loadEarlierGroup, membersOf, openGroup, senderName, sendToGroup } from "../../stores/groups";
 import { href } from "../../stores/route";
 import { lobby } from "../../stores/threads";
 import { toast } from "../../stores/ui";
@@ -81,7 +81,7 @@ onBeforeUnmount(closeGroup);
 
 async function submit(): Promise<void> {
   const body = text.value.trim();
-  if (!body || groupChat.sending) return;
+  if (!body || groupChat.sending || !joined.value) return;
   const failure = await sendToGroup(props.name, body);
   if (failure) {
     toast(failure, "bad");
@@ -91,6 +91,11 @@ async function submit(): Promise<void> {
   following.value = true;
   toBottom(true);
   field.value?.focus({ preventScroll: true });
+}
+
+async function join(): Promise<void> {
+  const failure = await joinGroup(props.name);
+  if (failure) toast(failure, "bad");
 }
 
 function onKey(event: KeyboardEvent): void {
@@ -165,8 +170,13 @@ watch(text, () => void nextTick(resize));
       </div>
       <GroupMembers v-if="showMembers" :members="members" @close="showMembers = false" />
     </div>
-    <div v-if="!joined" class="composer-note">{{ t("You are not in this group. Writing here adds you to it.") }}</div>
-    <form class="composer" @submit.prevent="submit">
+    <div v-if="!joined" class="group-join">
+      <span>{{ t("You are not in this group. You can read it; join to write.") }}</span>
+      <button class="btn sm" type="button" :disabled="groupChat.sending" @click="join">
+        {{ groupChat.sending ? t("Joining…") : t("Join group") }}
+      </button>
+    </div>
+    <form v-else class="composer" @submit.prevent="submit">
       <div class="composer-field">
         <textarea
           ref="field"
@@ -191,4 +201,6 @@ watch(text, () => void nextTick(resize));
 .group-who { display: block; font-size: 0.8rem; font-weight: 650; color: var(--accent); margin-bottom: 2px; }
 .group-time { display: block; text-align: right; margin-top: 3px; font-size: 0.7rem; opacity: 0.6; user-select: none; }
 .msg.out .group-time { color: var(--out-meta); opacity: 1; }
+.group-join { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); border-top: 1px solid var(--divider); color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
+.group-join .btn { flex: none; }
 </style>
