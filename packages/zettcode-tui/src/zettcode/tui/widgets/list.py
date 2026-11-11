@@ -55,6 +55,7 @@ class ListItem:
         parts: The same description in colours. It must read as ``description`` when its pieces are joined, which
             is what sizes the column; ``None`` draws ``description`` in the muted colour.
         current: Draw the row in the accent colour, for a row that is the one in effect.
+        danger: Draw the row in the error colour, for a row that names something banned.
     """
 
     value: object = None
@@ -63,6 +64,7 @@ class ListItem:
     disabled: bool = False
     parts: Parts | None = field(default=None, compare=False)
     current: bool = False
+    danger: bool = False
 
 
 class ListView(Widget):
@@ -215,6 +217,12 @@ class ListView(Widget):
             marker = self.MARKERS[0] if selected else self.MARKERS[1]
             if item.disabled:
                 style = Style(foreground=theme.muted, dim=True)
+            elif item.danger:
+                style = Style(
+                    foreground=theme.error,
+                    background=theme.selection if selected else theme.surface_alt if self.band else None,
+                    bold=selected,
+                )
             elif selected:
                 style = Style(
                     foreground=theme.accent_bright if item.current else theme.text,
@@ -243,7 +251,7 @@ class ListView(Widget):
                 room = self.rect.width - start
                 if room > 3:
                     quiet = Style(
-                        foreground=theme.accent if item.current else theme.muted,
+                        foreground=theme.error if item.danger else theme.accent if item.current else theme.muted,
                         background=style.background,
                     )
                     if item.parts is None or item.disabled:
