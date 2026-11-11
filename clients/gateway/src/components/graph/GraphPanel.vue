@@ -58,9 +58,16 @@ watch(full, async (on) => {
   }
 });
 
+function canTakeFocus(element: HTMLElement): boolean {
+  if (element.hasAttribute("disabled") || element.closest('[aria-hidden="true"], [inert]')) return false;
+  return typeof element.checkVisibility === "function" ? element.checkVisibility() : true;
+}
+
 function onTab(event: KeyboardEvent): void {
   if (!full.value || event.key !== "Tab" || !panel.value) return;
-  const items = [...panel.value.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")];
+  const items = [
+    ...panel.value.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"),
+  ].filter(canTakeFocus);
   if (!items.length) {
     event.preventDefault();
     panel.value.focus();
@@ -68,7 +75,10 @@ function onTab(event: KeyboardEvent): void {
   }
   const first = items[0]!;
   const last = items[items.length - 1]!;
-  if (event.shiftKey && document.activeElement === first) {
+  if (document.activeElement === panel.value) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  } else if (event.shiftKey && document.activeElement === first) {
     event.preventDefault();
     last.focus();
   } else if (!event.shiftKey && document.activeElement === last) {
