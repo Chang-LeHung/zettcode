@@ -19,7 +19,7 @@ import {
   type Point,
 } from "../../lib/graph";
 import { replayGroups, replayNodes } from "../../lib/graphBar";
-import { neighboursOf, reached, type GraphNode, type Tip } from "../../lib/graphData";
+import { isSelf, neighboursOf, reached, type GraphNode, type Tip } from "../../lib/graphData";
 import { formatClock, recentTail } from "../../lib/graphReplay";
 import { FxEngine, type FxFrame } from "../../lib/graphFx";
 import { exitReplay, graph, graphNodes, graphReplay, graphUi, loadGraph, onTraffic, replay, replayState, tick as replayTick } from "../../stores/graph";
@@ -213,14 +213,14 @@ const placed = computed<Placed[]>(() =>
     const p = at(node.session_id);
     if (!p) return [];
     const state = node.ghost ? t("offline") : t(node.status);
-    const self = node.session_id === meId.value;
+    const self = isSelf(node.session_id, meId.value);
     return [
       {
         id: node.session_id,
         x: p.x,
         y: p.y,
         handle: node.handle,
-        label: preview(node.handle, 18) + (self ? ` · ${t("you")}` : ""),
+        label: preview(node.handle, 18),
         initials: initialsOf((node.handle || node.title || "?").replace(/^[^\p{L}\p{N}]+/u, "") || "?"),
         hue: hueOf(node.session_id),
         working: !node.ghost && node.status === "working",

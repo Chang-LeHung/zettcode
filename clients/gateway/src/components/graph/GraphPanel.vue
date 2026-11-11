@@ -3,11 +3,12 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { t } from "../../i18n";
 import { PALETTE, hueOf } from "../../lib/avatar";
 import { duration } from "../../lib/format";
-import { messagePreview, nodeOf, senderLabel, targetLabel, tipText, totals, touches } from "../../lib/graphData";
+import { messagePreview, nodeOf, senderLabel, targetLabel, tipText, totals, touchOf } from "../../lib/graphData";
 import { formatClock } from "../../lib/graphReplay";
 import { clampTooltip, hueOfName } from "../../lib/graph";
 import { graph, graphNodes, graphReplay, loadOlder, replay, replayState, seek } from "../../stores/graph";
 import { lobby } from "../../stores/threads";
+import { openOverlay } from "../../stores/ui";
 import type { GraphMessage } from "../../types";
 import Icon from "../common/Icon.vue";
 
@@ -31,17 +32,37 @@ const meId = computed(() => lobby.status?.gateway.id ?? "");
 const full = ref(false);
 let timer: ReturnType<typeof setInterval> | undefined;
 
-function onKey(event: KeyboardEvent): void {
-  if (event.key === "Escape" && full.value) full.value = false;
-}
+const panel = ref<HTMLElement | null>(null);
+let release: (() => void) | null = null;
+let previousFocus: HTMLElement | null = null;
+let previousOverflow = "";
+
+watch(full, async (on) => {
+  if (on) {
+    previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    release = openOverlay(() => {
+      full.value = false;
+    });
+    await nextTick();
+    panel.value?.focus();
+  } else {
+    release?.();
+    release = null;
+    document.body.style.overflow = previousOverflow;
+    previousFocus?.focus();
+    previousFocus = null;
+  }
+});
 
 onMounted(() => {
   timer = setInterval(() => (now.value = Date.now() / 1000), 5000);
-  window.addEventListener("keydown", onKey);
 });
 onUnmounted(() => {
   clearInterval(timer);
-  window.removeEventListener("keydown", onKey);
+  release?.();
+  document.body.style.overflow = previousOverflow;
 });
 
 // Replay lists what the playhead has passed, newest first; live, the latest messages.
@@ -108,8 +129,8 @@ function recipients(message: GraphMessage): number {
   return message.recipients.length;
 }
 
-function mine(message: GraphMessage): boolean {
-  return touches(message, meId.value);
+function direction(message: GraphMessage): "from" | "to" | null {
+  return touchOf(message, meId.value);
 }
 
 function groupColor(message: GraphMessage): string {
@@ -129,7 +150,15 @@ function dot(id: string): string {
 </script>
 
 <template>
-  <div class="gp" :class="{ 'is-full': full }">
+  <div
+    ref="panel"
+    class="gp"
+    :class="{ 'is-full': full }"
+    :role="full ? 'dialog' : undefined"
+    :aria-modal="full ? 'true' : undefined"
+    :aria-label="full ? t('Messages') : undefined"
+    tabindex="-1"
+  >
     <div class="gp-stats">
       <div><b>{{ counts.sessions }}</b><span>{{ t("Sessions") }}</span></div>
       <div><b>{{ counts.groups }}</b><span>{{ t("Groups") }}</span></div>
@@ -184,7 +213,7 @@ function dot(id: string): string {
               ><b :class="{ grp: message.to.kind === 'group' }">{{ targetLabel(message) }}</b>
               <span v-if="message.to.kind === 'group'" class="gp-tag">{{ t("Group") }} · {{ recipients(message) }}</span>
               <span class="gp-via" :class="`via-${message.via}`">{{ t(message.via) }}</span>
-              <span v-if="mine(message)" class="gp-tag gp-you" :title="t('This session')">{{ t("you") }}</span>
+              <span v-if="direction(message)" class="gp-tag gp-you" :title="t('This session')">{{ t(direction(message) === "from" ? "from you" : "for you") }}</span>
               <time>{{ ago(message.ts) }}</time>
             </span>
             <span class="gp-text">{{ messagePreview(message, 120) }}</span>
@@ -239,7 +268,7 @@ function dot(id: string): string {
 .gp-card-text { margin-top: 3px; padding: 7px 9px; border-radius: 8px; background: var(--hover); line-height: 1.42; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
 @media (hover: none) { .gp-card { display: none; } }
 .gp { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.gp.is-full { position: fixed; inset: 0; z-index: 45; background: var(--surface); padding-top: var(--safe-top); }
+.gp.is-full { position: fixed; inset: 0; z-index: 45; background: var(--surface); padding-top: var(--safe-top); outline: none; }
 .gp.is-full .gp-stats, .gp.is-full .gp-legend, .gp.is-full .gp-head, .gp.is-full .gp-feed { width: min(100%, 980px); margin-inline: auto; }
 .gp.is-full .gp-feed { padding-bottom: calc(16px + var(--safe-bottom)); }
 .gp.is-full .gp-item { padding-block: 11px; }

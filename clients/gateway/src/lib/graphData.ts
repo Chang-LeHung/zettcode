@@ -160,14 +160,22 @@ export function nodeOf(nodes: readonly GraphNode[], id: string): GraphNode | und
   return nodes.find((node) => node.session_id === id);
 }
 
+/** How one message involves a session: sent by it, addressed to it (or reaching it), or not at all. */
+export function touchOf(message: GraphMessage, sessionId: string): "from" | "to" | null {
+  if (!sessionId) return null;
+  if (message.from.session_id === sessionId) return "from";
+  if (message.to.session_id === sessionId || message.recipients.includes(sessionId)) return "to";
+  return null;
+}
+
 /** Whether one message was sent by, addressed to, or reached a session. */
 export function touches(message: GraphMessage, sessionId: string): boolean {
-  return (
-    !!sessionId &&
-    (message.from.session_id === sessionId ||
-      message.to.session_id === sessionId ||
-      message.recipients.includes(sessionId))
-  );
+  return touchOf(message, sessionId) !== null;
+}
+
+/** Whether a session is the running gateway's own. */
+export function isSelf(sessionId: string, meId: string): boolean {
+  return !!meId && sessionId === meId;
 }
 
 /** What the pointer (or the keyboard) is on, which the tooltip describes. */

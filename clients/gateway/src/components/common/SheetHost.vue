@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { t } from "../../i18n";
-import { closeSheet, closeTopSheet, sheets } from "../../stores/ui";
+import { closeSheet, closeTopOverlay, sheets } from "../../stores/ui";
 import Icon from "./Icon.vue";
 
 const host = ref<HTMLElement | null>(null);
 
 function onKey(event: KeyboardEvent): void {
-  if (event.key === "Escape" && closeTopSheet()) event.stopPropagation();
+  if (event.key === "Escape" && closeTopOverlay()) event.stopPropagation();
 }
 
 onMounted(() => document.addEventListener("keydown", onKey, true));

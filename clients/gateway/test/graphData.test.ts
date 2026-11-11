@@ -6,12 +6,14 @@ import {
   deriveNodes,
   edgeOf,
   emptyGraph,
+  isSelf,
   neighboursOf,
   pairMessages,
   statsOf,
   tipText,
   totals,
   touches,
+  touchOf,
 } from "../src/lib/graphData";
 import { applyGraph, applyTraffic, graph, graphUi, loadGraph, onTraffic, replay, resetGraph } from "../src/stores/graph";
 import type { GraphData, GraphMessage } from "../src/types";
@@ -203,10 +205,19 @@ test("a message touches the session that sent it, the one it names, and everyone
   assert.equal(touches(direct, "a"), true);
   assert.equal(touches(direct, "b"), true);
   assert.equal(touches(direct, "c"), false);
+  assert.equal(touchOf(direct, "a"), "from");
+  assert.equal(touchOf(direct, "b"), "to");
+  assert.equal(touchOf(direct, "c"), null);
 
   const group = message(2, "a", { group: "team", recipients: ["b", "c"] });
   assert.equal(touches(group, "b"), true);
   assert.equal(touches(group, "c"), true);
   assert.equal(touches(group, "d"), false);
   assert.equal(touches(direct, ""), false);
+});
+
+test("the running gateway's session is the only one marked as self", () => {
+  assert.equal(isSelf("a", "a"), true);
+  assert.equal(isSelf("a", "b"), false);
+  assert.equal(isSelf("a", ""), false);
 });
