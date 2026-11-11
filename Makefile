@@ -2,6 +2,15 @@ UV ?= uv
 #: The editor CLI `make install-vscode` installs into: `code`, `code-insiders`, `cursor`, or a path to one.
 CODE ?= code
 
+#: Where `make mobile-apk` finds the Android SDK: the caller's environment first, then where Android Studio and
+#: Homebrew put it by default. `ANDROID_SDK=/path make mobile-apk` overrides it, and an existing
+#: `clients/mobile/android/local.properties` is left to Gradle.
+ANDROID_SDKS := $(HOME)/Library/Android/sdk $(HOME)/Android/Sdk /opt/homebrew/share/android-commandlinetools \
+	/usr/local/share/android-sdk /opt/android-sdk
+ifndef ANDROID_SDK
+ANDROID_SDK := $(strip $(or $(ANDROID_HOME),$(ANDROID_SDK_ROOT),$(firstword $(wildcard $(ANDROID_SDKS)))))
+endif
+
 # The repository is a uv workspace, and every distribution lives in `packages/`: the program (`zettcode`, the
 # one a reader installs, which writes both console scripts) and the parts it is made of — the engine, the widget
 # framework, the broker, the SDK, the server, the gateway, the terminal application — plus the plugins published
@@ -172,9 +181,10 @@ mobile: $(MOBILE_DEPS)
 	cd clients/mobile && npm run check && npm run sync
 
 mobile-apk: mobile
-	@test -n "$$ANDROID_HOME" -o -n "$$ANDROID_SDK_ROOT" -o -f clients/mobile/android/local.properties || { \
-		echo "set ANDROID_HOME (or write clients/mobile/android/local.properties with sdk.dir=...)"; exit 1; }
-	cd clients/mobile/android && ./gradlew assembleDebug
+	@test -n "$(ANDROID_SDK)" -o -f clients/mobile/android/local.properties || { \
+		echo "set ANDROID_HOME (or write clients/mobile/android/local.properties with sdk.dir=..., or pass ANDROID_SDK=...)"; exit 1; }
+	@if [ -n "$(ANDROID_SDK)" ]; then export ANDROID_HOME="$(ANDROID_SDK)" ANDROID_SDK_ROOT="$(ANDROID_SDK)"; fi; \
+		cd clients/mobile/android && ./gradlew assembleDebug
 	@echo "APK: clients/mobile/android/app/build/outputs/apk/debug/app-debug.apk"
 
 # Both apps in one command. The Android half needs the SDK; the desktop half needs electron-builder's download.
