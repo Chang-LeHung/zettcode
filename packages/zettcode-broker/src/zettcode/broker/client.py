@@ -328,6 +328,21 @@ class BrokerClient:
                 await asyncio.wait_for(self._came_up.wait(), timeout)
         return self._connected
 
+    async def wait_registered(self, timeout: float) -> bool:
+        """Wait until the broker has this session's description, and say whether registration succeeded.
+
+        A connection is greeted before the session is described to the broker; a caller that wants the handle in
+        the roster waits here. ``False`` also covers a refusal such as ``duplicate``, which is then in
+        :attr:`conflict`.
+        """
+        if not self._connected:
+            return False
+        try:
+            await asyncio.wait_for(self._registered(), timeout)
+        except Exception:  # noqa: BLE001 - a lost connection is a failed wait, not a raise
+            return False
+        return self._connected and self._conflict is None
+
     async def close(self) -> None:
         """Disconnect and stop trying. Quick, idempotent, and never raises."""
         self._closing = True
