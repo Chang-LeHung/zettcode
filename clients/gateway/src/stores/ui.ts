@@ -61,23 +61,28 @@ export function closeTopSheet(): boolean {
   return true;
 }
 
-/** A full-screen or otherwise closable layer that is not a sheet; its close is called by Escape on top of the stack. */
-const overlays: (() => void)[] = [];
+/** A full-screen or otherwise closable layer that is not a sheet, with the order it was opened in. */
+const overlays: { id: number; close: () => void }[] = [];
 
 /** Register a layer's close; returns the function that takes it off the stack. */
 export function openOverlay(close: () => void): () => void {
-  overlays.push(close);
+  const entry = { id: ++counter, close };
+  overlays.push(entry);
   return () => {
-    const at = overlays.lastIndexOf(close);
+    const at = overlays.indexOf(entry);
     if (at >= 0) overlays.splice(at, 1);
   };
 }
 
-/** Close the top sheet, otherwise the top overlay; say whether anything was closed. */
+/** Close whichever is newest, a sheet or an overlay; say whether anything was closed. */
 export function closeTopOverlay(): boolean {
-  if (closeTopSheet()) return true;
-  const close = overlays.pop();
-  if (!close) return false;
-  close();
+  const sheet = sheets[sheets.length - 1];
+  const overlay = overlays[overlays.length - 1];
+  if (!sheet && !overlay) return false;
+  if (sheet && (!overlay || sheet.id > overlay.id)) {
+    closeSheet(sheet.id);
+    return true;
+  }
+  overlays.pop()?.close();
   return true;
 }

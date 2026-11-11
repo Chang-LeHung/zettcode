@@ -45,16 +45,37 @@ watch(full, async (on) => {
     release = openOverlay(() => {
       full.value = false;
     });
+    document.addEventListener("keydown", onTab, true);
     await nextTick();
     panel.value?.focus();
   } else {
     release?.();
     release = null;
+    document.removeEventListener("keydown", onTab, true);
     document.body.style.overflow = previousOverflow;
     previousFocus?.focus();
     previousFocus = null;
   }
 });
+
+function onTab(event: KeyboardEvent): void {
+  if (!full.value || event.key !== "Tab" || !panel.value) return;
+  const items = [...panel.value.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")];
+  if (!items.length) {
+    event.preventDefault();
+    panel.value.focus();
+    return;
+  }
+  const first = items[0]!;
+  const last = items[items.length - 1]!;
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
 
 onMounted(() => {
   timer = setInterval(() => (now.value = Date.now() / 1000), 5000);
@@ -62,6 +83,7 @@ onMounted(() => {
 onUnmounted(() => {
   clearInterval(timer);
   release?.();
+  document.removeEventListener("keydown", onTab, true);
   document.body.style.overflow = previousOverflow;
 });
 
