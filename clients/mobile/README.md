@@ -35,7 +35,8 @@ npm run assets
   to another http(s) host in a conversation also opens in the shell (no address bar); Back returns to the gateway.
 * `android/app/src/main/java/dev/zettcode/mobile/MainActivity.java` is the only native code: on a gateway page Android
   Back (the button or a left-edge swipe) walks that page's own history, like its `<` arrow, and never sends the reader
-  back to the picker; at the page root a second Back leaves the app. Back from the picker leaves the app.
+  back to the picker; at the page root a second Back leaves the app. Back from the picker leaves the app. An open
+  sheet or full-screen dialog is page state, not a route: close it with its × or Escape.
 * `AndroidManifest.xml` turns off backup and allows cleartext HTTP for a gateway on a LAN; the picker says that the
   gateway asks for its token itself.
 

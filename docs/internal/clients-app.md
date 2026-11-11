@@ -122,7 +122,9 @@ emulator reaches the host at `http://10.0.2.2:<port>`.
 | A9 | The look and language stay device-wide, while a server's `defaults`, `templates`, `recent` and drafts are keyed by its id; two gateways never see each other's values, and Clear removes every server's keys. | `clients/gateway/test/storage.test.ts`, `clients/gateway/test/prefs.test.ts` |
 
 The Android shell has no native token store to test: its only native code is `MainActivity`, which walks the
-same-origin gateway history before a second Back leaves the app; `web/index.html` keeps URLs and never a token.
+WebView history when the previous entry is an http(s) page other than the picker, before a second Back leaves the
+app at the root; `web/index.html` keeps URLs and never a token. An open sheet or full-screen dialog is Vue state,
+not a route, so Back does not close it — its × or Escape does.
 
 ## Not yet
 
