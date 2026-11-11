@@ -15,6 +15,7 @@ import {
   type Tip,
 } from "../../lib/graphData";
 import { graph, graphNodes } from "../../stores/graph";
+import { lobby } from "../../stores/threads";
 
 const props = defineProps<{ tip: Tip; now: number }>();
 
@@ -29,6 +30,7 @@ function handleOf(id: string): string {
 }
 
 const node = computed(() => (props.tip.kind === "node" ? nodeOf(graphNodes.value, props.tip.id) : undefined));
+const meId = computed(() => lobby.status?.gateway.id ?? "");
 const stats = computed(() => (props.tip.kind === "node" ? statsOf(graph, props.tip.id) : null));
 const edge = computed(() => (props.tip.kind === "edge" ? edgeOf(graph, props.tip.a, props.tip.b) : undefined));
 const latest = computed(() => (props.tip.kind === "edge" ? pairMessages(graph, props.tip.a, props.tip.b, 3) : []));
@@ -41,6 +43,7 @@ const group = computed(() => (props.tip.kind === "group" ? groupByName(graph, pr
       <b>{{ node.handle }}</b>
       <span class="gt-chip" :class="node.status">{{ node.ghost ? t("offline") : t(node.status) }}</span>
       <span v-if="node.kind === 'external'" class="gt-chip">{{ t("external") }}</span>
+      <span v-if="node.session_id === meId" class="gt-chip me">{{ t("This session") }}</span>
     </div>
     <div v-if="node.title" class="gt-sub">{{ node.title }}</div>
     <div v-if="node.workspace" class="gt-row"><span>{{ t("Workspace") }}</span><span>{{ folderName(node.workspace) }}</span></div>
@@ -106,4 +109,5 @@ const group = computed(() => (props.tip.kind === "group" ? groupByName(graph, pr
 }
 .gt-chip.idle { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
 .gt-chip.working { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+.gt-chip.me { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
 </style>

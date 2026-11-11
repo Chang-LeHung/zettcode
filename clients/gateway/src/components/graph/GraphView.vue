@@ -35,6 +35,7 @@ const stage = ref<HTMLElement | null>(null);
 const tipEl = ref<HTMLElement | null>(null);
 const size = reactive({ width: 0, height: 0 });
 const now = ref(Date.now() / 1000);
+const meId = computed(() => lobby.status?.gateway.id ?? "");
 const sheet = ref(false);
 
 // What the bars take: the replay badge above, and below the replay button or, in a replay, the whole player.
@@ -203,6 +204,7 @@ interface Placed {
   working: boolean;
   external: boolean;
   ghost: boolean;
+  self: boolean;
   aria: string;
 }
 
@@ -211,19 +213,21 @@ const placed = computed<Placed[]>(() =>
     const p = at(node.session_id);
     if (!p) return [];
     const state = node.ghost ? t("offline") : t(node.status);
+    const self = node.session_id === meId.value;
     return [
       {
         id: node.session_id,
         x: p.x,
         y: p.y,
         handle: node.handle,
-        label: preview(node.handle, 18),
+        label: preview(node.handle, 18) + (self ? ` · ${t("you")}` : ""),
         initials: initialsOf((node.handle || node.title || "?").replace(/^[^\p{L}\p{N}]+/u, "") || "?"),
         hue: hueOf(node.session_id),
         working: !node.ghost && node.status === "working",
         external: node.kind === "external",
         ghost: node.ghost,
-        aria: `${node.handle}, ${state}${node.kind === "external" ? `, ${t("external")}` : ""}`,
+        self,
+        aria: `${node.handle}, ${state}${node.kind === "external" ? `, ${t("external")}` : ""}${self ? `, ${t("This session")}` : ""}`,
       },
     ];
   }),
@@ -509,6 +513,7 @@ function retry(): void {
           <circle class="gnode-halo" :r="radius + 6" :fill="PALETTE[node.hue]![1]" filter="url(#gv-blur)" />
           <circle v-if="node.working" class="gnode-aura" :r="radius + 5" />
           <circle class="gnode-ring" :class="node.ghost ? 'off' : node.working ? 'working' : 'idle'" :r="radius + 5" />
+          <circle v-if="node.self" class="gnode-self" :r="radius + 9" />
           <circle class="gnode-face" :r="radius" :fill="node.ghost ? 'var(--surface-2)' : `url(#gv-av${node.hue})`" />
           <text class="gnode-text" dy="0.35em" :style="{ fontSize: `${radius * 0.62}px` }">{{ node.initials }}</text>
           <g v-if="node.external" class="gnode-badge" :transform="`translate(${radius * 0.78} ${-radius * 0.78})`">
@@ -625,6 +630,7 @@ function retry(): void {
 .gnode-ring.idle { stroke: var(--ok); opacity: 0.85; }
 .gnode-ring.working { stroke: var(--warn); animation: gv-ring 1.5s ease-in-out infinite; }
 .gnode-ring.off { stroke: var(--muted); stroke-dasharray: 3 4; opacity: 0.7; }
+.gnode-self { fill: none; stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 2 4; opacity: 0.9; }
 .gnode-aura { fill: none; stroke: var(--warn); stroke-width: 1.5; transform-box: fill-box; transform-origin: center; animation: gv-aura 1.5s ease-out infinite; }
 .gnode-face { stroke: var(--graph-bg); stroke-width: 2; transition: stroke 0.15s; }
 .gnode:hover .gnode-face, .gnode:focus-visible .gnode-face { stroke: var(--text); }
