@@ -3,10 +3,11 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { t } from "../../i18n";
 import { PALETTE, hueOf } from "../../lib/avatar";
 import { duration } from "../../lib/format";
-import { messagePreview, nodeOf, senderLabel, targetLabel, tipText, totals } from "../../lib/graphData";
+import { messagePreview, nodeOf, senderLabel, targetLabel, tipText, totals, touches } from "../../lib/graphData";
 import { formatClock } from "../../lib/graphReplay";
 import { clampTooltip, hueOfName } from "../../lib/graph";
 import { graph, graphNodes, graphReplay, loadOlder, replay, replayState, seek } from "../../stores/graph";
+import { lobby } from "../../stores/threads";
 import type { GraphMessage } from "../../types";
 import Icon from "../common/Icon.vue";
 
@@ -26,9 +27,22 @@ function pick(message: GraphMessage): void {
 }
 
 const now = ref(Date.now() / 1000);
+const meId = computed(() => lobby.status?.gateway.id ?? "");
+const full = ref(false);
 let timer: ReturnType<typeof setInterval> | undefined;
-onMounted(() => (timer = setInterval(() => (now.value = Date.now() / 1000), 5000)));
-onUnmounted(() => clearInterval(timer));
+
+function onKey(event: KeyboardEvent): void {
+  if (event.key === "Escape" && full.value) full.value = false;
+}
+
+onMounted(() => {
+  timer = setInterval(() => (now.value = Date.now() / 1000), 5000);
+  window.addEventListener("keydown", onKey);
+});
+onUnmounted(() => {
+  clearInterval(timer);
+  window.removeEventListener("keydown", onKey);
+});
 
 // Replay lists what the playhead has passed, newest first; live, the latest messages.
 const feed = computed(() => {
@@ -94,6 +108,10 @@ function recipients(message: GraphMessage): number {
   return message.recipients.length;
 }
 
+function mine(message: GraphMessage): boolean {
+  return touches(message, meId.value);
+}
+
 function groupColor(message: GraphMessage): string {
   return `hsl(${hueOfName(message.to.name ?? "")} 70% 48%)`;
 }
@@ -111,7 +129,7 @@ function dot(id: string): string {
 </script>
 
 <template>
-  <div class="gp">
+  <div class="gp" :class="{ 'is-full': full }">
     <div class="gp-stats">
       <div><b>{{ counts.sessions }}</b><span>{{ t("Sessions") }}</span></div>
       <div><b>{{ counts.groups }}</b><span>{{ t("Groups") }}</span></div>
@@ -124,11 +142,21 @@ function dot(id: string): string {
       <span class="gp-key"><i class="sw via-external" />{{ t("External") }}</span>
       <span class="gp-key"><i class="ring idle" />{{ t("Idle") }}</span>
       <span class="gp-key"><i class="ring working" />{{ t("Working") }}</span>
+      <span class="gp-key"><i class="ring me" />{{ t("This session") }}</span>
       <span class="gp-key"><i class="hull" />{{ t("Group") }}</span>
     </div>
 
     <div class="gp-head">
       <h3>{{ inReplay ? t("Messages so far") : t("Live messages") }}</h3>
+      <button
+        class="iconbtn gp-full"
+        :title="full ? t('Exit full screen') : t('Full screen')"
+        :aria-label="full ? t('Exit full screen') : t('Full screen')"
+        :aria-pressed="full"
+        @click="full = !full"
+      >
+        <Icon :name="full ? 'close' : 'expand'" size="sm" />
+      </button>
       <button v-if="feed.length && !inReplay" class="iconbtn gp-replay" :title="t('Replay the last message')" :aria-label="t('Replay the last message')" @click="pick(feed[0]!)">
         <Icon name="refresh" size="sm" />
       </button>
@@ -156,6 +184,7 @@ function dot(id: string): string {
               ><b :class="{ grp: message.to.kind === 'group' }">{{ targetLabel(message) }}</b>
               <span v-if="message.to.kind === 'group'" class="gp-tag">{{ t("Group") }} · {{ recipients(message) }}</span>
               <span class="gp-via" :class="`via-${message.via}`">{{ t(message.via) }}</span>
+              <span v-if="mine(message)" class="gp-tag gp-you" :title="t('This session')">{{ t("you") }}</span>
               <time>{{ ago(message.ts) }}</time>
             </span>
             <span class="gp-text">{{ messagePreview(message, 120) }}</span>
@@ -210,6 +239,10 @@ function dot(id: string): string {
 .gp-card-text { margin-top: 3px; padding: 7px 9px; border-radius: 8px; background: var(--hover); line-height: 1.42; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
 @media (hover: none) { .gp-card { display: none; } }
 .gp { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.gp.is-full { position: fixed; inset: 0; z-index: 45; background: var(--surface); padding-top: var(--safe-top); }
+.gp.is-full .gp-stats, .gp.is-full .gp-legend, .gp.is-full .gp-head, .gp.is-full .gp-feed { width: min(100%, 980px); margin-inline: auto; }
+.gp.is-full .gp-feed { padding-bottom: calc(16px + var(--safe-bottom)); }
+.gp.is-full .gp-item { padding-block: 11px; }
 .gp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 4px 12px 10px; }
 .gp-stats > div { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 12px; background: var(--surface-2); }
 .gp-stats b { font-size: 1.25rem; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
@@ -221,6 +254,7 @@ function dot(id: string): string {
 .gp-key .ring { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--muted); }
 .gp-key .ring.idle { border-color: var(--ok); }
 .gp-key .ring.working { border-color: var(--warn); animation: pulse 1.4s ease-in-out infinite; }
+.gp-key .ring.me { border-color: var(--accent); box-shadow: inset 0 0 0 3px var(--surface), 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); }
 .gp-key .hull { width: 16px; height: 11px; border-radius: 6px; border: 1px dashed var(--accent); background: var(--accent-soft); }
 .via-user { background: var(--via-user); }
 .via-agent { background: var(--via-agent); }
@@ -228,6 +262,8 @@ function dot(id: string): string {
 .gp-head { display: flex; align-items: center; padding: 10px 12px 4px 16px; }
 .gp-head h3 { flex: 1; margin: 0; font-size: 0.8rem; font-weight: 600; color: var(--accent); letter-spacing: 0.02em; }
 .gp-replay { width: 30px; height: 30px; }
+.gp-full { width: 30px; height: 30px; }
+.gp-you { color: var(--accent); border-color: var(--accent); }
 .gp-none { padding: 20px 16px; color: var(--muted); font-size: 0.85rem; line-height: 1.45; }
 .gp-feed { list-style: none; margin: 0; padding: 0 6px 10px; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; }
 .gp-item { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 12px; text-align: left; animation: fade 0.25s ease-out; }

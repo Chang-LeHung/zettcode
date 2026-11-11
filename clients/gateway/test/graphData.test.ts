@@ -11,6 +11,7 @@ import {
   statsOf,
   tipText,
   totals,
+  touches,
 } from "../src/lib/graphData";
 import { applyGraph, applyTraffic, graph, graphUi, loadGraph, onTraffic, replay, resetGraph } from "../src/stores/graph";
 import type { GraphData, GraphMessage } from "../src/types";
@@ -195,4 +196,17 @@ test("replaying a message asks the page to play it and lights its nodes for a mo
   replay(m);
   assert.equal(graphUi.replay!.n, first + 1);
   graphUi.spotlight = null;
+});
+
+test("a message touches the session that sent it, the one it names, and everyone it reached", () => {
+  const direct = message(1, "a", "b");
+  assert.equal(touches(direct, "a"), true);
+  assert.equal(touches(direct, "b"), true);
+  assert.equal(touches(direct, "c"), false);
+
+  const group = message(2, "a", { group: "team", recipients: ["b", "c"] });
+  assert.equal(touches(group, "b"), true);
+  assert.equal(touches(group, "c"), true);
+  assert.equal(touches(group, "d"), false);
+  assert.equal(touches(direct, ""), false);
 });

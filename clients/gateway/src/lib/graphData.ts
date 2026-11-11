@@ -160,6 +160,16 @@ export function nodeOf(nodes: readonly GraphNode[], id: string): GraphNode | und
   return nodes.find((node) => node.session_id === id);
 }
 
+/** Whether one message was sent by, addressed to, or reached a session. */
+export function touches(message: GraphMessage, sessionId: string): boolean {
+  return (
+    !!sessionId &&
+    (message.from.session_id === sessionId ||
+      message.to.session_id === sessionId ||
+      message.recipients.includes(sessionId))
+  );
+}
+
 /** What the pointer (or the keyboard) is on, which the tooltip describes. */
 export type Tip =
   | { kind: "node"; id: string }
