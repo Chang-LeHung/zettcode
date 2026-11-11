@@ -30,6 +30,8 @@ export const gateway = {
     request<ThreadDetail>("GET", `/api/threads/${id(threadId)}${all ? "?all=1" : ""}`),
   recheck: (threadId: string) => request<{ thread: Thread }>("POST", `/api/threads/${id(threadId)}/recheck`),
   read: (threadId: string) => request<{ ok: true }>("POST", `/api/threads/${id(threadId)}/read`),
+  updateProfile: (threadId: string, changes: { name?: string; avatar?: string }) =>
+    request<{ thread: Thread }>("PATCH", `/api/threads/${id(threadId)}/profile`, changes),
   send: (threadId: string, text: string, reply: boolean, pictures: Picture[] = []) =>
     request<SendReply>("POST", `/api/threads/${id(threadId)}/send`, {
       text,

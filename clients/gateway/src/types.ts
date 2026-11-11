@@ -27,6 +27,8 @@ export interface Thread {
   direct: boolean;
   /** An unreachable session that another process has open. */
   locked: boolean;
+  /** A page-set picture data URL, or empty for the generated avatar. */
+  avatar?: string;
 }
 
 export type ChatItem =
@@ -168,6 +170,7 @@ export interface AgentType {
   name: string;
   title: string;
   description: string;
+  avatar?: string;
 }
 
 export interface AgentReply {

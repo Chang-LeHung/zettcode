@@ -16,6 +16,7 @@ members = [
     "zettcode-app",
     "zettcode-ask-user",
     "zettcode-broker",
+    "zettcode-code-agents",
     "zettcode-commands",
     "zettcode-engine",
     "zettcode-files",
@@ -3111,6 +3112,28 @@ requires-dist = [
 ]
 
 [[package]]
+name = "zettcode-code-agents"
+source = { editable = "packages/zettcode-code-agents" }
+dependencies = [
+    { name = "zettcode-broker" },
+    { name = "zettcode-gateway" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "zettcode-broker", editable = "packages/zettcode-broker" },
+    { name = "zettcode-gateway", editable = "packages/zettcode-gateway" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8,<9" }]
+
+[[package]]
 name = "zettcode-commands"
 source = { editable = "packages/zettcode-commands" }
 dependencies = [
@@ -3597,6 +3620,7 @@ dev = [
     { name = "tomli" },
     { name = "viztracer" },
     { name = "zettcode" },
+    { name = "zettcode-code-agents" },
     { name = "zettcode-im" },
     { name = "zettcode-models" },
     { name = "zettcode-monitor" },
@@ -3618,6 +3642,7 @@ dev = [
     { name = "tomli", specifier = ">=2,<3" },
     { name = "viztracer", specifier = ">=1.1.1" },
     { name = "zettcode", editable = "packages/zettcode" },
+    { name = "zettcode-code-agents", editable = "packages/zettcode-code-agents" },
     { name = "zettcode-im", editable = "packages/zettcode-im" },
     { name = "zettcode-models", editable = "packages/zettcode-models" },
     { name = "zettcode-monitor", editable = "packages/zettcode-monitor" },

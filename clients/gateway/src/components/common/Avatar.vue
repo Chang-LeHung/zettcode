@@ -3,19 +3,21 @@ import { computed } from "vue";
 import { hueOf, initialsOf } from "../../lib/avatar";
 import type { Thread } from "../../types";
 
-const props = defineProps<{ thread: Pick<Thread, "id" | "name" | "kind" | "status">; size?: "sm" | "xs" | "xl" }>();
+const props = defineProps<{ thread: Pick<Thread, "id" | "name" | "kind" | "status" | "avatar">; size?: "sm" | "xs" | "xl" }>();
 const hue = computed(() => `av${hueOf(props.thread.id)}`);
 const presence = computed(() => (["idle", "working", "dead"].includes(props.thread.status) ? props.thread.status : ""));
 </script>
 
 <template>
   <div class="avatar" :class="[hue, size]" aria-hidden="true">
-    {{ initialsOf(thread.name) }}
+    <img v-if="thread.avatar" :src="thread.avatar" alt="" />
+    <template v-else>{{ initialsOf(thread.name) }}</template>
     <span v-if="thread.kind !== 'external'" class="presence" :class="presence" />
   </div>
 </template>
 
 <style>
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
 .avatar {
   position: relative; flex: none; display: grid; place-items: center;
   width: 54px; height: 54px; border-radius: 50%;
