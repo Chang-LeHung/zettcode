@@ -15,7 +15,7 @@ from zettcode.broker.external import (
     ExternalPublisher,
     ExternalSession,
 )
-from zettcode.broker.models import Incoming, Receipt
+from zettcode.broker.models import Incoming, Receipt, SendError
 
 A = "01a10b75-aaaa-7000-8000-000000000001"
 B = "02b20c86-bbbb-7000-8000-000000000002"
@@ -80,7 +80,8 @@ async def test_a_string_from_a_handler_is_sent_back(host):
         inbox = Inbox()
         other = await sender(host, inbox)
 
-        await other.send(external.handle, "ping")
+        delivered = await other.send(external.handle, "ping")
+        assert delivered.disposition == "queued"
         await eventually(lambda: inbox.messages)
         assert inbox.messages[0].text == "echo: ping"
 
@@ -118,6 +119,28 @@ async def test_a_missing_broker_is_reported(tmp_path):
         await ExternalSession(
             A, "Nowhere", directory=tmp_path, spawner=lambda path: None, connect_timeout=0.1
         ).connect()
+
+
+async def test_a_handler_that_raises_is_refused(host):
+    def handle(message: Incoming) -> None:
+        raise RuntimeError("bad handler")
+
+    async with ExternalSession(A, "Broken", directory=host.directory, on_message=handle) as external:
+        await eventually(lambda: external.handle)
+        other = await sender(host, Inbox())
+
+        with pytest.raises(SendError, match="the handler failed"):
+            await other.send(external.handle, "hello")
+
+
+async def test_the_publisher_reports_a_broker_refusal(host):
+    await sender(host, Inbox())
+
+    async with ExternalPublisher("ci", directory=host.directory) as publisher:
+        with pytest.raises(SendError) as caught:
+            await publisher.send("@nobody", "hello")
+
+    assert caught.value.reason == "unknown"
 
 
 async def test_the_publisher_sends_without_registering(host):

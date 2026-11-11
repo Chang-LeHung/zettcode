@@ -6,6 +6,9 @@ answer. :class:`ExternalSession` is the second one, written for a program that i
 :class:`~.client.BrokerClient`, so reconnection, registration, acknowledgements and the limits stay in one place.
 
 :class:`ExternalPublisher` is for the first kind: a one-way script that only needs ``send``.
+
+The broker's token is the owner credential, not a per-session password: any local program holding it may claim any
+``session_id``. A handle is a claimed name in the roster, not an authentication.
 """
 
 from __future__ import annotations
@@ -27,8 +30,11 @@ from .protocol import KIND_EXTERNAL, VIA_EXTERNAL, PeerInfo
 logger = logging.getLogger("zettcode.broker")
 
 #: What an external session does with a delivered message. ``None`` accepts it without a reply; a string is sent
-#: back to the sender; a :class:`Receipt` is the exact answer; an awaitable is run after the broker has been told
-#: the message is queued.
+#: back to the sender; a :class:`Receipt` is the exact answer. An awaitable is acked ``queued`` before it runs, so
+#: it can no longer refuse the message; return a Receipt first if the answer must be a refusal.
+#:
+#: A plain (non-async) handler runs on the WebSocket receive loop. It must return promptly: use an async handler for
+#: work that waits on a process, a network call or a lock.
 Handler: TypeAlias = Callable[[Incoming], Receipt | str | None | Awaitable[Receipt | str | None]]
 
 
@@ -37,7 +43,7 @@ class ExternalError(Exception):
 
 
 class ExternalNotConnected(ExternalError):
-    """No broker answered, or it speaks a protocol this client does not."""
+    """No broker answered, the session was closed, or it speaks a protocol this client does not."""
 
 
 class ExternalConflict(ExternalError):
@@ -57,13 +63,17 @@ class ExternalSession:
 
     Args:
         session_id: The stable id this program registers with. It must be a broker session id (letters, digits,
-            ``.``, ``_`` and ``-``), and no other process may hold it.
+            ``.``, ``_`` and ``-``). This is a claimed name: the broker does not verify who made it.
         title: What the roster shows. A handle is derived from it.
         workspace: An optional path shown in the roster.
-        on_message: How to answer a message; :meth:`handle` is used when this is ``None``.
+        on_message: How to answer a message; :meth:`on_message` is used when this is ``None``. A sync handler must
+            not block the event loop.
         directory: The broker's directory; :func:`~.files.broker_dir` by default.
+        spawner: How to start a broker when none answers; the broker's own default when ``None``.
         on_roster: Called whenever the roster changes.
         on_problem: Called once when the broker has been out of reach for a while, and again when it is back.
+        on_conflict: Called when another process claims this ``session_id``, and with ``None`` when it is free.
+        inbox_size: Messages the default handler may queue before it refuses with ``busy``; ``0`` is unbounded.
         connect_timeout: Seconds to wait for the connection and registration.
         request_timeout: Seconds to wait for an answer from the broker.
     """
@@ -84,18 +94,23 @@ class ExternalSession:
         on_roster: Callable[[tuple[PeerInfo, ...]], None] | None = None,
         on_problem: Callable[[str | None], None] | None = None,
         on_conflict: Callable[[str | None], None] | None = None,
+        inbox_size: int = 1000,
         connect_timeout: float = 5.0,
         request_timeout: float = 5.0,
     ) -> None:
+        if inbox_size < 0:
+            raise ValueError("inbox_size is 0 (unbounded) or a positive count")
         self.session_id = session_id or type(self).session_id
         if not self.session_id:
             raise ValueError("an external session needs a session_id")
         self.title = title or type(self).title or self.session_id
         self.workspace = workspace
-        self.inbox: asyncio.Queue[Incoming] = asyncio.Queue()
+        self.inbox: asyncio.Queue[Incoming] = asyncio.Queue(maxsize=inbox_size)
         self._handler = on_message
         self._on_roster = on_roster
         self._connect_timeout = connect_timeout
+        self._tasks: set[asyncio.Future[None]] = set()
+        self._closed = False
         self._client = BrokerClient(
             on_message=self._dispatch,
             on_roster=self._changed,
@@ -127,24 +142,38 @@ class ExternalSession:
     async def connect(self) -> None:
         """Connect, register, and wait until the broker lists this session.
 
+        A closed session cannot be reused; make a new one.
+
         Raises:
-            ExternalNotConnected: The broker is absent, does not answer, or speaks another protocol.
+            ExternalNotConnected: The broker is absent, does not answer, speaks another protocol, or this session
+                was closed.
             ExternalConflict: Another process already holds ``session_id``.
         """
+        if self._closed:
+            raise ExternalNotConnected("this external session was closed; make a new one")
         await self._client.start()
         if not await self._client.wait_connected(self._connect_timeout):
+            self._closed = True
             await self._client.close()
             raise ExternalNotConnected(self._client.last_error or "no broker answered")
         if not await self._client.wait_registered(self._connect_timeout):
             conflict = self._client.conflict
+            self._closed = True
             await self._client.close()
             if conflict:
                 raise ExternalConflict(conflict)
             raise ExternalNotConnected("the broker did not register this session")
 
     async def close(self) -> None:
-        """Disconnect, and stop reconnecting. Safe to call more than once."""
+        """Disconnect, stop reconnecting, and cancel handler tasks. Safe to call more than once."""
+        self._closed = True
         await self._client.close()
+        tasks = list(self._tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._tasks.clear()
 
     @property
     def connected(self) -> bool:
@@ -172,10 +201,13 @@ class ExternalSession:
         """Send one message to a session, by handle, id, or a prefix of its id.
 
         Raises:
-            SendError: As the broker or the recipient refused, or the connection was lost.
+            ExternalNotConnected: This session is not connected.
+            SendError: The broker or the recipient refused, or the connection was lost.
         """
         if mode not in (MODE_STEER, MODE_FOLLOWUP):
             raise ValueError("mode is 'steer' or 'followup'")
+        if self._closed:
+            raise ExternalNotConnected("this external session was closed; make a new one")
         if not self._client.connected:
             raise ExternalNotConnected("the external session is not connected")
         return await self._client.send(to, text, via=VIA_EXTERNAL, mode=mode)
@@ -199,8 +231,15 @@ class ExternalSession:
         )
 
     async def on_message(self, message: Incoming) -> Receipt:
-        """Default handler: put the message on :attr:`inbox` and accept it."""
-        self.inbox.put_nowait(message)
+        """Default handler: put the message on :attr:`inbox` and accept it.
+
+        The ack means the message is in this process's queue, not that it was handled. When the queue is full the
+        broker is told ``busy`` so it holds the message and offers it again.
+        """
+        try:
+            self.inbox.put_nowait(message)
+        except asyncio.QueueFull:
+            return Receipt(False, reason="this external session's inbox is full", busy=True)
         return Receipt(True, disposition="delivered")
 
     def _changed(self, roster: tuple[PeerInfo, ...]) -> None:
@@ -216,7 +255,7 @@ class ExternalSession:
             logger.exception("external.handler")
             return Receipt(False, f"the handler failed ({type(error).__name__})")
         if inspect.isawaitable(result):
-            asyncio.create_task(self._later(message, result))
+            self._spawn(self._later(message, result))
             return Receipt(True, disposition="queued")
         return self._receipt(message, result)
 
@@ -226,10 +265,16 @@ class ExternalSession:
         if isinstance(result, Receipt):
             return result
         if isinstance(result, str):
-            asyncio.create_task(self._say_later(message, result))
+            self._spawn(self._say_later(message, result))
             return Receipt(True, disposition="queued")
         logger.warning("external.handler", extra={"result": type(result).__name__})
         return Receipt(False, "the handler returned something that is not Receipt, str or None")
+
+    def _spawn(self, work: Awaitable[None]) -> None:
+        """Keep a handler task alive until it finishes, so ``close`` can cancel and collect it."""
+        task = asyncio.ensure_future(work)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def _later(self, message: Incoming, result: Awaitable[Receipt | str | None]) -> None:
         try:
@@ -241,20 +286,21 @@ class ExternalSession:
             await self._say_later(message, answer)
         elif isinstance(answer, Receipt):
             # The broker already has its ack; a late Receipt cannot change it.
-            logger.debug("external.late_receipt", extra={"accepted": answer.accepted})
+            logger.warning("external.late_receipt", extra={"accepted": answer.accepted})
 
     async def _say_later(self, message: Incoming, text: str) -> None:
         try:
             await self.reply(message, text)
-        except SendError as error:
-            logger.warning("external.reply_failed", extra={"reason": error.reason})
+        except (SendError, ExternalNotConnected) as error:
+            logger.warning("external.reply_failed", extra={"reason": str(error)})
 
 
 class ExternalPublisher:
     """A one-way external sender: no WebSocket, no roster, no replies.
 
     It is the high-level form of ``POST /messages`` without a session key. The broker names the sender from
-    ``name`` and marks the message ``via="external"``.
+    ``name`` and marks the message ``via="external"``. It keeps one broker address and token: after a broker
+    restart, call :meth:`connect` again before sending.
     """
 
     def __init__(
@@ -306,7 +352,8 @@ class ExternalPublisher:
 
         Raises:
             ExternalNotConnected: :meth:`connect` has not run.
-            SendError: The broker refused, or the connection failed.
+            SendError: The broker refused, or the connection failed. A connection that never opened is ``offline``;
+                one that ended while the message was being written is ``lost`` or ``timeout``.
         """
         http = self._http
         if http is None:
@@ -318,7 +365,13 @@ class ExternalPublisher:
                 "/messages",
                 json={"to": to, "text": text, "from": {"name": self.name}, "mode": mode},
             )
-        except Exception as error:  # noqa: BLE001 - httpx's exception hierarchy is wide; report it as a SendError
+        except Exception as error:  # noqa: BLE001 - httpx's exception hierarchy is wide; map the useful ones
+            import httpx
+
+            if isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout)):
+                raise SendError("offline", "no broker answered") from None
+            if isinstance(error, httpx.TimeoutException):
+                raise SendError("timeout", "the broker did not answer in time; the message may have arrived") from None
             raise SendError("lost", f"the broker could not be reached ({type(error).__name__})") from None
         try:
             body = response.json()
