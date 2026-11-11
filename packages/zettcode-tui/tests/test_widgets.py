@@ -112,6 +112,14 @@ def test_list_view_aligns_descriptions_by_display_width():
     assert column_of(rows[1], "second") == 2 + 5 + 2
 
 
+def test_a_current_row_is_drawn_in_the_accent_colour():
+    """A row marked current reads in the accent colour even when another row has the selection."""
+    items = [ListItem("a", label="alpha"), ListItem("b", label="beta", current=True)]
+    styled = Harness(ListView(items, wrap=False), width=20, height=2).render().styled
+
+    assert styled[1][0].style.foreground == DARK.accent
+
+
 def test_list_view_tucks_a_description_behind_its_label_when_space_runs_out():
     """A row too narrow for a column of its own keeps the description inline."""
     items = [ListItem("a", label="abcdef", description="note")]

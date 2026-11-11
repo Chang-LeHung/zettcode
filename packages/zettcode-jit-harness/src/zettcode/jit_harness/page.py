@@ -43,6 +43,7 @@ class HarnessRow:
     title: str
     repository: str
     description: str
+    current: bool = False
 
 
 def _shown(directory: Path) -> str:
@@ -91,6 +92,7 @@ class HarnessPage(ListPage):
                 row.target,
                 self._label(row),
                 self._detail(row),
+                current=row.current,
             )
             for row in self.rows
         ]
