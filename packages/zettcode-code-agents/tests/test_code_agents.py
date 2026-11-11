@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from zettcode.code_agents import ClaudeCodeAgent, CodexAgent, Command, _events
+from zettcode.code_agents import ClaudeCodeAgent, CliAgent, CodexAgent, Command, _events
 
 
 def test_a_command_uses_the_resume_form_when_a_session_is_known(tmp_path):
@@ -39,3 +39,20 @@ def test_the_json_answer_and_session_id_are_read():
 def test_both_plugins_carry_a_name_and_a_logo():
     assert CodexAgent.name == "codex" and CodexAgent.avatar.startswith("data:image/svg+xml;base64,")
     assert ClaudeCodeAgent.name == "claude" and ClaudeCodeAgent.avatar.startswith("data:image/svg+xml;base64,")
+
+
+async def test_a_cli_turn_saves_the_session_and_returns_its_text(tmp_path, monkeypatch):
+    script = tmp_path / "fake"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "print(json.dumps({'session_id': 's-1', 'result': sys.argv[1]}))\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("ZETTCODE_CODE_AGENTS_DIR", str(tmp_path / "state"))
+
+    agent = CliAgent("agent-1", "Fake", Command(str(script), "{prompt}", "resume {session} {prompt}"))
+
+    assert await agent._run("hello") == "hello"
+    assert json.loads((tmp_path / "state" / "agent-1.json").read_text()) == {"session": "s-1"}

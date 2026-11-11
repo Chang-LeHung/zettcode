@@ -69,7 +69,9 @@ packages/zettcode-engine/src/zettcode/processes.py     reading a process's comma
   `send_message`. An external session may be added to groups by the broker owner and then receive and write to them.
 * **Sent messages are drawn by the page until the store has them** (`lib/pending.ts`): a pending message carries a
   target count of identical stored messages, so two equal sends show twice and none shows doubled.
-* **Security.** Loopback by default, a token (optional: with none the page opens straight in, only for a request whose `Host` is a loopback name, which stops DNS rebinding, and the command refuses to listen beyond loopback without one), an HttpOnly SameSite=Strict cookie, an `Origin` check on every write
+* **Groups.** The graph lists every group on the broker, and a group's history is readable through the owner token even before the gateway is a member. **Join group** adds the gateway as the owner would, so one click is a broker-wide membership change; it is meant for a single-owner gateway.
+
+**Security.** Loopback by default, a token (optional: with none the page opens straight in, only for a request whose `Host` is a loopback name, which stops DNS rebinding, and the command refuses to listen beyond loopback without one), an HttpOnly SameSite=Strict cookie, an `Origin` check on every write
   and on the socket (with no token it must be present too, so a bare `curl -X POST` is refused on an open gateway), a CSP that allows only the page's own files, roots for where agents may start (the whole filesystem unless `-r` narrows it), `full` shell
   unless the gateway was started with `--no-full`. Anyone signed in can run commands as the user; the page says so.
 * **Desktop client.** The desktop app in `clients/desktop` uses the page in a shell and speaks to the gateway from
