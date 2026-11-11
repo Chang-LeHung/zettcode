@@ -26,7 +26,7 @@ logger = logging.getLogger("zettcode.gateway")
 ENTRY_POINT = "zettcode.gateway.external"
 
 #: How many agents one gateway may keep running. A page cannot grow the roster without bound.
-MAX_AGENTS = 16
+MAX_AGENTS = 64
 
 
 class AgentError(Exception):
