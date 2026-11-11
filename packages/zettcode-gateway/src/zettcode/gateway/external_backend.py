@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,7 @@ class ExternalBackend(Backend):
         self._session: ExternalSession | None = None
         self._owner: httpx.AsyncClient | None = None
         self._on_message: Callable[[IncomingMessage], Receipt] | None = None
+        self._versions: dict[str, tuple[int, int]] = {}
 
     async def start(self, on_message: Callable[[IncomingMessage], Receipt], on_change: Callable[[], None]) -> None:
         """Register as an external session and open the owner client used for reads."""
@@ -83,12 +85,17 @@ class ExternalBackend(Backend):
         if note is None:
             await session.close()
             raise GatewayStartError("the broker note disappeared while the gateway was starting")
-        self._owner = httpx.AsyncClient(
-            base_url=f"http://127.0.0.1:{note.port}",
-            headers={"Authorization": f"Bearer {note.token}"},
-            trust_env=False,
-            timeout=10.0,
-        )
+        try:
+            self._owner = httpx.AsyncClient(
+                base_url=f"http://127.0.0.1:{note.port}",
+                headers={"Authorization": f"Bearer {note.token}"},
+                trust_env=False,
+                timeout=10.0,
+            )
+        except Exception as error:  # noqa: BLE001 - a failed HTTP client leaves no session behind
+            self._session = None
+            await session.close()
+            raise GatewayStartError(f"the gateway's HTTP client could not be made: {error}") from error
 
     async def close(self) -> None:
         owner, self._owner = self._owner, None
@@ -173,10 +180,13 @@ class ExternalBackend(Backend):
                 "invalid", "the web gateway is an external session; pictures and direct prompts need a session"
             )
         sent = await self.session.send(to, text, mode=MODE_FOLLOWUP)
+        self._bump(sent.to.session_id)
         return Delivered(sent.to.handle, sent.disposition, sent.direct)
 
     async def send_group(self, group: str, text: str) -> list[Delivered]:
         sent = await self.session.send_group(group, text, mode=MODE_FOLLOWUP)
+        for peer, _disposition in sent.delivered:
+            self._bump(peer.session_id)
         return [Delivered(peer.handle, disposition, False) for peer, disposition in sent.delivered]
 
     async def join_group(self, group: str) -> None:
@@ -186,11 +196,22 @@ class ExternalBackend(Backend):
     async def _owner_get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         owner = self._owner
         if owner is None:
-            return {}
-        response = await owner.get(path, params=params)
+            raise _gateway_error(503, "broker", "the gateway is not connected to the broker")
+        try:
+            response = await owner.get(path, params=params)
+        except httpx.HTTPError as error:
+            raise _gateway_error(503, "broker", f"the broker did not answer: {type(error).__name__}") from error
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
         if response.status_code != 200:
-            return {}
-        body = response.json()
+            refusal = body.get("error") if isinstance(body, dict) else None
+            reason = refusal.get("code") if isinstance(refusal, dict) else "broker"
+            message = refusal.get("message") if isinstance(refusal, dict) else "the broker refused the read"
+            raise _gateway_error(
+                503 if response.status_code >= 500 else response.status_code, str(reason), str(message)
+            )
         return body if isinstance(body, dict) else {}
 
     async def graph(self) -> dict[str, Any]:
@@ -244,8 +265,13 @@ class ExternalBackend(Backend):
         return False
 
     def stamp(self, session_id: str, workspace: str) -> tuple[int, int] | None:
-        del session_id, workspace
-        return None
+        del workspace
+        return self._versions.get(session_id)
+
+    def _bump(self, session_id: str) -> None:
+        """Mark a thread as changed for the next refresh, with a wall-clock stamp and a counter."""
+        previous = self._versions.get(session_id)
+        self._versions[session_id] = (time.time_ns(), (previous[1] + 1) if previous else 1)
 
     # -- daemons and models -----------------------------------------------------------------------
     def models(self) -> list[ModelInfo]:
@@ -290,6 +316,7 @@ class ExternalBackend(Backend):
     def _deliver(self, message: BrokerIncoming) -> BrokerReceipt:
         if self._on_message is None:
             return BrokerReceipt(False, "the gateway is not ready")
+        self._bump(message.sender.session_id)
         receipt = self._on_message(
             IncomingMessage(
                 sender_id=message.sender.session_id,
@@ -318,6 +345,13 @@ class ExternalBackend(Backend):
         temporary = self.directory / f".{HOST_FILE}.{os.getpid()}.tmp"
         temporary.write_text(json.dumps({"session": session_id}), encoding="utf-8")
         os.replace(temporary, self.directory / HOST_FILE)
+
+
+def _gateway_error(status: int, code: str, message: str) -> Any:
+    """Build a GatewayError without importing the service at module import time (it imports this backend)."""
+    from .service import GatewayError
+
+    return GatewayError(status, code, message)
 
 
 __all__ = ["ExternalBackend"]

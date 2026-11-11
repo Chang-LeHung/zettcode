@@ -256,14 +256,14 @@ class ExternalSession:
         return await self.send(message.sender.session_id, text, mode=mode)
 
     async def send_group(self, group: str, text: str, *, mode: str = MODE_FOLLOWUP) -> GroupDelivered:
-        """Write to a group this session is in; a trusted ``kind="zettcode"`` session may do this."""
+        """Write to a group this session is in; membership is what the broker checks, not the kind."""
         if self._closed or not self._client.connected:
             raise ExternalNotConnected("the external session is not connected")
         via = VIA_EXTERNAL if self.kind == KIND_EXTERNAL else VIA_AGENT
         return await self._client.send_group(group, text, via=via, mode=mode)
 
     async def join_group(self, group: str) -> GroupInfo | None:
-        """Join a group as the broker's owner; only a trusted gateway-managed session should call this."""
+        """Join a group as the broker's owner; a gateway-managed session uses this, and the broker decides."""
         if self._closed or not self._client.connected:
             raise ExternalNotConnected("the external session is not connected")
         return await self._client.join_group(group)

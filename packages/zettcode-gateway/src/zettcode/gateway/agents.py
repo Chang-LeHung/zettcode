@@ -99,13 +99,15 @@ class AgentManager:
             raise AgentError(f"the external agent {session_id!r} is already running")
         if len(self._running) >= MAX_AGENTS:
             raise AgentError(f"a gateway may run at most {MAX_AGENTS} external agents")
+        session: ExternalSession | None = None
         try:
             session = plugin.create(session_id, title or plugin.title or kind)
             await session.connect()
             if group:
                 await session.join_group(group)
         except Exception as error:  # noqa: BLE001 - every failure becomes a GatewayError sentence at the API edge
-            await session.close()
+            if session is not None:
+                await session.close()
             raise AgentError(str(error)) from error
         self._running[session_id] = session
         return session
