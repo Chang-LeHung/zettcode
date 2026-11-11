@@ -10,8 +10,8 @@ Install the package beside the gateway and restart it:
 pip install zettcode-code-agents
 ```
 
-The New page then offers **Codex** and **Claude Code**. Both register as `kind="zettcode"` sessions, so they can join
-groups and use the normal chat/history permissions.
+The New page then offers **Codex** and **Claude Code**. Both register as `kind="external"` sessions; the gateway owner can add one to a
+group, and it can then receive and write there.
 
 ## Commands
 

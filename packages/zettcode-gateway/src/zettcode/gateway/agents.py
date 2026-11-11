@@ -4,8 +4,8 @@ A plugin is a class under the ``zettcode.gateway.external`` entry-point group. I
 :class:`~zettcode.broker.external.ExternalSession`; the gateway starts it, and the broker lists it like any other
 session. The plugin runs in the gateway process, so only installed, trusted code is loaded.
 
-The agent is expected to register as ``kind="zettcode"`` when it needs group chats and history; an ordinary outside
-program uses ``kind="external"`` and keeps the broker's narrower permissions.
+An agent may register as ``kind="external"`` or as the trusted ``kind="zettcode"``; groups are available to either
+kind once the broker owner adds it.
 """
 
 from __future__ import annotations
@@ -138,6 +138,7 @@ class AgentManager:
         self.directory = directory
         self._plugins = {plugin.name: plugin for plugin in (plugins if plugins is not None else load_plugins())}
         self._running: dict[str, ExternalSession] = {}
+        self._kinds: dict[str, str] = {}
 
     def available(self) -> list[AgentType]:
         """Return the agent types a page may create."""
@@ -150,6 +151,11 @@ class AgentManager:
         """Return the default picture a type offers, or an empty string."""
         plugin = self._plugins.get(kind)
         return avatar_data(plugin.avatar) if plugin is not None else ""
+
+    def avatar_for(self, session_id: str) -> str:
+        """Return the default picture for a running agent, or an empty string."""
+        kind = self._kinds.get(session_id)
+        return self.avatar(kind) if kind else ""
 
     def running(self) -> dict[str, ExternalSession]:
         """Return the agents this gateway started, by session id."""
@@ -180,11 +186,13 @@ class AgentManager:
                 await session.close()
             raise AgentError(str(error)) from error
         self._running[session_id] = session
+        self._kinds[session_id] = kind
         return session
 
     async def remove(self, session_id: str) -> bool:
         """Stop one agent; return whether it was running."""
         session = self._running.pop(session_id, None)
+        self._kinds.pop(session_id, None)
         if session is None:
             return False
         await session.close()

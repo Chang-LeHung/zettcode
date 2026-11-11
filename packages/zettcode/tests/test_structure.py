@@ -725,31 +725,35 @@ def test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it():
         if not settings.get("tool", {}).get("zettcode", {}).get("plugin"):
             continue
         name = settings["project"]["name"]
-        if name == "zettcode-code-agents":
-            # A gateway plugin, not a terminal plugin: it uses the gateway's AgentPlugin contract, not plugin-api.
-            continue
+        gateway = name == "zettcode-code-agents"
         checked += 1
         ours = [
             requirement
             for requirement in map(Requirement, settings["project"]["dependencies"])
             if requirement.name.startswith("zettcode")
         ]
-        assert [requirement.name for requirement in ours] == ["zettcode-plugin-api"], name
+        if gateway:
+            # A gateway plugin uses the gateway's AgentPlugin contract; it is not a terminal plugin.
+            assert {requirement.name for requirement in ours} <= {"zettcode-broker", "zettcode-gateway"}, name
+            allowed = {"zettcode.gateway", "zettcode.broker"}
+        else:
+            assert [requirement.name for requirement in ours] == ["zettcode-plugin-api"], name
+            allowed = {"zettcode.plugin_api"}
 
         # The plugin's own module is inside the namespace too, so a subpackage two levels down has to be able to
         # import it absolutely: the climb rule forbids `from ...x`, and `from zettcode.monitor.x` is the spelling it
-        # prescribes. Everything else of ours has to come through the API package.
-        own = {value.split(":", 1)[0] for value in settings["project"]["entry-points"]["zettcode.plugin"].values()}
+        # prescribes. Everything else of ours has to come through the contract package.
+        group = "zettcode.gateway.external" if gateway else "zettcode.plugin"
+        own = {value.split(":", 1)[0] for value in settings["project"]["entry-points"][group].values()}
         imports = sorted(
             target
             for path in (project.parent / "src").rglob("*.py")
             for target in _imported_modules(path)
             if target.startswith("zettcode.")
-            and target != "zettcode.plugin_api"
-            and not target.startswith("zettcode.plugin_api.")
+            and not any(target == module or target.startswith(f"{module}.") for module in allowed)
             and not any(target == module or target.startswith(f"{module}.") for module in own)
         )
-        assert imports == [], f"{name} imports outside the API: {imports}"
+        assert imports == [], f"{name} imports outside its contract: {imports}"
 
     assert checked >= 2, "the plugins this repository ships are the ones this checks"
 
