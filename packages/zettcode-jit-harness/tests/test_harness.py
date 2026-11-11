@@ -677,7 +677,7 @@ def test_markdown_files_are_listed_with_their_size(tmp_path: Path):
     (row,) = HarnessCommand._file_rows(tmp_path)
 
     assert row.cells[:2] == ("README.md", "hello")
-    assert row.cells[2] == "6 B" and row.cells[3] == "notes"
+    assert row.cells[2] == f"{(tmp_path / 'notes' / 'README.md').stat().st_size:,} B" and row.cells[3] == "notes"
     assert row.target is None
 
 
