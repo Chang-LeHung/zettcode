@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import pathlib
 
 import pytest
@@ -106,6 +107,19 @@ async def test_two_external_sessions_are_two_roster_entries(host):
         assert first.handle != second.handle
 
 
+async def test_a_closed_session_does_not_wait_or_change_status(host):
+    session = ExternalSession(A, "Closed", directory=host.directory)
+    await session.connect()
+    await session.close()
+
+    with pytest.raises(ExternalNotConnected):
+        await session.receive()
+    with pytest.raises(ExternalNotConnected):
+        await session.set_status("working")
+    with pytest.raises(ExternalNotConnected):
+        await session.connect()
+
+
 async def test_a_duplicate_id_is_reported(host):
     async with ExternalSession(A, "First", directory=host.directory):
         second = ExternalSession(A, "Second", directory=host.directory)
@@ -119,6 +133,20 @@ async def test_a_missing_broker_is_reported(tmp_path):
         await ExternalSession(
             A, "Nowhere", directory=tmp_path, spawner=lambda path: None, connect_timeout=0.1
         ).connect()
+
+
+async def test_an_async_handler_cannot_refuse_after_the_ack(host, caplog):
+    async def handle(message: Incoming) -> Receipt:
+        return Receipt(False, "not now")
+
+    caplog.set_level(logging.WARNING, logger="zettcode.broker")
+    async with ExternalSession(A, "Late", directory=host.directory, on_message=handle) as external:
+        await eventually(lambda: external.handle)
+        other = await sender(host, Inbox())
+
+        delivered = await other.send(external.handle, "hello")
+        assert delivered.disposition == "queued"
+        await eventually(lambda: any(record.message == "external.late_receipt" for record in caplog.records))
 
 
 async def test_a_handler_that_raises_is_refused(host):

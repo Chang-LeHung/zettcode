@@ -194,7 +194,12 @@ class ExternalSession:
         return ""
 
     async def receive(self) -> Incoming:
-        """Wait for the next message; useful when no handler was passed."""
+        """Wait for the next message; useful when no handler was passed.
+
+        A closed session with an empty inbox raises instead of waiting for a message that cannot arrive.
+        """
+        if self._closed and self.inbox.empty():
+            raise ExternalNotConnected("this external session was closed; make a new one")
         return await self.inbox.get()
 
     async def send(self, to: str, text: str, *, mode: str = MODE_FOLLOWUP) -> Delivered:
@@ -218,6 +223,8 @@ class ExternalSession:
 
     async def set_status(self, status: str) -> None:
         """Say whether this session is ``idle`` or ``working``."""
+        if self._closed:
+            raise ExternalNotConnected("this external session was closed; make a new one")
         if status not in ("idle", "working"):
             raise ValueError("status is 'idle' or 'working'")
         self._client.set_session(
@@ -273,6 +280,9 @@ class ExternalSession:
     def _spawn(self, work: Awaitable[None]) -> None:
         """Keep a handler task alive until it finishes, so ``close`` can cancel and collect it."""
         task = asyncio.ensure_future(work)
+        if self._closed:
+            task.cancel()
+            return
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
