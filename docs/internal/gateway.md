@@ -64,7 +64,7 @@ packages/zettcode-engine/src/zettcode/processes.py     reading a process's comma
 * **Words come from the broker's relay, control from the broker.** The page is `kind=external`; it reads the
   messages between itself and a session through the owner token, and the broker says whether a message was taken,
   who is there, and that something arrived. A session's own stored conversation (model turns, tool rows) is not
-  read by this page. The gateway's id is kept across restarts (`host.json`), so a daemon told to reply to it still can.
+  read by this page; a thread that had no traffic in this run starts with no preview or timestamp. The gateway's id is kept across restarts (`host.json`), so a daemon told to reply to it still can.
 * **The gateway registers as an external session**, so its text is `via=external`; a daemon still answers with
   `send_message`. An external session may be added to groups by the broker owner and then receive and write to them.
 * **Sent messages are drawn by the page until the store has them** (`lib/pending.ts`): a pending message carries a

@@ -65,6 +65,8 @@ export interface Picture {
 export interface GatewayStatus {
   version: string;
   gateway: { id: string; handle: string };
+  /** The page is an external session: no pictures or direct prompts. */
+  external?: boolean;
   broker: { reachable: boolean };
   limits: Limits;
 }
