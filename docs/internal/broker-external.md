@@ -45,9 +45,13 @@ The constructor also accepts `on_message=` instead of a subclass. A handler may 
 | `Receipt(...)` | used as it is |
 | `None` | `accepted=True, disposition="delivered"` |
 | `str` | sent back to the sender, ack `queued` |
-| awaitable | run after acking `queued` |
+| awaitable | run after acking `queued`; it cannot refuse after that |
 
 Without a handler, the default `on_message` puts messages on `session.inbox`; `await session.receive()` takes one.
+The queue holds 1,000 messages by default and answers `busy` when full, so the broker holds the next one. A sync
+handler runs on the receive loop and must return promptly; use an async handler for subprocess or network work.
+An async handler is acked `queued` before it runs, so it cannot refuse the message — return a `Receipt` before
+awaiting if the decision is a refusal.
 
 The session is registered with `kind="external"`. It can exchange one-to-one messages and appears in the roster, but
 the broker still denies groups, its own history, and the `direct` chat-window semantics.
@@ -74,4 +78,5 @@ sessions.
 - `SendError`: the broker or recipient refused a send; `reason` is the protocol's word.
 
 The token in `broker.json` is the broker owner's credential, not a per-external-session credential. Only a trusted
-local program should read it.
+local program should read it. `session_id` is a claim in the roster, not an authenticator: the broker does not
+verify who registered a name, and `ExternalConflict` only means the name is taken right now.
