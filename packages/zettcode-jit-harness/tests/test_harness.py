@@ -519,6 +519,12 @@ def _configured(tmp_path: Path) -> ZettCodeConfig:
     )
 
 
+def _page(result: CommandResult):
+    """Return the page from either a full-screen result or an overlay-wrapped one."""
+    widget = result.widget
+    return widget.slots[0].widget if hasattr(widget, "slots") else widget
+
+
 async def _run(argument: str, client: _Switch, choices: object | None = None) -> tuple[CommandResult, _Shell]:
     """Run ``/harness`` with ``argument`` and return what it answered, beside the shell it answered through.
 
@@ -618,7 +624,7 @@ async def test_the_panel_lists_every_session_harness_and_borrows_on_enter(tmp_pa
     choices = HarnessChoices()
 
     result, shell = await _run("", client, choices)
-    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    page = _page(result)
     assert page.list.items[0].value.label == "mine", "the current session is first"
     assert page.list.items[0].current and not page.list.items[1].current
     assert page.list.current is not None and page.list.current.value.label == "mine"
@@ -644,7 +650,7 @@ async def test_the_panel_says_when_the_chosen_folder_is_gone(tmp_path: Path):
     (other / "notes" / "__init__.py").write_text("", encoding="utf-8")
     client = _Switch(config)
     result, shell = await _run("", client, HarnessChoices())
-    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    page = _page(result)
     other.joinpath("notes", "__init__.py").unlink()
     other.joinpath("notes").rmdir()
     other.rmdir()
@@ -662,12 +668,14 @@ async def test_the_panel_says_when_the_chosen_folder_is_gone(tmp_path: Path):
 
 
 async def test_harness_alone_opens_the_panel_and_changes_nothing(tmp_path: Path):
+    from zettcode.jit_harness.page import HarnessPage
+
     client = _Switch(_configured(tmp_path))
 
     result, shell = await _run("", client)
 
-    assert result.widget is not None, "no argument is still the page"
-    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    assert isinstance(result.widget, HarnessPage), "the picker takes the whole screen"
+    page = _page(result)
     assert [item.value.label for item in page.list.items] == ["mine"], "the current session is always a row"
     assert page.list.current is not None and page.list.current.value.label == "mine"
     assert "No harness yet" in page.list.current.description
@@ -683,7 +691,7 @@ async def test_the_panel_scans_harnesses_beyond_the_current_workspace(tmp_path: 
     (session / "kit" / "__init__.py").write_text("", encoding="utf-8")
 
     result, _ = await _run("", _Switch(config))
-    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    page = _page(result)
     row = next(item for item in page.list.items if item.value is not None and item.value.directory == session)
     assert row.value.label == "other-workspace-1234abcd/someone"
 
@@ -707,7 +715,7 @@ async def test_a_repository_row_names_its_session_and_title(tmp_path: Path):
     )
 
     result, _ = await _run("", _Switch(config))
-    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    page = _page(result)
     row = next(item for item in page.list.items if item.value is not None and item.value.directory == other)
     assert "other" in row.label and "Write docs" in row.label and "notes" in row.description
 
@@ -722,7 +730,7 @@ async def test_the_panel_lists_a_legacy_folder_without_moving_it(tmp_path: Path)
     (legacy / "__init__.py").write_text("", encoding="utf-8")
 
     result, _ = await _run("", _Switch(config))
-    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    page = _page(result)
     row = next(item for item in page.list.items if item.value is not None and item.value.directory == session)
     assert row.value.label == "other"
     assert legacy.is_dir(), "opening the picker reads the legacy folder"
@@ -737,7 +745,7 @@ async def test_a_harness_folder_without_a_stored_session_is_still_listed(tmp_pat
     (gone / "old").mkdir(parents=True)
     (gone / "old" / "__init__.py").write_text("", encoding="utf-8")
     result, _ = await _run("", _Switch(config))
-    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    page = _page(result)
     row = next(item for item in page.list.items if item.value is not None and item.value.directory == gone)
     assert row.value.directory == gone, "the folder is a harness whether or not its session is in the store"
 
@@ -766,7 +774,7 @@ async def test_the_panel_borrows_another_sessions_harness(tmp_path: Path):
     choices = HarnessChoices()
 
     result, shell = await _run("", _Switch(config), choices)
-    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    page = _page(result)
     page.list.select(
         next(
             index
@@ -791,7 +799,7 @@ async def test_the_current_row_returns_to_the_sessions_own_harness(tmp_path: Pat
     choices.select("mine", "other", other)
 
     result, _ = await _run("", _Switch(config), choices)
-    page = result.widget.slots[0].widget  # type: ignore[union-attr]
+    page = _page(result)
     page.list.activate()
 
     assert choices.target("mine") is None
