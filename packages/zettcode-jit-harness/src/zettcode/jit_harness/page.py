@@ -41,11 +41,12 @@ class TableRow:
 
 @dataclass(frozen=True, slots=True)
 class TableView:
-    """One tab: its heading, four column labels, and rows."""
+    """One tab: its heading, four column labels, rows, and the legend for its footer."""
 
     title: str
     headers: tuple[str, str, str, str]
     rows: Sequence[TableRow]
+    footer: str = "esc close"
 
 
 def _shown(directory: Path) -> str:
@@ -118,12 +119,8 @@ class HarnessPage(ListPage):
         )
 
     def _footer(self) -> str:
-        """Return the legend that belongs to the active tab."""
-        if self.index == 0:
-            return "accent = current session · enter borrow · esc close"
-        if self.views[self.index].title == "Tools":
-            return "accent = active · red = banned · esc close"
-        return "esc close"
+        """Return the legend the active tab declares."""
+        return self.views[self.index].footer
 
     def _show(self, index: int) -> None:
         """Switch to a tab, replacing the list's rows and header widths."""

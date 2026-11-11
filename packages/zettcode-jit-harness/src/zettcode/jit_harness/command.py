@@ -242,8 +242,18 @@ class HarnessCommand(TuiPlugin):
             state=state,
             directory=root,
             views=(
-                TableView("Harnesses", ("SESSION", "TITLE", "REPOSITORY", "DESCRIPTION"), rows),
-                TableView("Tools", ("TOOL", "SOURCE", "STATUS", "DESCRIPTION"), tools),
+                TableView(
+                    "Harnesses",
+                    ("SESSION", "TITLE", "REPOSITORY", "DESCRIPTION"),
+                    rows,
+                    "accent = current session · enter borrow · esc close",
+                ),
+                TableView(
+                    "Tools",
+                    ("TOOL", "SOURCE", "STATUS", "DESCRIPTION"),
+                    tools,
+                    "accent = active · error colour = banned · esc close",
+                ),
                 TableView("Files", ("FILE", "KIND", "SIZE", "PATH"), files),
             ),
             on_switch=lambda target: self._switch(host, current, target),
@@ -329,7 +339,7 @@ class HarnessCommand(TuiPlugin):
 
     @classmethod
     def _tool_rows(cls, host: CommandHost, current: str, directory: Path) -> list[TableRow]:
-        """Return request tools now, then the tools in the current session's JIT repositories."""
+        """Return request tools now, then the tools in the effective folder's JIT repositories."""
         from zett_agent.jit_harness import inspect_repository
 
         runtime = getattr(getattr(host, "agent", None), "runtime", None)
@@ -348,8 +358,9 @@ class HarnessCommand(TuiPlugin):
                 continue
             if policy.manifest is None:
                 continue
+            banned = set(policy.banned)
             for name in policy.manifest.tools:
-                jit.append((name, repository, policy.manifest.description, set(policy.banned)))
+                jit.append((name, repository, policy.manifest.description, banned))
         jit_names = {name for name, _repository, _description, _banned in jit}
         rows = [
             TableRow(None, (name, "request", "active", getattr(tool, "description", "")), current=True)
@@ -372,7 +383,7 @@ class HarnessCommand(TuiPlugin):
 
     @staticmethod
     def _file_rows(directory: Path) -> list[TableRow]:
-        """List the Markdown files under this session's harness folder."""
+        """List the Markdown files under the effective harness folder."""
         try:
             files = sorted(path for path in directory.rglob("*.md") if path.is_file())
         except OSError:
