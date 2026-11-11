@@ -223,6 +223,8 @@ class HarnessCommand(TuiPlugin):
         config = host.client.config
         current_directory = existing_session_path(config, current)
         root = config.harness_dir
+        choice = self.choices.target(current) if self.choices is not None else None
+        effective_directory = choice.directory if choice is not None else current_directory
         current_title = await asyncio.to_thread(lambda: getattr(host.client.session, "title", None))
         rows = await asyncio.to_thread(
             self._session_rows,
@@ -230,11 +232,11 @@ class HarnessCommand(TuiPlugin):
             current_title,
             current_directory,
             root,
-            self.choices.target(current) if self.choices is not None else None,
+            choice,
             config.store,
         )
-        tools = await asyncio.to_thread(self._tool_rows, host, current, current_directory)
-        files = await asyncio.to_thread(self._file_rows, current_directory)
+        tools = await asyncio.to_thread(self._tool_rows, host, current, effective_directory)
+        files = await asyncio.to_thread(self._file_rows, effective_directory)
         state = "on" if host.client.harness else "off"
         page = HarnessPage(
             state=state,
@@ -327,26 +329,18 @@ class HarnessCommand(TuiPlugin):
 
     @classmethod
     def _tool_rows(cls, host: CommandHost, current: str, directory: Path) -> list[TableRow]:
-        """Return the base tools offered now, then the tools in this session's JIT repositories."""
+        """Return request tools now, then the tools in the current session's JIT repositories."""
         from zett_agent.jit_harness import inspect_repository
 
         runtime = getattr(getattr(host, "agent", None), "runtime", None)
         context = getattr(runtime, "context", None)
         offered = tuple(getattr(context, "tools", ()) or ())
         active = {getattr(tool, "name", ""): tool for tool in offered if getattr(tool, "name", "")}
-        target = HarnessTarget(current, directory)
-        rows = [
-            TableRow(
-                target,
-                (name, "base", "active", getattr(tool, "description", "")),
-                current=True,
-            )
-            for name, tool in sorted(active.items())
-        ]
         try:
             repositories = sorted(path for path in directory.iterdir() if (path / "__init__.py").is_file())
         except OSError:
             repositories = []
+        jit: list[tuple[str, Path, str, set[str]]] = []
         for repository in repositories:
             try:
                 policy = inspect_repository(repository)
@@ -354,29 +348,35 @@ class HarnessCommand(TuiPlugin):
                 continue
             if policy.manifest is None:
                 continue
-            banned = set(policy.banned)
             for name in policy.manifest.tools:
-                status = "banned" if name in banned else "active" if name in active else "available"
-                rows.append(
-                    TableRow(
-                        target,
-                        (name, f"jit/{repository.name}", status, policy.manifest.description),
-                        current=status == "active",
-                        danger=status == "banned",
-                    )
+                jit.append((name, repository, policy.manifest.description, set(policy.banned)))
+        jit_names = {name for name, _repository, _description, _banned in jit}
+        rows = [
+            TableRow(None, (name, "request", "active", getattr(tool, "description", "")), current=True)
+            for name, tool in sorted(active.items())
+            if name not in jit_names
+        ]
+        for name, repository, description, banned in jit:
+            status = "banned" if name in banned else "active" if name in active else "available"
+            rows.append(
+                TableRow(
+                    None,
+                    (name, f"jit/{repository.name}", status, description),
+                    current=status == "active",
+                    danger=status == "banned",
                 )
+            )
         if not rows:
-            rows = [TableRow(target, ("No tools yet", "", "", ""))]
+            rows = [TableRow(None, ("No tools yet", "", "", ""))]
         return rows
 
     @staticmethod
     def _file_rows(directory: Path) -> list[TableRow]:
         """List the Markdown files under this session's harness folder."""
-        target = HarnessTarget(directory.name, directory)
         try:
             files = sorted(path for path in directory.rglob("*.md") if path.is_file())
         except OSError:
-            return [TableRow(target, ("No Markdown files yet", "", "", ""))]
+            return [TableRow(None, ("No Markdown files yet", "", "", ""))]
         rows: list[TableRow] = []
         for path in files:
             try:
@@ -384,8 +384,8 @@ class HarnessCommand(TuiPlugin):
                 size = path.stat().st_size
             except OSError:
                 continue
-            rows.append(TableRow(target, (relative.name, "markdown", f"{size:,} B", str(relative.parent))))
-        return rows or [TableRow(target, ("No Markdown files yet", "", "", ""))]
+            rows.append(TableRow(None, (relative.name, "markdown", f"{size:,} B", str(relative.parent))))
+        return rows or [TableRow(None, ("No Markdown files yet", "", "", ""))]
 
     @staticmethod
     def _titles(store: Path, names: set[str]) -> dict[str, str]:

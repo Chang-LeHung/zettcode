@@ -28,9 +28,12 @@ class HarnessTarget:
 
 @dataclass(frozen=True, slots=True)
 class TableRow:
-    """One row of a tab: four cells, plus how the row is painted."""
+    """One row of a tab: four cells, plus how the row is painted.
 
-    target: HarnessTarget
+    ``target`` is set only by the Harness tab; Tools and Files rows carry ``None`` so Enter cannot borrow or close.
+    """
+
+    target: HarnessTarget | None
     cells: tuple[str, str, str, str]
     current: bool = False
     danger: bool = False
@@ -82,18 +85,19 @@ class HarnessPage(ListPage):
         super().__init__(
             self._items(self.views[0]),
             title=f"{self.views[0].title} · harness is {state}",
-            subtitle=self._tabs(),
-            footer="tab: view · accent = current · enter borrow · esc close",
-            on_select=lambda item: on_switch(cast(HarnessTarget, item.value)),
+            subtitle=f"{_shown(directory)}  ·  {self._tabs()}",
+            footer=self._footer(),
+            on_select=lambda item: on_switch(cast(HarnessTarget, item.value)) if item.value is not None else None,
             on_cancel=on_close,
         )
 
     def _measure(self, view: TableView) -> tuple[int, int, int]:
         """Return the widths of the first three cells."""
-        return tuple(
+        widths = [
             max([display_width(header), *(display_width(row.cells[index]) for row in view.rows)])
             for index, header in enumerate(view.headers[:3])
-        )  # type: ignore[return-value]
+        ]
+        return widths[0], widths[1], widths[2]
 
     def _label(self, row: TableRow) -> str:
         """Return the first three cells, padded into columns."""
@@ -113,6 +117,14 @@ class HarnessPage(ListPage):
             f"[{view.title}]" if index == self.index else view.title for index, view in enumerate(self.views)
         )
 
+    def _footer(self) -> str:
+        """Return the legend that belongs to the active tab."""
+        if self.index == 0:
+            return "accent = current session · enter borrow · esc close"
+        if self.views[self.index].title == "Tools":
+            return "accent = active · red = banned · esc close"
+        return "esc close"
+
     def _show(self, index: int) -> None:
         """Switch to a tab, replacing the list's rows and header widths."""
         index %= len(self.views)
@@ -120,7 +132,8 @@ class HarnessPage(ListPage):
         view = self.views[index]
         self._widths = self._measure(view)
         self.title = f"{view.title} · harness is {self.state}"
-        self.subtitle = self._tabs()
+        self.subtitle = f"{_shown(self.directory)}  ·  {self._tabs()}"
+        self.footer = self._footer()
         self.list.set_items(self._items(view))
         self.invalidate()
 
