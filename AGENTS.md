@@ -39,7 +39,7 @@ from the root.
     without are in `REQUIRED_PLUGINS`, and only those are unreachable by `[plugins] disable`.
 - The plugins are the distributions in `packages/` that say `[tool.zettcode] plugin = true` (`zettcode-code-agents`, `zettcode-models`, `zettcode-monitor`, `zettcode-recap`), each with its own version and tag. They are workspace members like the rest — one environment,
   `uv.lock`, the suite `make check` runs — and `.github/workflows/release-packages.yml` releases whichever of them has
-  a version PyPI does not have. A plugin depends on `zettcode-plugin-api` and imports nothing else of ours:
+  a version PyPI does not have. A terminal plugin depends on `zettcode-plugin-api` and imports nothing else of ours; a gateway plugin (`zettcode-code-agents`) may depend on `zettcode-gateway` and `zettcode-broker` instead:
   `packages/zettcode/tests/test_structure.py` holds both halves, and its range has to admit the version in this checkout.
   A plugin ships inside the namespace like everything else (`packages/zettcode-monitor/src/zettcode/monitor/`), so
   no distribution has an import root of its own. Adding one is

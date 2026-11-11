@@ -20,13 +20,15 @@ import base64
 import json
 import os
 import shlex
+import signal
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from zettcode.broker.external import ExternalSession
-from zettcode.broker.models import Incoming
-from zettcode.broker.protocol import KIND_ZETTCODE
+from zettcode.broker.models import Incoming, Receipt
+from zettcode.broker.protocol import KIND_EXTERNAL
 from zettcode.gateway.agents import AgentPlugin
 
 #: How long one CLI turn may take before it is stopped.
@@ -96,23 +98,34 @@ class CliAgent(ExternalSession):
     """An external session whose one handler runs a CLI and keeps its session id."""
 
     def __init__(self, session_id: str, title: str, command: Command) -> None:
-        super().__init__(session_id, title, kind=KIND_ZETTCODE)
+        self._turns: set[asyncio.Task[None]] = set()
+        self._limit = max(1, int(os.environ.get("ZETTCODE_CODE_AGENTS_QUEUE", "4")))
+        super().__init__(session_id, title, kind=KIND_EXTERNAL, on_message=self._start_turn)
         self.command = command
         self.cwd = work_directory()
         self.state = state_directory() / f"{session_id}.json"
         self._lock = asyncio.Lock()
         self._process: asyncio.subprocess.Process | None = None
 
-    async def on_message(self, message: Incoming) -> str:
-        """Run one CLI turn and return its last words; the session wrapper sends them back."""
+    def _start_turn(self, message: Incoming) -> Receipt:
+        """Answer the broker now and run one CLI turn on a task."""
+        if len(self._turns) >= self._limit:
+            return Receipt(False, reason=f"{self.title} has {self._limit} turns waiting", busy=True)
+        task = asyncio.ensure_future(self._turn(message))
+        self._turns.add(task)
+        task.add_done_callback(self._turns.discard)
+        return Receipt(True, disposition="queued")
+
+    async def _turn(self, message: Incoming) -> None:
         async with self._lock:
             await self.set_status("working")
             try:
-                return await self._run(message.text)
+                answer = await self._run(message.text)
             except Exception as error:  # noqa: BLE001 - the person gets the reason, the agent stays alive
-                return f"{self.title} failed: {error}"
+                answer = f"{self.title} failed: {error}"
             finally:
                 await self.set_status("idle")
+            await self.reply(message, answer)
 
     async def _run(self, prompt: str) -> str:
         session = self._session()
@@ -120,17 +133,21 @@ class CliAgent(ExternalSession):
         if not session and "session-id" in self.command.new_args:
             session = str(uuid.uuid4())
         argv = self.command.argv(prompt, session, self.cwd, resume=resumed)
+        options: dict[str, Any] = {}
+        if os.name != "nt":
+            options["start_new_session"] = True
         self._process = await asyncio.create_subprocess_exec(
             *argv,
             cwd=str(self.cwd),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            **options,
         )
         process = self._process
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), TIMEOUT)
         except asyncio.TimeoutError:
-            process.kill()
+            self._kill(process)
             await process.wait()
             raise RuntimeError(f"the {self.title} command did not finish in {TIMEOUT:g} seconds") from None
         finally:
@@ -151,10 +168,26 @@ class CliAgent(ExternalSession):
     async def close(self) -> None:
         """Stop a running CLI process before closing the session."""
         process, self._process = self._process, None
+        tasks, self._turns = list(self._turns), set()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         if process is not None and process.returncode is None:
-            process.kill()
+            self._kill(process)
             await process.wait()
         await super().close()
+
+    @staticmethod
+    def _kill(process: asyncio.subprocess.Process) -> None:
+        """Kill the CLI and the children it forked, when the platform gives the process a session."""
+        if os.name == "nt":
+            process.kill()
+            return
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            process.kill()
 
     def _session(self) -> str:
         try:
