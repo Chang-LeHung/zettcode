@@ -52,6 +52,7 @@ from zettcode.sdk.types import (
 )
 from zettcode.version import __version__
 
+from .agents import AgentError, AgentManager
 from .backend import Backend
 from .chat import items_of, preview, spoken, with_reply_request
 from .chat import picture_id as picture_name
@@ -274,10 +275,12 @@ class Gateway:
         *,
         poll: float = POLL_SECONDS,
         clock: Any = time.time,
+        agents: AgentManager | None = None,
     ) -> None:
         """Hold a backend; nothing is read until :meth:`start`."""
         self.backend = backend
         self.settings = settings
+        self.agents = agents if agents is not None else AgentManager(settings.directory)
         self.poll = poll
         self.clock = clock
         self._probes: dict[str, tuple[float, bool]] = {}
@@ -331,6 +334,7 @@ class Gateway:
         if watcher is not None:
             watcher.cancel()
             await asyncio.gather(watcher, return_exceptions=True)
+        await self.agents.close()
         await self.backend.close()
 
     def _wake_up(self) -> None:
@@ -1108,6 +1112,38 @@ class Gateway:
             return await self.backend.older(max(first, 0), max(1, min(count, 200)), name)
         except SendError as error:
             raise GatewayError(404 if error.reason == "unknown" else 503, error.reason, str(error)) from error
+
+    # -- external agents --------------------------------------------------------------------------
+    def agent_types(self) -> list[dict[str, str]]:
+        """Return the external agent types an installed plugin offers."""
+        return [item.to_dict() for item in self.agents.available()]
+
+    async def create_agent(self, data: Mapping[str, Any]) -> dict[str, Any]:
+        """Start one plugin-provided external agent and return its thread."""
+        kind = data.get("kind")
+        title = data.get("title", "")
+        session_id = data.get("session_id", "")
+        group = data.get("group", "")
+        if not isinstance(kind, str) or not kind:
+            raise GatewayError(400, "invalid", "kind names an external agent type")
+        if not isinstance(title, str) or not isinstance(session_id, str) or not isinstance(group, str):
+            raise GatewayError(400, "invalid", "title, session_id and group are strings")
+        try:
+            session = await self.agents.create(kind, title, session_id, group)
+        except AgentError as error:
+            raise GatewayError(400, "agent", str(error)) from error
+        await self.refresh()
+        return {
+            "agent": {"session_id": session.session_id, "kind": session.kind, "handle": session.handle},
+            "thread": self._views.get(session.session_id),
+        }
+
+    async def remove_agent(self, session_id: str) -> dict[str, bool]:
+        """Stop one plugin-provided external agent."""
+        if not await self.agents.remove(session_id):
+            raise GatewayError(404, "not_found", "No such external agent is running")
+        await self.refresh()
+        return {"ok": True}
 
     async def send_group(self, name: str, text: str) -> dict[str, Any]:
         """Write to a group chat as the person at the gateway, joining the group first when this gateway is not in it.

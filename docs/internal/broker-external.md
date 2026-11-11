@@ -53,8 +53,11 @@ handler runs on the receive loop and must return promptly; use an async handler 
 An async handler is acked `queued` before it runs, so it cannot refuse the message — return a `Receipt` before
 awaiting if the decision is a refusal.
 
-The session is registered with `kind="external"`. It can exchange one-to-one messages and appears in the roster, but
-the broker still denies groups, its own history, and the `direct` chat-window semantics.
+The session is registered with `kind="external"` by default. It can exchange one-to-one messages and appears in the
+roster, but the broker still denies groups, its own history, and the `direct` chat-window semantics.
+
+A trusted gateway plugin can pass `kind="zettcode"`; then `send_group`, `join_group` and `groups` are available and
+its messages use `via="agent"`. Only installed gateway code should use that kind.
 
 ## Multiple adapters
 

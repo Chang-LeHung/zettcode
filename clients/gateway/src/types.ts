@@ -162,6 +162,17 @@ export interface SpawnReply {
   first?: { ok: boolean; disposition?: string; error?: { code: string; message: string } };
 }
 
+export interface AgentType {
+  name: string;
+  title: string;
+  description: string;
+}
+
+export interface AgentReply {
+  agent: { session_id: string; kind: string; handle: string };
+  thread: Thread | null;
+}
+
 export interface DirectoryListing {
   path: string;
   parent: string | null;

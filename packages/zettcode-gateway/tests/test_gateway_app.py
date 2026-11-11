@@ -310,6 +310,16 @@ def test_a_daemon_is_started_listed_and_stopped_through_the_endpoints_inside_the
     assert client.delete("/api/daemons/01d").status_code == 404
 
 
+def test_external_agent_endpoints_list_types_and_refuse_an_unknown_one(parts):
+    client, _, _ = parts
+    signed_in(client)
+
+    assert client.get("/api/agents").json() == {"agents": []}
+    unknown = client.post("/api/agents", json={"kind": "missing"})
+    assert unknown.status_code == 400 and unknown.json()["error"]["code"] == "agent"
+    assert client.delete("/api/agents/missing").status_code == 404
+
+
 def test_the_folder_picker_and_the_configuration_answer(parts):
     client, _, work = parts
     signed_in(client)

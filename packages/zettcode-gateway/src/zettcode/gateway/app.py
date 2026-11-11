@@ -400,6 +400,15 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
             headers={"cache-control": "private, max-age=31536000, immutable"},
         )
 
+    async def agents(_: Request) -> Any:
+        return {"agents": gateway.agent_types()}
+
+    async def create_agent(request: Request) -> Any:
+        return await gateway.create_agent(await body(request))
+
+    async def remove_agent(request: Request) -> Any:
+        return await gateway.remove_agent(request.path_params["id"])
+
     async def spawn(request: Request) -> Any:
         return await gateway.spawn(await body(request))
 
@@ -473,6 +482,9 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/logout", api(logout, public=True), methods=["POST"]),
         Route("/api/status", api(status)),
         Route("/api/config", api(config)),
+        Route("/api/agents", api(agents)),
+        Route("/api/agents", api(create_agent), methods=["POST"]),
+        Route("/api/agents/{id}", api(remove_agent), methods=["DELETE"]),
         Route("/api/models", api(add_model), methods=["POST"]),
         Route("/api/models/{name:path}", api(change_model), methods=["PATCH"]),
         Route("/api/models/{name:path}", api(remove_model), methods=["DELETE"]),

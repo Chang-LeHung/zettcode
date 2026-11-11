@@ -24,8 +24,8 @@ from zettcode.modes import MODE_FOLLOWUP, MODE_STEER
 
 from .client import BrokerClient
 from .files import broker_dir, read_note
-from .models import Delivered, Incoming, Receipt, SendError, SessionInfo
-from .protocol import KIND_EXTERNAL, VIA_EXTERNAL, PeerInfo
+from .models import Delivered, GroupDelivered, GroupInfo, Incoming, Receipt, SendError, SessionInfo
+from .protocol import KIND_EXTERNAL, KIND_ZETTCODE, VIA_AGENT, VIA_EXTERNAL, PeerInfo
 
 logger = logging.getLogger("zettcode.broker")
 
@@ -66,6 +66,8 @@ class ExternalSession:
             ``.``, ``_`` and ``-``). This is a claimed name: the broker does not verify who made it.
         title: What the roster shows. A handle is derived from it.
         workspace: An optional path shown in the roster.
+        kind: ``external`` for an ordinary outside program, or ``zettcode`` for a trusted gateway plugin that also
+            needs group chats and history. The broker treats the kind as the program's claim.
         on_message: How to answer a message; :meth:`on_message` is used when this is ``None``. A sync handler must
             not block the event loop.
         directory: The broker's directory; :func:`~.files.broker_dir` by default.
@@ -88,6 +90,7 @@ class ExternalSession:
         title: str = "",
         *,
         workspace: str = "",
+        kind: str = KIND_EXTERNAL,
         on_message: Handler | None = None,
         directory: Path | None = None,
         spawner: Callable[[Path], None] | None = None,
@@ -104,7 +107,10 @@ class ExternalSession:
         if not self.session_id:
             raise ValueError("an external session needs a session_id")
         self.title = title or type(self).title or self.session_id
+        if kind not in (KIND_EXTERNAL, KIND_ZETTCODE):
+            raise ValueError("kind is 'external' or 'zettcode'")
         self.workspace = workspace
+        self.kind = kind
         self.inbox: asyncio.Queue[Incoming] = asyncio.Queue(maxsize=inbox_size)
         self._handler = on_message
         self._on_roster = on_roster
@@ -127,7 +133,7 @@ class ExternalSession:
                 title=self.title,
                 workspace=workspace,
                 status="idle",
-                kind=KIND_EXTERNAL,
+                kind=kind,
             )
         )
 
@@ -186,6 +192,11 @@ class ExternalSession:
         return self._client.roster
 
     @property
+    def groups(self) -> tuple[GroupInfo, ...]:
+        """The group chats this session is in, as of the last broker update."""
+        return self._client.groups
+
+    @property
     def handle(self) -> str:
         """The handle the broker gave this session, or an empty string before registration."""
         for entry in self._client.roster:
@@ -215,11 +226,25 @@ class ExternalSession:
             raise ExternalNotConnected("this external session was closed; make a new one")
         if not self._client.connected:
             raise ExternalNotConnected("the external session is not connected")
-        return await self._client.send(to, text, via=VIA_EXTERNAL, mode=mode)
+        via = VIA_EXTERNAL if self.kind == KIND_EXTERNAL else VIA_AGENT
+        return await self._client.send(to, text, via=via, mode=mode)
 
     async def reply(self, message: Incoming, text: str, *, mode: str = MODE_FOLLOWUP) -> Delivered:
         """Answer the sender of ``message``; the stable sender id is used, not its handle."""
         return await self.send(message.sender.session_id, text, mode=mode)
+
+    async def send_group(self, group: str, text: str, *, mode: str = MODE_FOLLOWUP) -> GroupDelivered:
+        """Write to a group this session is in; a trusted ``kind="zettcode"`` session may do this."""
+        if self._closed or not self._client.connected:
+            raise ExternalNotConnected("the external session is not connected")
+        via = VIA_EXTERNAL if self.kind == KIND_EXTERNAL else VIA_AGENT
+        return await self._client.send_group(group, text, via=via, mode=mode)
+
+    async def join_group(self, group: str) -> GroupInfo | None:
+        """Join a group as the broker's owner; only a trusted gateway-managed session should call this."""
+        if self._closed or not self._client.connected:
+            raise ExternalNotConnected("the external session is not connected")
+        return await self._client.join_group(group)
 
     async def set_status(self, status: str) -> None:
         """Say whether this session is ``idle`` or ``working``."""
@@ -233,7 +258,7 @@ class ExternalSession:
                 title=self.title,
                 workspace=self.workspace,
                 status=status,
-                kind=KIND_EXTERNAL,
+                kind=self.kind,
             )
         )
 
