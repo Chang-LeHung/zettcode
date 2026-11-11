@@ -38,6 +38,7 @@ dev = [
   # package; a reader installs one from an extra in `packages/zettcode/pyproject.toml` instead.
   "zettcode-monitor",
   "zettcode-recap",
+  "zettcode-models",
   # The chat bridge is a program of its own, not a dependency of `zettcode`, but its suite runs in this environment
   # like every other member's.
   "zettcode-im",
@@ -76,6 +77,7 @@ zettcode-truncation = { workspace = true }
 zettcode-guidance = { workspace = true }
 zettcode-monitor = { workspace = true }
 zettcode-recap = { workspace = true }
+zettcode-models = { workspace = true }
 zettcode-im = { workspace = true }
 
 [tool.mypy]
@@ -109,6 +111,7 @@ mypy_path = [
   "packages/zettcode-truncation/src",
   "packages/zettcode-guidance/src",
   "packages/zettcode-im/src",
+  "packages/zettcode-models/src",
   "packages/zettcode/src",
   "packages/zettcode",
   ".github/scripts",
@@ -143,6 +146,7 @@ files = [
   "packages/zettcode/perf",
   "packages/zettcode-monitor/src",
   "packages/zettcode-recap/src",
+  "packages/zettcode-models/src",
   ".github/scripts",
 ]
 # Check the pydantic storage models as models, not as plain classes.

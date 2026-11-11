@@ -37,8 +37,8 @@ from the root.
     part of the program into a distribution of its own follows the same cut — the contract goes in `plugin-api`, the
     implementation in its own package. A part is named in `PROGRAM_DISTRIBUTIONS`; the ones the program cannot run
     without are in `REQUIRED_PLUGINS`, and only those are unreachable by `[plugins] disable`.
-- The plugins are the distributions in `packages/` that say `[tool.zettcode] plugin = true` (`zettcode-monitor`,
-  `zettcode-recap`), each with its own version and tag. They are workspace members like the rest — one environment,
+- The plugins are the distributions in `packages/` that say `[tool.zettcode] plugin = true` (`zettcode-models`,
+  `zettcode-monitor`, `zettcode-recap`), each with its own version and tag. They are workspace members like the rest — one environment,
   `uv.lock`, the suite `make check` runs — and `.github/workflows/release-packages.yml` releases whichever of them has
   a version PyPI does not have. A plugin depends on `zettcode-plugin-api` and imports nothing else of ours:
   `packages/zettcode/tests/test_structure.py` holds both halves, and its range has to admit the version in this checkout.

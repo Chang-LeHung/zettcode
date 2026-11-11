@@ -66,9 +66,10 @@ union of what is installed and every distribution contributes its own parts to i
 | `zettcode-im` | `zettcode/im/**`: the bridge between a chat app and one dedicated daemon — the state file (`state`: login, cursor, answered messages, the daemon's session), the daemon guard (`guard`: started on demand, resumed, backed off when it cannot start), the bridge's own session on the broker (`link`), the loop and every sentence a failure becomes (`bridge`) — and the first chat app, personal WeChat (`weixin/`: the QR code, the background process, the `zettcode-weixin` command). The chat app itself is the external `agim`, which keeps no state; a second app is another subpackage beside `weixin/`. A program of its own: `zettcode` does not depend on it | `zettcode-engine`, `zettcode-broker`, `zettcode-sdk`, `agim`, `qrcode` |
 | `zettcode` | `zettcode/cli.py`, `plugin_cli.py`, `oneshot.py`, the console scripts | all of the above |
 
-The plugins are distributions too, and they ship inside the same namespace: `zettcode-monitor` puts its module at
-`zettcode/monitor/` and `zettcode-recap` at `zettcode/recap/`, so no distribution has a top-level import root of
-its own. A test holds that: `test_every_distribution_ships_under_the_zettcode_namespace`.
+The plugins are distributions too, and they ship inside the same namespace: `zettcode-models` puts its module at
+`zettcode/models/`, `zettcode-monitor` at `zettcode/monitor/` and `zettcode-recap` at `zettcode/recap/`, so no
+distribution has a top-level import root of its own. A test holds that:
+`test_every_distribution_ships_under_the_zettcode_namespace`.
 
 `zettcode` stays the distribution a reader installs: it keeps both console scripts (the rules for that are in
 `AGENTS.md`) and depends on the server, so one `pip install zettcode` is unchanged in effect.

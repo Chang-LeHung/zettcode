@@ -16,9 +16,9 @@ class ModelPage(ListPage):
     Shape::
 
         Select Model
-          >  1. GPT-4o (current)    gpt-4o \u00b7 chat \u00b7 multimodal
-             2. DeepSeek Chat       deepseek-chat \u00b7 chat \u00b7 text
-            10. Claude Sonnet 4.5   claude-sonnet-4-5 \u00b7 anthropic \u00b7 text
+          >  1. GPT-4o (current)    file \u00b7 chat \u00b7 multimodal
+             2. Acme Large         plugin acme \u00b7 chat \u00b7 text
+            10. Claude Sonnet 4.5   file \u00b7 anthropic \u00b7 text
         enter select \u00b7 esc back
 
     The page only maps models to rows; the title, background, bounded scrolling,
@@ -27,8 +27,8 @@ class ModelPage(ListPage):
     column on the tenth row as on the first. Each row carries the
     :class:`ModelInfo` itself, because the same model id can be configured
     twice against different endpoints and the chosen entry, not its name, is
-    what the shell applies. A row names the API its entry speaks as well,
-    which is the one thing about a model a reader cannot infer from its name.
+    what the shell applies. A row names where the entry came from and the API it speaks — ``file`` or
+    ``plugin <host>`` — which a name cannot tell the reader.
     The command wraps it in a bottom panel, so the conversation stays visible
     while the model is chosen.
     """
@@ -64,10 +64,10 @@ class ModelPage(ListPage):
 
 
 def _subtitle(entry: ModelInfo) -> str:
-    """Return the line under a model's name: what it is, and which plugin offered it when one did."""
-    parts = [entry.model, entry.api, "multimodal" if entry.multimodal else "text"]
-    if entry.provider is not None:
-        parts.append(f"from the {entry.provider} plugin")
+    """Return the line under a model's name: where it came from, then what it is and what it still needs."""
+    source = f"plugin {entry.provider}" if entry.provider is not None else "file"
+    parts = [source]
     if entry.token_env is not None:
         parts.append(f"needs ${entry.token_env}")
+    parts.extend([entry.api, "multimodal" if entry.multimodal else "text"])
     return f" {SEPARATOR} ".join(parts)

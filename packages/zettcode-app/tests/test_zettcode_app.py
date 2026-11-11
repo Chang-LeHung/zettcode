@@ -114,6 +114,7 @@ from zettcode.presenters.text import (
     elapsed_text,
     terminal_safe,
 )
+from zettcode.sdk.types import ModelInfo
 from zettcode.sdk.types import SessionInfo as ListedSession
 from zettcode.tui import (
     DARK,
@@ -3417,6 +3418,16 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
     assert app.agent.runtime.client.models[-1] == "gpt-4o"
 
 
+def test_the_model_picker_says_where_a_model_came_from():
+    from zettcode.app.ui.widgets.model_page import _subtitle
+
+    file_model = ModelInfo("gpt-5-mini", "gpt-5-mini", 128_000, False, ("low",))
+    plugin_model = ModelInfo("acme-large", "acme-large", 128_000, False, ("low",), provider="acme")
+
+    assert _subtitle(file_model).startswith("file \u00b7")
+    assert _subtitle(plugin_model).startswith("plugin acme \u00b7")
+
+
 async def test_the_model_picker_names_the_api_of_every_entry():
     """A row says which protocol its entry speaks, which its name cannot tell you."""
     app = build_app()
@@ -3431,10 +3442,10 @@ async def test_the_model_picker_names_the_api_of_every_entry():
     await asyncio.wait_for(app.task, 2.0)
 
     text = harness.render().text
-    assert "gpt-5-mini \u00b7 chat \u00b7 text" in text
+    assert "file \u00b7 chat \u00b7 text" in text
     # The panel is 60 columns wide, so a long id clips its last segment; the API
     # comes before that one, which is where a reader comparing rows looks.
-    assert "claude-sonnet-4-5 \u00b7 anthropic \u00b7" in text
+    assert "file \u00b7 anthropic \u00b7 text" in text
 
 
 @pytest.mark.parametrize("height", [24, 32])

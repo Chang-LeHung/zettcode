@@ -27,6 +27,7 @@ members = [
     "zettcode-mcp",
     "zettcode-memory",
     "zettcode-messaging",
+    "zettcode-models",
     "zettcode-monitor",
     "zettcode-pets",
     "zettcode-plugin-api",
@@ -2996,8 +2997,12 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "zettcode-models" },
     { name = "zettcode-monitor" },
     { name = "zettcode-recap" },
+]
+models = [
+    { name = "zettcode-models" },
 ]
 monitor = [
     { name = "zettcode-monitor" },
@@ -3022,6 +3027,8 @@ requires-dist = [
     { name = "zettcode-mcp", editable = "packages/zettcode-mcp" },
     { name = "zettcode-memory", editable = "packages/zettcode-memory" },
     { name = "zettcode-messaging", editable = "packages/zettcode-messaging" },
+    { name = "zettcode-models", marker = "extra == 'all'", editable = "packages/zettcode-models" },
+    { name = "zettcode-models", marker = "extra == 'models'", editable = "packages/zettcode-models" },
     { name = "zettcode-monitor", marker = "extra == 'all'", editable = "packages/zettcode-monitor" },
     { name = "zettcode-monitor", marker = "extra == 'monitor'", editable = "packages/zettcode-monitor" },
     { name = "zettcode-pets", editable = "packages/zettcode-pets" },
@@ -3038,7 +3045,7 @@ requires-dist = [
     { name = "zettcode-truncation", editable = "packages/zettcode-truncation" },
     { name = "zettcode-tui", editable = "packages/zettcode-tui" },
 ]
-provides-extras = ["all", "monitor", "recap"]
+provides-extras = ["all", "models", "monitor", "recap"]
 
 [[package]]
 name = "zettcode-app"
@@ -3290,6 +3297,24 @@ requires-dist = [
     { name = "zettcode-broker", editable = "packages/zettcode-broker" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
 ]
+
+[[package]]
+name = "zettcode-models"
+source = { editable = "packages/zettcode-models" }
+dependencies = [
+    { name = "zettcode-plugin-api" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "zettcode-plugin-api", editable = "packages/zettcode-plugin-api" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8,<9" }]
 
 [[package]]
 name = "zettcode-monitor"
@@ -3569,6 +3594,7 @@ dev = [
     { name = "viztracer" },
     { name = "zettcode" },
     { name = "zettcode-im" },
+    { name = "zettcode-models" },
     { name = "zettcode-monitor" },
     { name = "zettcode-recap" },
 ]
@@ -3589,6 +3615,7 @@ dev = [
     { name = "viztracer", specifier = ">=1.1.1" },
     { name = "zettcode", editable = "packages/zettcode" },
     { name = "zettcode-im", editable = "packages/zettcode-im" },
+    { name = "zettcode-models", editable = "packages/zettcode-models" },
     { name = "zettcode-monitor", editable = "packages/zettcode-monitor" },
     { name = "zettcode-recap", editable = "packages/zettcode-recap" },
 ]

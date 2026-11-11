@@ -132,6 +132,7 @@ _EXPORTS = {
     "Presenters": ".presenters",
     "Provider": "zettcode.providers",
     "ProvidedModel": "zettcode.providers",
+    "Api": "zettcode.providers",
     "Rail": ".switch",
     "ReadEntry": ".entries",
     "Registry": "zettcode.registry",
@@ -256,7 +257,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from zettcode.engine.storage.store import SessionStore
     from zettcode.mention import Mention, MentionProvider
     from zettcode.plugin_tui import TuiGroup
-    from zettcode.providers import ProvidedModel, Provider
+    from zettcode.providers import Api, ProvidedModel, Provider
     from zettcode.registry import Registry
     from zettcode.tui import Canvas, Host, MouseAction, MouseEvent, Span, Style, TextLine, Widget
     from zettcode.tui.render import blend, display_width, truncate
@@ -446,6 +447,7 @@ __all__ = [
     "ShellPolicy",
     "SessionStore",
     "CompactionCounter",
+    "Api",
     "Presenter",
     "Presenters",
     "Provider",

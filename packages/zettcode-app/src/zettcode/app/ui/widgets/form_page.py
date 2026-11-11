@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from time import monotonic
 
+from zettcode.plugin_api.panels import pressed
+from zettcode.plugin_api.switch import SWITCH_WIDTH, Rail, draw_switch
 from zettcode.tui import (
     PROMPT,
     SEPARATOR,
@@ -20,13 +23,14 @@ from zettcode.tui import (
     Text,
     TextArea,
     TextLine,
+    Theme,
     VBox,
     Widget,
     event_key,
 )
 from zettcode.tui.core.geometry import Constraints, Point
 from zettcode.tui.layout import Slot
-from zettcode.tui.render import display_width
+from zettcode.tui.render import blend, display_width
 
 #: What stands in for each character of a secret, so the reader sees that something was typed.
 MASK = "\u2022"
@@ -62,6 +66,8 @@ class Field:
         hint: One sentence shown under the form while the cursor is in this line.
         required: Refuse a save while the line is empty; the label then carries a star.
         secret: Paint the line as bullets, for a token.
+        switch: The word of off and then of on when the line is a switch rather than an editor.
+        value: For a switch, which of its words it starts on.
     """
 
     key: str
@@ -71,6 +77,8 @@ class Field:
     hint: str = ""
     required: bool = False
     secret: bool = False
+    switch: tuple[str, str] | None = None
+    value: int = 0
 
 
 class LineArea(TextArea):
@@ -98,6 +106,27 @@ class SecretLine(LineArea):
     def spans_for(self, line: str, start: int, body: Style) -> tuple[Span, ...]:
         """Paint the row as bullets."""
         return (Span(MASK * len(line), body),)
+
+
+def _boxed_frame(canvas: Canvas, theme: Theme, rect: Rect, label: str, here: bool) -> None:
+    """Draw one form box and its label, shared by editors and switches."""
+    style = Style(foreground=theme.accent_bright if here else theme.muted)
+    width, x, y = rect.width, rect.x, rect.y
+    rule = BOX_HORIZONTAL * max(0, width - 2)
+    canvas.draw_text(x, y, f"{BOX_TOP_LEFT}{rule}{BOX_TOP_RIGHT}", style)
+    canvas.draw_text(x, y + 1, BOX_VERTICAL, style)
+    canvas.draw_text(x + width - 1, y + 1, BOX_VERTICAL, style)
+    canvas.draw_text(x, y + 2, f"{BOX_BOTTOM_LEFT}{rule}{BOX_BOTTOM_RIGHT}", style)
+    if width > 6:
+        words = Style(foreground=theme.accent_bright if here else theme.subtle, bold=here)
+        canvas.draw_text(x + 2, y, f" {label} ", words, max_width=width - 4)
+
+
+def _bare_label(canvas: Canvas, theme: Theme, rect: Rect, label: str, here: bool, column: int) -> None:
+    """Draw a form line's label outside a box, shared by editors and switches."""
+    marker = f"{PROMPT} " if here else "  "
+    words = Style(foreground=theme.accent_bright if here else theme.muted, bold=here)
+    canvas.draw_text(rect.x, rect.y, marker + label, words, max_width=column)
 
 
 class FieldBox(Widget):
@@ -149,20 +178,9 @@ class FieldBox(Widget):
         theme = self.theme
         label = self.form.label_of(self.field)
         if self.form.boxed:
-            style = Style(foreground=theme.accent_bright if self.here else theme.muted)
-            width, x, y = self.rect.width, self.rect.x, self.rect.y
-            rule = BOX_HORIZONTAL * max(0, width - 2)
-            canvas.draw_text(x, y, f"{BOX_TOP_LEFT}{rule}{BOX_TOP_RIGHT}", style)
-            canvas.draw_text(x, y + 1, BOX_VERTICAL, style)
-            canvas.draw_text(x + width - 1, y + 1, BOX_VERTICAL, style)
-            canvas.draw_text(x, y + 2, f"{BOX_BOTTOM_LEFT}{rule}{BOX_BOTTOM_RIGHT}", style)
-            if width > 6:
-                words = Style(foreground=theme.accent_bright if self.here else theme.subtle, bold=self.here)
-                canvas.draw_text(x + 2, y, f" {label} ", words, max_width=width - 4)
+            _boxed_frame(canvas, theme, self.rect, label, self.here)
         else:
-            marker = f"{PROMPT} " if self.here else "  "
-            words = Style(foreground=theme.accent_bright if self.here else theme.muted, bold=self.here)
-            canvas.draw_text(self.rect.x, self.rect.y, marker + label, words, max_width=self.form.column)
+            _bare_label(canvas, theme, self.rect, label, self.here, self.form.column)
             canvas.fill(self.area.rect.x, self.area.rect.y, self.area.rect.width, 1, Style(background=theme.surface))
         self.area.render(canvas)
 
@@ -176,6 +194,130 @@ class FieldBox(Widget):
     def cursor(self) -> Point | None:
         """Forward the editor's cursor."""
         return self.area.cursor()
+
+
+class SwitchBox(Widget):
+    """One line of a form that is a switch: a rail with a knob between two words.
+
+    It is the same row the model panel uses, so a yes-or-no answer is turned over with Left, Right or Space
+    instead of typed. Tab moves to it and off it like any line, Enter saves the form.
+    """
+
+    def __init__(self, form: FormPage, field: Field) -> None:
+        """Start the knob on the field's word."""
+        super().__init__()
+        self.form = form
+        self.field = field
+        self.rail = Rail(field.switch or (), field.value)
+        self._body = Rect(0, 0, 0, 0)
+        self._token = f"form-switch:{field.key}:{id(self)}"
+
+    @property
+    def focusable(self) -> bool:
+        """Take the cursor: there is no editor in the row to hold it."""
+        return True
+
+    @property
+    def here(self) -> bool:
+        """Return whether the cursor is in this line."""
+        return self.focused
+
+    @property
+    def answer(self) -> str:
+        """Return ``yes`` or ``no``: the words are what is drawn, not what the form means."""
+        return "yes" if self.rail.selected else "no"
+
+    def layout(self, rect: Rect) -> None:
+        """Put the rail inside the border, or after the label when there is no room for a border."""
+        super().layout(rect)
+        if self.form.boxed:
+            self._body = Rect(rect.x + 2, rect.y + 1, max(0, rect.width - 4), 1)
+        else:
+            column = self.form.column
+            self._body = Rect(rect.x + column, rect.y, max(0, rect.width - column), 1)
+
+    def render(self, canvas: Canvas) -> None:
+        """Draw the box and its label, or the bare label, then the switch."""
+        if self.rect.empty:
+            return
+        theme = self.theme
+        label = self.form.label_of(self.field)
+        if self.form.boxed:
+            _boxed_frame(canvas, theme, self.rect, label, self.here)
+        else:
+            _bare_label(canvas, theme, self.rect, label, self.here, self.form.column)
+            canvas.fill(self._body.x, self._body.y, self._body.width, 1, Style(background=theme.surface_alt))
+        on = bool(self.rail.selected)
+        draw_switch(
+            canvas,
+            theme,
+            self._body.y,
+            self._body.x,
+            self.rail.position(self._now()),
+            blend(theme.muted, theme.surface_alt, 0.55),
+        )
+        canvas.draw_text(
+            self._body.x + SWITCH_WIDTH + 1,
+            self._body.y,
+            self.rail.words[self.rail.selected],
+            Style(foreground=theme.accent if on else theme.muted, background=theme.surface_alt),
+            max_width=max(0, self._body.right - self._body.x - SWITCH_WIDTH - 1),
+        )
+
+    def handle(self, event: AnyEvent, host: Host) -> bool:
+        """Take a press on the line, and Left, Right, Home, End and Space on the switch."""
+        if isinstance(event, MouseEvent) and event.action is MouseAction.DOWN and self.rect.contains(event.x, event.y):
+            host.focus(self)
+            if self._body.contains(event.x, event.y):
+                self.choose(1 - self.rail.selected)
+            return True
+        key = pressed(event)
+        match key:
+            case "left":
+                self.choose(self.rail.selected - 1)
+            case "right":
+                self.choose(self.rail.selected + 1)
+            case "home":
+                self.choose(0)
+            case "end":
+                self.choose(len(self.rail.words) - 1)
+            case " " | "space":
+                self.choose(1 - self.rail.selected)
+            case _:
+                return False
+        return True
+
+    def _now(self) -> float:
+        """Return the frame clock, or a plain monotonic one before the widget is mounted."""
+        return self.app.clock() if self.app is not None else monotonic()
+
+    def choose(self, index: int) -> None:
+        """Send the knob to a word, sliding there unless the reader asked for less motion."""
+        chosen = max(0, min(len(self.rail.words) - 1, index))
+        if chosen == self.rail.selected:
+            return
+        instant = self.app is not None and self.app.reduced_motion
+        if self.rail.choose(chosen, self._now(), instant=instant) and self.app is not None:
+            self.app.scheduler.animate(self._token)
+        self.form._edited()
+        self.invalidate()
+
+    def on_tick(self) -> bool:
+        """Hand the frame loop back once the knob has arrived; say whether the picture is still changing."""
+        landed = self.rail.arrive(self._now())
+        if not self.rail.moving and self.app is not None:
+            self.app.scheduler.animate(self._token, active=False)
+        return self.rail.moving or landed
+
+    def on_unmount(self) -> None:
+        """Release the frame loop, so a form put away mid-slide stops costing frames."""
+        self.rail.moving = False
+        if self.app is not None:
+            self.app.scheduler.animate(self._token, active=False)
+
+    def cursor(self) -> Point | None:
+        """Put the text cursor on the switch, which has none of its own."""
+        return Point(self._body.x, self._body.y)
 
 
 class FormPage(VBox):
@@ -235,13 +377,21 @@ class FormPage(VBox):
         #: Whether the lines are drawn in boxes; decided at each layout, by whether the panel is tall enough.
         self.boxed = True
         self.areas: dict[str, LineArea] = {}
+        self.switches: dict[str, SwitchBox] = {}
+        self.controls: dict[str, Widget] = {}
         for field in self.fields:
+            if field.switch is not None:
+                switch = SwitchBox(self, field)
+                self.switches[field.key] = switch
+                self.controls[field.key] = switch
+                continue
             area = (SecretLine if field.secret else LineArea)(
                 prompt="", placeholder=field.placeholder, max_height=1, on_change=self._edited
             )
             if field.initial:
                 area.set_text(field.initial)
             self.areas[field.key] = area
+            self.controls[field.key] = area
         #: Where a bare line's editor starts: after the marker, the longest label, and the gap.
         self.column = max(display_width(self.label_of(field)) for field in self.fields) + MARKER_WIDTH + LABEL_GAP
         self._heading = RichText(self._heading_lines)
@@ -251,7 +401,10 @@ class FormPage(VBox):
             Slot(self._heading, size=lambda width: self._heading.measure(Constraints(max_width=width)).height)
         ]
         for field in self.fields:
-            rows.append(Slot(FieldBox(self, field, self.areas[field.key]), size=lambda width: self.line_rows))
+            widget = (
+                self.switches[field.key] if field.switch is not None else FieldBox(self, field, self.areas[field.key])
+            )
+            rows.append(Slot(widget, size=lambda width: self.line_rows))
         rows += [Slot(self._hint, size=2), Slot(self._keys, size=1)]
         super().__init__(rows)
 
@@ -295,7 +448,7 @@ class FormPage(VBox):
     def _hint_line(self) -> TextLine:
         """Return the hint of the line the cursor is in, or nothing when it is in none."""
         for field in self.fields:
-            if self.areas[field.key].focused and field.hint:
+            if self.controls[field.key].focused and field.hint:
                 return TextLine((Span(field.hint, Style(foreground=self.theme.muted)),))
         return TextLine()
 
@@ -306,19 +459,28 @@ class FormPage(VBox):
     # -- the answers -----------------------------------------------------------------
     @property
     def values(self) -> dict[str, str]:
-        """Return every line's trimmed text by key."""
-        return {key: area.text.strip() for key, area in self.areas.items()}
+        """Return every line's answer by key: trimmed text, or ``yes``/``no`` for a switch."""
+        return {
+            field.key: (
+                "yes"
+                if field.switch is not None and self.switches[field.key].rail.selected
+                else "no"
+                if field.switch is not None
+                else self.areas[field.key].text.strip()
+            )
+            for field in self.fields
+        }
 
     def focus_key(self) -> str | None:
         """Return the key of the line the cursor is in, if it is in one."""
-        return next((key for key, area in self.areas.items() if area.focused), None)
+        return next((key for key, control in self.controls.items() if control.focused), None)
 
     def _refuse(self, host: Host, key: str, reason: str) -> None:
         """Say why nothing was saved and put the cursor where it can be fixed."""
         self.refusal = reason
-        area = self.areas.get(key)
-        if area is not None:
-            host.focus(area)
+        control = self.controls.get(key)
+        if control is not None:
+            host.focus(control)
 
     def _submit(self, host: Host) -> None:
         """Save, unless a required line is empty or the owner refuses; never clears a line."""
@@ -336,7 +498,7 @@ class FormPage(VBox):
         keys = [field.key for field in self.fields]
         here = self.focus_key()
         index = (keys.index(here) + step) % len(keys) if here in keys else 0
-        host.focus(self.areas[keys[index]])
+        host.focus(self.controls[keys[index]])
 
     def capture_event(self, event: AnyEvent, host: Host) -> bool:
         """Take Escape, Enter and the keys that move between lines before the editor can.
@@ -377,4 +539,4 @@ def form_rows(fields: int, *, note: bool = False) -> int:
     return FORM_CHROME_ROWS + (1 if note else 0) + BOXED_ROWS * fields
 
 
-__all__ = ["FORM_CHROME_ROWS", "Field", "FieldBox", "FormPage", "LineArea", "SecretLine", "form_rows"]
+__all__ = ["FORM_CHROME_ROWS", "Field", "FieldBox", "FormPage", "LineArea", "SecretLine", "SwitchBox", "form_rows"]

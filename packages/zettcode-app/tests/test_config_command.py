@@ -289,10 +289,153 @@ async def test_add_with_a_provider_shows_one_form_and_only_the_model_id_is_requi
     fx.choose("OpenAI Chat API")
     page = form_of(fx)
 
-    assert [field.key for field in page.fields] == ["model", "token", "url", "name", "temperature"]
+    assert [field.key for field in page.fields] == [
+        "model",
+        "token",
+        "url",
+        "name",
+        "temperature",
+        "multimodal",
+        "web_search",
+        "context_window",
+        "compact_percent",
+    ]
     assert [field.key for field in page.fields if field.required] == ["model"]
     assert page.focus_key() == "model", "the cursor starts in the first line"
     assert fx.page(InputPage) is None
+
+
+async def test_the_add_form_shows_the_defaults_it_will_use(shell):
+    fx = shell()
+    await fx.command("/config add")
+    fx.choose("OpenAI Chat API")
+    page = form_of(fx)
+
+    assert (page.switches["multimodal"].rail.words, page.switches["multimodal"].rail.selected) == (
+        ("text only", "accepted"),
+        0,
+    )
+    assert (page.switches["web_search"].rail.words, page.switches["web_search"].rail.selected) == (("off", "on"), 0)
+    placeholders = {field.key: field.placeholder for field in page.fields}
+    assert placeholders["context_window"] == "128,000 tokens"
+    assert placeholders["compact_percent"] == "80%"
+
+
+async def test_the_add_form_can_set_images_search_the_window_and_the_compression(shell):
+    fx = shell()
+    await fx.command("/config add")
+    fx.choose("OpenAI Chat API")
+    fx.harness.write("my-model")
+    for _ in range(5):
+        fx.harness.press("tab")
+    assert form_of(fx).focus_key() == "multimodal"
+    fx.harness.press("right")
+    fx.harness.press("tab")
+    assert form_of(fx).focus_key() == "web_search"
+    fx.harness.press("right")
+    fx.harness.press("tab")
+    assert form_of(fx).focus_key() == "context_window"
+    fx.harness.write("200k")
+    fx.harness.press("tab")
+    assert form_of(fx).focus_key() == "compact_percent"
+    fx.harness.write("70")
+    fx.harness.press("enter")
+
+    assert fx.models[-1] == {
+        "model": "my-model",
+        "chat": True,
+        "multimodal": True,
+        "web_search": True,
+        "context_window": 200_000,
+        "compact_percent": 70,
+    }
+
+
+async def test_add_refuses_a_shown_name_another_model_uses(shell):
+    fx = shell()
+    await fx.command("/config add")
+    fx.choose("OpenAI Chat API")
+    fx.harness.write("new-model")
+    for _ in range(3):
+        fx.harness.press("tab")
+    assert form_of(fx).focus_key() == "name"
+    fx.harness.write("GPT-4o")
+
+    fx.harness.press("enter")
+
+    page = form_of(fx)
+    assert page.focus_key() == "name" and "already shown as 'GPT-4o'" in page.refusal
+    assert page.values["model"] == "new-model", "everything typed is still there"
+    assert not any(model["model"] == "new-model" for model in fx.models)
+
+
+async def test_web_search_on_deepseeks_chat_endpoint_is_refused_at_its_row(shell):
+    fx = shell()
+    await fx.command("/config add")
+    fx.choose("OpenAI Chat API")
+    fx.harness.write("deepseek-chat")
+    for _ in range(6):
+        fx.harness.press("tab")
+    assert form_of(fx).focus_key() == "web_search"
+    fx.harness.press("right")
+
+    fx.harness.press("enter")
+
+    page = form_of(fx)
+    assert page.focus_key() == "web_search" and "DeepSeek serves web search" in page.refusal
+    assert "Config models" not in page.refusal, "the form names the row, not a file position"
+    assert page.values["model"] == "deepseek-chat", "everything typed is still there"
+    assert not any(model["model"] == "deepseek-chat" for model in fx.models), "nothing was written"
+
+
+async def test_the_add_form_switch_slides_to_its_other_end_and_lands(shell):
+    fx = shell()
+    await fx.command("/config add")
+    fx.choose("OpenAI Chat API")
+    for _ in range(5):
+        fx.harness.press("tab")
+    row = form_of(fx).switches["multimodal"]
+    now = [0.0]
+    fx.app.app.clock = lambda: now[0]
+
+    fx.harness.press("right")
+    assert row.rail.moving and row.rail.selected == 1 and 0.0 <= row.rail.position(now[0]) < 1.0
+    now[0] = 5.0
+    fx.app.app.tick()
+
+    assert not row.rail.moving and row.rail.position(now[0]) == 1.0
+
+
+async def test_under_reduced_motion_the_add_form_switch_jumps(shell):
+    fx = shell()
+    fx.app.app.reduced_motion = True
+    await fx.command("/config add")
+    fx.choose("OpenAI Chat API")
+    for _ in range(5):
+        fx.harness.press("tab")
+    row = form_of(fx).switches["multimodal"]
+
+    fx.harness.press("right")
+
+    assert not row.rail.moving and row.rail.selected == 1
+
+
+async def test_the_add_form_switch_turns_with_space_and_a_click(shell):
+    fx = shell()
+    await fx.command("/config add")
+    fx.choose("OpenAI Chat API")
+    for _ in range(5):
+        fx.harness.press("tab")
+    page = form_of(fx)
+    row = page.switches["multimodal"]
+    assert page.focus_key() == "multimodal"
+
+    fx.harness.press(" ")
+    assert row.rail.selected == 1, "Space turns the focused switch over"
+
+    fx.screen()
+    fx.harness.mouse_down(row._body.x + 1, row._body.y)
+    assert row.rail.selected == 0, "a press on the rail turns it over too"
 
 
 async def test_tab_moves_between_the_lines_and_enter_saves_them_all_at_once(shell):
@@ -513,6 +656,7 @@ async def test_the_hint_under_the_form_follows_the_cursor(shell):
 
 async def test_every_line_is_a_box_with_its_label_on_the_border(shell):
     fx = shell()
+    fx.app.app.resize(110, 40)
     await fx.command("/config add")
     fx.choose("OpenAI Chat API")
     page = form_of(fx)
@@ -526,6 +670,7 @@ async def test_every_line_is_a_box_with_its_label_on_the_border(shell):
 
 async def test_the_box_the_cursor_is_in_is_bright_and_the_others_are_not(shell):
     fx = shell()
+    fx.app.app.resize(110, 40)
     await fx.command("/config add")
     fx.choose("OpenAI Chat API")
     theme = fx.app.app.theme
@@ -542,6 +687,7 @@ async def test_the_box_the_cursor_is_in_is_bright_and_the_others_are_not(shell):
 
 async def test_a_press_on_a_box_puts_the_cursor_in_it_the_border_included(shell):
     fx = shell()
+    fx.app.app.resize(110, 40)
     await fx.command("/config add")
     fx.choose("OpenAI Chat API")
     fx.screen()  # a frame, so the page has been laid out
@@ -1199,7 +1345,7 @@ async def test_a_plugin_model_is_listed_by_model_and_not_by_config(shell):
     with_models(fx)
 
     await fx.command("/model")
-    assert "Acme Large" in fx.screen()
+    assert "Acme Large" in fx.screen() and "plugin acme" in fx.screen()
     fx.harness.press("escape")
 
     await fx.command("/config list")

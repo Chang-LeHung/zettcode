@@ -83,12 +83,12 @@ Add a model — OpenAI Chat API
 ╭─ Token ──────────────────────────────────────────╮
 │ ••••••••••••••                                 │
 ╰────────────────────────────────────────────────╯
-   … Address, Shown name and Temperature, each in a box of its own
+   … Address, Shown name, Temperature, the Images and Web search switches, Context window and Compress at
 ```
 
 Every line is a **box** with its label on the top border, bright green while the cursor is in it, so it reads as
 something to type into; a click anywhere on a box, its border included, puts the cursor there. The form needs about
-20 rows; on a terminal too short for that, the lines are drawn one row each instead, the text on a band of its own,
+32 rows; on a terminal too short for that, the lines are drawn one row each instead, the text on a band of its own,
 and work the same.
 
 **Tab** (or **↓**) moves to the next line and **Shift-Tab** (or **↑**) to the previous one, going round at the ends;
@@ -149,8 +149,10 @@ Some rows are about what the model can carry, and each takes effect in the runni
 | **Compress at** | The share of the window at which the conversation is summarized before the next request (`compact_percent`). | A percentage above 0 and up to 100: `80` or `80%`. Empty uses 80. |
 
 The window and the share together decide when compaction happens — at 200k and 75% that is 150,000 tokens —
-and the panel says what they come to when you set them. The values are not asked when you *add* a model
-(the endpoint does not say); set them here afterwards, or give `--context` and `--compact` on the line.
+and the panel says what they come to when you set them. The add form offers these too: Images and Web search are
+switches already on the default — **←** / **→** or **Space** turns one over — and Context window and Compress at
+show their defaults as placeholders. Leave a line alone to keep it, or set it here afterwards (`--context` and
+`--compact` do the same on one line).
 
 The same thing on one line, asking only for what the line leaves out:
 

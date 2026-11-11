@@ -12,7 +12,9 @@ requests — the one already running is not disturbed — and the header shows t
 new name immediately. `/model DeepSeek Pro` also works, matching either the display
 name or the model id, for when you know exactly what you want.
 
-Models a plugin offers appear here too, with `from the <provider> plugin` on their row. They are not in the
+Every row starts with where the model came from: `file`, or `plugin <host>` for one a plugin offers. The
+suggestion menu after `/model ` carries the same source and the protocol beside each name. The `zettcode[models]`
+extra adds one official model for each vendor key in the environment; see [Plugins](/guide/plugins#official-models). They are not in the
 configuration file: the plugin describes the host, and the runtime reads the token from the environment
 variable the plugin names, once, when it is built. A row that says `needs $ACME_API_KEY` is one whose
 variable was not set at that moment: export it and start the session again. `/config` lists the file's

@@ -10,7 +10,7 @@ ZettCode 能对接任何 OpenAI 兼容的接入点：云上的 API、把多家 p
 —— 头部会立刻显示新名字。`/model DeepSeek Pro` 也可以，它会同时匹配显示名和模型 id，适合你很清楚
 想要哪个的时候。
 
-插件提供的模型也出现在这里，那一行会写 `from the <provider> plugin`。它们不在配置文件里：插件描述 host，
+每一行开头说明模型来自哪里：`file`，或者插件提供的 `plugin <host>`。在输入框里敲 `/model ` 时，补全菜单的每个名字旁边也带着同样的来源和协议。`zettcode[models]` 这个 extra 会为环境里的每个厂商 key 提供一个官方模型；见[插件](/zh/guide/plugins#official-models)。它们不在配置文件里：插件描述 host，
 runtime 在构建时读取插件指定的环境变量里的 token（只读一次）。某一行写着 `needs $ACME_API_KEY`，说明当时
 这个变量没有设置：导出它并重新启动会话。`/config` 只列出文件里的模型。
 

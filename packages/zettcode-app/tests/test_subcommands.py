@@ -217,5 +217,8 @@ async def test_the_models_are_offered_by_the_name_model_accepts():
     harness.write("/model ")
 
     assert values(app.completions.items) == ["gpt-5-mini", "GPT-4o"]
-    assert [item.description for item in app.completions.items] == ["gpt-5-mini", "gpt-4o"]
+    assert [item.description for item in app.completions.items] == [
+        "file \u00b7 chat \u00b7 gpt-5-mini",
+        "file \u00b7 chat \u00b7 gpt-4o",
+    ]
     assert all(app.agent.find_model(name) is not None for name in values(app.completions.items))
