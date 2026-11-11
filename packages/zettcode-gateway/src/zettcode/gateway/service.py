@@ -64,6 +64,9 @@ POLL_SECONDS = 1.5
 #: Where a page-visible name and picture for a thread are kept, by session id.
 PROFILE_FILE = "profiles.json"
 
+#: Keep a thread's profile this long after its session disappears from a refresh.
+PROFILE_TTL = 24 * 60 * 60
+
 #: How long a probe of "does another process have this session open" is kept before it is asked again.
 LOCK_PROBE_SECONDS = 5.0
 
@@ -300,6 +303,7 @@ class Gateway:
         self.roots = tuple(root.expanduser().resolve() for root in settings.roots)
         self._views: dict[str, dict[str, Any]] = {}
         self._profiles: dict[str, dict[str, str]] = self._load_profiles()
+        self._profile_seen: dict[str, float] = {}
         self._meta: dict[str, Meta] = {}
         self._inbox: dict[str, deque[dict[str, Any]]] = {}
         self._senders: dict[str, str] = {}
@@ -412,10 +416,16 @@ class Gateway:
             reachable = self.backend.reachable
             changed = views != self._views
             self._views = views
-            vanished = [session_id for session_id in self._profiles if session_id not in views]
+            now = self.clock()
+            vanished = [
+                session_id
+                for session_id in self._profiles
+                if session_id not in views and now - self._profile_seen.get(session_id, now) > PROFILE_TTL
+            ]
             if vanished:
                 for session_id in vanished:
                     self._profiles.pop(session_id, None)
+                    self._profile_seen.pop(session_id, None)
                 self._save_profiles()
         if changed or reachable != self._reachable:
             if reachable and self._reachable is False:
@@ -472,6 +482,8 @@ class Gateway:
         else:
             kind = "external" if session_id.startswith("external:") else "session"
         profiled = self._profiles.get(session_id, {})
+        if profiled:
+            self._profile_seen[session_id] = self.clock()
         title = (
             profiled.get("name")
             or (daemon.title if daemon is not None else None)

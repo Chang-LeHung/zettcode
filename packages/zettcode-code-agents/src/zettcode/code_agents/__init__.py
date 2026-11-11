@@ -31,6 +31,9 @@ from zettcode.broker.models import Incoming, Receipt
 from zettcode.broker.protocol import KIND_EXTERNAL
 from zettcode.gateway.agents import AgentPlugin
 
+#: The one place this plugin's version is written.
+__version__ = "0.1.0"
+
 #: How long one CLI turn may take before it is stopped.
 TIMEOUT = 900.0
 
@@ -125,7 +128,10 @@ class CliAgent(ExternalSession):
                 answer = f"{self.title} failed: {error}"
             finally:
                 await self.set_status("idle")
-            await self.reply(message, answer)
+            if message.group:
+                await self.send_group(message.group, answer)
+            else:
+                await self.reply(message, answer)
 
     async def _run(self, prompt: str) -> str:
         session = self._session()
