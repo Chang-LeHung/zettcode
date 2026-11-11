@@ -2,7 +2,7 @@
 
 The command used to live with the shell's own commands, which meant the screen it opens belonged to one distribution
 and the command to another. Both are here now: the part owns what it shows and the way to see it. It is written
-against the plugin contract — the context, the result and ``bottom_panel`` — so the panel is drawn without the
+against the plugin contract — the context and the result — so the panel is drawn without the
 application, and the SDK is only what ``host.client`` is typed as.
 
 ``/harness`` with nothing after it opens the session picker: every session with a harness, the current one first and
@@ -22,11 +22,10 @@ from typing import TYPE_CHECKING
 
 from zettcode.engine.harness_paths import existing_session_path, session_directory
 from zettcode.plugin_api.commands import CommandContext, CommandResult, Subcommand
-from zettcode.plugin_api.panels import bottom_panel
 from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.tui.render import truncate
 
-from .page import HARNESS_ROWS, HarnessPage, HarnessRow, HarnessTarget
+from .page import HarnessPage, HarnessRow, HarnessTarget
 from .selection import HARNESS_CHOICES, HarnessChoice, HarnessChoices
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -242,7 +241,7 @@ class HarnessCommand(TuiPlugin):
             on_switch=lambda target: self._switch(host, current, target),
             on_close=host.close_page,
         )
-        return CommandResult(widget=bottom_panel(page, rows=HARNESS_ROWS))
+        return CommandResult(widget=page)
 
     @classmethod
     def _session_rows(

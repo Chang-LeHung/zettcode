@@ -15,9 +15,6 @@ from typing import cast
 from zettcode.tui import Canvas, ListItem, ListPage, Rect, Style
 from zettcode.tui.render import display_width
 
-#: Rows the panel asks for when it is anchored to the bottom edge.
-HARNESS_ROWS = 12
-
 #: The gaps between the table's four columns.
 COLUMN_GAP = 2
 HEADER_SESSION = "SESSION"
@@ -98,9 +95,9 @@ class HarnessPage(ListPage):
         ]
         super().__init__(
             items,
-            title="Harnesses",
+            title=f"Harnesses · harness is {state}",
             subtitle=_shown(directory),
-            footer=f"harness is {state} \u00b7 enter borrow \u00b7 esc close",
+            footer="accent = current session \u00b7 enter borrow \u00b7 esc close",
             on_select=lambda item: on_switch(cast(HarnessTarget, item.value)),
             on_cancel=on_close,
         )
