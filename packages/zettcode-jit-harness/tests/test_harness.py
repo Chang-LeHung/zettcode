@@ -620,6 +620,7 @@ async def test_the_panel_lists_every_session_harness_and_borrows_on_enter(tmp_pa
     result, shell = await _run("", client, choices)
     page = result.widget.slots[0].widget  # type: ignore[union-attr]
     assert page.list.items[0].value.label == "mine", "the current session is first"
+    assert page.list.items[0].current and not page.list.items[1].current
     assert page.list.current is not None and page.list.current.value.label == "mine"
     assert page.list.items[1].value.directory == root / "other"
 

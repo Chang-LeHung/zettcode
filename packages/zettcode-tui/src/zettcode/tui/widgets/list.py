@@ -54,6 +54,7 @@ class ListItem:
         disabled: Skipped by navigation and refused by ``activate``.
         parts: The same description in colours. It must read as ``description`` when its pieces are joined, which
             is what sizes the column; ``None`` draws ``description`` in the muted colour.
+        current: Draw the row in the accent colour, for a row that is the one in effect.
     """
 
     value: object = None
@@ -61,6 +62,7 @@ class ListItem:
     description: str = ""
     disabled: bool = False
     parts: Parts | None = field(default=None, compare=False)
+    current: bool = False
 
 
 class ListView(Widget):
@@ -214,7 +216,13 @@ class ListView(Widget):
             if item.disabled:
                 style = Style(foreground=theme.muted, dim=True)
             elif selected:
-                style = Style(foreground=theme.text, background=theme.selection, bold=True)
+                style = Style(
+                    foreground=theme.accent_bright if item.current else theme.text,
+                    background=theme.selection,
+                    bold=True,
+                )
+            elif item.current:
+                style = Style(foreground=theme.accent, background=theme.surface_alt if self.band else None)
             else:
                 style = Style(foreground=theme.text, background=theme.surface_alt if self.band else None)
             if selected and self.band:
@@ -234,7 +242,10 @@ class ListView(Widget):
                 # description left by one column per wide glyph.
                 room = self.rect.width - start
                 if room > 3:
-                    quiet = Style(foreground=theme.muted, background=style.background)
+                    quiet = Style(
+                        foreground=theme.accent if item.current else theme.muted,
+                        background=style.background,
+                    )
                     if item.parts is None or item.disabled:
                         canvas.draw_text(
                             self.rect.x + start,

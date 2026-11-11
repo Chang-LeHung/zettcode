@@ -268,12 +268,13 @@ class HarnessCommand(TuiPlugin):
                     current_title,
                     "",
                     f"using {choice.label}",
+                    True,
                 )
             ]
         else:
-            rows = cls._repo_rows(current_directory, current_target, current, current_title)
+            rows = cls._repo_rows(current_directory, current_target, current, current_title, current=True)
             if not rows:
-                rows = [HarnessRow(current_target, current, current_title, "", "No harness yet")]
+                rows = [HarnessRow(current_target, current, current_title, "", "No harness yet", current=True)]
         seen = {current_directory.resolve()}
         for directory, workspace in harnesses:
             try:
@@ -299,7 +300,9 @@ class HarnessCommand(TuiPlugin):
         return rows
 
     @classmethod
-    def _repo_rows(cls, directory: Path, target: HarnessTarget, session: str, title: str) -> list[HarnessRow]:
+    def _repo_rows(
+        cls, directory: Path, target: HarnessTarget, session: str, title: str, *, current: bool = False
+    ) -> list[HarnessRow]:
         """Return one row per repository, with its manifest description when it has one."""
         from zett_agent.jit_harness import inspect_repository
 
@@ -308,7 +311,7 @@ class HarnessCommand(TuiPlugin):
         try:
             repositories = sorted(path for path in directory.iterdir() if (path / "__init__.py").is_file())
         except OSError as error:
-            return [HarnessRow(target, session, title, "", f"cannot be read: {error}")]
+            return [HarnessRow(target, session, title, "", f"cannot be read: {error}", current)]
         rows: list[HarnessRow] = []
         for repository in repositories:
             try:
@@ -320,7 +323,7 @@ class HarnessCommand(TuiPlugin):
                     description = policy.manifest.description or "(no description)"
                 else:
                     description = "cannot load: " + "; ".join(policy.problems)
-            rows.append(HarnessRow(target, session, title, repository.name, description))
+            rows.append(HarnessRow(target, session, title, repository.name, description, current))
         return rows
 
     @staticmethod
