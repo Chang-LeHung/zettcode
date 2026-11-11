@@ -10,7 +10,8 @@ The two clients share a page, not a transport.
   same-origin ones. The app stores addresses only; the token is typed on the gateway's sign-in page and kept by the
   WebView cookie. No native plugin, no key store, no CORS/WebSocket change is involved on this side.
   `server.allowNavigation: ["*"]` keeps that navigation in the WebView; a link to another http(s) host in a conversation
-  also opens there, with no address bar, and Back returns to the picker. The same setting adds `https://*` to
+  also opens there, with no address bar. Back on a gateway page walks that page's own history, like its `<` arrow,
+  and at the root a second Back leaves the app; Back from the picker leaves the app. The same setting adds `https://*` to
   Capacitor's allowed origin rules and `*` as a local-server authority, but no Capacitor script is injected into the
   remote page.
 
@@ -120,8 +121,8 @@ emulator reaches the host at `http://10.0.2.2:<port>`.
 | A8 | The desktop list is encrypted when the platform can (and not with Linux's `basic_text` fallback), written `0600`, and a damaged file is an empty list plus a message rather than a failed start. | `clients/desktop/test/servers.test.ts` |
 | A9 | The look and language stay device-wide, while a server's `defaults`, `templates`, `recent` and drafts are keyed by its id; two gateways never see each other's values, and Clear removes every server's keys. | `clients/gateway/test/storage.test.ts`, `clients/gateway/test/prefs.test.ts` |
 
-The Android shell has no native token store to test: its only native code is `MainActivity`, which sends Back to the
-picker; `web/index.html` keeps URLs and never a token.
+The Android shell has no native token store to test: its only native code is `MainActivity`, which walks the
+same-origin gateway history before a second Back leaves the app; `web/index.html` keeps URLs and never a token.
 
 ## Not yet
 

@@ -32,9 +32,10 @@ npm run assets
 * `web/index.html` is the server list. It keeps `{url, name}` entries in `localStorage`; it never stores a token.
 * `capacitor.config.ts` serves `web/` from `http://localhost` and allows navigation to the chosen server's origin
   (`server.allowNavigation: ["*"]`), so the gateway page opens in this WebView rather than in a browser intent. A link
-  to another http(s) host in a conversation also opens in the shell (no address bar); Back returns to the picker.
-* `android/app/src/main/java/dev/zettcode/mobile/MainActivity.java` is the only native code: it sends Android Back from
-  a gateway page to the server list, and lets Back leave the app from the list.
+  to another http(s) host in a conversation also opens in the shell (no address bar); Back returns to the gateway.
+* `android/app/src/main/java/dev/zettcode/mobile/MainActivity.java` is the only native code: on a gateway page Android
+  Back (the button or a left-edge swipe) walks that page's own history, like its `<` arrow, and never sends the reader
+  back to the picker; at the page root a second Back leaves the app. Back from the picker leaves the app.
 * `AndroidManifest.xml` turns off backup and allows cleartext HTTP for a gateway on a LAN; the picker says that the
   gateway asks for its token itself.
 
