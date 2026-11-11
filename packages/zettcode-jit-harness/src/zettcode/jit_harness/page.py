@@ -18,9 +18,12 @@ from zettcode.tui.render import display_width
 #: Rows the panel asks for when it is anchored to the bottom edge.
 HARNESS_ROWS = 12
 
-#: The column labels above the rows.
+#: The gaps between the table's four columns.
+COLUMN_GAP = 2
 HEADER_SESSION = "SESSION"
-HEADER_REPOSITORY = "REPOSITORY — DESCRIPTION"
+HEADER_TITLE = "TITLE"
+HEADER_REPOSITORY = "REPOSITORY"
+HEADER_DESCRIPTION = "DESCRIPTION"
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +32,17 @@ class HarnessTarget:
 
     label: str
     directory: Path
+
+
+@dataclass(frozen=True, slots=True)
+class HarnessRow:
+    """One repository row: its source session, title, repository name and manifest description."""
+
+    target: HarnessTarget
+    session: str
+    title: str
+    repository: str
+    description: str
 
 
 def _shown(directory: Path) -> str:
@@ -40,8 +54,13 @@ def _shown(directory: Path) -> str:
     return value
 
 
+def _pad(value: str, width: int) -> str:
+    """Pad a value with spaces to a display width, not a character count."""
+    return value + " " * max(0, width - display_width(value))
+
+
 class HarnessPage(ListPage):
-    """Every repository under the harness root, with the current session's rows first and selected.
+    """A four-column table of repositories, with the current session's rows first and selected.
 
     Rows carry a :class:`HarnessTarget`. Enter asks the command to borrow that directory; the panel itself writes
     nothing. Escape closes it.
@@ -52,12 +71,29 @@ class HarnessPage(ListPage):
         *,
         state: str,
         directory: Path,
-        sessions: Sequence[tuple[HarnessTarget, str, str]],
+        sessions: Sequence[HarnessRow],
         on_switch: Callable[[HarnessTarget], None],
         on_close: Callable[[], None],
     ) -> None:
-        """Build the rows from ``(target, label, detail)``, current session first."""
-        items = [ListItem(target, label, detail) for target, label, detail in sessions]
+        """Build the table rows, current session first."""
+        self.rows = tuple(sessions)
+        self.session_width = max(
+            [display_width(HEADER_SESSION), *(display_width(row.session) for row in self.rows)], default=0
+        )
+        self.title_width = max(
+            [display_width(HEADER_TITLE), *(display_width(row.title) for row in self.rows)], default=0
+        )
+        self.repository_width = max(
+            [display_width(HEADER_REPOSITORY), *(display_width(row.repository) for row in self.rows)], default=0
+        )
+        items = [
+            ListItem(
+                row.target,
+                self._label(row),
+                self._detail(row),
+            )
+            for row in self.rows
+        ]
         super().__init__(
             items,
             title="Harnesses",
@@ -67,6 +103,14 @@ class HarnessPage(ListPage):
             on_cancel=on_close,
         )
 
+    def _label(self, row: HarnessRow) -> str:
+        """Return the session and title columns."""
+        return f"{_pad(row.session, self.session_width)}{' ' * COLUMN_GAP}{_pad(row.title, self.title_width)}"
+
+    def _detail(self, row: HarnessRow) -> str:
+        """Return the repository and description columns."""
+        return f"{_pad(row.repository, self.repository_width)}{' ' * COLUMN_GAP}{row.description}"
+
     def layout(self, rect: Rect) -> None:
         """Leave one row under the title for the column header."""
         super().layout(rect)
@@ -74,22 +118,23 @@ class HarnessPage(ListPage):
         self.list.layout(Rect(list_rect.x, list_rect.y + 1, list_rect.width, max(0, list_rect.height - 1)))
 
     def render(self, canvas: Canvas) -> None:
-        """Draw the page and the column header above the rows."""
+        """Draw the page and the four column headers above the rows."""
         super().render(canvas)
         if self.rect.empty:
             return
         over = 1 if self.subtitle is not None else 0
         style = Style(foreground=self.theme.muted, background=self.theme.surface_alt)
         y = self.rect.y + 3 + over
-        column = max((display_width(item.label) for item in self.list.items), default=0)
-        label_x = self.list.rect.x + self.list.MARKER_WIDTH
-        description_x = label_x + column + self.list.COLUMN_GAP
-        canvas.draw_text(label_x, y, HEADER_SESSION, style, max_width=max(0, self.rect.right - label_x))
-        if description_x < self.rect.right:
-            canvas.draw_text(
-                description_x,
-                y,
-                HEADER_REPOSITORY,
-                style,
-                max_width=max(0, self.rect.right - description_x),
-            )
+        session_x = self.list.rect.x + self.list.MARKER_WIDTH
+        title_x = session_x + self.session_width + COLUMN_GAP
+        label_width = self.session_width + COLUMN_GAP + self.title_width
+        repository_x = session_x + label_width + self.list.COLUMN_GAP
+        description_x = repository_x + self.repository_width + COLUMN_GAP
+        for x, label in (
+            (session_x, HEADER_SESSION),
+            (title_x, HEADER_TITLE),
+            (repository_x, HEADER_REPOSITORY),
+            (description_x, HEADER_DESCRIPTION),
+        ):
+            if x < self.rect.right:
+                canvas.draw_text(x, y, label, style, max_width=max(0, self.rect.right - x))
