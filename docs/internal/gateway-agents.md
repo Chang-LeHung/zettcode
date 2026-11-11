@@ -40,10 +40,9 @@ class EchoAgent(AgentPlugin):
 registration, and calls `join_group` when the page asked for one. The manager closes the session when it is removed
 or the gateway stops.
 
-A gateway-managed agent should register as `kind="zettcode"`: it runs trusted code in this process and needs the
-group chat and history permissions. That kind is a **claim**, not a verified identity: the broker takes the session's word
-for it, and it is equivalent to holding the broker token. Only a plugin the reader would trust with that token may
-use it. An ordinary external script that connects by itself stays `kind="external"`
+`kind="zettcode"` is a **claim**, not a verified identity: the broker takes the session's word for it, and it is
+equivalent to holding the broker token. Only a plugin the reader would trust with that token may use it. The code-agent
+plugins stay `kind="external"` and still receive/write groups when the owner adds them. An ordinary external script that connects by itself stays `kind="external"`
 and keeps the narrower permissions. A `kind="zettcode"` agent sends with `via="agent"`; `ExternalSession.send_group`
 and `join_group` are available to it.
 

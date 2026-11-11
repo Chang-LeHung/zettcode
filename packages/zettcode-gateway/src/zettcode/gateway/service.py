@@ -412,6 +412,11 @@ class Gateway:
             reachable = self.backend.reachable
             changed = views != self._views
             self._views = views
+            vanished = [session_id for session_id in self._profiles if session_id not in views]
+            if vanished:
+                for session_id in vanished:
+                    self._profiles.pop(session_id, None)
+                self._save_profiles()
         if changed or reachable != self._reachable:
             if reachable and self._reachable is False:
                 # Pieces of every turn were missed while the broker was away: a bubble resumed mid-answer would be a
@@ -504,7 +509,7 @@ class Gateway:
             "unread": unread,
             "direct": peer is not None and peer.direct,
             "locked": peer is None and stored and self._locked(session_id, self._workspace_of(daemon, peer)),
-            "avatar": profiled.get("avatar", ""),
+            "avatar": profiled.get("avatar") or self.agents.avatar_for(session_id),
         }
 
     def _locked(self, session_id: str, workspace: str) -> bool:
