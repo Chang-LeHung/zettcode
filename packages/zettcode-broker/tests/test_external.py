@@ -6,6 +6,7 @@ import asyncio
 import logging
 import pathlib
 
+import httpx
 import pytest
 
 from broker_helpers import Host, Inbox, client_for, eventually, session
@@ -16,6 +17,7 @@ from zettcode.broker.external import (
     ExternalPublisher,
     ExternalSession,
 )
+from zettcode.broker.files import read_note
 from zettcode.broker.models import Incoming, Receipt, SendError
 
 A = "01a10b75-aaaa-7000-8000-000000000001"
@@ -118,6 +120,30 @@ async def test_a_closed_session_does_not_wait_or_change_status(host):
         await session.set_status("working")
     with pytest.raises(ExternalNotConnected):
         await session.connect()
+
+
+async def test_a_trusted_external_session_joins_and_writes_to_a_group(host):
+    async with (
+        ExternalSession(A, "Build bot", kind="zettcode", directory=host.directory) as first,
+        ExternalSession(B, "Alert bot", kind="zettcode", directory=host.directory) as second,
+    ):
+        note = read_note(host.directory)
+        assert note is not None
+        async with httpx.AsyncClient(
+            base_url=f"http://127.0.0.1:{note.port}",
+            headers={"Authorization": f"Bearer {note.token}"},
+            trust_env=False,
+        ) as owner:
+            created = await owner.post("/groups", json={"action": "create", "name": "review", "members": [A]})
+            assert created.status_code == 200
+        await second.join_group("review")
+        await eventually(lambda: [group.name for group in first.groups] == ["review"])
+        await eventually(lambda: [group.name for group in second.groups] == ["review"])
+
+        delivered = await first.send_group("review", "hello group")
+        assert [peer.handle for peer, _ in delivered.delivered] == ["alert-bot"]
+        message = await asyncio.wait_for(second.receive(), 3)
+        assert (message.group, message.text) == ("review", "hello group")
 
 
 async def test_a_duplicate_id_is_reported(host):

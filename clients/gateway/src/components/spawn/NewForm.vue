@@ -12,6 +12,7 @@ import { toast } from "../../stores/ui";
 import type { SpawnForm } from "../../types";
 import PageBar from "../common/PageBar.vue";
 import { confirmAction } from "../sheets/sheets";
+import ExternalAgentForm from "./ExternalAgentForm.vue";
 import SpawnExtra from "./SpawnExtra.vue";
 import SpawnModel from "./SpawnModel.vue";
 import SpawnShell from "./SpawnShell.vue";
@@ -101,5 +102,6 @@ function saveTemplate(): void {
         <button class="btn sm ghost" type="button" @click="resetDraft()">{{ t("Clear") }}</button>
       </div>
     </form>
+    <ExternalAgentForm />
   </div>
 </template>

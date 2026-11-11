@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
   "zettcode-engine",
   "zettcode-sdk",
+  "zettcode-broker",
   "starlette>=0.51,<2",
   "uvicorn>=0.35,<1",
 ]

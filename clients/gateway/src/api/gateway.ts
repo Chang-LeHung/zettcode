@@ -1,6 +1,8 @@
 // The gateway's endpoints, typed. A view calls these and never builds a URL.
 
 import type {
+  AgentReply,
+  AgentType,
   DirectoryListing,
   GatewayConfig,
   ModelOption,
@@ -40,6 +42,10 @@ export const gateway = {
   remove: (threadId: string) => request<{ result: string }>("DELETE", `/api/daemons/${id(threadId)}`),
   log: (threadId: string) => request<{ text: string }>("GET", `/api/daemons/${id(threadId)}/log`),
   config: () => request<GatewayConfig>("GET", "/api/config"),
+  agents: () => request<{ agents: AgentType[] }>("GET", "/api/agents"),
+  createAgent: (form: { kind: string; title?: string; session_id?: string; group?: string }) =>
+    request<AgentReply>("POST", "/api/agents", form),
+  removeAgent: (sessionId: string) => request<{ ok: true }>("DELETE", `/api/agents/${id(sessionId)}`),
   addModel: (entry: Record<string, unknown>) =>
     request<{ models: ModelOption[] }>("POST", "/api/models", entry),
   changeModel: (name: string, changes: Record<string, unknown>) =>
