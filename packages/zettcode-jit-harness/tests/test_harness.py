@@ -583,8 +583,51 @@ async def test_every_word_the_menu_offers_is_one_the_command_runs(tmp_path: Path
         assert "is not a word" not in result.message, f"the menu offers {word.name} but the command does not run it"
 
 
+def test_the_page_tabs_to_tools_and_marks_banned_and_active_rows(tmp_path: Path):
+    from zettcode.jit_harness.page import HarnessPage, HarnessTarget, TableRow, TableView
+    from zettcode.tui import KeyEvent
+
+    target = HarnessTarget("mine", tmp_path / "mine")
+    page = HarnessPage(
+        state="on",
+        directory=tmp_path / "harness",
+        views=(
+            TableView("Harnesses", ("SESSION", "TITLE", "REPOSITORY", "DESCRIPTION"), []),
+            TableView(
+                "Tools",
+                ("TOOL", "SOURCE", "STATUS", "DESCRIPTION"),
+                [
+                    TableRow(target, ("bad_tool", "jit/kit", "banned", "not allowed"), danger=True),
+                    TableRow(target, ("read", "base", "active", "read a file"), current=True),
+                    TableRow(target, ("later", "jit/kit", "available", "not loaded")),
+                ],
+            ),
+        ),
+        on_switch=lambda _target: None,
+        on_close=lambda: None,
+    )
+
+    page.capture_event(KeyEvent(key="tab"), object())  # type: ignore[arg-type]
+
+    assert page.title.startswith("Tools")
+    assert [item.danger for item in page.list.items] == [True, False, False]
+    assert [item.current for item in page.list.items] == [False, True, False]
+
+
+def test_markdown_files_are_listed_with_their_size(tmp_path: Path):
+    from zettcode.jit_harness.command import HarnessCommand
+
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "README.md").write_text("hello\n", encoding="utf-8")
+
+    (row,) = HarnessCommand._file_rows(tmp_path)
+
+    assert row.cells[:2] == ("README.md", "markdown")
+    assert row.cells[2] == "6 B" and row.cells[3] == "notes"
+
+
 def test_the_harness_page_lists_sessions_and_switches_to_the_selected_one(tmp_path: Path):
-    from zettcode.jit_harness.page import HarnessPage, HarnessRow, HarnessTarget
+    from zettcode.jit_harness.page import HarnessPage, HarnessTarget, TableRow, TableView
 
     switched: list[HarnessTarget] = []
     closed: list[int] = []
@@ -593,10 +636,16 @@ def test_the_harness_page_lists_sessions_and_switches_to_the_selected_one(tmp_pa
     page = HarnessPage(
         state="on",
         directory=tmp_path / "harness",
-        sessions=[
-            HarnessRow(mine, "mine", "Mine", "kit", "small helpers"),
-            HarnessRow(other, "other", "Other", "notes", "project notes"),
-        ],
+        views=(
+            TableView(
+                "Harnesses",
+                ("SESSION", "TITLE", "REPOSITORY", "DESCRIPTION"),
+                [
+                    TableRow(mine, ("mine", "Mine", "kit", "small helpers")),
+                    TableRow(other, ("other", "Other", "notes", "project notes")),
+                ],
+            ),
+        ),
         on_switch=switched.append,
         on_close=lambda: closed.append(1),
     )
