@@ -39,7 +39,8 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from .backend import Backend, GatewayStartError, SdkBackend
+from .backend import Backend, GatewayStartError
+from .external_backend import ExternalBackend
 from .runfile import clear as clear_runfile
 from .runfile import write as write_runfile
 from .service import Gateway, GatewayError
@@ -239,7 +240,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
     """Return the application for these settings; a test gives a backend of its own, and the folder the page is in."""
     auth = Auth(settings.token)
     allowed = settings.allowed_origins
-    gateway = Gateway(backend if backend is not None else SdkBackend(settings.workspace, settings.directory), settings)
+    gateway = Gateway(backend if backend is not None else ExternalBackend(settings.directory), settings)
 
     @asynccontextmanager
     async def lifespan(_: Starlette) -> AsyncIterator[None]:

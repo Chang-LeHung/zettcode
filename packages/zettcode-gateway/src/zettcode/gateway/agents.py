@@ -25,6 +25,9 @@ logger = logging.getLogger("zettcode.gateway")
 #: The entry-point group a gateway agent plugin registers under.
 ENTRY_POINT = "zettcode.gateway.external"
 
+#: How many agents one gateway may keep running. A page cannot grow the roster without bound.
+MAX_AGENTS = 16
+
 
 class AgentError(Exception):
     """The gateway cannot offer or start an external agent, with a sentence a person can read."""
@@ -94,8 +97,10 @@ class AgentManager:
         session_id = session_id or f"web-{secrets.token_hex(6)}"
         if session_id in self._running:
             raise AgentError(f"the external agent {session_id!r} is already running")
-        session = plugin.create(session_id, title or plugin.title or kind)
+        if len(self._running) >= MAX_AGENTS:
+            raise AgentError(f"a gateway may run at most {MAX_AGENTS} external agents")
         try:
+            session = plugin.create(session_id, title or plugin.title or kind)
             await session.connect()
             if group:
                 await session.join_group(group)
