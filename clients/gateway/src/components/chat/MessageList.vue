@@ -88,6 +88,13 @@ watch(
   },
   { flush: "post" },
 );
+// With the bar closed the page follows the newest message again if the reader is at the bottom, as it did before the search.
+watch(
+  () => find.open,
+  (open) => {
+    if (!open) following.value = nearBottom();
+  },
+);
 // A turn that is being written grows the page: stay with it while the person is at the bottom.
 watch(
   () => [live.value?.text.length, live.value?.tools.length],

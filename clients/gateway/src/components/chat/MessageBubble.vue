@@ -80,20 +80,24 @@ function menu(): void {
   const thread = owner.value;
   showMenu(t("Message"), [
     { icon: "copy", label: t("Copy text"), run: () => void copy() },
-    !!thread && canWrite(thread) && { icon: "reply", label: t("Quote in reply"), run: () => quoteIntoDraft(props.thread, text) },
+    // The composer is drawn only when the thread can be written to and is not held by another window (the locked bar replaces it).
+    !!thread && canWrite(thread) && !thread.locked && { icon: "reply", label: t("Quote in reply"), run: () => quoteIntoDraft(props.thread, text) },
   ]);
 }
 
 // A right click, and the long press on Android that becomes one. A reader who has selected words wants the browser's own menu.
+/** A link in the message has its own menu (open, copy address): a click on one is left to the browser. */
+const onLink = (event: Event): boolean => (event.target as HTMLElement | null)?.closest?.("a") != null;
+
 function onContext(event: MouseEvent): void {
-  if (!props.row.item.text || window.getSelection()?.toString()) return;
+  if (!props.row.item.text || window.getSelection()?.toString() || onLink(event)) return;
   event.preventDefault();
   menu();
 }
 // On a touch screen there is no hover: a double tap opens the menu, as there is no mouse to point at the button.
 const touch = matchMedia("(pointer: coarse)").matches;
-function onDouble(): void {
-  if (touch && !window.getSelection()?.toString()) menu();
+function onDouble(event: MouseEvent): void {
+  if (touch && !window.getSelection()?.toString() && !onLink(event)) menu();
 }
 
 function again(): void {
