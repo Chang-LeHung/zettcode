@@ -67,8 +67,8 @@ def tree(root: pathlib.Path, *, version: str = "1.2.3", plugin: str = "1.0.0", r
         '  "zettcode-engine",\n'
         "]\n"
         "[project.optional-dependencies]\n"
-        'monitor = ["zettcode-monitor>=1.0,<2"]\n'
-        'all = ["zettcode-monitor>=1.0,<2"]\n',
+        f'monitor = ["zettcode-monitor{requirement}"]\n'
+        f'all = ["zettcode-monitor{requirement}"]\n',
         encoding="utf-8",
     )
 
@@ -151,6 +151,37 @@ def test_a_version_that_is_not_three_numbers_is_refused_before_anything_is_writt
         helper.set_version(tmp_path, "2.0")
 
     assert helper.version_of(tmp_path / version_file()) == "1.2.3"
+
+
+def test_a_requirement_pinned_by_hand_is_refused_rather_than_half_rewritten(helper, tmp_path):
+    """Appending our range to `==1.0` writes `==1.0>=1.2.3,<1.3`, which pip cannot read."""
+    tree(tmp_path)
+    program = tmp_path / "packages/zettcode/pyproject.toml"
+    program.write_text(
+        program.read_text(encoding="utf-8").replace('"zettcode-engine"', '"zettcode-engine==1.0"'), encoding="utf-8"
+    )
+
+    assert any("cannot rewrite" in problem for problem in helper._problems(tmp_path))
+    with pytest.raises(helper.VersionError, match="cannot rewrite"):
+        helper.set_version(tmp_path, "2.0.0")
+
+    assert helper.version_of(tmp_path / version_file()) == "1.2.3", "nothing was written"
+
+
+def test_a_requirement_the_write_cannot_find_is_refused_before_anything_is_written(helper, tmp_path):
+    """A string TOML joins across lines reads as one requirement and is not written as one, so a rewrite finds nothing."""
+    tree(tmp_path, plugin="1.2.3", requirement=">=1.2.3,<1.3")
+    program = tmp_path / "packages/zettcode/pyproject.toml"
+    program.write_text(
+        program.read_text(encoding="utf-8").replace('"zettcode-engine"', '"""zettcode-engine\\\n>=1.2.3,<1.3"""'),
+        encoding="utf-8",
+    )
+
+    assert any("one line" in problem for problem in helper._problems(tmp_path))
+    with pytest.raises(helper.VersionError, match="one line"):
+        helper.set_version(tmp_path, "3.0.0")
+
+    assert helper.version_of(tmp_path / version_file()) == "1.2.3", "nothing was written"
 
 
 def test_the_ceiling_is_the_next_minor_line(helper):

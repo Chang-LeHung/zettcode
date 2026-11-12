@@ -73,9 +73,10 @@ ten of them for `release.yml`'s tag — which is why the token is what this repo
 5. The plugins go out at the same number, after the program — never before it. A plugin requires
    `zettcode-plugin-api>=<new>,<next>` and the program's tag is what publishes that, so the plugins cannot be
    released first; and `packages/zettcode/pyproject.toml` names them at the new version in an extra, which cannot
-   resolve until they are. The window between the two steps is the only moment `pip install "zettcode[all]"` fails,
-   and it is minutes. Either push one tag per plugin or run `release-packages.yml` with `all` ticked; a version PyPI
-   already has is skipped, so a re-run is harmless.
+   resolve until they are. **This step is part of the release, not an afterthought**: a run that stops after step 4
+   has published a program whose `[all]` extra cannot resolve. The window between the two steps is the only moment
+   `pip install "zettcode[all]"` fails, and it is minutes. Either push one tag per plugin or run
+   `release-packages.yml` with `all` ticked; a version PyPI already has is skipped, so a re-run is harmless.
 
    ```bash
    git tag monitor-v0.4.6 && git push origin monitor-v0.4.6
