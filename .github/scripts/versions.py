@@ -13,8 +13,10 @@ This module is the one place that knows what "the same version" means, and the t
   ``__version__`` that is not the program's, and a requirement on one of our own distributions whose floor is not this
   version or whose ceiling is not the next minor line. It writes nothing.
 * ``--set X.Y.Z`` writes the version into every place it lives — the engine's ``version.py``, each plugin's
-  ``__init__.py``, and every ``zettcode-*>=X.Y.Z,<MAJ.MIN`` requirement in every ``pyproject.toml`` — so the bump a
-  release starts with is one command rather than a search.
+  ``__init__.py``, and every ``zettcode-*>=X.Y.Z,<MAJ.MIN`` requirement in the ``pyproject.toml`` of every distribution
+  under ``packages/`` — so the bump a release starts with is one command rather than a search. It refuses a
+  requirement written with a specifier it does not own (``==``, ``~=``, a bare ``>``) before it writes anything, and
+  checks the whole tree again afterwards, so a rewrite it could not find fails instead of leaving half a tree behind.
 
 Why the requirement floor moves with the version: the distributions are published together under one tag, so
 ``zettcode 0.5.0`` means ``zettcode-engine 0.5.0`` was published with it; a floor of ``0.4`` would let a resolver pair a
@@ -121,11 +123,50 @@ def _requirements(root: pathlib.Path) -> list[tuple[pathlib.Path, str, int]]:
             if requirement in seen or not _name_of(requirement).startswith("zettcode"):
                 continue
             seen.add(requirement)
-            for number, line in enumerate(lines):
-                if requirement in line:
-                    found.append((project, requirement, number))
-                    break
+            # -1 when the text does not hold the requirement as one string: a TOML string joined across lines reads
+            # as one requirement and is written as two, and a rewrite that searched for it would find nothing.
+            found.append((project, requirement, next((n for n, line in enumerate(lines) if requirement in line), -1)))
     return found
+
+
+#: Characters that mean a requirement already carries a specifier this module does not own: ``==``, ``~=``, ``>``,
+#: ``!=``, or a bare ``<``. Appending our range to one of those writes a requirement nothing can parse.
+_FOREIGN = re.compile(r"[=!~<>]")
+
+
+def _foreign_specifier(requirement: str) -> str:
+    """Return the specifier a requirement carries that is not ours, or an empty string.
+
+    The rule owns ``>=x,<y`` and nothing else. A requirement pinned with ``==``, or written ``~=0.4``, is a decision
+    somebody made by hand, and rewriting it by appending our range to it would produce a line pip cannot read — so it
+    is refused, naming the line, rather than half-rewritten.
+    """
+    body = requirement.partition(";")[0]
+    match = _RANGE.search(body)
+    if match is not None:
+        return "" if not _FOREIGN.search(body[: match.start()] + body[match.end() :]) else body
+    found = _FOREIGN.search(body)
+    return body if found is not None else ""
+
+
+def _unwritable(root: pathlib.Path, version: str) -> list[str]:
+    """Return the requirements ``--set`` must refuse rather than rewrite, as sentences naming the file.
+
+    Two shapes: one that carries a specifier this module does not own, and one the file does not hold as a single
+    string — a TOML multi-line string, whose value and whose text are different things. Either would be written wrong
+    or skipped in silence, so the write refuses before it starts.
+    """
+    refused: list[str] = []
+    for project, requirement, number in _requirements(root):
+        where = f"{project.relative_to(root)}:{number + 1}" if number >= 0 else str(project.relative_to(root))
+        if _foreign_specifier(requirement):
+            refused.append(
+                f'{where}: "{requirement}" carries a specifier this cannot rewrite; write it as '
+                f"{_with_range(_name_of(requirement), version)}"
+            )
+        elif number < 0:
+            refused.append(f'{where}: "{requirement}" is not written as one string this can find; write it on one line')
+    return refused
 
 
 def _with_range(requirement: str, version: str) -> str:
@@ -148,9 +189,14 @@ def _problems(root: pathlib.Path) -> list[str]:
         found = version_of(module)
         if found != version:
             problems.append(f"{module.relative_to(root)}: __version__ is {found}, the program is {version}")
+    problems.extend(_unwritable(root, version))
     for project, requirement, number in _requirements(root):
+        if number < 0:  # already reported as unwritable
+            continue
         match = _RANGE.search(requirement)
         where = f"{project.relative_to(root)}:{number + 1}"
+        if _foreign_specifier(requirement):
+            continue
         if match is None:
             problems.append(
                 f'{where}: "{requirement}" names one of ours with no range; it should be {_with_range(requirement, version)}'
@@ -194,9 +240,23 @@ def _rewrite_requirements(root: pathlib.Path, version: str) -> list[pathlib.Path
 
 
 def set_version(root: pathlib.Path, version: str) -> list[str]:
-    """Write ``version`` everywhere it lives, and return one line per file that changed."""
+    """Write ``version`` everywhere it lives, and return one line per file that changed.
+
+    Two guarantees a release leans on: a requirement written with a specifier this module does not own is refused
+    *before* anything is written, because appending our range to ``==0.4.0`` writes a line pip cannot read; and the
+    tree is checked again *after* the writes, so a requirement the rewrite could not find — a string split over two
+    lines, a spelling that differs from what tomllib reads — fails here rather than leaving half a tree on the new
+    version and half on the old.
+
+    Raises:
+        VersionError: The version is not ``MAJOR.MINOR.PATCH``, a requirement carries a foreign specifier, or the
+            tree still disagrees after the write.
+    """
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise VersionError(f"{version!r} is not MAJOR.MINOR.PATCH")
+    refused = _unwritable(root, version)
+    if refused:
+        raise VersionError("these requirements cannot be rewritten, so nothing was written:\n" + "\n".join(refused))
     changed: list[str] = []
     target = root / VERSION_FILE
     before = version_of(target)
@@ -210,6 +270,9 @@ def set_version(root: pathlib.Path, version: str) -> list[str]:
         f"{path.relative_to(root)}: requirements -> >= {version},< {major_minor(version)}"
         for path in _rewrite_requirements(root, version)
     )
+    left = _problems(root)
+    if left:
+        raise VersionError(f"the write went through, but these places are still not on {version}:\n" + "\n".join(left))
     return changed
 
 
