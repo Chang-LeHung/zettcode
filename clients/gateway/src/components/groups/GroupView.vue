@@ -3,9 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { t } from "../../i18n";
 import Skeleton from "../common/Skeleton.vue";
 import { clockTime } from "../../lib/format";
-import { closeGroup, groupChat, groupNamed, joinGroup, loadEarlierGroup, membersOf, openGroup, removeFromGroup, senderName, sendToGroup } from "../../stores/groups";
+import { closeGroup, groupChat, groupNamed, joinGroup, loadEarlierGroup, membersOf, openGroup, deleteGroup, removeFromGroup, senderName, sendToGroup } from "../../stores/groups";
 import type { Member } from "../../stores/groups";
-import { href } from "../../stores/route";
+import { go, href } from "../../stores/route";
 import { lobby } from "../../stores/threads";
 import { openSheet, toast } from "../../stores/ui";
 import Avatar from "../common/Avatar.vue";
@@ -125,12 +125,26 @@ async function takeOut(member: Member): Promise<void> {
   if (members.value.length === 0) showMembers.value = false;
 }
 
+async function dissolve(): Promise<void> {
+  const done = await confirmAction({
+    title: t("Delete #{name}?", { name: props.name }),
+    text: t("The group and what was said in it are deleted for everyone. The sessions in it keep running."),
+    ok: t("Delete group"),
+    danger: true,
+    run: () => deleteGroup(props.name),
+  });
+  if (!done) return;
+  toast(t("Deleted #{name}", { name: props.name }));
+  go("chats");
+}
+
 function menu(): void {
   const me = members.value.find((member) => member.me);
   showMenu(`#${props.name}`, [
     { icon: "users", label: t("Members"), run: () => (showMembers.value = true) },
     joined.value && { icon: "plus", label: t("Invite"), run: invite },
     me && { icon: "logout", label: t("Leave group"), run: () => void takeOut(me), danger: true },
+    { icon: "trash", label: t("Delete group"), run: () => void dissolve(), danger: true },
   ]);
 }
 

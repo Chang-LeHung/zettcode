@@ -122,6 +122,14 @@ class Backend(ABC):
         """Remove a session from a group as the broker owner, best effort after a failed join."""
         raise SendError("offline", "not connected to the session broker")
 
+    async def create_group(self, group: str, members: list[str]) -> None:
+        """Create a group with these members as the broker owner; the broker names a refusal (``duplicate``...)."""
+        raise SendError("offline", "not connected to the session broker")
+
+    async def delete_group(self, group: str) -> None:
+        """Delete a group as the broker owner. Its stored messages go with it."""
+        raise SendError("offline", "not connected to the session broker")
+
     async def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
         """Return the stored messages of a stretch of the past (see ``Client.traffic_timeline``)."""
         return {"messages": [], "truncated": False, "span": None, "now": until}
