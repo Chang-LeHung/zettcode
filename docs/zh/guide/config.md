@@ -222,6 +222,7 @@ compact_percent = 80                  # 达到窗口的 80% 时压缩
 | `web_search_name` | 字符串 | 该 API 的默认值 | 端点对这个搜索期望的确切工具类型，给命名不同的供应商用。省略则发送该 API 的默认值。 |
 | `context_window` | 整数 | `128000` | 正整数，表示上下文窗口的 token 数，不是字符数，也不是最大输出长度。 |
 | `compact_percent` | 数值 | `80` | 自动压缩触发百分比，大于 `0` 且不超过 `100`。支持 `75.5` 这样的小数。 |
+| `max_tokens` | 整数 | `20000` | 一次回复最多能花掉的 token 数，也就是请求携带的输出预算（`max_tokens`，Responses API 上叫 `max_output_tokens`）。长回答写不完就是撞在它上面：回复会在中途停下，并说明供应商报告了 `max_tokens`。填 `0` 表示不发送预算、由接入点自己的默认值决定，供应商不接受这个参数时用它。见[一次回复能有多长](#max-tokens)。 |
 | `reasoning_efforts` | 字符串数组 | 全部档位 | 这个模型支持的推理档位，取自 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`。接入点会拒绝其余档位时才需要填写；见[模型支持的推理档位](#reasoning-levels-a-model-takes)。 |
 
 `base_url` 是客户端拼接口路径的那个地址：`/chat/completions`、`/responses`，
@@ -297,6 +298,28 @@ reasoning_efforts = ["low", "high", "max"]
   `reasoning_effort`，自己决定这个子 agent 想多深；提供给它的只有当前模型支持的档位。
 
 两个档位距离相同时取更便宜的那个。
+
+### 一次回复能有多长 {#max-tokens}
+
+回复一旦碰到接入点的输出上限就会被截断，而请求里不写这个上限时，用到的就是接入点自己的默认值：多数对话服务是
+几千个 token，远不足以写完一个大补丁、一整个文件或一次仔细的审阅。ZettCode 给每个模型都发送这个预算，
+`max_tokens` 决定它有多大：
+
+```toml
+[[models]]
+model = "gpt-5"
+token = "sk-..."
+max_tokens = 32000
+```
+
+默认 20000 个 token。回复撞到上限时，对话里会出现一行说明——*The reply reached the model's output limit and is
+cut off*，后面跟着供应商给出的原因——`/continue` 会让模型从那里接着写。
+
+- 这是**输出**预算：它限制的是一次回复，不是整段对话。`context_window` 管的是模型能装下多少，两者互不相干。
+- 在把思考也算进预算的模型上，推理同样消耗这个额度，所以以 `ultra` 推理、预算只有 8000 的模型，留给回答
+  的就是剩下来的部分。
+- 填 `0` 表示不发送预算，由接入点自己的默认值决定，用于不接受该参数、或把它算进提示里的服务。预算超过接入点
+  自己的上限时，接口会返回一个指明该上限的错误，把这个数字调低即可。
 
 ### 子 agent 能做什么 {#what-a-child-agent-can-do}
 
@@ -433,6 +456,7 @@ responses_api = false
 multimodal = false
 context_window = 1000000
 compact_percent = 80
+max_tokens = 20000             # 一次回复最多花掉的 token 数;0 表示用接入点自己的默认值
 
 [transcript]
 max_entries = 1024             # 显示的对话块数量，不是终端行数

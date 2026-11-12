@@ -77,6 +77,7 @@ MODEL_KEYS = frozenset(
         "web_search_name",
         "context_window",
         "compact_percent",
+        "max_tokens",
         "reasoning_efforts",
     }
 )
@@ -183,6 +184,13 @@ DEFAULT_CONTEXT_WINDOW = 128_000
 DEFAULT_COMPACT_PERCENT = 80.0
 KEEP_SHARE = 4
 
+#: Tokens one reply may spend before the endpoint cuts it off, when the config does not say otherwise. The providers'
+#: own defaults are much smaller — 4,096 on most chat endpoints, 16,384 on Anthropic — and a long answer hit that
+#: limit, ended early, and cost the reader a `/continue` for what was one reply. Twenty thousand is under what every
+#: current frontier model emits and over what a long answer needs, and an entry whose endpoint refuses a budget says
+#: so on its first request, where the fix is one number in the file.
+DEFAULT_MAX_TOKENS = 20_000
+
 #: The sampling temperature a model may be given: 0 is the most deterministic. OpenAI-compatible endpoints take up to
 #: 2; Anthropic's Messages API stops at 1, which is checked for an ``anthropic`` entry.
 MAX_TEMPERATURE = 2.0
@@ -261,6 +269,11 @@ class ModelConfig:
             measures against.
         compact_percent: Share of :attr:`context_window` at which a request is
             compacted, in percent.
+        max_tokens: Tokens one reply may spend, sent as the request's output budget: ``max_tokens`` on a chat
+            endpoint and on Anthropic's Messages API, ``max_output_tokens`` on the Responses API. ``0`` sends none,
+            which leaves the endpoint's own default in force — the escape for a provider that refuses a budget,
+            or counts the prompt against it. It is what stops an answer being cut off in the middle at the
+            provider's default.
         reasoning_efforts: The reasoning levels this model accepts, cheapest first. The empty
             tuple, the default, means every level: a provider that cannot express one maps it
             onto its closest, which is what makes the default right for an endpoint whose
@@ -281,6 +294,7 @@ class ModelConfig:
     multimodal: bool = False
     context_window: int = DEFAULT_CONTEXT_WINDOW
     compact_percent: float = DEFAULT_COMPACT_PERCENT
+    max_tokens: int = DEFAULT_MAX_TOKENS
     reasoning_efforts: tuple[ReasoningEffort, ...] = ()
     chat: bool = False
     temperature: float | None = None
@@ -328,6 +342,8 @@ class ModelConfig:
             raise ValueError(f"context_window must be positive for model {self.model!r}")
         if not 0 < self.compact_percent <= 100:
             raise ValueError(f"compact_percent must be between 0 and 100 for model {self.model!r}")
+        if isinstance(self.max_tokens, bool) or not isinstance(self.max_tokens, int) or self.max_tokens < 0:
+            raise ValueError(f"max_tokens must be 0 (the endpoint's own) or a positive number for model {self.model!r}")
         # Cheapest first, one of each: the order is the picker's rail, and a repeat would put two
         # nodes on one level.
         levels = tuple(sorted(set(self.reasoning_efforts), key=tuple(ReasoningEffort).index))
@@ -730,6 +746,7 @@ def _entry_model(entry: dict[str, object], index: int, *, label: str | None = No
             compact_percent=_number(
                 entry.get("compact_percent", DEFAULT_COMPACT_PERCENT), f"{label} key 'compact_percent'"
             ),
+            max_tokens=_typed(entry.get("max_tokens", DEFAULT_MAX_TOKENS), f"{label} key 'max_tokens'", int),
             reasoning_efforts=_read_reasoning_efforts(
                 entry.get("reasoning_efforts"), f"{label} key 'reasoning_efforts'"
             ),

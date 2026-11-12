@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from zettcode.config import KEYLESS_TOKEN, ModelConfig
+from zettcode.config import DEFAULT_MAX_TOKENS, KEYLESS_TOKEN, ModelConfig
 from zettcode.engine.core import _build_provider
 
 
@@ -79,3 +79,57 @@ def test_the_chat_flag_changes_nothing_about_the_adapter(adapters):
     _build_provider(ModelConfig(model="a", token="t", chat=True))
     _build_provider(ModelConfig(model="a", token="t"))
     assert openai.built[0] == openai.built[1]
+
+
+# -- how long one reply may be ----------------------------------------------------------------------
+
+
+def test_every_adapter_is_built_with_the_output_budget(adapters):
+    openai, anthropic = adapters
+
+    _build_provider(ModelConfig(model="a", token="t"))
+    _build_provider(ModelConfig(model="claude", token="k", anthropic=True))
+
+    assert openai.built[0][1]["extra_body"]["max_tokens"] == DEFAULT_MAX_TOKENS
+    assert anthropic.built[0][1]["max_tokens"] == DEFAULT_MAX_TOKENS
+
+
+def test_a_budget_the_entry_names_is_the_one_that_is_sent(adapters):
+    openai, anthropic = adapters
+
+    _build_provider(ModelConfig(model="a", token="t", max_tokens=32_000))
+    _build_provider(ModelConfig(model="claude", token="k", anthropic=True, max_tokens=8_000))
+
+    assert openai.built[0][1]["extra_body"]["max_tokens"] == 32_000
+    assert anthropic.built[0][1]["max_tokens"] == 8_000
+
+
+def test_the_responses_api_is_told_the_budget_by_its_own_name(adapters):
+    """It calls the field `max_output_tokens`; chat completions call it `max_tokens`."""
+    openai, _ = adapters
+
+    _build_provider(ModelConfig(model="a", token="t", responses_api=True, max_tokens=32_000))
+
+    assert openai.built[0][1]["extra_body"] == {"max_output_tokens": 32_000}
+
+
+def test_a_budget_of_zero_sends_none_and_leaves_the_endpoints_own_in_force(adapters):
+    openai, anthropic = adapters
+
+    _build_provider(ModelConfig(model="a", token="t", max_tokens=0))
+    _build_provider(ModelConfig(model="claude", token="k", anthropic=True, max_tokens=0))
+
+    assert "extra_body" not in openai.built[0][1], "nothing is sent, so the endpoint's default stands"
+    assert "max_tokens" not in anthropic.built[0][1]
+
+
+def test_the_budget_travels_beside_a_temperature_rather_than_replacing_it(adapters):
+    openai, anthropic = adapters
+
+    _build_provider(ModelConfig(model="a", token="t", temperature=0.3, max_tokens=9_000))
+    _build_provider(ModelConfig(model="claude", token="k", anthropic=True, temperature=0.3, max_tokens=9_000))
+
+    assert openai.built[0][1]["temperature"] == 0.3
+    assert openai.built[0][1]["extra_body"] == {"max_tokens": 9_000}
+    assert anthropic.built[0][1]["extra_body"] == {"temperature": 0.3}
+    assert anthropic.built[0][1]["max_tokens"] == 9_000

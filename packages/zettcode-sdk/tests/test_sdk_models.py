@@ -220,3 +220,42 @@ def test_a_missing_token_falls_back_to_the_environment_like_the_configuration_do
     models = add({"model": "a"}, path=path)
 
     assert models[0].model == "a" and config.read_models(path)[0].token == "sk-env"
+
+
+# -- how long one reply may be --------------------------------------------------------------------
+
+
+def test_every_model_gets_the_default_output_budget_without_saying_so(tmp_path: Path):
+    path = config_file(tmp_path)
+
+    add({"model": "a", "token": "t"}, path=path)
+
+    assert config.read_models(path)[0].max_tokens == config.DEFAULT_MAX_TOKENS == 20_000
+
+
+def test_a_budget_in_the_file_is_read_and_written_back(tmp_path: Path):
+    path = config_file(tmp_path)
+    path.write_text('[[models]]\nmodel = "a"\ntoken = "t"\nmax_tokens = 32000\n', encoding="utf-8")
+
+    assert config.read_models(path)[0].max_tokens == 32_000
+
+    models = update_model("a", {"max_tokens": 64_000}, path=path)
+
+    assert models[0].max_tokens == 64_000
+    assert "max_tokens = 64000" in path.read_text(encoding="utf-8")
+
+
+def test_a_budget_of_zero_means_the_endpoints_own_and_is_not_the_default(tmp_path: Path):
+    path = config_file(tmp_path)
+    path.write_text('[[models]]\nmodel = "a"\ntoken = "t"\nmax_tokens = 0\n', encoding="utf-8")
+
+    assert config.read_models(path)[0].max_tokens == 0
+
+
+@pytest.mark.parametrize("bad", ["-1", '"20000"', "true"])
+def test_a_budget_that_is_not_a_number_of_tokens_is_refused(bad, tmp_path: Path):
+    path = config_file(tmp_path)
+    path.write_text(f'[[models]]\nmodel = "a"\ntoken = "t"\nmax_tokens = {bad}\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="max_tokens"):
+        config.read_models(path)

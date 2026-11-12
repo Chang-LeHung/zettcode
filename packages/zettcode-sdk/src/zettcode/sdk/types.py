@@ -198,6 +198,8 @@ class ModelInfo:
         token_env: The environment variable the provider named for this model's token when it was not set, or
             ``None`` when the token is present, no host named one, or the variable was there. A model listed with
             one cannot make a request until that key is exported and the runtime is started again.
+        max_tokens: Tokens one reply may spend, sent as the request's output budget; ``0`` sends none and leaves
+            the endpoint's own default in force.
     """
 
     name: str
@@ -217,6 +219,9 @@ class ModelInfo:
     search_name: str = ""
     provider: str | None = None
     token_env: str | None = None
+    #: Tokens one reply may spend, sent as the request's output budget; ``0`` leaves the endpoint's own default in
+    #: force.
+    max_tokens: int = 0
 
     @property
     def compaction_max_tokens(self) -> int:

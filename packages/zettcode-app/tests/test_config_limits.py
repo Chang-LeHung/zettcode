@@ -308,3 +308,42 @@ async def test_the_list_shows_what_each_model_takes_and_where_it_is_compressed(s
     shown = "\n".join(entry.text for entry in fx.app.transcript.entries)
     assert "images" in shown and "context window" in shown and "compress at" in shown
     assert "| yes | 200,000 | 75% |" in shown and "| no | 128,000 | 80% |" in shown
+
+
+# -- how long one reply may be ----------------------------------------------------------------------------------
+
+
+async def test_the_panel_takes_a_reply_budget_in_tokens_and_writes_it(shell):  # noqa: F811
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.edit("max_tokens", "32k")
+
+    fx.harness.press("enter")
+
+    assert fx.models[1]["max_tokens"] == 32_000
+    assert fx.app.agent.models[1].max_tokens == 32_000
+
+
+async def test_clearing_the_budget_brings_back_the_default_of_twenty_thousand(shell):  # noqa: F811
+    fx = shell(BASE.replace('token = "sk-two"', 'token = "sk-two"\nmax_tokens = 32000'))
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    assert fx.panel.editor("max_tokens").text == "32000"
+    fx.edit("max_tokens", "")
+
+    fx.harness.press("enter")
+
+    assert "max_tokens" not in fx.models[1]
+    assert fx.app.agent.models[1].max_tokens == 20_000
+
+
+async def test_a_budget_row_the_reader_did_not_touch_is_not_rewritten(shell):  # noqa: F811
+    fx = shell(BASE.replace('token = "sk-two"', 'token = "sk-two"\nmax_tokens = 32000'))
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.edit("temperature", "0.3")
+
+    fx.harness.press("enter")
+
+    assert "max_tokens = 32000" in fx.text and fx.models[1]["temperature"] == 0.3

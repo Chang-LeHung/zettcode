@@ -44,6 +44,7 @@ def model_info(model: _config.ModelConfig, *, active: bool = False) -> ModelInfo
         search_name=model.search_name,
         provider=model.provider,
         token_env=model.token_env,
+        max_tokens=model.max_tokens,
     )
 
 
