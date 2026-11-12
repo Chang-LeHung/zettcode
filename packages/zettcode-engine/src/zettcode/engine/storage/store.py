@@ -524,7 +524,8 @@ class SessionPersistenceMixin:
                 f"{title}{FORK_SUFFIX}" if title is not None and len(f"{title}{FORK_SUFFIX}") <= MAX_TITLE else None
             )
             # A fork carries on from where the session left off, so it uses the model that did,
-            # and keeps the choice about compaction that was made for that conversation.
+            # reasons at the level that did, and keeps the choice about compaction that was made
+            # for that conversation.
             self._begin_metadata(
                 new_id,
                 created_at,
@@ -532,6 +533,7 @@ class SessionPersistenceMixin:
                 model=self.session_model(session_id),
                 self_compact=self.session_self_compact(session_id),
                 permission=self.session_permission(session_id),
+                effort=self.session_effort(session_id),
             )
         parent: str | None = None
         if checkpoint is not None:
@@ -676,6 +678,50 @@ class SessionPersistenceMixin:
         metadata = self._metadata(session_id)
         return metadata.permission if metadata is not None else None
 
+    def session_effort(self, session_id: str) -> str | None:
+        """Return the reasoning level one session last ran at, or ``None`` when it never chose.
+
+        ``None`` is the answer of every session whose file predates the setting, and of every session nobody
+        changed the level in; a run of one of those starts at the configuration's ``reasoning_effort``.
+        """
+        metadata = self._metadata(session_id)
+        return metadata.effort if metadata is not None else None
+
+    def set_effort(self, session_id: str, level: str | None, *, default: str) -> None:
+        """Record the reasoning level one session last ran at.
+
+        The same rule as :meth:`set_permission`: the level is metadata, so only this small file is rewritten and
+        the title, the model and the times stay as they were; a level equal to the one a run starts at records
+        nothing — and takes back a level recorded before, so a session put back to the default really does follow
+        it; and a level differing from it records the session before the first message does, the header going in
+        first.
+
+        Args:
+            session_id: The session the level belongs to.
+            level: The level's name, or ``None`` to forget the choice.
+            default: What a session with no level runs at, to tell a choice that changes something from one
+                that does not.
+
+        Raises:
+            OSError: The metadata file could not be replaced, so nothing was saved.
+        """
+        stored = level if level != default else None
+        metadata = self._metadata(session_id)
+        if metadata is None:
+            if stored is None:
+                return
+            created_at = self._write_header(self.read(session_id), session_id, None, None)
+            metadata = (
+                SessionMetadata(session_id=session_id, created_at=created_at, updated_at=created_at)
+                if created_at is not None
+                else self._metadata(session_id)
+            )
+        if metadata is None or metadata.effort == stored:
+            return
+        updated = metadata.model_copy(update={"effort": stored})
+        if not write_session_metadata(self._metadata_file(session_id), updated):
+            raise OSError(f"Could not save the reasoning level for session {session_id!r}")
+
     def set_permission(self, session_id: str, level: str | None, *, default: str) -> None:
         """Record the permission level one session last ran at.
 
@@ -765,6 +811,7 @@ class SessionPersistenceMixin:
         model: str | None = None,
         self_compact: bool | None = None,
         permission: str | None = None,
+        effort: str | None = None,
     ) -> SessionMetadata:
         """Write the metadata of a session that has just been created, and return it."""
         metadata = SessionMetadata(
@@ -775,6 +822,7 @@ class SessionPersistenceMixin:
             model=model,
             self_compact=self_compact,
             permission=permission,
+            effort=effort,
         )
         write_session_metadata(self._metadata_file(session_id), metadata)
         return metadata

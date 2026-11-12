@@ -502,7 +502,13 @@ class Client:
             if model is not None:
                 self.use_model(model)
             if effort is not None:
-                self.use_effort(effort)
+                # The client's setting, not a decision about the session: a daemon started with `--effort` thinks
+                # as hard as it was told for as long as it runs, and must not leave that in the conversation for
+                # the next reader of it.
+                try:
+                    self._agent.runtime.use_effort(effort, remember=False)
+                except ValueError as error:
+                    raise ConfigurationError(str(error)) from error
             if permission is not None:
                 # The client's setting, not a decision about the session: a prompt that asks for `deny` must not
                 # leave the session on `deny` for the next reader of it.
@@ -1299,16 +1305,22 @@ class Client:
         """Return the levels the active model accepts."""
         return self._agent.efforts
 
-    def use_effort(self, name: str) -> str:
-        """Choose how much reasoning later runs may spend.
+    def use_effort(self, name: str, *, remember: bool = True) -> str:
+        """Choose how much reasoning later runs may spend, and remember it for this session.
+
+        The level is written to the session, so opening it again reasons as much as it last did; a session set
+        back to the level a run starts at follows the configuration again. ``remember=False`` applies the level to
+        this client for now and leaves the session's own level alone, which is what ``effort=`` on the client
+        itself does: a daemon started with ``--effort`` is a process told how hard to think, not a decision about
+        the conversation.
 
         Raises:
-            ConfigurationError: The level does not exist, or the active model does not take it (the message lists
-                the ones it does).
+            ConfigurationError: The level does not exist, the active model does not take it (the message lists the
+                ones it does), or another process has the session open and the level is part of the session.
         """
         self._check_open()
         try:
-            return self._agent.use_effort(name)
+            return self._agent.use_effort(name, remember=remember)
         except ValueError as error:
             raise ConfigurationError(str(error)) from error
 
@@ -1959,6 +1971,7 @@ class Sessions:
             usage=usage_from(stored.usage),
             records=stored.session,
             _engine=stored,
+            effort=stored.effort,
         )
 
     async def latest(self) -> Session | None:

@@ -254,6 +254,8 @@ class StoredSession:
         id: The session's identity.
         title: Its name, or ``None`` until one was written.
         model: The model it last used, by the name ``models`` lists, or ``None`` when none was recorded.
+        effort: The reasoning level it last ran at, or ``None`` when none was recorded; a resume puts it back in
+            force, so the figure the header shows is what this conversation actually thinks at.
         usage: What it has spent in total, from the replies the file records.
         records: The parsed conversation file, for a front end that draws the conversation itself. Its type belongs to
             the engine and is not part of this API: read it with the helper of the front end that draws it, and do not
@@ -266,6 +268,7 @@ class StoredSession:
     usage: Usage
     records: object = field(repr=False, compare=False)
     _engine: Any = field(default=None, repr=False, compare=False)
+    effort: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

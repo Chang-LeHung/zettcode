@@ -338,6 +338,10 @@ class ZettCodeEngine:
     #: What the compaction counts the context with; loaded on a thread of its own so that the
     #: first turn does not load it on the event loop. See :class:`CompactionCounter`.
     compaction_counter: CompactionCounter
+    #: The reasoning level a run starts at — the configuration's ``reasoning_effort`` as the first model takes it —
+    #: and what a session that never chose one goes back to when it is opened again. Here rather than beside
+    #: :attr:`effort` because every field after it already has a default.
+    default_effort: ReasoningEffort = ReasoningEffort.MEDIUM
     plugins: Plugins = field(default_factory=Plugins)
     #: The lock on the session this process has open: only the process that holds it writes to the session.
     #: A runtime that was not given one (a test's) shares nothing, so every claim is granted.
@@ -366,9 +370,14 @@ class ZettCodeEngine:
     _self_choices: dict[str, bool | None] = field(default_factory=dict, repr=False)
     #: Each session's own permission level as last read or written; see :meth:`permission_choice`.
     _permissions: dict[str, str | None] = field(default_factory=dict, repr=False)
+    #: Each session's own reasoning level as last read or written; see :meth:`effort_choice`.
+    _efforts: dict[str, str | None] = field(default_factory=dict, repr=False)
     #: Whether a level was chosen for this process rather than for a session (``--full``, a client's
     #: ``permission=``): while it is set, opening a session does not put that session's level back.
     _permission_override: bool = field(default=False, repr=False)
+    #: The same for the reasoning level: a client built with ``effort=`` runs at that level whatever the session
+    #: recorded, and does not write it down.
+    _effort_override: bool = field(default=False, repr=False)
     #: The warm-up imports, running on a daemon thread, and the loop-side event
     #: that releases whoever is waiting for them.
     _imports: ImportPipeline | None = field(default=None, repr=False)
@@ -470,6 +479,7 @@ class ZettCodeEngine:
             default_permission=policy.level,
             tokenizer=Tokenizer(),
             effort=effort,
+            default_effort=effort,
             session_id=new_uuid7(),
             active_model=selected,
             compaction_counter=counter,
@@ -884,23 +894,34 @@ class ZettCodeEngine:
         choice = self.self_compaction_choice(session_id)
         return self.config.self_compaction if choice is None else choice
 
-    def use_effort(self, name: str | ReasoningEffort) -> ReasoningEffort:
-        """Select how much reasoning the model may spend on later requests.
+    def use_effort(self, name: str | ReasoningEffort, *, remember: bool = True) -> ReasoningEffort:
+        """Select how much reasoning the model may spend on later requests, and remember it for this session.
 
         A level the active model does not take is refused, naming the ones it does: a reader who typed
         ``/effort ultra`` should hear that this model stops at ``high``, not get ``high`` unannounced.
         (A level that is *inherited* — the one in force when the model changes — is moved, by
         :meth:`use_model`, because nobody asked for it.)
 
+        The level is written to the session's own metadata, so opening the session again reasons as much as it
+        last did instead of going back to what a new session starts at; a session set back to the level a run
+        starts at forgets the choice and follows the default. A new session begins at the default, so one job's
+        choice does not leak into the next.
+
         Args:
             name: One of zett-agent's levels, by value (``"high"``) or as the
                 enum itself; case and surrounding space are ignored.
+            remember: Whether the level belongs to the session. ``False`` is for a level this *process* runs
+                at — a client built with ``effort=``, a daemon told ``--effort`` — which then survives opening
+                another session and leaves every session's own level as it was.
 
         Returns:
             The level now in force.
 
         Raises:
             ValueError: The name is not a level, or the active model does not take it, or no model is configured.
+            SessionLocked: Another process has the session open, and the level is part of the session.
+            OSError: The level could not be written to the session; nothing changed, so a caller that reported
+                success would be reporting a setting that is not on disk.
         """
         if isinstance(name, ReasoningEffort):
             level = name
@@ -917,8 +938,48 @@ class ZettCodeEngine:
         if level not in accepted:
             levels = ", ".join(known.value for known in accepted)
             raise ValueError(f"{active.shown_name} does not take {level.value}. Try one of: {levels}")
+        if remember:
+            # The level is stored in the session, so it is a write, and only the process holding the session may
+            # write to it. The other settings that are the session's own ask the same question first.
+            if self.session_locked:
+                raise SessionLocked()
+            self.persistence.set_effort(self.session_id, level.value, default=self.default_effort.value)
+            self._efforts[self.session_id] = level.value
+            # The level belongs to the session again, so opening another one puts that one's level back.
+            self._effort_override = False
+        else:
+            # A level chosen for this process wins over what a session remembers, for as long as it runs.
+            self._effort_override = True
         self.effort = level
         return level
+
+    def effort_choice(self, session_id: str) -> str | None:
+        """Return the level one session last ran at, ``None`` when it never chose one.
+
+        Read from the session's file once and remembered: opening a session asks on every start, and the only
+        writer is the process holding the session's lock.
+        """
+        if session_id not in self._efforts:
+            self._efforts[session_id] = self.persistence.session_effort(session_id)
+        return self._efforts[session_id]
+
+    def _adopt_effort(self) -> None:
+        """Put the active session's own level in force, or the one a run starts at when it has none.
+
+        The stored level is moved to the nearest one the model in use takes, as :meth:`use_model` does: a session
+        recorded against a model that went away, or a configuration that narrowed ``reasoning_efforts`` since,
+        must not send a request with a level its endpoint rejects.
+        """
+        if self._effort_override:
+            return
+        stored = self.effort_choice(self.session_id)
+        try:
+            chosen = self.default_effort if stored is None else ReasoningEffort(stored)
+        except ValueError:
+            # A level a newer version wrote, or a damaged file: the default is the honest answer.
+            chosen = self.default_effort
+        active = self.active_model
+        self.effort = chosen if active is None else active.accepted_effort(chosen)
 
     def find_model(self, name: str) -> ModelConfig | None:
         """Return the configured model a recorded name stands for, if exactly one does.
@@ -1027,6 +1088,7 @@ class ZettCodeEngine:
         self.session_id = new_uuid7()
         self.session_locks.claim(self.session_id)
         self._adopt_permission()
+        self._adopt_effort()
         return self.session_id
 
     def use_session(self, session_id: str) -> None:
@@ -1040,6 +1102,7 @@ class ZettCodeEngine:
         self.session_id = session_id.strip()
         self.session_locks.claim(self.session_id)
         self._adopt_permission()
+        self._adopt_effort()
 
     @property
     def session_locked(self) -> bool:

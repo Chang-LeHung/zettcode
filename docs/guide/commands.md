@@ -81,7 +81,7 @@ at once, beside the request.
 | `/bash` | It reads nothing of the session and writes nothing to it; its commands are the reader's own, so a request running behind it is not touched. |
 | `/title` | Names the session; nothing running reads it. |
 | `/permission` | The next shell command asks the level again, so a change lands in the request that is already running — `/permission full` in the middle of a long task is the point. |
-| `/effort` | A request starts with the effort it had, so the change applies from the next request; the running one is not touched. A level the active model does not take (see [`reasoning_efforts`](/guide/config#reasoning-levels-a-model-takes)) is refused with the ones it does. |
+| `/effort` | A request starts with the effort it had, so the change applies from the next request; the running one is not touched. A level the active model does not take (see [`reasoning_efforts`](/guide/config#reasoning-levels-a-model-takes)) is refused with the ones it does. The level belongs to the session, so it is written down as you choose it and coming back to the session starts there again. |
 | `/model` | A request is handed its model when it starts and is never sent again, so the choice applies from the next turn on; the running one keeps the model it started on. The point the conversation is compacted at moves with the model, because that is the new model's window. |
 | `/quit`, `/exit` | Leaving does not wait for the answer. |
 | `/btw` | Waits its turn and then answers, as before. |

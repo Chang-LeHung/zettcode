@@ -87,6 +87,30 @@ model, and the conversation says so:
   a session recorded under the old name still finds it.
 - `/fork` starts on the model the original was using.
 
+### Which reasoning level a session uses
+
+The level travels with the model: each session also remembers the reasoning level it last ran
+at, so a conversation that thought hard comes back thinking hard instead of dropping to what a
+new one starts at. `/effort` writes it into the same `metadata.json` — at the moment you choose,
+not at the end of a turn — and choosing the level a new session starts at
+(`reasoning_effort` in the configuration, as the model accepts it) takes the record away again,
+so the session follows the configuration from then on.
+
+Resuming the session puts the level back, and the conversation says so:
+
+```text
+──────── Reasoning set to high, the level this session last used. ────────
+```
+
+- A session that never chose a level starts at the configuration's `reasoning_effort`.
+- A level the model in use does not take is moved to the nearest one it does, the same rule
+  `/model` uses for the level in force; the session's own record is not rewritten, so opening it
+  again with the old model still gives you the level you chose.
+- `/fork` starts at the level of the session it came from.
+- A level asked for on the command line is about that process, not about the conversation: a
+  daemon started with `--effort high` thinks that hard for as long as it runs and leaves the
+  session's own level alone.
+
 ### Long tool output
 
 When a shell command prints more than fits in a reply, the model is shown the start and

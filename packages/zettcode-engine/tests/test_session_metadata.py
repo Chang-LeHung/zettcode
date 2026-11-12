@@ -739,3 +739,103 @@ async def test_a_failed_write_while_recording_a_model_is_not_an_error(tmp_path: 
 
     assert store.set_model("s1", "gpt-5-mini") is False
     assert store.session_model("s1") is None, "and nothing half-written is read back"
+
+
+# -- the reasoning level a session last ran at ------------------------------------------------------
+
+
+async def test_the_level_a_session_ran_at_is_recorded_and_read_back(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    assert store.session_effort("s1") is None, "nothing is recorded until a reader chooses a level"
+
+    store.set_effort("s1", "high", default="medium")
+
+    assert store.session_effort("s1") == "high"
+    assert read_session_metadata(_file(store, "s1"), "s1").effort == "high"  # type: ignore[union-attr]
+
+
+async def test_the_level_a_run_starts_at_records_nothing_and_takes_a_record_back(tmp_path: Path):
+    """A session that holds no level already thinks at the default, so the file says nothing."""
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    store.set_effort("s1", "high", default="medium")
+
+    store.set_effort("s1", "medium", default="medium")
+
+    assert store.session_effort("s1") is None
+    assert read_session_metadata(_file(store, "s1"), "s1").effort is None  # type: ignore[union-attr]
+
+
+async def test_a_level_chosen_before_the_first_message_records_the_session(tmp_path: Path):
+    """`/effort` before the first prompt is a decision about a session that does not exist yet, so it makes one."""
+    store = _store(tmp_path)
+
+    store.set_effort("s1", "high", default="medium")
+
+    assert store.session_effort("s1") == "high"
+    assert (store.session_dir("s1") / SESSION_METADATA_FILE).is_file()
+
+
+async def test_a_default_level_with_no_session_to_record_writes_nothing(tmp_path: Path):
+    store = _store(tmp_path)
+
+    store.set_effort("s1", "medium", default="medium")
+
+    assert store.session_effort("s1") is None
+    assert not store.session_dir("s1").exists()
+
+
+async def test_recording_a_level_leaves_the_title_and_the_model_alone(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    await store.set_title("s1", "Parser work")
+    store.set_model("s1", "gpt-5-mini")
+
+    store.set_effort("s1", "high", default="medium")
+
+    assert (store.session_title("s1"), store.session_model("s1")) == ("Parser work", "gpt-5-mini")
+
+
+async def test_a_fork_reasons_at_the_level_the_session_it_came_from_did(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    store.set_effort("s1", "high", default="medium")
+
+    forked = store.fork("s1")
+
+    assert store.session_effort(forked) == "high"
+    assert store.session_effort("s1") == "high", "and the original is untouched"
+
+
+async def test_a_fork_of_a_session_that_never_chose_has_no_level_either(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+
+    assert store.session_effort(store.fork("s1")) is None
+
+
+async def test_recording_a_level_does_not_move_the_age_the_list_shows(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    _age(store, "s1", FUTURE)
+    before = (await store.list_sessions())[0].updated_at
+
+    store.set_effort("s1", "high", default="medium")
+
+    assert (await store.list_sessions())[0].updated_at == before == FUTURE
+
+
+async def test_a_level_that_cannot_be_written_is_an_error_rather_than_a_silent_no(tmp_path: Path, monkeypatch):
+    """A caller that reported success would be reporting a setting that is not on disk."""
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+
+    def fail(source, target):
+        raise OSError("read-only")
+
+    monkeypatch.setattr(metadata_module.os, "replace", fail)
+
+    with pytest.raises(OSError):
+        store.set_effort("s1", "high", default="medium")
+    assert store.session_effort("s1") is None, "and nothing half-written is read back"

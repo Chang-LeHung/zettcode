@@ -257,9 +257,9 @@ class SettingsMixin(AgentBase):
         model = self.runtime.active_model
         return () if model is None else tuple(level.value for level in model.efforts)
 
-    def use_effort(self, name: str) -> str:
-        """Select a reasoning level for later requests and return its value."""
-        return self.runtime.use_effort(name).value
+    def use_effort(self, name: str, *, remember: bool = True) -> str:
+        """Select a reasoning level for later requests and return its value; the session keeps it unless told not to."""
+        return self.runtime.use_effort(name, remember=remember).value
 
     def approve_all_shell_commands(self) -> None:
         """Approve every shell command for the rest of this run, without asking."""
