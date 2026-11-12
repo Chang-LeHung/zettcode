@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import math
 import os
 import shlex
 import signal
@@ -34,18 +35,29 @@ from zettcode.gateway.agents import AgentPlugin
 #: The one place this plugin's version is written.
 __version__ = "0.1.0"
 
-#: How long one CLI turn may take before it is stopped.
+#: How long one CLI turn may take before it is stopped; ``$ZETTCODE_CODE_AGENTS_TIMEOUT`` overrides it.
 TIMEOUT = 900.0
 
 
-def _logo(mark: str, background: str, foreground: str) -> str:
-    svg = (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
-        f'<rect width="64" height="64" rx="16" fill="{background}"/>'
-        f'<text x="32" y="40" text-anchor="middle" font-family="ui-monospace,monospace" '
-        f'font-size="24" font-weight="700" fill="{foreground}">{mark}</text></svg>'
-    )
-    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
+def _timeout() -> float:
+    """Return how long one turn may run, read once from the environment and checked before use."""
+    raw = os.environ.get("ZETTCODE_CODE_AGENTS_TIMEOUT", str(TIMEOUT))
+    try:
+        value = float(raw)
+    except ValueError:
+        raise RuntimeError(f"ZETTCODE_CODE_AGENTS_TIMEOUT must be a number of seconds, not {raw!r}") from None
+    if not math.isfinite(value) or value <= 0:
+        raise RuntimeError("ZETTCODE_CODE_AGENTS_TIMEOUT must be a positive number of seconds")
+    return value
+
+
+def _logo(name: str) -> str:
+    """Return one of the package's brand marks as a data URL."""
+    path = Path(__file__).with_name("logos") / name
+    try:
+        return "data:image/svg+xml;base64," + base64.b64encode(path.read_bytes()).decode()
+    except OSError:
+        return ""
 
 
 def state_directory() -> Path:
@@ -134,6 +146,7 @@ class CliAgent(ExternalSession):
                 await self.reply(message, answer)
 
     async def _run(self, prompt: str) -> str:
+        timeout = _timeout()
         session = self._session()
         resumed = bool(session)
         if not session and "session-id" in self.command.new_args:
@@ -151,11 +164,11 @@ class CliAgent(ExternalSession):
         )
         process = self._process
         try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), TIMEOUT)
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout)
         except asyncio.TimeoutError:
             self._kill(process)
             await process.wait()
-            raise RuntimeError(f"the {self.title} command did not finish in {TIMEOUT:g} seconds") from None
+            raise RuntimeError(f"the {self.title} command did not finish in {timeout:g} seconds") from None
         finally:
             self._process = None
         output = stdout.decode(errors="replace")
@@ -214,7 +227,7 @@ class CodexAgent(AgentPlugin):
     name = "codex"
     title = "Codex"
     description = "OpenAI Codex CLI, in the same session every time"
-    avatar = _logo(">_", "#0b0b0f", "#ffffff")
+    avatar = _logo("codex.svg")
 
     def create(self, session_id: str, title: str) -> ExternalSession:
         return CliAgent(
@@ -232,7 +245,7 @@ class ClaudeCodeAgent(AgentPlugin):
     name = "claude"
     title = "Claude Code"
     description = "Anthropic Claude Code, in the same session every time"
-    avatar = _logo("✳", "#d97757", "#ffffff")
+    avatar = _logo("claude.svg")
 
     def create(self, session_id: str, title: str) -> ExternalSession:
         return CliAgent(

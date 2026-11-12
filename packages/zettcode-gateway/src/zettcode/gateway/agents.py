@@ -157,6 +157,10 @@ class AgentManager:
         kind = self._kinds.get(session_id)
         return self.avatar(kind) if kind else ""
 
+    def kind_of(self, session_id: str) -> str:
+        """Return the plugin type a running agent was started from, or an empty string."""
+        return self._kinds.get(session_id, "")
+
     def running(self) -> dict[str, ExternalSession]:
         """Return the agents this gateway started, by session id."""
         return dict(self._running)

@@ -11,6 +11,7 @@ import pytest
 
 from gateway_fakes import GATEWAY_ID, FakeBackend
 from zettcode.gateway import service as service_module
+from zettcode.gateway.agents import AgentManager, AgentPlugin
 from zettcode.gateway.chat import REPLY_REQUEST, strip_reply_request
 from zettcode.gateway.service import Gateway, GatewayError
 from zettcode.gateway.settings import Settings
@@ -1084,3 +1085,81 @@ async def test_a_group_message_must_have_text_and_the_group_must_exist(tmp_path)
         await gateway.send_group("nope", "hello")
 
     assert empty.value.status == 400 and unknown.value.status == 404 and backend.group_sent == []
+
+
+async def test_an_external_agent_started_for_a_group_is_listed_with_its_type(tmp_path):
+    class Session:
+        session_id = "agent-1"
+        title = "Scribe"
+        kind = "external"
+        handle = "agent-1"
+        joined: list[str] = []
+
+        async def connect(self) -> None:
+            pass
+
+        async def close(self) -> None:
+            pass
+
+        async def join_group(self, group: str) -> None:
+            self.joined.append(group)
+
+    class Plugin(AgentPlugin):
+        name = "echo"
+        title = "Echo"
+        description = "Answers with what it hears"
+
+        def create(self, session_id: str, title: str) -> Session:  # type: ignore[override]
+            return Session()
+
+    backend = FakeBackend()
+    backend.add_peer("agent-1", "agent", title="Scribe", kind="external")
+    manager = AgentManager(tmp_path / "agents", [Plugin()])
+    gateway = Gateway(backend, settings(tmp_path), clock=lambda: 1000.0, agents=manager)
+    await gateway.start(watch=False)
+
+    made = await gateway.create_agent({"kind": "echo", "title": "Scribe", "session_id": "agent-1", "group": "review"})
+
+    assert made["thread"]["agent"] == "echo"
+    assert made["thread"]["name"] == "Scribe"
+    assert manager.kind_of("agent-1") == "echo"
+    assert Session.joined == ["review"]
+
+
+async def test_a_failed_agent_join_is_taken_back_out_of_the_group(tmp_path):
+    class Session:
+        session_id = ""
+        title = "Broken"
+        kind = "external"
+        handle = "broken"
+
+        async def connect(self) -> None:
+            pass
+
+        async def close(self) -> None:
+            pass
+
+        async def join_group(self, group: str) -> None:
+            raise RuntimeError("the broker lost the answer")
+
+    class Plugin(AgentPlugin):
+        name = "echo"
+        title = "Echo"
+
+        def create(self, session_id: str, title: str) -> Session:  # type: ignore[override]
+            session = Session()
+            session.session_id = session_id
+            return session
+
+    backend = FakeBackend()
+    backend.graph_data["groups"] = [{"name": "review", "created": 1.0, "members": [], "last": None}]
+    manager = AgentManager(tmp_path / "agents", [Plugin()])
+    gateway = Gateway(backend, settings(tmp_path), clock=lambda: 1000.0, agents=manager)
+    await gateway.start(watch=False)
+
+    with pytest.raises(GatewayError):
+        await gateway.create_agent({"kind": "echo", "group": "review"})
+
+    assert len(backend.removed_members) == 1
+    assert backend.removed_members[0][0] == "review"
+    assert backend.removed_members[0][1].startswith("web-")
