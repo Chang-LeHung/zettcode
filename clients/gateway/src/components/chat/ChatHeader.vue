@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { t } from "../../i18n";
 import { folderName } from "../../lib/format";
+import { closeFind, find, openFind } from "../../stores/chatSearch";
 import { prefs } from "../../stores/prefs";
 import { href } from "../../stores/route";
 import type { Thread } from "../../types";
@@ -50,6 +51,15 @@ const subtitle = computed(() => {
         <b>{{ thread.name }}<span v-if="mode" class="mode" :class="mode.kind" :title="mode.hint">{{ mode.label }}</span></b>
         <span :class="{ live }">{{ subtitle }}</span>
       </span>
+    </button>
+    <button
+      class="iconbtn"
+      :aria-pressed="find.open"
+      :title="t('Find in this conversation')"
+      :aria-label="t('Find in this conversation')"
+      @click="find.open ? closeFind() : openFind()"
+    >
+      <Icon name="search" />
     </button>
     <button
       class="iconbtn"

@@ -2,10 +2,12 @@
 import { computed, onBeforeUnmount, onMounted, watch } from "vue";
 import { t } from "../../i18n";
 import { chat, closeChat, markRead, openChat } from "../../stores/chat";
+import { closeFind, find } from "../../stores/chatSearch";
 import { canWrite, threadOf } from "../../stores/threads";
 import Skeleton from "../common/Skeleton.vue";
 import ChatHeader from "./ChatHeader.vue";
 import Composer from "./Composer.vue";
+import FindBar from "./FindBar.vue";
 import LockedBar from "./LockedBar.vue";
 import MessageList from "./MessageList.vue";
 
@@ -14,7 +16,14 @@ const props = defineProps<{ id: string }>();
 const thread = computed(() => threadOf(props.id) ?? (chat.id === props.id ? chat.thread : null));
 const missing = computed(() => !thread.value && !chat.loading && chat.id === props.id && chat.error !== "");
 
-watch(() => props.id, (id) => void openChat(id), { immediate: true });
+watch(
+  () => props.id,
+  (id) => {
+    closeFind();
+    void openChat(id);
+  },
+  { immediate: true },
+);
 watch(
   () => thread.value?.unread ?? 0,
   (unread) => unread > 0 && !document.hidden && markRead(),
@@ -28,6 +37,7 @@ function onVisible(): void {
 onMounted(() => document.addEventListener("visibilitychange", onVisible));
 onBeforeUnmount(() => {
   document.removeEventListener("visibilitychange", onVisible);
+  closeFind();
   closeChat();
 });
 </script>
@@ -39,6 +49,7 @@ onBeforeUnmount(() => {
   </div>
   <div v-else-if="thread" class="chat">
     <ChatHeader :thread="thread" />
+    <FindBar v-if="find.open" />
     <MessageList />
     <Composer v-if="canWrite(thread)" :thread="thread" />
     <LockedBar v-else :thread="thread" />

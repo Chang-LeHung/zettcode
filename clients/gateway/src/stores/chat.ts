@@ -6,6 +6,7 @@ import { reactive } from "vue";
 import { gateway } from "../api/gateway";
 import { ApiError } from "../api/http";
 import { t } from "../i18n";
+import { withQuote } from "../lib/messages";
 import { pend, settle } from "../lib/pending";
 import { debounce, storage } from "../lib/storage";
 import { seenNow } from "../lib/unread";
@@ -187,6 +188,15 @@ export function setDraft(id: string, text: string): void {
   drafts[id] = text;
   if (text) storage.set(`draft.${id}`, text);
   else storage.remove(`draft.${id}`);
+}
+
+/** Bumped when the draft is changed from outside the composer (a quote), so the composer reads it again and takes focus. */
+export const draftEdits = reactive({ revision: 0 });
+
+/** Put a message, quoted, at the end of a thread's draft. */
+export function quoteIntoDraft(id: string, text: string): void {
+  setDraft(id, withQuote(draftOf(id), text));
+  draftEdits.revision += 1;
 }
 
 // ---- asking for an answer
