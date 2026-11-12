@@ -6,7 +6,8 @@ import type { Row } from "./rows";
 /**
  * The words a reader sees in a message's markdown source: a link is its label, emphasis and code marks and heading or quote
  * marks are gone, and a fence's own lines (the ``` and its language) are not text. It is for matching, not for drawing, so it
- * need not be exact; it only has to stop a search from hitting what is not on the screen.
+ * need not be exact; it only has to stop a search from hitting what is not on the screen. Known gaps: `_` is dropped
+ * everywhere, so `snake_case` is found by its joined spelling, and a picture's alt text is kept though it is drawn as a picture.
  */
 export function visibleText(markdown: string): string {
   return markdown
