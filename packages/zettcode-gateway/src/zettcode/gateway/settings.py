@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from zettcode.paths import DEFAULT_STORE
+
 #: The environment variables the command reads.
 TOKEN_VARIABLE = "ZETTCODE_GATEWAY_TOKEN"
 DIRECTORY_VARIABLE = "ZETTCODE_GATEWAY_DIR"
@@ -39,6 +41,8 @@ class Settings:
         allow_full: Whether a daemon may be given the ``full`` shell level (no sandbox, no approval). Decided by the
             command line (``--no-full`` turns it off), never from the page.
         directory: The gateway's own folder: its workspace, the id of its session, and what the page remembers.
+        store: The session store root the page reads conversations from, which is the engine's default unless a
+            caller runs the gateway against another one.
         log_level: uvicorn's log level.
         client_origins: Extra origins a native client or a page of its own is served from, on top of
             :data:`APP_ORIGINS`. Ignored without a token.
@@ -50,6 +54,7 @@ class Settings:
     roots: tuple[Path, ...] = ()
     allow_full: bool = False
     directory: Path = field(default_factory=default_directory)
+    store: Path = DEFAULT_STORE
     log_level: str = "info"
     client_origins: tuple[str, ...] = ()
 

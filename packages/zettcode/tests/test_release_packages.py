@@ -112,11 +112,11 @@ def test_the_packages_in_the_tree_describe_themselves(helper):
     assert found, "packages/ holds at least one distribution"
     for described in found:
         assert described.prefixes[0] == described.directory
-        # Both tag spellings work: the directory, and the plugin's entry-point name (which lives in the one group now).
+        # Both tag spellings work: the directory, and the plugin's entry-point names (a terminal plugin or a gateway one).
         project = tomllib.loads(
             (ROOT / "packages" / described.directory / "pyproject.toml").read_text(encoding="utf-8")
         )
-        assert described.prefixes[1:] == tuple(project["project"]["entry-points"]["zettcode.plugin"]), described.name
+        assert described.prefixes[1:] == helper.plugin_names(project["project"]), described.name
         assert (ROOT / "packages" / described.directory / "src").is_dir(), described.directory
         installed = version(described.name)
         assert described.version == installed, (

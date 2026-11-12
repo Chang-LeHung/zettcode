@@ -240,7 +240,10 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
     """Return the application for these settings; a test gives a backend of its own, and the folder the page is in."""
     auth = Auth(settings.token)
     allowed = settings.allowed_origins
-    gateway = Gateway(backend if backend is not None else ExternalBackend(settings.directory), settings)
+    gateway = Gateway(
+        backend if backend is not None else ExternalBackend(settings.directory, settings.store),
+        settings,
+    )
 
     @asynccontextmanager
     async def lifespan(_: Starlette) -> AsyncIterator[None]:
@@ -369,6 +372,16 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
 
     async def join_group(request: Request) -> Any:
         return await gateway.join_group(request.path_params["name"])
+
+    async def invite_group(request: Request) -> Any:
+        given = await body(request)
+        return await gateway.invite_group(request.path_params["name"], str(given.get("member") or ""))
+
+    async def leave_group(request: Request) -> Any:
+        return await gateway.leave_group(request.path_params["name"])
+
+    async def remove_group_member(request: Request) -> Any:
+        return await gateway.remove_group_member(request.path_params["name"], request.path_params["member"])
 
     async def timeline(request: Request) -> Any:
         query = request.query_params
@@ -508,6 +521,9 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/threads/{id}/pictures/{picture}", api(picture)),
         Route("/api/groups/{name}/send", api(send_group), methods=["POST"]),
         Route("/api/groups/{name}/join", api(join_group), methods=["POST"]),
+        Route("/api/groups/{name}/members", api(invite_group), methods=["POST"]),
+        Route("/api/groups/{name}/members/{member}", api(remove_group_member), methods=["DELETE"]),
+        Route("/api/groups/{name}/leave", api(leave_group), methods=["POST"]),
         Route("/api/daemons", api(spawn), methods=["POST"]),
         Route("/api/daemons/{id}", api(delete), methods=["DELETE"]),
         Route("/api/daemons/{id}/stop", api(stop), methods=["POST"]),

@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import time
 import unicodedata
 from collections import deque
@@ -522,6 +523,7 @@ class Gateway:
             "direct": peer is not None and peer.direct,
             "locked": peer is None and stored and self._locked(session_id, self._workspace_of(daemon, peer)),
             "avatar": profiled.get("avatar") or self.agents.avatar_for(session_id),
+            "agent": self.agents.kind_of(session_id),
         }
 
     def _locked(self, session_id: str, workspace: str) -> bool:
@@ -1217,14 +1219,28 @@ class Gateway:
             raise GatewayError(400, "invalid", "kind names an external agent type")
         if not isinstance(title, str) or not isinstance(session_id, str) or not isinstance(group, str):
             raise GatewayError(400, "invalid", "title, session_id and group are strings")
+        group = group.lstrip("#")
+        generated = bool(group) and not session_id
+        if generated:
+            # Keep the id here as well, so a join that committed before its response was lost can be undone. A caller's
+            # id is retried with the same id, and the broker's add is a no-op for a member it already has; only an id
+            # this method generated can need the compensating remove below.
+            session_id = f"web-{secrets.token_hex(6)}"
         try:
             session = await self.agents.create(kind, title, session_id, group)
         except AgentError as error:
+            if generated:
+                with contextlib.suppress(SendError, GatewayError):
+                    await self.backend.remove_group_member(group, session_id)
             raise GatewayError(400, "agent", str(error)) from error
         avatar = self.agents.avatar(kind)
         if avatar:
             self._profiles[session.session_id] = {"avatar": avatar}
-            self._save_profiles()
+            try:
+                self._save_profiles()
+            except OSError:
+                # The agent is already running and in the group; losing its default picture must not say otherwise.
+                logger.exception("profile.save_failed", extra={"session": session.session_id})
         await self.refresh()
         return {
             "agent": {"session_id": session.session_id, "kind": session.kind, "handle": session.handle},
@@ -1251,6 +1267,46 @@ class Gateway:
             ) from error
         await self.refresh()
         return {"group": name}
+
+    async def invite_group(self, name: str, session_id: str) -> dict[str, Any]:
+        """Add a session to a group as the broker owner."""
+        name, session_id = name.lstrip("#"), session_id.strip()
+        if not session_id:
+            raise GatewayError(400, "invalid", "a member is required")
+        if session_id not in self._views:
+            await self.refresh()
+        if session_id not in self._views:
+            raise GatewayError(404, "not_found", "No such session is listed")
+        try:
+            await self.backend.add_group_member(name, session_id)
+        except SendError as error:
+            raise GatewayError(
+                404 if error.reason == "unknown" else SEND_STATUS.get(error.reason, 400),
+                error.reason,
+                str(error),
+            ) from error
+        await self.refresh()
+        return {"group": name, "member": session_id}
+
+    async def remove_group_member(self, name: str, session_id: str) -> dict[str, Any]:
+        """Take a session out of a group as the broker owner; the gateway's own id is how the person leaves it."""
+        name, session_id = name.lstrip("#"), session_id.strip()
+        if not session_id:
+            raise GatewayError(400, "invalid", "a member is required")
+        try:
+            await self.backend.remove_group_member(name, session_id)
+        except SendError as error:
+            raise GatewayError(
+                404 if error.reason == "unknown" else SEND_STATUS.get(error.reason, 400),
+                error.reason,
+                str(error),
+            ) from error
+        await self.refresh()
+        return {"group": name, "member": session_id}
+
+    async def leave_group(self, name: str) -> dict[str, Any]:
+        """Leave a group as the person at the gateway. What was said stays readable; writing needs joining again."""
+        return await self.remove_group_member(name, self.backend.gateway_id)
 
     async def send_group(self, name: str, text: str) -> dict[str, Any]:
         """Write to a group chat as the person at the gateway, joining the group first when this gateway is not in it.

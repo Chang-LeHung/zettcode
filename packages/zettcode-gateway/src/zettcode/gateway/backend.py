@@ -114,6 +114,14 @@ class Backend(ABC):
         """Make the gateway a member of a group so that it can write to it (see ``Client.join_group``)."""
         raise SendError("offline", "not connected to the session broker")
 
+    async def add_group_member(self, group: str, session_id: str) -> None:
+        """Add another session to a group as the broker owner."""
+        raise SendError("offline", "not connected to the session broker")
+
+    async def remove_group_member(self, group: str, session_id: str) -> None:
+        """Remove a session from a group as the broker owner, best effort after a failed join."""
+        raise SendError("offline", "not connected to the session broker")
+
     async def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
         """Return the stored messages of a stretch of the past (see ``Client.traffic_timeline``)."""
         return {"messages": [], "truncated": False, "span": None, "now": until}

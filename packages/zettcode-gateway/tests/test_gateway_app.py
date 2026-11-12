@@ -12,6 +12,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from gateway_fakes import GATEWAY_ID, FakeBackend
+from zettcode.gateway import app as app_module
 from zettcode.gateway import runfile
 from zettcode.gateway.app import COOKIE, create_app
 from zettcode.gateway.settings import Settings
@@ -26,6 +27,21 @@ def page(tmp_path):
     (folder / "index.html").write_text("<!doctype html><title>page</title>", encoding="utf-8")
     (folder / "manifest.webmanifest").write_text("{}", encoding="utf-8")
     return folder
+
+
+def test_the_external_backend_reads_conversations_from_the_configured_store(tmp_path, monkeypatch):
+    seen = {}
+
+    class Backend:
+        def __init__(self, directory, store):
+            seen.update(directory=directory, store=store)
+
+    monkeypatch.setattr(app_module, "ExternalBackend", Backend)
+    settings = Settings(token=TOKEN, roots=(tmp_path,), directory=tmp_path / "gw", store=tmp_path / "sessions")
+
+    create_app(settings, static=page(tmp_path))
+
+    assert seen == {"directory": settings.directory, "store": settings.store}
 
 
 @pytest.fixture
@@ -331,6 +347,36 @@ def test_a_group_can_be_joined_without_writing(parts):
     assert joined.status_code == 200 and joined.json() == {"group": "review"}
     assert backend.joined == ["review"]
     assert client.post("/api/groups/missing/join", json={}).status_code == 404
+
+
+def test_a_group_member_can_be_invited(parts):
+    client, backend, _ = parts
+    signed_in(client)
+    backend.graph_data["groups"] = [{"name": "review", "created": 1.0, "members": [], "last": None}]
+
+    invited = client.post("/api/groups/review/members", json={"member": "01d"})
+    unknown = client.post("/api/groups/review/members", json={"member": "not-listed"})
+
+    assert invited.status_code == 200 and invited.json() == {"group": "review", "member": "01d"}
+    assert unknown.status_code == 404
+    assert backend.invited == [("review", "01d")]
+
+
+def test_the_person_can_leave_a_group_and_a_member_can_be_removed(parts):
+    client, backend, _ = parts
+    signed_in(client)
+    mine = backend.gateway_id
+    backend.graph_data["groups"] = [{"name": "review", "created": 1.0, "members": [mine, "01d"], "last": None}]
+
+    left = client.post("/api/groups/review/leave", json={})
+    removed = client.delete("/api/groups/review/members/01d")
+    missing = client.post("/api/groups/nowhere/leave", json={})
+
+    assert left.status_code == 200 and left.json() == {"group": "review", "member": mine}
+    assert removed.status_code == 200 and removed.json() == {"group": "review", "member": "01d"}
+    assert missing.status_code == 404
+    assert backend.graph_data["groups"][0]["members"] == []
+    assert backend.removed_members == [("review", mine), ("review", "01d")]
 
 
 def test_the_folder_picker_and_the_configuration_answer(parts):

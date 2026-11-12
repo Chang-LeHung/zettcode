@@ -27,6 +27,8 @@ The commands are configurable without changing the package:
 | `ZETTCODE_CLAUDE_RESUME_ARGS` | `-p {prompt} --output-format json --resume {session}` |
 | `ZETTCODE_CODE_AGENTS_CWD` | the gateway process's directory |
 | `ZETTCODE_CODE_AGENTS_DIR` | `~/.zettcode/code-agents` |
+| `ZETTCODE_CODE_AGENTS_QUEUE` | `4` turns waiting |
+| `ZETTCODE_CODE_AGENTS_TIMEOUT` | `900` seconds |
 
 Arguments are split with `shlex`, never run by a shell, and receive `{prompt}`, `{session}` and `{cwd}`.
 
