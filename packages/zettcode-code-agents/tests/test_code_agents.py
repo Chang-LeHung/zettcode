@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 
 import pytest
 
-from zettcode.code_agents import ClaudeCodeAgent, CliAgent, CodexAgent, Command, _events, _timeout
+from zettcode.code_agents import (
+    CLAUDE,
+    CODEX,
+    ClaudeCodeAgent,
+    CliAgent,
+    CodexAgent,
+    Command,
+    ConfigError,
+    _events,
+    _timeout,
+)
+from zettcode.code_agents.config import DEFAULT_PERMISSION, resolve
 
 
 def test_a_command_uses_the_resume_form_when_a_session_is_known(tmp_path):
@@ -69,3 +81,180 @@ async def test_a_cli_turn_saves_the_session_and_returns_its_text(tmp_path, monke
 
     assert await agent._run("hello") == "hello"
     assert json.loads((tmp_path / "state" / "agent-1.json").read_text()) == {"session": "s-1"}
+
+
+# -- the plugin's own settings ---------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def settings_file(tmp_path, monkeypatch):
+    """Point the plugin at a settings file and a state folder of its own, and return a function that writes the file."""
+    path = tmp_path / "config.json"
+    monkeypatch.setenv("ZETTCODE_CODE_AGENTS_CONFIG", str(path))
+    monkeypatch.setenv("ZETTCODE_CODE_AGENTS_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("ZETTCODE_CODE_AGENTS_CWD", str(tmp_path))
+    for name in ("BIN", "ARGS", "RESUME_ARGS"):
+        monkeypatch.delenv(f"ZETTCODE_CODEX_{name}", raising=False)
+        monkeypatch.delenv(f"ZETTCODE_CLAUDE_{name}", raising=False)
+    monkeypatch.delenv("ZETTCODE_CODE_AGENTS_TIMEOUT", raising=False)
+
+    def write(content) -> None:
+        path.write_text(content if isinstance(content, str) else json.dumps(content), encoding="utf-8")
+
+    return write
+
+
+def test_with_no_settings_an_agent_runs_in_the_gateways_folder_and_is_fully_trusted(tmp_path, settings_file):
+    settings = resolve(CODEX)
+
+    assert DEFAULT_PERMISSION == "full" and settings.permission == "full"
+    assert settings.cwd == tmp_path.resolve()
+    assert settings.timeout == 900.0
+    assert (settings.binary, settings.args) == ("codex", CODEX.args)
+
+
+def test_a_tools_own_section_beats_the_top_level_which_beats_the_environment(tmp_path, settings_file, monkeypatch):
+    (tmp_path / "top").mkdir()
+    (tmp_path / "api").mkdir()
+    monkeypatch.setenv("ZETTCODE_CLAUDE_BIN", "from-the-environment")
+    settings_file(
+        {
+            "cwd": str(tmp_path / "top"),
+            "permission": "read",
+            "timeout": 30,
+            "codex": {"cwd": str(tmp_path / "api"), "permission": "workspace", "bin": "/opt/codex"},
+        }
+    )
+
+    codex, claude = resolve(CODEX), resolve(CLAUDE)
+
+    assert (codex.cwd, codex.permission, codex.timeout, codex.binary) == (
+        (tmp_path / "api").resolve(),
+        "workspace",
+        30.0,
+        "/opt/codex",
+    )
+    # Claude has no section: it takes the shared values, and its own command from the environment.
+    assert (claude.cwd, claude.permission, claude.timeout) == ((tmp_path / "top").resolve(), "read", 30.0)
+    assert claude.binary == "from-the-environment"
+
+
+@pytest.mark.parametrize(
+    ("content", "needle"),
+    [
+        ("{not json", "is not valid JSON"),
+        ("[1, 2]", "must hold one JSON object"),
+        ({"permission": "root"}, '"permission"'),
+        ({"permission": 3}, '"permission" in'),
+        ({"cwd": "/no/such/folder/anywhere"}, "does not exist"),
+        ({"cwd": ""}, '"cwd" in'),
+        ({"timeout": 0}, '"timeout"'),
+        ({"timeout": True}, '"timeout"'),
+        ({"timeout": "soon"}, '"timeout"'),
+        ({"codex": "yes"}, '"codex" in'),
+        ({"codex": {"bin": ""}}, '"bin" in'),
+    ],
+)
+def test_a_setting_that_cannot_be_used_is_refused_with_the_file_and_the_key(settings_file, content, needle):
+    settings_file(content)
+
+    with pytest.raises(ConfigError, match=needle) as caught:
+        resolve(CODEX)
+
+    assert "config.json" in str(caught.value)
+
+
+def test_a_missing_or_empty_settings_file_is_no_settings(settings_file, tmp_path):
+    assert resolve(CODEX).permission == "full"
+    settings_file("  \n")
+    assert resolve(CODEX).permission == "full"
+
+
+# -- what each trust level asks of each CLI ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("tool", "permission", "resumed", "expected"),
+    [
+        (CODEX, "full", False, ["--dangerously-bypass-approvals-and-sandbox"]),
+        (CODEX, "workspace", False, ["--sandbox", "workspace-write"]),
+        (CODEX, "read", False, ["--sandbox", "read-only"]),
+        # `codex exec resume` has no --sandbox: the same choice goes in as a configuration override.
+        (CODEX, "full", True, ["--dangerously-bypass-approvals-and-sandbox"]),
+        (CODEX, "workspace", True, ["-c", 'sandbox_mode="workspace-write"']),
+        (CODEX, "read", True, ["-c", 'sandbox_mode="read-only"']),
+        (CLAUDE, "full", False, ["--permission-mode", "bypassPermissions"]),
+        (CLAUDE, "workspace", True, ["--permission-mode", "acceptEdits"]),
+        (CLAUDE, "read", False, ["--permission-mode", "plan"]),
+    ],
+)
+async def test_each_trust_level_becomes_the_arguments_of_its_cli(
+    tmp_path, settings_file, monkeypatch, tool, permission, resumed, expected
+):
+    script = tmp_path / "fake"
+    script.write_text(
+        "#!/usr/bin/env python3\nimport json, sys\n"
+        "print(json.dumps({'session_id': 's-1', 'result': json.dumps(sys.argv[1:])}))\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    settings_file({"permission": permission, tool.name: {"bin": str(script)}})
+    if resumed:
+        (tmp_path / "state").mkdir()
+        (tmp_path / "state" / "a.json").write_text(json.dumps({"session": "s-0"}), encoding="utf-8")
+
+    argv = json.loads(await CliAgent("a", "A", tool)._run("do it"))
+
+    # The flags are inside the command, before the prompt (Codex) or before -p (Claude), never glued to it.
+    for flag in expected:
+        assert flag in argv
+    assert argv.index(expected[0]) < argv.index("do it")
+    assert ("resume" in argv) is (resumed and tool is CODEX)
+
+
+async def test_an_edit_of_the_settings_applies_to_the_next_message_with_no_restart(tmp_path, settings_file):
+    script = tmp_path / "fake"
+    script.write_text(
+        "#!/usr/bin/env python3\nimport json, os, sys\n"
+        "print(json.dumps({'session_id': 's-1', 'result': json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd()})}))\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    agent = CliAgent("agent-1", "Codex", dataclasses.replace(CODEX, binary=str(script)))
+
+    settings_file({"cwd": str(first), "permission": "read"})
+    one = json.loads(await agent._run("hello"))
+    settings_file({"cwd": str(second), "permission": "workspace"})
+    two = json.loads(await agent._run("again"))
+
+    assert one["cwd"] == str(first.resolve()) and "read-only" in one["argv"]
+    # The same running agent, the next message: the new folder, and the new level in the form a resumed turn takes.
+    assert two["cwd"] == str(second.resolve()) and 'sandbox_mode="workspace-write"' in two["argv"]
+    assert "resume" in two["argv"]
+
+
+async def test_a_broken_settings_file_fails_the_turn_with_a_sentence_and_the_agent_goes_on(tmp_path, settings_file):
+    agent = CliAgent("agent-1", "Codex", CODEX)
+    settings_file("{oops")
+
+    with pytest.raises(ConfigError, match="not valid JSON"):
+        await agent._run("hello")
+
+    # Mended, the very next turn runs; nothing about the agent had to be rebuilt.
+    script = tmp_path / "fake"
+    script.write_text('#!/usr/bin/env python3\nprint(\'{"result": "ok"}\')\n', encoding="utf-8")
+    script.chmod(0o755)
+    settings_file({"codex": {"bin": str(script)}})
+    assert await agent._run("hello") == "ok"
+
+
+def test_a_command_template_without_the_permission_word_is_run_exactly_as_written(tmp_path):
+    own = Command("codex", "exec {prompt}", "exec resume {session} {prompt}")
+
+    assert own.argv("hi", "", tmp_path, permission=("--sandbox", "read-only")) == ["codex", "exec", "hi"]
+    shaped = Command("codex", "exec {permission} {prompt}", "x")
+    assert shaped.argv("hi", "", tmp_path, permission=("--a", "b")) == ["codex", "exec", "--a", "b", "hi"]
+    assert shaped.argv("hi", "", tmp_path) == ["codex", "exec", "hi"], "no flags: the word leaves nothing behind"

@@ -5,12 +5,16 @@ The CLI's session id is kept in ``~/.zettcode/code-agents`` (or ``$ZETTCODE_CODE
 continues the same conversation. The gateway only sees ordinary external sessions; nothing here re-implements a
 model, a tool loop or a conversation store.
 
-The commands can be changed without changing this package:
+The commands can be changed without changing this package, and so can where the agents work and how far they are
+trusted: see :mod:`zettcode.code_agents.config`. Those settings live in ``~/.zettcode/code-agents/config.json`` and are
+read again for every message, so an edit applies to the next one with no restart. The environment variables still work
+for the command itself:
 
 * ``ZETTCODE_CODEX_ARGS`` / ``ZETTCODE_CODEX_RESUME_ARGS``
 * ``ZETTCODE_CLAUDE_ARGS`` / ``ZETTCODE_CLAUDE_RESUME_ARGS``
 
 They are split with :mod:`shlex` and receive ``{prompt}``, ``{session}`` and ``{cwd}``; they are never run by a shell.
+The word ``{permission}`` on its own stands for the arguments of the trust level the settings choose.
 """
 
 from __future__ import annotations
@@ -30,17 +34,23 @@ from typing import Any
 from zettcode.broker.external import ExternalSession
 from zettcode.broker.models import Incoming, Receipt
 from zettcode.broker.protocol import KIND_EXTERNAL
+from zettcode.code_agents.config import (
+    TIMEOUT,
+    ConfigError,
+    Settings,
+    Tool,
+    resolve,
+    state_directory,
+    work_directory,
+)
 from zettcode.gateway.agents import AgentPlugin
 
 #: The one place this plugin's version is written.
 __version__ = "0.1.0"
 
-#: How long one CLI turn may take before it is stopped; ``$ZETTCODE_CODE_AGENTS_TIMEOUT`` overrides it.
-TIMEOUT = 900.0
-
 
 def _timeout() -> float:
-    """Return how long one turn may run, read once from the environment and checked before use."""
+    """Return how long one turn may run without a setting, read from the environment and checked before use."""
     raw = os.environ.get("ZETTCODE_CODE_AGENTS_TIMEOUT", str(TIMEOUT))
     try:
         value = float(raw)
@@ -60,16 +70,6 @@ def _logo(name: str) -> str:
         return ""
 
 
-def state_directory() -> Path:
-    """Return where the CLI session ids are kept."""
-    return Path(os.environ.get("ZETTCODE_CODE_AGENTS_DIR", str(Path.home() / ".zettcode" / "code-agents"))).expanduser()
-
-
-def work_directory() -> Path:
-    """Return the directory the CLI runs in."""
-    return Path(os.environ.get("ZETTCODE_CODE_AGENTS_CWD", str(Path.cwd()))).expanduser()
-
-
 @dataclass(frozen=True, slots=True)
 class Command:
     """One tool's command line, new and resumed."""
@@ -78,10 +78,33 @@ class Command:
     new_args: str
     resume_args: str
 
-    def argv(self, prompt: str, session: str, cwd: Path, *, resume: bool = True) -> list[str]:
+    def argv(
+        self, prompt: str, session: str, cwd: Path, *, resume: bool = True, permission: tuple[str, ...] = ()
+    ) -> list[str]:
+        """Return the command to run. The word ``{permission}``, alone, becomes the arguments of the trust level.
+
+        A template without that word is the person's own command line and is run exactly as written.
+        """
         template = self.resume_args if resume and session and "{session}" in self.resume_args else self.new_args
         values = {"prompt": prompt, "session": session, "cwd": str(cwd)}
-        return [self.binary, *(part.format(**values) for part in shlex.split(template))]
+        argv = [self.binary]
+        for part in shlex.split(template):
+            if part == "{permission}":
+                argv.extend(permission)
+            else:
+                argv.append(part.format(**values))
+        return argv
+
+
+@dataclass(frozen=True, slots=True)
+class Launch:
+    """What one turn runs with: the command, where, for how long, and the trust arguments for a new and a resumed turn."""
+
+    command: Command
+    cwd: Path
+    timeout: float
+    new_flags: tuple[str, ...]
+    resume_flags: tuple[str, ...]
 
 
 def _events(stdout: str) -> tuple[str, str]:
@@ -112,12 +135,12 @@ def _events(stdout: str) -> tuple[str, str]:
 class CliAgent(ExternalSession):
     """An external session whose one handler runs a CLI and keeps its session id."""
 
-    def __init__(self, session_id: str, title: str, command: Command) -> None:
+    def __init__(self, session_id: str, title: str, source: Tool | Command) -> None:
         self._turns: set[asyncio.Task[None]] = set()
         self._limit = max(1, int(os.environ.get("ZETTCODE_CODE_AGENTS_QUEUE", "4")))
         super().__init__(session_id, title, kind=KIND_EXTERNAL, on_message=self._start_turn)
-        self.command = command
-        self.cwd = work_directory()
+        #: A tool's settings are read again for every turn; a bare command (a caller's own) is run as it is given.
+        self.source = source
         self.state = state_directory() / f"{session_id}.json"
         self._lock = asyncio.Lock()
         self._process: asyncio.subprocess.Process | None = None
@@ -145,19 +168,43 @@ class CliAgent(ExternalSession):
             else:
                 await self.reply(message, answer)
 
+    def _resolve(self) -> Launch:
+        """Return what this turn runs with, read now: a person's edit of the settings applies from the next message."""
+        source = self.source
+        if isinstance(source, Command):
+            return Launch(source, work_directory(), _timeout(), (), ())
+        settings: Settings = resolve(source, timeout=_timeout())
+        command = Command(settings.binary, settings.args, settings.resume_args)
+        return Launch(
+            command,
+            settings.cwd,
+            settings.timeout,
+            source.flags[settings.permission],
+            source.resume_flags[settings.permission],
+        )
+
     async def _run(self, prompt: str) -> str:
-        timeout = _timeout()
+        launch = self._resolve()
+        command, timeout = launch.command, launch.timeout
         session = self._session()
         resumed = bool(session)
-        if not session and "session-id" in self.command.new_args:
+        if not session and "session-id" in command.new_args:
             session = str(uuid.uuid4())
-        argv = self.command.argv(prompt, session, self.cwd, resume=resumed)
+        # The trust arguments follow the template that is used: a resume template without {session} is the new one.
+        continuing = resumed and "{session}" in command.resume_args
+        argv = command.argv(
+            prompt,
+            session,
+            launch.cwd,
+            resume=resumed,
+            permission=launch.resume_flags if continuing else launch.new_flags,
+        )
         options: dict[str, Any] = {}
         if os.name != "nt":
             options["start_new_session"] = True
         self._process = await asyncio.create_subprocess_exec(
             *argv,
-            cwd=str(self.cwd),
+            cwd=str(launch.cwd),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             **options,
@@ -223,40 +270,74 @@ class CliAgent(ExternalSession):
         os.replace(temporary, self.state)
 
 
+_CODEX_FULL = ("--dangerously-bypass-approvals-and-sandbox",)
+
+#: Codex. ``exec`` takes ``--sandbox``; ``exec resume`` does not, and takes the same choice as a config override.
+CODEX = Tool(
+    name="codex",
+    env="ZETTCODE_CODEX",
+    binary="codex",
+    args="exec --json --skip-git-repo-check {permission} {prompt}",
+    resume_args="exec resume {session} --json {permission} {prompt}",
+    flags={
+        "full": _CODEX_FULL,
+        "workspace": ("--sandbox", "workspace-write"),
+        "read": ("--sandbox", "read-only"),
+    },
+    resume_flags={
+        "full": _CODEX_FULL,
+        "workspace": ("-c", 'sandbox_mode="workspace-write"'),
+        "read": ("-c", 'sandbox_mode="read-only"'),
+    },
+)
+
+_CLAUDE_FLAGS = {
+    "full": ("--permission-mode", "bypassPermissions"),
+    "workspace": ("--permission-mode", "acceptEdits"),
+    "read": ("--permission-mode", "plan"),
+}
+
+#: Claude Code, which takes the same ``--permission-mode`` for a new conversation and a resumed one.
+CLAUDE = Tool(
+    name="claude",
+    env="ZETTCODE_CLAUDE",
+    binary="claude",
+    args="{permission} -p {prompt} --output-format json --session-id {session}",
+    resume_args="{permission} -p {prompt} --output-format json --resume {session}",
+    flags=_CLAUDE_FLAGS,
+    resume_flags=_CLAUDE_FLAGS,
+)
+
+
 class CodexAgent(AgentPlugin):
-    name = "codex"
+    name = CODEX.name
     title = "Codex"
     description = "OpenAI Codex CLI, in the same session every time"
     avatar = _logo("codex.svg")
 
     def create(self, session_id: str, title: str) -> ExternalSession:
-        return CliAgent(
-            session_id,
-            title,
-            Command(
-                os.environ.get("ZETTCODE_CODEX_BIN", "codex"),
-                os.environ.get("ZETTCODE_CODEX_ARGS", "exec --json --skip-git-repo-check {prompt}"),
-                os.environ.get("ZETTCODE_CODEX_RESUME_ARGS", "exec resume {session} --json {prompt}"),
-            ),
-        )
+        return CliAgent(session_id, title, CODEX)
 
 
 class ClaudeCodeAgent(AgentPlugin):
-    name = "claude"
+    name = CLAUDE.name
     title = "Claude Code"
     description = "Anthropic Claude Code, in the same session every time"
     avatar = _logo("claude.svg")
 
     def create(self, session_id: str, title: str) -> ExternalSession:
-        return CliAgent(
-            session_id,
-            title,
-            Command(
-                os.environ.get("ZETTCODE_CLAUDE_BIN", "claude"),
-                os.environ.get("ZETTCODE_CLAUDE_ARGS", "-p {prompt} --output-format json --session-id {session}"),
-                os.environ.get("ZETTCODE_CLAUDE_RESUME_ARGS", "-p {prompt} --output-format json --resume {session}"),
-            ),
-        )
+        return CliAgent(session_id, title, CLAUDE)
 
 
-__all__ = ["ClaudeCodeAgent", "CodexAgent", "Command", "CliAgent", "state_directory", "work_directory"]
+__all__ = [
+    "CLAUDE",
+    "CODEX",
+    "ClaudeCodeAgent",
+    "CliAgent",
+    "CodexAgent",
+    "Command",
+    "ConfigError",
+    "Launch",
+    "state_directory",
+    "work_directory",
+]
