@@ -25,7 +25,7 @@ import secrets
 import time
 import unicodedata
 from collections import deque
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -118,6 +118,15 @@ SEND_STATUS = {
     "invalid": 400,
     "duplicate": 409,
 }
+
+
+def _group_name(raw: object) -> str:
+    """Return a group's name as the broker spells it (``" #Review "`` is ``review``).
+
+    The broker is the authority on what a name may be and refuses a bad one; this only makes every route spell the
+    same name the same way, so that the one a page sends is the one it later deletes, leaves or reads.
+    """
+    return raw.strip().lstrip("#").lower() if isinstance(raw, str) else ""
 
 
 def read_pictures(raw: object, limits: SendLimits) -> list[Image]:
@@ -1197,7 +1206,7 @@ class Gateway:
             count = int(limit) if limit not in (None, "") else 50  # type: ignore[call-overload]
         except (TypeError, ValueError):
             raise GatewayError(400, "invalid", "before is a message id, limit a number") from None
-        name = str(group).lstrip("#") if group else ""
+        name = _group_name(group) if group else ""
         if first < 1 and not name:
             raise GatewayError(400, "invalid", "before is a message id")
         try:
@@ -1220,7 +1229,7 @@ class Gateway:
             raise GatewayError(400, "invalid", "kind names an external agent type")
         if not isinstance(title, str) or not isinstance(session_id, str) or not isinstance(group, str):
             raise GatewayError(400, "invalid", "title, session_id and group are strings")
-        group = group.lstrip("#")
+        group = _group_name(group)
         generated = bool(group) and not session_id
         if generated:
             # Keep the id here as well, so a join that committed before its response was lost can be undone. A caller's
@@ -1257,7 +1266,7 @@ class Gateway:
 
     async def join_group(self, name: str) -> dict[str, Any]:
         """Join a group as the gateway's external session, without writing to it."""
-        name = name.lstrip("#")
+        name = _group_name(name)
         try:
             await self.backend.join_group(name)
         except SendError as error:
@@ -1271,7 +1280,7 @@ class Gateway:
 
     async def invite_group(self, name: str, session_id: str) -> dict[str, Any]:
         """Add a session to a group as the broker owner."""
-        name, session_id = name.lstrip("#"), session_id.strip()
+        name, session_id = _group_name(name), session_id.strip()
         if not session_id:
             raise GatewayError(400, "invalid", "a member is required")
         if session_id not in self._views:
@@ -1295,7 +1304,7 @@ class Gateway:
         Raises:
             GatewayError: The name is not one a group can have, is taken, or a member is not a listed session.
         """
-        name = str(name or "").strip().lstrip("#").lower()
+        name = _group_name(name)
         if not name:
             raise GatewayError(400, "invalid", "a group needs a name")
         if members is None:
@@ -1309,20 +1318,21 @@ class Gateway:
                 raise GatewayError(404, "not_found", "No such session is listed")
         mine = self.backend.gateway_id
         everyone = [mine, *dict.fromkeys(item for item in members if item != mine)]
-        await self._group_call(self.backend.create_group(name, everyone))
+        await self._group_call(lambda: self.backend.create_group(name, everyone))
         await self.refresh()
         return {"group": name, "members": everyone}
 
     async def delete_group(self, name: str) -> dict[str, Any]:
         """Delete a group, with the messages stored for it."""
-        name = name.lstrip("#")
-        await self._group_call(self.backend.delete_group(name))
+        name = _group_name(name)
+        await self._group_call(lambda: self.backend.delete_group(name))
         await self.refresh()
         return {"group": name}
 
-    async def _group_call(self, call: Any) -> None:
+    async def _group_call(self, call: Callable[[], Awaitable[None]]) -> None:
+        """Run a backend call that changes a group, and say a refusal as a GatewayError with its status."""
         try:
-            await call
+            await call()
         except SendError as error:
             raise GatewayError(
                 404 if error.reason == "unknown" else SEND_STATUS.get(error.reason, 400),
@@ -1332,7 +1342,7 @@ class Gateway:
 
     async def remove_group_member(self, name: str, session_id: str) -> dict[str, Any]:
         """Take a session out of a group as the broker owner; the gateway's own id is how the person leaves it."""
-        name, session_id = name.lstrip("#"), session_id.strip()
+        name, session_id = _group_name(name), session_id.strip()
         if not session_id:
             raise GatewayError(400, "invalid", "a member is required")
         try:
@@ -1357,7 +1367,7 @@ class Gateway:
             GatewayError: The text is empty or too long, the group is not there, nobody else in it is connected, this
                 gateway has used up what the broker allows, or the broker refused.
         """
-        name = name.lstrip("#")
+        name = _group_name(name)
         text = text.replace("\r\n", "\n").strip()
         if not text:
             raise GatewayError(400, "empty", "A message needs some text")
