@@ -8,6 +8,10 @@ import type { GraphGroup, GraphMessage } from "../types";
 import { graph, loadGraph, onGraphApplied } from "./graph";
 import { lobby, threadOf } from "./threads";
 
+// Two shapes of failure live here, on purpose: what runs inside a form or composer (`joinGroup`, `inviteToGroup`,
+// `sendToGroup`) returns the message to show, or an empty string; `removeFromGroup` throws, because it runs inside
+// `confirmAction`'s `run`, which turns a throw into the toast and a "no". A `run` must throw, never return a message.
+
 /** A group is addressed as `#name` in the page's address, which no session id can look like. */
 export const groupArg = (name: string): string => `#${name}`;
 export const isGroupArg = (arg: string): boolean => arg.startsWith("#");
@@ -166,6 +170,28 @@ export async function joinGroup(name: string): Promise<string> {
   groupChat.sending = true;
   try {
     await gateway.joinGroup(name);
+    await loadGraph();
+    return "";
+  } catch (error) {
+    return error instanceof ApiError ? error.message : String(error);
+  } finally {
+    groupChat.sending = false;
+  }
+}
+
+
+/** Take a member out of a group, the person themselves included (`member` is the gateway's own id to leave). Throws on failure. */
+export async function removeFromGroup(name: string, member: string): Promise<void> {
+  if (member === meId()) await gateway.leaveGroup(name);
+  else await gateway.removeGroupMember(name, member);
+  await loadGraph();
+}
+
+/** Add a session to a group as the gateway owner. */
+export async function inviteToGroup(name: string, member: string): Promise<string> {
+  groupChat.sending = true;
+  try {
+    await gateway.inviteGroupMember(name, member);
     await loadGraph();
     return "";
   } catch (error) {

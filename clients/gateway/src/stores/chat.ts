@@ -22,6 +22,8 @@ export const chat = reactive({
   total: 0,
   truncated: false,
   loading: false,
+  /** The whole conversation is being read, after "Show earlier messages". */
+  loadingEarlier: false,
   error: "",
   pending: [] as Pending[],
   /** Bumped when the conversation grew, so a view can decide whether to follow it. */
@@ -102,7 +104,13 @@ export async function refreshChat(id: string): Promise<void> {
 }
 
 export async function loadEarlier(): Promise<void> {
-  if (chat.id) await load(chat.id, true);
+  if (!chat.id || chat.loadingEarlier) return;
+  chat.loadingEarlier = true;
+  try {
+    await load(chat.id, true);
+  } finally {
+    chat.loadingEarlier = false;
+  }
 }
 
 // ---- sending

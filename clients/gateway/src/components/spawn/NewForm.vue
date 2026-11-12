@@ -20,6 +20,7 @@ import SpawnTemplates from "./SpawnTemplates.vue";
 import SpawnWhere from "./SpawnWhere.vue";
 
 const busy = ref(false);
+const mode = ref<"daemon" | "agent">("daemon");
 const failure = ref<ApiError | null>(null);
 const ready = computed(() => draft.workspace.trim() !== "" && !busy.value);
 
@@ -82,9 +83,18 @@ function saveTemplate(): void {
 </script>
 
 <template>
-  <PageBar :title="t('New daemon')" />
+  <PageBar :title="mode === 'daemon' ? t('Start a daemon') : t('Start an external agent')" />
   <div class="page">
-    <form class="page-inner" @submit.prevent="start">
+    <div class="page-inner">
+      <div class="new-mode" role="tablist" :aria-label="t('What to start')">
+        <button type="button" :class="{ on: mode === 'daemon' }" role="tab" :aria-selected="mode === 'daemon'" @click="mode = 'daemon'">
+          {{ t("Daemon") }}
+        </button>
+        <button type="button" :class="{ on: mode === 'agent' }" role="tab" :aria-selected="mode === 'agent'" @click="mode = 'agent'">
+          {{ t("External agent") }}
+        </button>
+      </div>
+    <form v-if="mode === 'daemon'" class="new-form" @submit.prevent="start">
       <SpawnTemplates />
       <SpawnWhere />
       <SpawnModel />
@@ -102,6 +112,13 @@ function saveTemplate(): void {
         <button class="btn sm ghost" type="button" @click="resetDraft()">{{ t("Clear") }}</button>
       </div>
     </form>
-    <ExternalAgentForm />
+    <ExternalAgentForm v-else />
+    </div>
   </div>
 </template>
+
+<style>
+.new-mode { display: flex; gap: 4px; max-width: 360px; margin: 4px auto 14px; padding: 4px; border: 1px solid var(--divider); border-radius: 12px; background: var(--surface-2); }
+.new-mode button { flex: 1; min-height: 36px; border-radius: 9px; color: var(--muted); font-weight: 600; font-size: 0.9rem; }
+.new-mode button.on { background: var(--surface); color: var(--text); box-shadow: 0 2px 8px rgba(31, 45, 61, 0.1); }
+</style>

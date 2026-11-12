@@ -17,7 +17,11 @@ const plainLine = (text: string): string =>
   text.replace(/```[\w+#.-]*/g, " ").replace(/[`*_#>]+/g, "").replace(/\s+/g, " ").trim();
 const line = computed(() => {
   const last = props.group.last;
-  if (!last) return t("{count} members", { count: props.group.members.length });
+  if (!last) {
+    return props.group.members.length === 1
+      ? t("1 member")
+      : t("{count} members", { count: props.group.members.length });
+  }
   const who = senderName(last);
   return `${who ? `${who}: ` : `${t("You")}: `}${plainLine(last.text)}`;
 });

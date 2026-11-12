@@ -5,8 +5,8 @@ import type { Member } from "../../stores/groups";
 import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
 
-defineProps<{ members: Member[] }>();
-defineEmits<{ close: [] }>();
+defineProps<{ members: Member[]; canInvite?: boolean }>();
+defineEmits<{ close: []; invite: []; remove: [member: Member] }>();
 
 const word = (member: Member): string =>
   member.me ? t("you") : member.status === "working" ? t("typing…") : member.online ? t("online") : t("offline");
@@ -17,6 +17,9 @@ const word = (member: Member): string =>
     <div class="members-head">
       <b>{{ t("Members") }}</b>
       <span class="members-count">{{ members.length }}</span>
+      <button v-if="canInvite" class="iconbtn" :aria-label="t('Invite')" :title="t('Invite')" @click="$emit('invite')">
+        <Icon name="plus" size="sm" />
+      </button>
       <button class="iconbtn" :aria-label="t('Close')" @click="$emit('close')"><Icon name="close" size="sm" /></button>
     </div>
     <ul>
@@ -31,6 +34,16 @@ const word = (member: Member): string =>
             <span class="member-state" :class="{ on: member.online }">{{ word(member) }}</span>
           </span>
         </component>
+        <button
+          v-if="canInvite || member.me"
+          class="iconbtn member-out"
+          type="button"
+          :aria-label="member.me ? t('Leave group') : t('Remove from group')"
+          :title="member.me ? t('Leave group') : t('Remove from group')"
+          @click="$emit('remove', member)"
+        >
+          <Icon :name="member.me ? 'logout' : 'close'" size="sm" />
+        </button>
       </li>
     </ul>
   </aside>
@@ -42,6 +55,11 @@ const word = (member: Member): string =>
 .members-head b { flex: 1; }
 .members-count { color: var(--muted); font-size: 0.85rem; }
 .members ul { list-style: none; margin: 0; padding: 0 0 8px; }
+.members li { display: flex; align-items: center; padding-right: 6px; }
+.members li > .member { flex: 1; min-width: 0; }
+.member-out { width: 34px; height: 34px; opacity: 0.55; }
+.member-out:hover, .member-out:focus-visible { opacity: 1; color: var(--bad); }
+@media (pointer: coarse) { .member-out { opacity: 1; } }
 .member { display: flex; align-items: center; gap: 10px; padding: 6px 14px; color: inherit; text-decoration: none !important; }
 a.member:hover { background: var(--hover); }
 .member-body { min-width: 0; display: flex; flex-direction: column; }

@@ -11,6 +11,7 @@ import PaneHeader from "../shell/PaneHeader.vue";
 import GroupRow from "../groups/GroupRow.vue";
 import ChatRow from "./ChatRow.vue";
 import SearchBox from "./SearchBox.vue";
+import Skeleton from "../common/Skeleton.vue";
 import { search } from "./search";
 
 const matches = (thread: Thread, needle: string): boolean =>
@@ -44,10 +45,11 @@ const open = computed(() => (route.nav === "chats" ? route.arg : chat.id));
   <SearchBox v-model="search" />
   <ConnectionBanner />
   <div class="pane-list">
-    <div v-if="lobby.loaded && !lobby.threads.length && !groupList.length" class="empty">
+    <Skeleton v-if="!lobby.loaded" kind="rows" :count="8" />
+    <div v-else-if="!lobby.threads.length && !groupList.length" class="empty empty-card">
       <b>{{ t("No sessions yet") }}</b>
-      {{ t("Start a daemon, or open a ZettCode session in a terminal, and it appears here.") }}
-      <button class="btn" @click="go('new')">{{ t("New daemon") }}</button>
+      {{ t("Start a daemon, an external agent, or open a ZettCode session in a terminal, and it appears here.") }}
+      <button class="btn" @click="go('new')">{{ t("New session") }}</button>
     </div>
     <div v-else-if="!shown.length && !shownGroups.length" class="empty">{{ t("Nothing matches") }}</div>
     <template v-if="shownGroups.length">

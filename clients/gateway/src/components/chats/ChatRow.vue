@@ -47,15 +47,16 @@ const line = computed(() => {
 
 <style>
 .row {
-  position: relative; display: flex; align-items: center; gap: 12px; width: 100%;
-  padding: 8px 14px; min-height: var(--row); text-align: left; color: inherit; text-decoration: none !important;
-  transition: background 0.12s;
+  position: relative; display: flex; align-items: center; gap: 12px; width: calc(100% - 12px); margin: 2px 6px;
+  padding: 8px 12px; min-height: var(--row); border-radius: 14px; text-align: left; color: inherit; text-decoration: none !important;
+  transition: background 0.15s, box-shadow 0.15s;
 }
 .row:hover { background: var(--hover); }
-.row[aria-current="true"] { background: var(--accent); color: var(--accent-text); }
-.row[aria-current="true"] .row-sub, .row[aria-current="true"] .row-time, .row[aria-current="true"] .row-kind { color: inherit; opacity: 0.85; }
-.row[aria-current="true"] .badge { background: var(--accent-text); color: var(--accent); }
-.row[aria-current="true"] .avatar .presence { border-color: var(--accent); }
+.row[aria-current="true"] { background: var(--accent-soft); color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }
+.row[aria-current="true"] .row-sub, .row[aria-current="true"] .row-time, .row[aria-current="true"] .row-kind { color: var(--muted); opacity: 1; }
+.row[aria-current="true"] .row-name { color: var(--accent); }
+.row[aria-current="true"] .badge { background: var(--accent); color: var(--accent-text); }
+.row[aria-current="true"] .avatar .presence { border-color: var(--surface); }
 .row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .row-top, .row-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .row-kind { color: var(--muted); }

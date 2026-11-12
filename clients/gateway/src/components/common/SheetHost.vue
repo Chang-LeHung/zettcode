@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { t } from "../../i18n";
-import { closeSheet, closeTopOverlay, sheets } from "../../stores/ui";
+import { closeSheet, closeTopOverlay, setSheetBusy, sheets } from "../../stores/ui";
 import Icon from "./Icon.vue";
 
 const host = ref<HTMLElement | null>(null);
@@ -26,15 +26,16 @@ function focusFirst(element: Element): void {
       :key="entry.id"
       :ref="(element) => element && focusFirst(element as Element)"
       class="backdrop"
+      :class="{ busy: entry.busy }"
       @click.self="closeSheet(entry.id)"
     >
       <div class="sheet" role="dialog" aria-modal="true" :aria-label="entry.title">
         <div class="sheet-head">
           <h3>{{ entry.title }}</h3>
-          <button class="iconbtn" :aria-label="t('Close')" @click="closeSheet(entry.id)"><Icon name="close" /></button>
+          <button class="iconbtn" :aria-label="t('Close')" :disabled="entry.busy" @click="closeSheet(entry.id)"><Icon name="close" /></button>
         </div>
         <div class="sheet-body">
-          <component :is="entry.component" v-bind="entry.props" @close="(value?: unknown) => closeSheet(entry.id, value)" />
+          <component :is="entry.component" v-bind="entry.props" @close="(value?: unknown) => closeSheet(entry.id, value)" @busy="(on: boolean) => setSheetBusy(entry.id, on)" />
         </div>
       </div>
     </div>
@@ -43,6 +44,8 @@ function focusFirst(element: Element): void {
 
 <style>
 .backdrop { position: fixed; inset: 0; z-index: 30; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.25s ease-out; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.backdrop.busy { cursor: progress; }
+.sheet-head .iconbtn:disabled { opacity: 0.35; }
 .sheet {
   width: 100%; max-width: 30rem; max-height: 82dvh; display: flex; flex-direction: column;
   background: var(--surface); border-radius: 18px 18px 0 0; box-shadow: var(--sheet-shadow);

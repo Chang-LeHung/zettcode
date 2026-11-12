@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { t } from "../../i18n";
+import Skeleton from "../common/Skeleton.vue";
 import { buildRows } from "../../lib/rows";
 import { chat, loadEarlier, markRead } from "../../stores/chat";
 import Icon from "../common/Icon.vue";
@@ -107,10 +108,10 @@ onBeforeUnmount(() => {
   <div class="chat-bg">
     <div ref="scroller" class="messages" role="log" aria-live="polite" @scroll.passive="onScroll">
       <div ref="body" class="messages-body">
-        <div v-if="chat.loading && !chat.items.length" class="messages-note"><span class="spin" /></div>
+        <Skeleton v-if="chat.loading && !chat.items.length" kind="bubbles" :count="7" />
         <div v-else-if="chat.error" class="errcard">{{ chat.error }}</div>
-        <button v-if="chat.truncated" class="btn sm ghost messages-more" @click="loadEarlier">
-          {{ t("Show earlier messages") }}
+        <button v-if="chat.truncated" class="btn sm ghost messages-more" :disabled="chat.loadingEarlier" @click="loadEarlier">
+          <span v-if="chat.loadingEarlier" class="spin" />{{ t("Show earlier messages") }}
         </button>
         <template v-for="row in rows" :key="row.key">
           <MessageBubble v-if="row.type === 'bubble'" :row="row" :thread="chat.id" />

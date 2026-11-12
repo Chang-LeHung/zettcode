@@ -11,6 +11,7 @@ import LogsPane from "./components/logs/LogsPane.vue";
 import LogView from "./components/logs/LogView.vue";
 import SheetHost from "./components/common/SheetHost.vue";
 import ToastHost from "./components/common/ToastHost.vue";
+import TopProgress from "./components/common/TopProgress.vue";
 import NewForm from "./components/spawn/NewForm.vue";
 import NewPane from "./components/spawn/NewPane.vue";
 import SettingsPage from "./components/settings/SettingsPage.vue";
@@ -88,15 +89,16 @@ const fullscreen = computed(() => route.nav === "chats" && route.arg !== "");
         <WelcomeMain v-else />
       </main>
     </div>
+    <TopProgress />
     <ToastHost />
     <SheetHost />
   </div>
 </template>
 
 <style>
-.app { display: grid; grid-template-columns: var(--rail) var(--pane) minmax(0, 1fr); height: 100%; background: var(--bg); }
-.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); border-right: 1px solid var(--divider); }
-.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); position: relative; }
+.app { display: grid; grid-template-columns: var(--rail) var(--pane) minmax(0, 1fr); height: 100%; background: radial-gradient(1200px 700px at 12% 0%, rgba(47, 124, 246, 0.09), transparent 58%), var(--bg); }
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); border-right: 1px solid var(--divider); box-shadow: var(--shadow); z-index: 1; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface-2); position: relative; }
 
 @media (max-width: 719px) {
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
