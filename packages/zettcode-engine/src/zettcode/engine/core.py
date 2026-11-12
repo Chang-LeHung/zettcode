@@ -191,14 +191,26 @@ def _build_provider(selected: ModelConfig) -> Adapter:
     A model with no key is called with :data:`KEYLESS_TOKEN`, because the adapters refuse to be built without one and a
     local server ignores what it is sent. The temperature is the adapter's own argument on an OpenAI-compatible
     endpoint; Anthropic's adapter has none, so it goes in the body of the request, where the API reads it.
+
+    The output budget is :attr:`ModelConfig.max_tokens`: the adapter's own ``max_tokens`` where it has one, and a
+    field of the request body where it does not — ``max_tokens`` on a chat endpoint, ``max_output_tokens`` on the
+    Responses API, which names it differently. Zero sends none, so an endpoint whose own default is what the reader
+    wants keeps it; every other entry spends the budget instead of the provider's smaller default, which is what
+    used to end a long answer in the middle with ``max_tokens``.
     """
     token = selected.token or KEYLESS_TOKEN
+    budget = selected.max_tokens
     if selected.anthropic:
         from zett_agent.providers.anthropic import AnthropicProvider
 
         extra: dict[str, object] = {}
+        body: dict[str, object] = {}
         if selected.temperature is not None:
-            extra["extra_body"] = {"temperature": selected.temperature}
+            body["temperature"] = selected.temperature
+        if body:
+            extra["extra_body"] = body
+        if budget > 0:
+            extra["max_tokens"] = budget
         return AnthropicProvider(
             selected.model,
             token,
@@ -210,6 +222,10 @@ def _build_provider(selected: ModelConfig) -> Adapter:
     options: dict[str, object] = {}
     if selected.temperature is not None:
         options["temperature"] = selected.temperature
+    if budget > 0:
+        # The OpenAI SDK sends `extra_body` as fields of the request, which is where an output budget belongs: the
+        # Responses API calls it `max_output_tokens`, chat completions `max_tokens`.
+        options["extra_body"] = {"max_output_tokens" if selected.responses_api else "max_tokens": budget}
     return OpenAIProvider(
         selected.model,
         token,

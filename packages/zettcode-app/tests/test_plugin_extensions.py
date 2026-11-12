@@ -601,7 +601,7 @@ async def test_the_runtime_gives_the_agent_the_plugins_extensions_then_the_host(
     given: list[list[AgentExtension]] = []
 
     class FakeProvider:
-        def __init__(self, model, token, *, base_url, response):
+        def __init__(self, model, token, *, base_url, response, **options):
             self.closed = False
 
         async def aclose(self):

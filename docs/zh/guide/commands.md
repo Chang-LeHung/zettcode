@@ -76,12 +76,13 @@
 | `/title` | 给会话命名，运行中的请求不读它。 |
 | `/permission` | 下一条 shell 命令会重新读取这个级别，所以修改会落在正在运行的请求里 —— 长任务进行到一半时 `/permission full` 正是为此。 |
 | `/effort` | 请求以它开始时的 effort 运行，所以修改从下一个请求开始生效，正在运行的请求不受影响。 |
+| `/model` | 请求启动时就拿到了自己的模型，不会再发一次，所以选择从下一轮开始生效，正在运行的这一轮仍然用它开始时的模型。压缩阈值会跟着模型一起变，那是新模型的窗口。 |
 | `/quit`、`/exit` | 离开不用等回答。 |
 | `/btw` | 排队等轮到它再回答，和以前一样。 |
 | `/code-review` | 同样排队：评审本身就是一次请求，等手上这次结束再开始。 |
 
-`/model`、`/config`、`/clear`、`/new`、`/resume`、`/fork`、`/compact`、`/export` 仍然提示 “busy”：它们
-会改变请求启动时用的模型、它正在写入的 transcript、或它所属的会话。[插件](/zh/guide/plugins#请求运行期间)
+`/config`、`/clear`、`/new`、`/resume`、`/fork`、`/compact`、`/export` 仍然提示 “busy”：它们
+会改变请求正在写入的 transcript、它所属的会话、或下一个请求要用的模型列表。[插件](/zh/guide/plugins#请求运行期间)
 可以给自己的命令自行选择。
 
 ## Shell 面板 {#bash}

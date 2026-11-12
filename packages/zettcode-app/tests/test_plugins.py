@@ -1059,7 +1059,7 @@ async def test_the_built_client_receives_the_plugin_extension(tmp_path: Path, mo
     captured: dict[str, object] = {}
 
     class FakeProvider:
-        def __init__(self, model, token, *, base_url, response) -> None:
+        def __init__(self, model, token, *, base_url, response, **options) -> None:
             pass
 
         async def aclose(self) -> None:

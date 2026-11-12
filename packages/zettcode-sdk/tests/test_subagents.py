@@ -371,7 +371,7 @@ def test_the_reasoning_description_says_it_can_read_nothing(tmp_path):
 
 
 class _FakeProvider:
-    def __init__(self, model, token, *, base_url, response):
+    def __init__(self, model, token, *, base_url, response, extra_body=None):
         pass
 
     async def aclose(self):

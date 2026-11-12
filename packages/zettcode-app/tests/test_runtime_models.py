@@ -329,7 +329,7 @@ async def test_an_anthropic_model_builds_the_messages_adapter(tmp_path, monkeypa
     built: list[dict[str, object]] = []
 
     class FakeAnthropic:
-        def __init__(self, model, token, *, base_url):
+        def __init__(self, model, token, *, base_url, **options):
             built.append({"model": model, "token": token, "base_url": base_url})
 
         async def aclose(self):
@@ -375,7 +375,7 @@ async def test_an_anthropic_entry_hands_the_adapter_the_corrected_base_url(tmp_p
     built: list[str] = []
 
     class FakeAnthropic:
-        def __init__(self, model, token, *, base_url):
+        def __init__(self, model, token, *, base_url, **options):
             built.append(base_url)
 
         async def aclose(self):
@@ -421,7 +421,7 @@ async def test_a_preview_runtime_starts_once_and_only_then(tmp_path, monkeypatch
     created: list[object] = []
 
     class FakeProvider:
-        def __init__(self, model, token, *, base_url, response):
+        def __init__(self, model, token, *, base_url, response, **options):
             self.closed = False
             created.append(self)
 
@@ -464,7 +464,7 @@ async def test_the_harness_switches_choose_the_tools_the_model_may_use(tmp_path,
     given: list[list[object]] = []
 
     class FakeProvider:
-        def __init__(self, model, token, *, base_url, response):
+        def __init__(self, model, token, *, base_url, response, **options):
             self.closed = False
 
         async def aclose(self):
@@ -672,7 +672,7 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     captured = {}
 
     class FakeProvider:
-        def __init__(self, model, token, *, base_url, response):
+        def __init__(self, model, token, *, base_url, response, **options):
             self.model = model
             self.token = token
             self.base_url = base_url

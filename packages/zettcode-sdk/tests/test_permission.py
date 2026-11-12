@@ -311,7 +311,7 @@ async def test_the_guard_the_runtime_really_hands_the_agent_reads_the_policy_the
     given: list[list[object]] = []
 
     class FakeProvider:
-        def __init__(self, model, token, *, base_url, response):
+        def __init__(self, model, token, *, base_url, response, extra_body=None):
             pass
 
         async def aclose(self):

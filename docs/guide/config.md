@@ -244,6 +244,7 @@ is not an API key. On macOS/Linux you can restrict file access with
 | `web_search_name` | string | the API's own | The exact tool type the endpoint expects for that search, for a provider that names it differently. Left out, the default for the API is sent. |
 | `context_window` | integer | `128000` | Positive context-window size in tokens, not characters or the output limit. |
 | `compact_percent` | number | `80` | Automatic compaction threshold: greater than `0`, at most `100`. Decimals such as `75.5` are allowed. |
+| `max_tokens` | integer | `20000` | Tokens one reply may spend: the output budget the request carries (`max_tokens`, or `max_output_tokens` on the Responses API). It is what a long answer runs out of — the reply then stops mid-sentence and says the provider said `max_tokens`. `0` sends no budget at all and leaves the endpoint's own default in force, which is the escape for a provider that refuses one. See [How long one reply may be](#max-tokens). |
 | `reasoning_efforts` | array of strings | every level | The reasoning levels this model accepts, from `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`. List them when the endpoint rejects the rest; see [Reasoning levels a model takes](#reasoning-levels-a-model-takes). |
 
 `base_url` is where the client appends its route — `/chat/completions`,
@@ -328,6 +329,31 @@ Leave the key out and every level is offered. When it is set:
   this model takes are offered to it.
 
 A tie between two levels goes to the cheaper one.
+
+### How long one reply may be {#max-tokens}
+
+A reply is cut off when it reaches the endpoint's output limit, and the limit is the endpoint's own unless the
+request names one: several thousand tokens on most chat services, which is a fraction of what a long patch, a
+whole file or a careful review needs. ZettCode sends one for every model, and `max_tokens` says how large it is:
+
+```toml
+[[models]]
+model = "gpt-5"
+token = "sk-..."
+max_tokens = 32000
+```
+
+The default is 20,000 tokens. When a reply stops at the limit, the conversation says so in one line —
+*The reply reached the model's output limit and is cut off*, with what the provider said — and `/continue` asks
+the model to carry on from there.
+
+- It is the **output** budget: it bounds one reply, not the conversation. `context_window` bounds what the model
+  carries, and the two are separate.
+- The budget is spent by reasoning as well as by text on models that count thinking towards it, so a model that
+  reasons at `ultra` with 8,000 tokens of budget gives the answer whatever is left.
+- `0` sends no budget and leaves the endpoint's own default in force, for a service that refuses one or counts the
+  prompt against it. An endpoint that rejects a budget larger than its own limit answers with an error naming that
+  limit, and lowering this number is the fix.
 
 ### What a child agent can do {#what-a-child-agent-can-do}
 
@@ -478,6 +504,7 @@ responses_api = false
 multimodal = false
 context_window = 1000000
 compact_percent = 80
+max_tokens = 20000             # tokens one reply may spend; 0 uses the endpoint's own
 
 [transcript]
 max_entries = 1024             # displayed blocks, not terminal lines

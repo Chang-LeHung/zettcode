@@ -46,6 +46,7 @@ _KEY_ORDER = (
     "web_search_name",
     "context_window",
     "compact_percent",
+    "max_tokens",
     "reasoning_efforts",
 )
 
@@ -111,7 +112,7 @@ def entry_from_model(model: ModelConfig, *, token: str | None = None) -> dict[st
         model: A validated model.
         token: What to write for the token; ``None`` writes the one the model holds.
     """
-    from zettcode.config import DEFAULT_COMPACT_PERCENT, DEFAULT_CONTEXT_WINDOW
+    from zettcode.config import DEFAULT_COMPACT_PERCENT, DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS
 
     written = model.token if token is None else token
     entry: dict[str, object] = {"model": model.model}
@@ -139,6 +140,8 @@ def entry_from_model(model: ModelConfig, *, token: str | None = None) -> dict[st
         entry["context_window"] = model.context_window
     if model.compact_percent != DEFAULT_COMPACT_PERCENT:
         entry["compact_percent"] = model.compact_percent
+    if model.max_tokens != DEFAULT_MAX_TOKENS:
+        entry["max_tokens"] = model.max_tokens
     if model.reasoning_efforts:
         entry["reasoning_efforts"] = [level.value for level in model.reasoning_efforts]
     return entry

@@ -322,6 +322,8 @@ class ConfigMixin(ShellState):
             return "context_window"
         if "compact_percent" in message or "compact percent" in message:
             return "compact_percent"
+        if "max_tokens" in message or "output budget" in message:
+            return "max_tokens"
         if "temperature" in message:
             return "temperature"
         return ""
@@ -461,6 +463,13 @@ class ConfigMixin(ShellState):
                 placeholder="80 (% of the window)",
                 hint="When the conversation fills this share of the window it is summarized first: more than 0, at most 100.",
             ),
+            Setting(
+                "max_tokens",
+                "Reply budget",
+                initial=str(entry.get("max_tokens", "")),
+                placeholder="20,000 tokens",
+                hint="How long one reply may be: 32000, 32k or 1m. Leave it empty for 20,000; 0 sends none and uses the endpoint's own.",
+            ),
         ]
         actions = [
             Action("use", "Use this model", "save any change, then switch to it now", saves=True),
@@ -539,6 +548,7 @@ class ConfigMixin(ShellState):
             "temperature": lambda text: whole_if_whole(parse_temperature(text, api)),
             "context_window": parse_tokens,
             "compact_percent": lambda text: whole_if_whole(parse_percent(text)),
+            "max_tokens": parse_tokens,
         }
         for key in (
             "base_url",
@@ -548,6 +558,7 @@ class ConfigMixin(ShellState):
             "temperature",
             "context_window",
             "compact_percent",
+            "max_tokens",
         ):
             text = str(values[key])
             if text == str(current.get(key, "")):
