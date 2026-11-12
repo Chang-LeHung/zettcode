@@ -31,6 +31,9 @@ export interface Thread {
   avatar?: string;
   /** The plugin type a gateway-started external agent came from, when it has one. */
   agent?: string;
+  /** Kept at the top of the list, and archived: out of it until searched for or asked for. Set at the gateway, so every browser sees them. */
+  pinned?: boolean;
+  archived?: boolean;
 }
 
 export type ChatItem =

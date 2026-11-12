@@ -1163,3 +1163,22 @@ async def test_a_failed_agent_join_is_taken_back_out_of_the_group(tmp_path):
     assert len(backend.removed_members) == 1
     assert backend.removed_members[0][0] == "review"
     assert backend.removed_members[0][1].startswith("web-")
+
+
+async def test_pinned_and_archived_survive_a_restart(tmp_path):
+    backend = FakeBackend()
+    backend.add_daemon("01a", str(tmp_path), name="a", started_at=100.0)
+    backend.add_daemon("01b", str(tmp_path), name="b", started_at=200.0)
+    first = Gateway(backend, settings(tmp_path), clock=lambda: 1000.0)
+    await first.start(watch=False)
+    await first.update_profile("01a", {"pinned": True})
+    await first.update_profile("01b", {"archived": True})
+
+    second = Gateway(backend, settings(tmp_path), clock=lambda: 1000.0)
+    await second.start(watch=False)
+
+    listed = second.threads()
+    assert [(item["id"], item["pinned"], item["archived"]) for item in listed] == [
+        ("01a", True, False),
+        ("01b", False, True),
+    ]

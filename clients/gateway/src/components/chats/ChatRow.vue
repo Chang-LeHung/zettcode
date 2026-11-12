@@ -30,6 +30,7 @@ const line = computed(() => {
       <div class="row-top">
         <Icon class="row-kind" :name="kindIcon" size="xs" />
         <span class="row-name">{{ thread.name }}</span>
+        <Icon v-if="thread.pinned" class="row-pin" name="pin" size="xs" :aria-label="t('Pinned')" />
         <span class="row-time">{{ listTime(thread.updated_at) }}</span>
       </div>
       <div class="row-bottom">
@@ -60,6 +61,7 @@ const line = computed(() => {
 .row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .row-top, .row-bottom { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .row-kind { color: var(--muted); }
+.row-pin { color: var(--muted); flex: none; transform: rotate(35deg); }
 .row-name { flex: 1; min-width: 0; font-weight: 600; font-size: 1.03rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-time { font-size: 0.78rem; color: var(--muted); flex: none; }
 .row-sub { flex: 1; min-width: 0; color: var(--muted); font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
