@@ -379,6 +379,32 @@ def test_the_person_can_leave_a_group_and_a_member_can_be_removed(parts):
     assert backend.removed_members == [("review", mine), ("review", "01d")]
 
 
+def test_a_group_can_be_created_with_the_person_in_it_and_deleted(parts):
+    client, backend, _ = parts
+    signed_in(client)
+    backend.graph_data["groups"] = []
+    mine = backend.gateway_id
+
+    made = client.post("/api/groups", json={"name": " #Review ", "members": ["01d"]})
+    again = client.post("/api/groups", json={"name": "review", "members": []})
+    unknown = client.post("/api/groups", json={"name": "other", "members": ["not-listed"]})
+    blank = client.post("/api/groups", json={"name": "  ", "members": []})
+    bad = client.post("/api/groups", json={"name": "other", "members": "01d"})
+
+    assert made.status_code == 200 and made.json() == {"group": "review", "members": [mine, "01d"]}
+    assert backend.created_groups == [("review", [mine, "01d"])]
+    assert again.status_code == 409
+    assert unknown.status_code == 404
+    assert blank.status_code == 400 and bad.status_code == 400
+
+    gone = client.delete("/api/groups/review")
+    missing = client.delete("/api/groups/review")
+
+    assert gone.status_code == 200 and gone.json() == {"group": "review"}
+    assert missing.status_code == 404
+    assert backend.deleted_groups == ["review"]
+
+
 def test_the_folder_picker_and_the_configuration_answer(parts):
     client, _, work = parts
     signed_in(client)

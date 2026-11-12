@@ -64,6 +64,9 @@ export const gateway = {
   joinGroup: (name: string) => request<{ group: string }>("POST", `/api/groups/${id(name)}/join`, {}),
   inviteGroupMember: (name: string, member: string) =>
     request<{ group: string; member: string }>("POST", `/api/groups/${id(name)}/members`, { member }),
+  createGroup: (name: string, members: string[]) =>
+    request<{ group: string; members: string[] }>("POST", "/api/groups", { name, members }),
+  deleteGroup: (name: string) => request<{ group: string }>("DELETE", `/api/groups/${id(name)}`),
   leaveGroup: (name: string) => request<{ group: string; member: string }>("POST", `/api/groups/${id(name)}/leave`, {}),
   removeGroupMember: (name: string, member: string) =>
     request<{ group: string; member: string }>("DELETE", `/api/groups/${id(name)}/members/${id(member)}`),

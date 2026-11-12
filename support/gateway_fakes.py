@@ -78,6 +78,8 @@ class FakeBackend(Backend):
         self.joined: list[str] = []
         self.invited: list[tuple[str, str]] = []
         self.removed_members: list[tuple[str, str]] = []
+        self.created_groups: list[tuple[str, list[str]]] = []
+        self.deleted_groups: list[str] = []
         self.deleted: list[str] = []
         self.logs: dict[str, str] = {}
         self.fail: SendError | None = None
@@ -173,6 +175,18 @@ class FakeBackend(Backend):
             raise SendError("unknown", f"there is no group #{group}")
         found["members"].append(session_id)
         self.invited.append((group, session_id))
+
+    async def create_group(self, group: str, members: list[str]) -> None:
+        if any(g["name"] == group for g in self.graph_data["groups"]):
+            raise SendError("duplicate", f"#{group} already exists")
+        self.graph_data["groups"].append({"name": group, "created": 1.0, "members": list(members), "last": None})
+        self.created_groups.append((group, list(members)))
+
+    async def delete_group(self, group: str) -> None:
+        if not any(g["name"] == group for g in self.graph_data["groups"]):
+            raise SendError("unknown", f"there is no group #{group}")
+        self.graph_data["groups"] = [g for g in self.graph_data["groups"] if g["name"] != group]
+        self.deleted_groups.append(group)
 
     async def remove_group_member(self, group: str, session_id: str) -> None:
         found = next((g for g in self.graph_data["groups"] if g["name"] == group), None)
