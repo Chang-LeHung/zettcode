@@ -397,7 +397,7 @@ def test_a_group_can_be_created_with_the_person_in_it_and_deleted(parts):
     assert unknown.status_code == 404
     assert blank.status_code == 400 and bad.status_code == 400
 
-    gone = client.delete("/api/groups/review")
+    gone = client.delete("/api/groups/%23Review")
     missing = client.delete("/api/groups/review")
 
     assert gone.status_code == 200 and gone.json() == {"group": "review"}

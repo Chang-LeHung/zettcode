@@ -54,7 +54,7 @@ async function create(): Promise<void> {
   <form class="invite newgroup" @submit.prevent="create">
     <label class="ng-name">
       <span>#</span>
-      <input v-model="name" type="text" maxlength="41" autocomplete="off" autocapitalize="none" spellcheck="false" :placeholder="t('group-name')" :aria-label="t('Group name')" />
+      <input v-model="name" type="text" maxlength="40" autocomplete="off" autocapitalize="none" spellcheck="false" :placeholder="t('group-name')" :aria-label="t('Group name')" />
     </label>
     <small v-if="hint" class="ng-hint">{{ hint }}</small>
 

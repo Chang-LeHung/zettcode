@@ -28,6 +28,8 @@ export const ZH: Record<string, string> = {
   "Join group": "加入群组",
   Invite: "邀请",
   "Leave group": "退出群组",
+  "This group was deleted": "这个群组已被删除",
+  "Back to chats": "返回聊天列表",
   "New group": "新建群组",
   "Create group": "创建群组",
   "Group name": "群组名称",
