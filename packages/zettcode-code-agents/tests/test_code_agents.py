@@ -153,6 +153,12 @@ def test_a_tools_own_section_beats_the_top_level_which_beats_the_environment(tmp
         ({"timeout": "soon"}, '"timeout"'),
         ({"codex": "yes"}, '"codex" in'),
         ({"codex": {"bin": ""}}, '"bin" in'),
+        # {permission} is several arguments, so it cannot be part of one (--sandbox={permission} cannot work).
+        ({"codex": {"args": "exec --sandbox={permission} {prompt}"}}, "word of its own"),
+        ({"codex": {"resume_args": "exec resume {session} x{permission} {prompt}"}}, '"resume_args"'),
+        ({"codex": {"args": "exec {prmpt}"}}, r"names \{prmpt\}"),
+        ({"codex": {"args": "exec 'unclosed {prompt}"}}, "not a command line"),
+        ({"codex": {"args": "exec {"}}, "cannot be filled in"),
     ],
 )
 def test_a_setting_that_cannot_be_used_is_refused_with_the_file_and_the_key(settings_file, content, needle):

@@ -14,8 +14,8 @@ The New page then offers **Codex** and **Claude Code**. Both register as `kind="
 group, and it can then receive and write there.
 
 The gateway only starts an agent. Where it works, how far it is trusted and which command it runs are this plugin's
-settings, kept in its own file and read again **for every message**, so an edit applies to the next message of every
-agent that is already running. Nothing has to be restarted.
+settings, kept in its own file and read again **for every message, when its turn starts**, so an edit applies to the
+next message of every agent that is already running, a queued one included. Nothing has to be restarted.
 
 ## Settings
 
@@ -37,7 +37,7 @@ section.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `cwd` | the gateway process's directory | The folder the CLI runs in. It must exist. |
+| `cwd` | the gateway process's directory | The folder the CLI runs in. It must exist. A relative path is taken from the gateway process's folder, not from this file's. |
 | `permission` | `full` | How far the agent is trusted: `full`, `workspace` or `read`. |
 | `timeout` | `900` | Seconds one turn may take before it is stopped. |
 | `bin`, `args`, `resume_args` | see below | The command, per tool. |
@@ -54,11 +54,15 @@ starts and does not limit these agents. Set `"permission"` to `workspace` or `re
 | `workspace` | `--sandbox workspace-write` | `--permission-mode acceptEdits` |
 | `read` | `--sandbox read-only` | `--permission-mode plan` |
 
-`codex exec resume` takes no `--sandbox`, so a resumed Codex turn gets the same choice as
-`-c sandbox_mode="workspace-write"` (or `"read-only"`).
+`codex exec resume` takes no `--sandbox` (checked against `codex-cli 0.160.1`: it answers "unexpected argument"), so a
+resumed Codex turn is given the same choice as a configuration override, `-c sandbox_mode="workspace-write"` (or
+`"read-only"`). That flag is **accepted** by the CLI; that it **limits** a resumed run the way `--sandbox` limits the
+first one has not been verified. If you rely on `workspace` or `read` for Codex, send a second message that tries to
+write outside the folder and see that it is refused, before you trust it.
 
-A setting that cannot be used (invalid JSON, a folder that does not exist, an unknown level) fails that message with a
-sentence naming the file and the key, in the agent's reply. Mend the file and send again.
+A setting that cannot be used (invalid JSON, a folder that does not exist, an unknown level, a command that names
+a word it is not given, or `{permission}` written inside another word such as `--sandbox={permission}`) fails that
+message with a sentence naming the file and the key, in the agent's reply. Mend the file and send again.
 
 ## Commands
 

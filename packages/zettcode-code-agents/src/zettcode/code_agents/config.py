@@ -14,7 +14,7 @@ read again when each message arrives, so an edit applies to the next message of 
 
 A key inside ``"codex"`` or ``"claude"`` wins over the same key at the top; that wins over the environment variable
 this plugin read before there was a file; that wins over the default. ``bin``, ``args`` and ``resume_args`` belong to
-one tool and have no top-level form.
+one tool and have no top-level form. A relative ``cwd`` is taken from the gateway process's folder, not the file's.
 
 ``permission`` is how far the agent is trusted, and the plugin turns it into the arguments each CLI takes:
 
@@ -28,6 +28,8 @@ from __future__ import annotations
 import json
 import math
 import os
+import shlex
+import string
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -115,6 +117,40 @@ def _text(key: str, value: object) -> str:
     return value
 
 
+#: The words a command template may name besides ``{permission}``, which must stand alone.
+_FIELDS = frozenset({"prompt", "session", "cwd"})
+
+
+def _template(key: str, value: object) -> str:
+    """Return a command template, refusing one that would fail on every message.
+
+    ``{permission}`` becomes several arguments, so it can only be a word of its own (``--sandbox={permission}`` cannot
+    work); any other word it names must be one the command is given. Both are caught here, once, naming the key.
+    """
+    text = _text(key, value)
+    where = f'"{key}" in {config_path()}'
+    try:
+        parts = shlex.split(text)
+    except ValueError as error:
+        raise ConfigError(f"{where} is not a command line: {error}") from None
+    for part in parts:
+        if part == "{permission}":
+            continue
+        try:
+            names = [name for _, name, _, _ in string.Formatter().parse(part) if name is not None]
+        except ValueError as error:
+            raise ConfigError(f"{where} has a word that cannot be filled in, {part!r}: {error}") from None
+        for name in names:
+            field = name.split(".")[0].split("[")[0]
+            if field == "permission":
+                raise ConfigError(f"{where}: {{permission}} must be a word of its own, not part of {part!r}")
+            if field not in _FIELDS:
+                raise ConfigError(
+                    f"{where} names {{{field}}}, which is not one of {{prompt}}, {{session}}, {{cwd}} or {{permission}}"
+                )
+    return text
+
+
 def resolve(tool: Tool, *, timeout: float = TIMEOUT) -> Settings:
     """Return the settings of one tool as they are now.
 
@@ -155,8 +191,8 @@ def resolve(tool: Tool, *, timeout: float = TIMEOUT) -> Settings:
         permission=permission,
         timeout=float(limit),
         binary=_text("bin", value("bin", os.environ.get(f"{tool.env}_BIN", tool.binary), shared=False)),
-        args=_text("args", value("args", os.environ.get(f"{tool.env}_ARGS", tool.args), shared=False)),
-        resume_args=_text(
+        args=_template("args", value("args", os.environ.get(f"{tool.env}_ARGS", tool.args), shared=False)),
+        resume_args=_template(
             "resume_args",
             value("resume_args", os.environ.get(f"{tool.env}_RESUME_ARGS", tool.resume_args), shared=False),
         ),
