@@ -36,7 +36,7 @@ function onVisible(): void {
 }
 // Ctrl/Cmd+F searches this conversation instead of the browser's page: the conversation is what the reader means.
 function onFindKey(event: KeyboardEvent): void {
-  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f") {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
     event.preventDefault();
     openFind();
   }
