@@ -18,12 +18,12 @@ classifiers = [
 ]
 dependencies = [
   # Written against the plugin contract, and the pages the commands open are the application's own widgets.
-  "zettcode-plugin-api",
-  "zettcode-engine",
-  "zettcode-tui",
-  "zettcode-sdk",
-  "zettcode-app",
-  "zettcode-presenters",
+  "zettcode-plugin-api>=0.4.5,<0.5",
+  "zettcode-engine>=0.4.5,<0.5",
+  "zettcode-tui>=0.4.5,<0.5",
+  "zettcode-sdk>=0.4.5,<0.5",
+  "zettcode-app>=0.4.5,<0.5",
+  "zettcode-presenters>=0.4.5,<0.5",
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for.

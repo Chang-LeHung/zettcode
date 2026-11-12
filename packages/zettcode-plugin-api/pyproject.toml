@@ -19,8 +19,8 @@ classifiers = [
 dependencies = [
   # The bottom of the graph a plugin lives in: the runtime it hooks into and the widgets it draws with. Never the
   # application, never an implementation of what this package defines, and not the SDK -- see the extra below.
-  "zettcode-engine",
-  "zettcode-tui",
+  "zettcode-engine>=0.4.5,<0.5",
+  "zettcode-tui>=0.4.5,<0.5",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +28,7 @@ dependencies = [
 # needs the SDK to resolve those names. Nothing is *imported* from it at run time (every one is a `TYPE_CHECKING`
 # reference, and the contract's names all resolve with the SDK unimportable), so a plugin that only runs does not pull
 # the broker's web stack in for it: it asks for this extra when it wants its types.
-types = ["zettcode-sdk"]
+types = ["zettcode-sdk>=0.4.5,<0.5"]
 
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"

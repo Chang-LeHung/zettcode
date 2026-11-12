@@ -25,11 +25,19 @@ def test_the_program_writes_both_console_scripts():
 
 def test_the_server_is_a_distribution_of_its_own_that_the_program_depends_on():
     """Hatchling ships ``src/zettcode/server`` from the server's tree; the program names it among its dependencies."""
+    from packaging.requirements import Requirement
+
+    from zettcode._compat import tomllib
+
     project = SERVER.read_text(encoding="utf-8")
+    needs = {Requirement(line).name for line in tomllib.loads(project)["project"]["dependencies"]}
+    named = {
+        Requirement(line).name for line in tomllib.loads(PROGRAM.read_text(encoding="utf-8"))["project"]["dependencies"]
+    }
 
     assert 'packages = ["src/zettcode"]' in project
-    assert '"zettcode-sdk"' in project
-    assert '"zettcode-server"' in PROGRAM.read_text(encoding="utf-8")
+    assert "zettcode-sdk" in needs, "the server is built on the SDK, and must not carry it itself"
+    assert "zettcode-server" in named, "the program a reader installs is what brings the server"
     assert Path(zettcode.server.__file__).resolve().parent == SERVER.parent / "src" / "zettcode" / "server"
 
 
@@ -46,8 +54,9 @@ def test_every_distribution_reads_the_one_version_file():
     engine = ROOT / "packages" / "zettcode-engine" / "src" / "zettcode" / "version.py"
     assert zettcode.version.__version__ in engine.read_text(encoding="utf-8")
 
-    # The engine ships the file; every other distribution of the program reads it. (The plugins have versions of their
-    # own and are not in `packages/`'s generated order.)
+    # The engine ships the file; every other distribution of the program reads it. A plugin keeps a literal of its own
+    # instead (its sdist has to build outside this checkout) and carries the same number; `test_versions.py` holds the
+    # two together, and the plugins are not in `packages/`'s generated order.
     for name in sorted(
         project.parent.name
         for project in (ROOT / "packages").glob("*/pyproject.toml")
