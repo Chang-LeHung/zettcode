@@ -1211,3 +1211,35 @@ async def test_pinned_and_archived_exclude_each_other_and_outlive_the_name_ttl(t
 
     assert "01b" not in gateway._profiles
     assert gateway._profiles["01a"] == {"pinned": "1"}
+
+
+async def test_one_request_asking_for_both_flags_is_refused_and_writes_nothing(tmp_path):
+    """The two exclude each other, and the method already refuses what it cannot do rather than picking for the caller."""
+    backend = FakeBackend()
+    backend.add_daemon("01a", str(tmp_path), name="a", started_at=100.0)
+    gateway = Gateway(backend, settings(tmp_path), clock=lambda: 1000.0)
+    await gateway.start(watch=False)
+    await gateway.update_profile("01a", {"pinned": True})
+    before = gateway.settings.directory / "profiles.json"
+    written = before.read_text(encoding="utf-8")
+
+    with pytest.raises(GatewayError) as refused:
+        await gateway.update_profile("01a", {"pinned": True, "archived": True})
+
+    assert refused.value.status == 400 and "exclude each other" in str(refused.value)
+    assert before.read_text(encoding="utf-8") == written, "nothing was written"
+    assert gateway._profiles["01a"] == {"pinned": "1"}
+
+
+async def test_a_file_that_holds_both_flags_loads_as_archived(tmp_path):
+    """A file written by hand, or by a version that let both be set, must not be both at once."""
+    backend = FakeBackend()
+    backend.add_daemon("01a", str(tmp_path), name="a", started_at=100.0)
+    (tmp_path / "gw").mkdir()
+    (tmp_path / "gw" / "profiles.json").write_text('{"01a": {"pinned": "1", "archived": "1"}}', encoding="utf-8")
+    gateway = Gateway(backend, settings(tmp_path), clock=lambda: 1000.0)
+
+    await gateway.start(watch=False)
+
+    (thread,) = gateway.threads()
+    assert (thread["pinned"], thread["archived"]) == (False, True)

@@ -589,6 +589,10 @@ class Gateway:
                 continue
             profile = {key: str(value[key]) for key in ("name", "avatar") if isinstance(value.get(key), str)}
             profile.update({key: "1" for key in ("pinned", "archived") if value.get(key) == "1"})
+            if "archived" in profile:
+                # A file written by hand, or by a version that let both be set, must not put a conversation among the
+                # pinned and the archived at once. Archiving is the one the writer never contradicts, so it stands.
+                profile.pop("pinned", None)
             if profile:
                 found[session_id] = profile
         return found
@@ -632,8 +636,11 @@ class Gateway:
                     profile[flag] = "1"
                 else:
                     profile.pop(flag, None)
-        # Pinned and archived exclude each other: a conversation is either kept at the top or put away, and the last
-        # one asked for wins (archiving unpins, pinning brings it back from the archive).
+        # Pinned and archived exclude each other: a conversation is either kept at the top or put away. A request
+        # that asks for both is refused rather than silently choosing one, and either way a single flag takes the
+        # other away: archiving unpins, and pinning brings it back from the archive.
+        if data.get("pinned") is True and data.get("archived") is True:
+            raise GatewayError(400, "invalid", "pinned and archived exclude each other")
         if data.get("archived") is True:
             profile.pop("pinned", None)
         elif data.get("pinned") is True:

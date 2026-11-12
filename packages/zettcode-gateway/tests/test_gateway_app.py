@@ -450,6 +450,19 @@ def test_a_thread_can_be_pinned_and_archived(parts):
     assert undone.json()["thread"]["pinned"] is False
 
 
+def test_a_request_that_asks_for_both_flags_is_told_they_exclude_each_other(parts):
+    """The page sends one flag at a time; a client that sends both hears why nothing was done."""
+    client, backend, work = parts
+    signed_in(client)
+
+    refused = client.patch("/api/threads/01d/profile", json={"pinned": True, "archived": True})
+
+    assert refused.status_code == 400
+    assert "exclude each other" in refused.json()["error"]["message"]
+    listed = {thread["id"]: thread for thread in client.get("/api/threads").json()["threads"]}
+    assert (listed["01d"]["pinned"], listed["01d"]["archived"]) == (False, False)
+
+
 def test_the_log_is_read(parts):
     client, backend, _ = parts
     signed_in(client)
