@@ -76,6 +76,8 @@ class FakeBackend(Backend):
         self.stopped: list[str] = []
         self.group_sent: list[tuple[str, str]] = []
         self.joined: list[str] = []
+        self.invited: list[tuple[str, str]] = []
+        self.removed_members: list[tuple[str, str]] = []
         self.deleted: list[str] = []
         self.logs: dict[str, str] = {}
         self.fail: SendError | None = None
@@ -164,6 +166,20 @@ class FakeBackend(Backend):
             raise SendError("unknown", f"there is no group #{group}")
         found["members"].append(self._id)
         self.joined.append(group)
+
+    async def add_group_member(self, group: str, session_id: str) -> None:
+        found = next((g for g in self.graph_data["groups"] if g["name"] == group), None)
+        if found is None:
+            raise SendError("unknown", f"there is no group #{group}")
+        found["members"].append(session_id)
+        self.invited.append((group, session_id))
+
+    async def remove_group_member(self, group: str, session_id: str) -> None:
+        found = next((g for g in self.graph_data["groups"] if g["name"] == group), None)
+        if found is None:
+            raise SendError("unknown", f"there is no group #{group}")
+        found["members"] = [member for member in found["members"] if member != session_id]
+        self.removed_members.append((group, session_id))
 
     async def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
         self.timeline_asked.append((since, until, limit))

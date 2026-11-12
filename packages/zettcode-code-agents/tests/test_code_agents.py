@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 
-from zettcode.code_agents import ClaudeCodeAgent, CliAgent, CodexAgent, Command, _events
+import pytest
+
+from zettcode.code_agents import ClaudeCodeAgent, CliAgent, CodexAgent, Command, _events, _timeout
 
 
 def test_a_command_uses_the_resume_form_when_a_session_is_known(tmp_path):
@@ -41,12 +43,23 @@ def test_both_plugins_carry_a_name_and_a_logo():
     assert ClaudeCodeAgent.name == "claude" and ClaudeCodeAgent.avatar.startswith("data:image/svg+xml;base64,")
 
 
+def test_a_bad_timeout_is_refused_before_a_command_starts(monkeypatch):
+    monkeypatch.setenv("ZETTCODE_CODE_AGENTS_TIMEOUT", "nine")
+    with pytest.raises(RuntimeError, match="number of seconds"):
+        _timeout()
+
+    monkeypatch.setenv("ZETTCODE_CODE_AGENTS_TIMEOUT", "0")
+    with pytest.raises(RuntimeError, match="positive"):
+        _timeout()
+
+    monkeypatch.delenv("ZETTCODE_CODE_AGENTS_TIMEOUT")
+    assert _timeout() > 0
+
+
 async def test_a_cli_turn_saves_the_session_and_returns_its_text(tmp_path, monkeypatch):
     script = tmp_path / "fake"
     script.write_text(
-        "#!/usr/bin/env python3\n"
-        "import json, sys\n"
-        "print(json.dumps({'session_id': 's-1', 'result': sys.argv[1]}))\n",
+        "#!/usr/bin/env python3\nimport json, sys\nprint(json.dumps({'session_id': 's-1', 'result': sys.argv[1]}))\n",
         encoding="utf-8",
     )
     script.chmod(0o755)

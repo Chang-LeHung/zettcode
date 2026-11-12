@@ -70,6 +70,22 @@ def _assigned_version(path: pathlib.Path) -> str:
     raise Release(f'{path}: no __version__ = "…" at the top level')
 
 
+def plugin_names(project: dict[str, object]) -> tuple[str, ...]:
+    """Return the names a plugin's `zettcode.*` entry-point groups declare, in file order.
+
+    Python cannot tell a plugin surface from any other `zettcode.*` group here, so every such group becomes a
+    release-tag prefix. A new group on a program distribution therefore widens that package's tags; name it
+    `zettcode.plugin` or a `zettcode.gateway.*` surface when its entry points should be taggable.
+    """
+    raw = project.get("entry-points", {})
+    points = raw if isinstance(raw, dict) else {}
+    names: list[str] = []
+    for group, entries in points.items():
+        if isinstance(group, str) and group.startswith("zettcode.") and isinstance(entries, dict):
+            names.extend(entries)
+    return tuple(names)
+
+
 def describe(directory: pathlib.Path) -> Package:
     """Read one package's name, version and plugin names from its `pyproject.toml`."""
     source = directory / "pyproject.toml"
@@ -96,8 +112,7 @@ def describe(directory: pathlib.Path) -> Package:
         # `make test` skips a package with no tests, and the release job would fail inside pytest with code 4 instead:
         # say so here, where the message names the package.
         raise Release(f"{directory}: no tests/ directory; the release runs them before publishing")
-    plugins = tuple(project.get("entry-points", {}).get("zettcode.plugin", {}))
-    return Package(directory, name, version, (directory.name, *plugins))
+    return Package(directory, name, version, (directory.name, *plugin_names(project)))
 
 
 def discover() -> list[Package]:

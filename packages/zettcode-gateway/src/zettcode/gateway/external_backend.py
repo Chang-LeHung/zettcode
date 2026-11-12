@@ -8,10 +8,11 @@ timeline). Daemons and models are still the SDK's local services; only the page'
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import secrets
-import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -23,10 +24,12 @@ from zettcode.broker.files import broker_dir, read_note
 from zettcode.broker.models import Incoming as BrokerIncoming
 from zettcode.broker.models import Receipt as BrokerReceipt
 from zettcode.broker.protocol import KIND_EXTERNAL
+from zettcode.engine.storage.store import SessionStore
 from zettcode.modes import MODE_FOLLOWUP
 from zettcode.sdk import daemons as sdk_daemons
-from zettcode.sdk.errors import SendError
+from zettcode.sdk.errors import SendError, SessionNotFoundError
 from zettcode.sdk.models import add_model, list_models, remove_model, update_model
+from zettcode.sdk.session import messages_of
 from zettcode.sdk.types import (
     DaemonInfo,
     Delivered,
@@ -46,16 +49,19 @@ from .backend import HOST_FILE, TITLE, Backend, GatewayStartError
 #: The agent types a gateway offers with no plugin installed. The page can still browse and write.
 DEFAULT_TITLE = TITLE
 
+logger = logging.getLogger("zettcode.gateway")
+
 
 class ExternalBackend(Backend):
     """The gateway as an external broker session, with owner-token reads for the page."""
 
-    def __init__(self, directory: Path) -> None:
+    def __init__(self, directory: Path, sessions_root: Path | None = None) -> None:
         self.directory = directory
+        self.sessions_root = sessions_root.expanduser().resolve() if sessions_root is not None else None
         self._session: ExternalSession | None = None
         self._owner: httpx.AsyncClient | None = None
         self._on_message: Callable[[IncomingMessage], Receipt] | None = None
-        self._versions: dict[str, tuple[int, int]] = {}
+        self._stores: dict[Path, SessionStore] = {}
 
     async def start(self, on_message: Callable[[IncomingMessage], Receipt], on_change: Callable[[], None]) -> None:
         """Register as an external session and open the owner client used for reads."""
@@ -102,7 +108,6 @@ class ExternalBackend(Backend):
         if owner is not None:
             await owner.aclose()
         session, self._session = self._session, None
-        self._versions.clear()
         if session is not None:
             await session.close()
 
@@ -185,19 +190,43 @@ class ExternalBackend(Backend):
                 "invalid", "the web gateway is an external session; pictures and direct prompts need a session"
             )
         sent = await self.session.send(to, text, mode=MODE_FOLLOWUP)
-        self._bump(sent.to.session_id)
         return Delivered(sent.to.handle, sent.disposition, sent.direct)
 
     async def send_group(self, group: str, text: str) -> list[Delivered]:
         sent = await self.session.send_group(group, text, mode=MODE_FOLLOWUP)
-        for peer, _disposition in sent.delivered:
-            self._bump(peer.session_id)
         return [Delivered(peer.handle, disposition, False) for peer, disposition in sent.delivered]
 
     async def join_group(self, group: str) -> None:
         await self.session.join_group(group)
 
+    async def add_group_member(self, group: str, session_id: str) -> None:
+        await self._owner_post("/groups", {"action": "add", "name": group, "members": [session_id]})
+
+    async def remove_group_member(self, group: str, session_id: str) -> None:
+        await self._owner_post("/groups", {"action": "remove", "name": group, "members": [session_id]})
+
     # -- reads the owner may make -----------------------------------------------------------------
+    async def _owner_post(self, path: str, data: dict[str, Any]) -> dict[str, Any]:
+        owner = self._owner
+        if owner is None:
+            raise _gateway_error(503, "broker", "the gateway is not connected to the broker")
+        try:
+            response = await owner.post(path, json=data)
+        except httpx.HTTPError as error:
+            raise _gateway_error(503, "broker", f"the broker did not answer: {type(error).__name__}") from error
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        if response.status_code != 200:
+            refusal = body.get("error") if isinstance(body, dict) else None
+            reason = refusal.get("reason") if isinstance(refusal, dict) else "broker"
+            message = refusal.get("message") if isinstance(refusal, dict) else "the broker refused the change"
+            raise _gateway_error(
+                503 if response.status_code >= 500 else response.status_code, str(reason), str(message)
+            )
+        return body if isinstance(body, dict) else {}
+
     async def _owner_get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         owner = self._owner
         if owner is None:
@@ -231,11 +260,30 @@ class ExternalBackend(Backend):
         return await self._owner_get("/timeline", {"since": since, "until": until, "limit": limit})
 
     async def history(self, session_id: str, workspace: str) -> list[Message]:
-        del workspace
-        body = await self._owner_get(
-            "/history",
-            {"a": self.gateway_id, "b": session_id, "limit": 500},
-        )
+        """Return a stored conversation, or the relay between an external session and this gateway.
+
+        A ZettCode session and a daemon keep their conversation in the store. An external agent has no store, and
+        the only record of what it said is the broker's history between it and the page, so that is the fallback.
+        """
+        if not workspace.strip():
+            # A peer without a workspace is an external session: it has no store, and opening one for the gateway's
+            # cwd would touch a folder that is not the peer's.
+            return await self._pair_history(session_id)
+        store = self._store(workspace)
+        try:
+            stored = await asyncio.to_thread(store.read, session_id)
+        except (ValueError, OSError) as error:
+            # A missing file reads as an empty session; this is a damaged or unreadable one, and a shorter broker
+            # relay would be the wrong conversation for it.
+            logger.warning("history.read_failed", extra={"session": session_id}, exc_info=error)
+            raise SessionNotFoundError(f"Cannot read session {session_id}: {error}") from error
+        if stored.header is None:
+            return await self._pair_history(session_id)
+        return messages_of(stored, full=True)
+
+    async def _pair_history(self, session_id: str) -> list[Message]:
+        """Return what this gateway and one session exchanged through the broker."""
+        body = await self._owner_get("/history", {"a": self.gateway_id, "b": session_id, "limit": 500})
         messages = body.get("messages")
         if not isinstance(messages, list):
             return []
@@ -265,18 +313,26 @@ class ExternalBackend(Backend):
             )
         return found
 
+    def _store(self, workspace: str) -> SessionStore:
+        """Return the store of a workspace, opened once and reused so a conversation is parsed only when it moved."""
+        target = Path(workspace).expanduser().resolve()
+        store = self._stores.get(target)
+        if store is None:
+            store = self._stores[target] = SessionStore(self.sessions_root, workspace=target)
+        return store
+
     def locked(self, session_id: str, workspace: str) -> bool:
         del session_id, workspace
         return False
 
     def stamp(self, session_id: str, workspace: str) -> tuple[int, int] | None:
-        del workspace
-        return self._versions.get(session_id)
-
-    def _bump(self, session_id: str) -> None:
-        """Mark a thread as changed for the next refresh, with a wall-clock stamp and a counter."""
-        previous = self._versions.get(session_id)
-        self._versions[session_id] = (time.time_ns(), (previous[1] + 1) if previous else 1)
+        if not workspace.strip():
+            return None
+        try:
+            seen = self._store(workspace).session_path(session_id).stat()
+        except (OSError, ValueError):
+            return None
+        return (seen.st_mtime_ns, seen.st_size)
 
     # -- daemons and models -----------------------------------------------------------------------
     def models(self) -> list[ModelInfo]:
@@ -321,7 +377,6 @@ class ExternalBackend(Backend):
     def _deliver(self, message: BrokerIncoming) -> BrokerReceipt:
         if self._on_message is None:
             return BrokerReceipt(False, "the gateway is not ready")
-        self._bump(message.sender.session_id)
         receipt = self._on_message(
             IncomingMessage(
                 sender_id=message.sender.session_id,
