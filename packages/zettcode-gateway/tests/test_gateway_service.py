@@ -1182,3 +1182,32 @@ async def test_pinned_and_archived_survive_a_restart(tmp_path):
         ("01a", True, False),
         ("01b", False, True),
     ]
+
+
+async def test_pinned_and_archived_exclude_each_other_and_outlive_the_name_ttl(tmp_path):
+    now = [1000.0]
+    backend = FakeBackend()
+    backend.add_daemon("01a", str(tmp_path), name="a", started_at=100.0)
+    backend.add_daemon("01b", str(tmp_path), name="b", started_at=200.0)
+    gateway = Gateway(backend, settings(tmp_path), clock=lambda: now[0])
+    await gateway.start(watch=False)
+
+    pinned = (await gateway.update_profile("01a", {"pinned": True}))["thread"]
+    archived = (await gateway.update_profile("01a", {"archived": True}))["thread"]
+    brought_back = (await gateway.update_profile("01a", {"pinned": True}))["thread"]
+
+    assert (pinned["pinned"], pinned["archived"]) == (True, False)
+    assert (archived["pinned"], archived["archived"]) == (False, True)
+    assert (brought_back["pinned"], brought_back["archived"]) == (True, False)
+
+    # A name is forgotten a day after its session leaves the list; a pin is a choice and stays.
+    await gateway.update_profile("01b", {"name": "Bee"})
+    del backend.daemon_list["01a"]
+    del backend.daemon_list["01b"]
+    backend.peer_list.clear()
+    await gateway.refresh()
+    now[0] += 3 * 24 * 3600
+    await gateway.refresh()
+
+    assert "01b" not in gateway._profiles
+    assert gateway._profiles["01a"] == {"pinned": "1"}

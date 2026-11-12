@@ -64,7 +64,11 @@ async function setFlag(thread: Thread, flag: "pinned" | "archived", on: boolean)
     await gateway.updateProfile(thread.id, { [flag]: on });
     await loadThreads();
     if (flag === "pinned") toast(on ? t("Pinned") : t("Unpinned"));
-    else toast(on ? t("Archived. Search or open Archived to find it.") : t("Moved back to the list"));
+    else {
+      toast(on ? t("Archived. Search or open Archived to find it.") : t("Moved back to the list"));
+      // The conversation that was open leaves the list, so the page leaves it too, as after a delete.
+      if (on && route.nav === "chats" && route.arg === thread.id) go("chats");
+    }
   } catch (error) {
     toast(error instanceof ApiError ? error.message : String(error), "bad");
   }
