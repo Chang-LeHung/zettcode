@@ -1081,6 +1081,12 @@ class ZettCodeApp(
                     self._refuse_busy()
                     return False
                 if chosen.when_busy == "now":
+                    if not self._turn_running:
+                        # "Now" means beside a request, and there is none: a resume, a fork or a new session is
+                        # holding the shell, and it is about to replace the conversation this command would act
+                        # on. Refusing is what happened before the command asked for "now" at all.
+                        self._refuse_busy()
+                        return False
                     self._run_command_now(chosen, argument)
                     return True
                 self._queue_command(value)

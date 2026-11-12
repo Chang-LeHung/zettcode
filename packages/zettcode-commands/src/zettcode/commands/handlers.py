@@ -219,7 +219,9 @@ class ModelCommands(TuiPlugin):
         tui = require_tui(ctx)
         # A container built by hand has no link to follow; the menus then offer no words, and the commands still run.
         link = ctx.find(HOST_LINK, HostLink) or HostLink()
-        tui.register_command("model", "choose a model", self.model, subcommands=lambda: model_words(link.host))
+        tui.register_command(
+            "model", "choose a model", self.model, when_busy="now", subcommands=lambda: model_words(link.host)
+        )
         tui.register_command("effort", "how much the model reasons: /effort high", self.effort, when_busy="now")
         tui.register_command(
             "permission",
@@ -235,6 +237,12 @@ class ModelCommands(TuiPlugin):
         The picker is a widget, so the command needs the shell: the agent owns the models, the shell owns the
         widget that chooses between them. A machine with nothing to pick has no model at all, so the command points
         at the one that adds the first entry instead of opening an empty list.
+
+        It runs beside a request rather than waiting for it: the request in flight was handed its provider when it
+        started and is not sent again, so the model under it does not change, and everything that runs after it —
+        the next turn, a side question, a compaction — is built from the one chosen here. Choosing a model also
+        moves the point the conversation is compacted at, because that is the new model's window, and a compaction
+        the new window asks for sooner is a request of its own, not a change to the one running.
         """
         host = context.require_host()
         if host.client.active_model is None and not host.client.models:

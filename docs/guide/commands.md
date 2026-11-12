@@ -82,13 +82,14 @@ at once, beside the request.
 | `/title` | Names the session; nothing running reads it. |
 | `/permission` | The next shell command asks the level again, so a change lands in the request that is already running — `/permission full` in the middle of a long task is the point. |
 | `/effort` | A request starts with the effort it had, so the change applies from the next request; the running one is not touched. A level the active model does not take (see [`reasoning_efforts`](/guide/config#reasoning-levels-a-model-takes)) is refused with the ones it does. |
+| `/model` | A request is handed its model when it starts and is never sent again, so the choice applies from the next turn on; the running one keeps the model it started on. The point the conversation is compacted at moves with the model, because that is the new model's window. |
 | `/quit`, `/exit` | Leaving does not wait for the answer. |
 | `/btw` | Waits its turn and then answers, as before. |
 | `/code-review` | Waits its turn too: a review is a request of its own, so it starts when the one in flight has ended. |
 
-`/model`, `/config`, `/clear`, `/new`, `/resume`, `/fork`, `/compact` and `/export` still say "busy":
-they change the model a request started with, the transcript it is writing into, or the session it is
-part of. A [plugin](/guide/plugins#while-a-request-is-running) chooses for its own commands.
+`/config`, `/clear`, `/new`, `/resume`, `/fork`, `/compact` and `/export` still say "busy":
+they change the transcript a request is writing into, the session it is part of, or the models the
+next one is built from. A [plugin](/guide/plugins#while-a-request-is-running) chooses for its own commands.
 
 ## The shell panel {#bash}
 

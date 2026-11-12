@@ -90,10 +90,11 @@ class ShellCommands(CommandProvider):
         """Return the shell's own commands, in the order ``/help`` lists them."""
         return (
             # ``when_busy="now"`` below is for what only looks at the session or sets something the
-            # running request reads when it needs it. What it touches while a request runs - the
-            # transcript it writes into, the session, the model it started with and the window that
-            # model's compaction is sized to - stays refused: /config, and the plugins' /model, /clear,
-            # /resume, /fork, plus the agent's /new, /compact and /export.
+            # running request does not read again. What it touches while a request runs - the
+            # transcript it writes into, the session, the window its compaction is sized to - stays
+            # refused: /config, and the plugins' /clear, /resume, /fork, plus the agent's /new,
+            # /compact and /export. (/model runs beside a request too: the request in flight was
+            # handed its provider when it started, so the choice reaches the next turn.)
             Command(
                 "/config",
                 "add, change or remove models: /config [add|remove|list]",
