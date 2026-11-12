@@ -431,6 +431,25 @@ def test_a_thread_profile_sets_a_name_and_picture(parts):
     assert cleared.json()["thread"]["avatar"] == ""
 
 
+def test_a_thread_can_be_pinned_and_archived(parts):
+    client, backend, work = parts
+    signed_in(client)
+    backend.add_daemon("02d", str(work), name="newer", started_at=5_000_000_000.0)
+
+    # Newest first, until one is pinned (the patch also makes the gateway look at the new daemon).
+    archived = client.patch("/api/threads/02d/profile", json={"archived": True})
+    assert [thread["id"] for thread in client.get("/api/threads").json()["threads"]] == ["02d", "01d"]
+    pinned = client.patch("/api/threads/01d/profile", json={"pinned": True})
+
+    assert pinned.json()["thread"]["pinned"] is True and pinned.json()["thread"]["archived"] is False
+    assert archived.json()["thread"]["archived"] is True
+    assert [thread["id"] for thread in client.get("/api/threads").json()["threads"]] == ["01d", "02d"]
+    assert client.patch("/api/threads/01d/profile", json={"pinned": "yes"}).status_code == 400
+
+    undone = client.patch("/api/threads/01d/profile", json={"pinned": False})
+    assert undone.json()["thread"]["pinned"] is False
+
+
 def test_the_log_is_read(parts):
     client, backend, _ = parts
     signed_in(client)

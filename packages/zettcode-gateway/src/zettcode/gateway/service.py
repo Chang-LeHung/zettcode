@@ -534,6 +534,8 @@ class Gateway:
             "locked": peer is None and stored and self._locked(session_id, self._workspace_of(daemon, peer)),
             "avatar": profiled.get("avatar") or self.agents.avatar_for(session_id),
             "agent": self.agents.kind_of(session_id),
+            "pinned": profiled.get("pinned") == "1",
+            "archived": profiled.get("archived") == "1",
         }
 
     def _locked(self, session_id: str, workspace: str) -> bool:
@@ -582,6 +584,7 @@ class Gateway:
             if not isinstance(session_id, str) or not isinstance(value, dict):
                 continue
             profile = {key: str(value[key]) for key in ("name", "avatar") if isinstance(value.get(key), str)}
+            profile.update({key: "1" for key in ("pinned", "archived") if value.get(key) == "1"})
             if profile:
                 found[session_id] = profile
         return found
@@ -593,7 +596,7 @@ class Gateway:
         os.replace(temporary, self.settings.directory / PROFILE_FILE)
 
     async def update_profile(self, session_id: str, data: Mapping[str, Any]) -> dict[str, Any]:
-        """Set a thread's display name and picture; an empty value removes that override."""
+        """Set a thread's display name, picture, and whether it is pinned or archived; an empty value removes an override."""
         if session_id not in self._views:
             await self.refresh()
         if session_id not in self._views:
@@ -617,6 +620,14 @@ class Gateway:
                 profile["avatar"] = avatar
             else:
                 profile.pop("avatar", None)
+        for flag in ("pinned", "archived"):
+            if flag in data:
+                if not isinstance(data[flag], bool):
+                    raise GatewayError(400, "invalid", f"{flag} is true or false")
+                if data[flag]:
+                    profile[flag] = "1"
+                else:
+                    profile.pop(flag, None)
         if profile:
             self._profiles[session_id] = profile
         else:
@@ -626,8 +637,11 @@ class Gateway:
         return {"thread": self._views.get(session_id)}
 
     def threads(self) -> list[dict[str, Any]]:
-        """Return the threads in two groups, the online ones first, each with the most recently active first."""
-        return sorted(self._views.values(), key=lambda view: (not view["online"], -float(view["updated_at"])))
+        """Return the threads: pinned ones first, then the online ones, each run with the most recently active first."""
+        return sorted(
+            self._views.values(),
+            key=lambda view: (not view["pinned"], not view["online"], -float(view["updated_at"])),
+        )
 
     def status(self) -> dict[str, Any]:
         """Return the gateway itself: who it is, whether the broker is there, and how much it may still send."""
