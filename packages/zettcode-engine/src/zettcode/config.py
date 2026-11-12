@@ -171,6 +171,10 @@ DEFAULT_AGENTS_MCP_CONFIG = "~/.agents/mcp.json"
 #: Messages API lives at the root itself, not under ``/v1``.
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 
+#: The host of OpenAI's own API. An entry may leave ``base_url`` out or write this address out — both are the same
+#: endpoint — and it is the one whose reasoning models refuse ``max_tokens`` for ``max_completion_tokens``.
+OPENAI_HOST = "api.openai.com"
+
 #: Routes a client appends to ``base_url`` itself. Writing one out is a common
 #: reading of "the API address", and keeping it would double the path —
 #: ``…/v1/messages/v1/messages``, which a gateway answers with 404 for a route it
