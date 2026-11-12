@@ -963,12 +963,17 @@ class ZettCodeEngine:
             self._efforts[session_id] = self.persistence.session_effort(session_id)
         return self._efforts[session_id]
 
-    def _adopt_effort(self) -> None:
+    def adopt_effort(self) -> None:
         """Put the active session's own level in force, or the one a run starts at when it has none.
 
         The stored level is moved to the nearest one the model in use takes, as :meth:`use_model` does: a session
         recorded against a model that went away, or a configuration that narrowed ``reasoning_efforts`` since,
         must not send a request with a level its endpoint rejects.
+
+        Called when a session is selected — and again by whoever switches to the session's own model afterwards, which
+        is the order :meth:`install_session` uses: the level must be read against the model the session ran on, not
+        against whichever one the shell happened to be on, or a level the narrow model cannot take is lost on the way
+        back to the model that can.
         """
         if self._effort_override:
             return
@@ -1088,7 +1093,7 @@ class ZettCodeEngine:
         self.session_id = new_uuid7()
         self.session_locks.claim(self.session_id)
         self._adopt_permission()
-        self._adopt_effort()
+        self.adopt_effort()
         return self.session_id
 
     def use_session(self, session_id: str) -> None:
@@ -1102,7 +1107,7 @@ class ZettCodeEngine:
         self.session_id = session_id.strip()
         self.session_locks.claim(self.session_id)
         self._adopt_permission()
-        self._adopt_effort()
+        self.adopt_effort()
 
     @property
     def session_locked(self) -> bool:
