@@ -9036,6 +9036,37 @@ async def test_a_command_run_beside_a_request_does_not_take_over_its_busy_state(
     assert app._busy is False
 
 
+async def test_the_model_can_be_changed_while_a_request_runs_and_that_request_keeps_its_own():
+    """The model is handed to a request when it starts, so a choice made now reaches what comes next."""
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+    await asyncio.sleep(0.05)
+    running_on = list(app.agent.runtime.client.models)
+
+    await _typed_while_running(app, harness, "/model GPT-4o")
+
+    assert app.agent.active_model.shown_name == "GPT-4o", "the next request runs on the model chosen"
+    assert app.agent.runtime.client.models == running_on, "and the one in flight was not sent again"
+    assert app._busy is True and not app.task.done(), "the request was not disturbed"
+    assert app._pending == [], "it was run, not queued"
+    await _stop(app)
+
+
+async def test_the_model_picker_opens_beside_a_running_request():
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/model")
+
+    page = _presented_page(app)
+    harness.render()
+    assert page.list.rect.height > 0, "the list has rows on screen to choose from"
+    assert app._busy is True and not app.task.done()
+    await _stop(app)
+
+
 async def test_the_steering_waiting_beside_a_request_is_not_handed_back_by_a_command_that_ran_beside_it():
     """Ending a command used to settle the queues; a command run beside a request must not."""
     app = build_app(block=True)
@@ -9064,6 +9095,7 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
         "/exit",
         "/help",
         "/hub",
+        "/model",
         "/permission",
         "/pet",
         "/plugins",
@@ -9074,14 +9106,13 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
         "/usage",
     ]
     assert queued == ["/btw", "/code-review"]
-    # What a running request is built on stays out: the transcript it writes into, the session, and
-    # the model it started with together with the window its compaction is sized to.
+    # What a running request is built on stays out: the transcript it writes into, the session, and the window
+    # its compaction is sized to.
     assert {
         "/clear",
         "/new",
         "/resume",
         "/fork",
-        "/model",
         "/config",
         "/compact",
         "/export",
@@ -9090,7 +9121,7 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
 
 
 @pytest.mark.parametrize(
-    "command", ["/model", "/config", "/clear", "/new", "/resume", "/fork", "/compact", "/export", "/harness"]
+    "command", ["/config", "/clear", "/new", "/resume", "/fork", "/compact", "/export", "/harness"]
 )
 async def test_a_command_that_touches_what_the_request_stands_on_is_still_turned_away(command):
     app = build_app(block=True)

@@ -747,9 +747,11 @@ ctx.tui.register_command("status", "show the build status", self.status, when_bu
 | `"now"` | It runs at once, beside the request, which carries on undisturbed. |
 
 Say `"now"` only for a command that reads or reports, or changes a setting the request reads when it
-needs it. It runs **without** the busy state to itself, so a command that edits the transcript, the
-session, or the model the request started with would pull the floor out from under it. Your handler
-can be awaited for as long as it likes: the request is not waiting for it, and quitting cancels it.
+needs it. It runs **without** the busy state to itself, so a command that edits the transcript or the
+session would pull the floor out from under it. (`/model` is one that does not: the request in flight
+was handed its provider when it started and is never sent again, so a switch reaches the next turn, a
+compaction or a side question and leaves the running one alone.) Your handler can be awaited for as long
+as it likes: the request is not waiting for it, and quitting cancels it.
 
 ## Offering models at a provider {#providers}
 
