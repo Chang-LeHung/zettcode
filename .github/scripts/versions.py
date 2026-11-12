@@ -242,15 +242,20 @@ def _rewrite_requirements(root: pathlib.Path, version: str) -> list[pathlib.Path
 def set_version(root: pathlib.Path, version: str) -> list[str]:
     """Write ``version`` everywhere it lives, and return one line per file that changed.
 
-    Two guarantees a release leans on: a requirement written with a specifier this module does not own is refused
-    *before* anything is written, because appending our range to ``==0.4.0`` writes a line pip cannot read; and the
-    tree is checked again *after* the writes, so a requirement the rewrite could not find — a string split over two
-    lines, a spelling that differs from what tomllib reads — fails here rather than leaving half a tree on the new
-    version and half on the old.
+    What a release leans on: a requirement this module cannot rewrite safely — one with a specifier it does not own
+    (``==``, ``~=``, a bare ``>``), or one the file does not hold as a single string, which is what a TOML string
+    joined across lines reads as — is refused *before* anything is written, naming the file and line, because
+    appending our range to ``==0.4.0`` writes a line pip cannot read and searching for text that is not there writes
+    nothing at all.
+
+    The check that follows the writes is a backstop for this script rather than for a reader: every shape a
+    ``pyproject.toml`` can be written in has already been refused, so what is left is a bug in the replacement itself
+    — a requirement the rewrite walked past. It fails loudly with "the write went through", because that is true: the
+    files are not rolled back, and a release discovering it at PyPI is worse than one discovering it here.
 
     Raises:
-        VersionError: The version is not ``MAJOR.MINOR.PATCH``, a requirement carries a foreign specifier, or the
-            tree still disagrees after the write.
+        VersionError: The version is not ``MAJOR.MINOR.PATCH``, a requirement cannot be rewritten safely, or the tree
+            still disagrees after the write.
     """
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise VersionError(f"{version!r} is not MAJOR.MINOR.PATCH")
