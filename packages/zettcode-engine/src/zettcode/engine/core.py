@@ -20,6 +20,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, TypeAlias
+from urllib.parse import urlparse
 
 from zett_agent.agent import AgentRunConfig
 from zett_agent.client import AgentClient
@@ -34,6 +35,7 @@ from zettcode.config import (
     KEYLESS_TOKEN,
     NO_MODEL_CHOSEN,
     NO_MODEL_REFUSAL,
+    OPENAI_HOST,
     ModelConfig,
     ZettCodeConfig,
     model_index,
@@ -244,14 +246,20 @@ def _build_provider(selected: ModelConfig) -> Adapter:
 def _budget_field(selected: ModelConfig) -> str:
     """Return the field one endpoint reads the output budget from, by the API it speaks and whose it is.
 
-    The Responses API names it ``max_output_tokens``. Chat completions has two spellings: OpenAI's own address — an
-    entry that names no ``base_url`` — takes ``max_completion_tokens``, which its reasoning models demand and its older
-    ones accept, while the compatible endpoints (DeepSeek, GLM, a local server) take ``max_tokens``. A compatible
-    endpoint that also refuses ``max_tokens`` sets ``max_tokens = 0`` and keeps its own default.
+    The Responses API names it ``max_output_tokens``. Chat completions has two spellings: OpenAI's own API takes
+    ``max_completion_tokens``, which its reasoning models demand and its older ones accept, while the compatible
+    endpoints (DeepSeek, GLM, a local server) take ``max_tokens``. A compatible endpoint that also refuses
+    ``max_tokens`` sets ``max_tokens = 0`` and keeps its own default.
+
+    Which of the two is decided by the *host*, not by whether the entry wrote an address: an entry that spells out
+    ``https://api.openai.com/v1`` — the way the guide shows one — is the same endpoint as one that leaves ``base_url``
+    out, and a test on "no address at all" would hand it the spelling its reasoning models refuse.
     """
     if selected.responses_api:
         return "max_output_tokens"
-    return "max_completion_tokens" if selected.base_url is None else "max_tokens"
+    host = "" if selected.base_url is None else (urlparse(selected.base_url).hostname or "")
+    openai = host == OPENAI_HOST or host.endswith(f".{OPENAI_HOST}")
+    return "max_completion_tokens" if selected.base_url is None or openai else "max_tokens"
 
 
 class _ContextReportAdapter(ContextReportService):

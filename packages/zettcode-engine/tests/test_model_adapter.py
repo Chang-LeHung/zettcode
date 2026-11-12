@@ -113,6 +113,15 @@ def test_openais_own_address_is_told_the_budget_by_the_name_its_reasoning_models
     assert openai.built[0][1]["extra_body"] == {"max_completion_tokens": DEFAULT_MAX_TOKENS}
 
 
+def test_an_openai_address_written_out_is_still_openai(adapters):
+    """The guide shows an entry with the address spelled out; it is the same endpoint as one that leaves it out."""
+    openai, _ = adapters
+
+    _build_provider(ModelConfig(model="o4", token="t", base_url="https://api.openai.com/v1"))
+
+    assert openai.built[0][1]["extra_body"] == {"max_completion_tokens": DEFAULT_MAX_TOKENS}
+
+
 def test_a_compatible_endpoint_is_told_the_budget_by_the_name_it_knows(adapters):
     """DeepSeek, GLM and a local server take `max_tokens`; only OpenAI's own address wants the other spelling."""
     openai, _ = adapters

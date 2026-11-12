@@ -350,7 +350,8 @@ the model to carry on from there.
 - It is the **output** budget: it bounds one reply, not the conversation. `context_window` bounds what the model
   carries, and the two are separate — a budget larger than the window is sent as the window, because a reply longer
   than the context that has to hold it is not a request any endpoint can serve. The entry keeps the number you wrote;
-  only what goes out is bounded.
+  only what goes out is bounded. The budget shares that window with the prompt: a value close to the window leaves
+  nothing for the conversation, and the endpoint will refuse the request even though the budget is under it.
 - The field the budget travels in is the endpoint's, not ours: `max_tokens` on Anthropic's Messages API and on the
   OpenAI-compatible services (DeepSeek, GLM, a local server), `max_completion_tokens` on OpenAI's own address, which
   its reasoning models demand, and `max_output_tokens` on the Responses API.
