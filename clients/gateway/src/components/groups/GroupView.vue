@@ -27,6 +27,9 @@ const memberLabel = computed(() =>
 const onlineLabel = computed(() => (online.value === 1 ? t("1 online") : t("{count} online", { count: online.value })));
 const meId = computed(() => lobby.status?.gateway.id ?? "");
 const joined = computed(() => group.value?.members.includes(meId.value) ?? false);
+/** The group was listed while this page was open, so its absence now means it was deleted, not that the address is wrong. */
+const existed = ref(false);
+watch(group, (now) => now && (existed.value = true), { immediate: true });
 const showMembers = ref(false);
 const text = ref("");
 const field = ref<HTMLTextAreaElement | null>(null);
@@ -144,7 +147,8 @@ function menu(): void {
     { icon: "users", label: t("Members"), run: () => (showMembers.value = true) },
     joined.value && { icon: "plus", label: t("Invite"), run: invite },
     me && { icon: "logout", label: t("Leave group"), run: () => void takeOut(me), danger: true },
-    { icon: "trash", label: t("Delete group"), run: () => void dissolve(), danger: true },
+    // Deleting takes the group and what was said in it away from every member, so only a member is offered it.
+    joined.value && { icon: "trash", label: t("Delete group"), run: () => void dissolve(), danger: true },
   ]);
 }
 
@@ -171,8 +175,9 @@ watch(text, () => void nextTick(resize));
 
 <template>
   <div v-if="!group && !groupChat.loading" class="empty">
-    <b>{{ t("This group is not listed") }}</b>
-    {{ groupChat.error }}
+    <b>{{ existed ? t("This group was deleted") : t("This group is not listed") }}</b>
+    {{ existed ? "" : groupChat.error }}
+    <a class="btn" :href="href('chats')">{{ t("Back to chats") }}</a>
   </div>
   <div v-else class="chat">
     <header class="bar chat-head">
