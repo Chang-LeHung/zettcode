@@ -90,7 +90,7 @@ def test_every_adapter_is_built_with_the_output_budget(adapters):
     _build_provider(ModelConfig(model="a", token="t"))
     _build_provider(ModelConfig(model="claude", token="k", anthropic=True))
 
-    assert openai.built[0][1]["extra_body"]["max_tokens"] == DEFAULT_MAX_TOKENS
+    assert openai.built[0][1]["extra_body"]["max_completion_tokens"] == DEFAULT_MAX_TOKENS
     assert anthropic.built[0][1]["max_tokens"] == DEFAULT_MAX_TOKENS
 
 
@@ -100,17 +100,45 @@ def test_a_budget_the_entry_names_is_the_one_that_is_sent(adapters):
     _build_provider(ModelConfig(model="a", token="t", max_tokens=32_000))
     _build_provider(ModelConfig(model="claude", token="k", anthropic=True, max_tokens=8_000))
 
-    assert openai.built[0][1]["extra_body"]["max_tokens"] == 32_000
+    assert openai.built[0][1]["extra_body"]["max_completion_tokens"] == 32_000
     assert anthropic.built[0][1]["max_tokens"] == 8_000
 
 
+def test_openais_own_address_is_told_the_budget_by_the_name_its_reasoning_models_demand(adapters):
+    """`max_tokens` is refused by OpenAI's reasoning models; `max_completion_tokens` is what they and the older ones take."""
+    openai, _ = adapters
+
+    _build_provider(ModelConfig(model="o4", token="t"))
+
+    assert openai.built[0][1]["extra_body"] == {"max_completion_tokens": DEFAULT_MAX_TOKENS}
+
+
+def test_a_compatible_endpoint_is_told_the_budget_by_the_name_it_knows(adapters):
+    """DeepSeek, GLM and a local server take `max_tokens`; only OpenAI's own address wants the other spelling."""
+    openai, _ = adapters
+
+    _build_provider(ModelConfig(model="deepseek-v4", token="t", base_url="https://api.deepseek.com"))
+
+    assert openai.built[0][1]["extra_body"] == {"max_tokens": DEFAULT_MAX_TOKENS}
+
+
 def test_the_responses_api_is_told_the_budget_by_its_own_name(adapters):
-    """It calls the field `max_output_tokens`; chat completions call it `max_tokens`."""
     openai, _ = adapters
 
     _build_provider(ModelConfig(model="a", token="t", responses_api=True, max_tokens=32_000))
 
     assert openai.built[0][1]["extra_body"] == {"max_output_tokens": 32_000}
+
+
+def test_a_budget_larger_than_the_window_is_sent_as_the_window(adapters):
+    """A reply longer than the context that has to hold it is not a request any endpoint can serve."""
+    openai, anthropic = adapters
+
+    _build_provider(ModelConfig(model="small", token="t", context_window=8_000))
+    _build_provider(ModelConfig(model="claude", token="k", anthropic=True, context_window=4_000, max_tokens=9_000))
+
+    assert openai.built[0][1]["extra_body"] == {"max_completion_tokens": 8_000}, "the default, bounded by the window"
+    assert anthropic.built[0][1]["max_tokens"] == 4_000, "the number the entry asked for, bounded by the window"
 
 
 def test_a_budget_of_zero_sends_none_and_leaves_the_endpoints_own_in_force(adapters):
@@ -130,6 +158,6 @@ def test_the_budget_travels_beside_a_temperature_rather_than_replacing_it(adapte
     _build_provider(ModelConfig(model="claude", token="k", anthropic=True, temperature=0.3, max_tokens=9_000))
 
     assert openai.built[0][1]["temperature"] == 0.3
-    assert openai.built[0][1]["extra_body"] == {"max_tokens": 9_000}
+    assert openai.built[0][1]["extra_body"] == {"max_completion_tokens": 9_000}
     assert anthropic.built[0][1]["extra_body"] == {"temperature": 0.3}
     assert anthropic.built[0][1]["max_tokens"] == 9_000

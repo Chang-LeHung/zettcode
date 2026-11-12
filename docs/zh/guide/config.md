@@ -315,7 +315,12 @@ max_tokens = 32000
 默认 20000 个 token。回复撞到上限时，对话里会出现一行说明——*The reply reached the model's output limit and is
 cut off*，后面跟着供应商给出的原因——`/continue` 会让模型从那里接着写。
 
-- 这是**输出**预算：它限制的是一次回复，不是整段对话。`context_window` 管的是模型能装下多少，两者互不相干。
+- 这是**输出**预算：它限制的是一次回复，不是整段对话。`context_window` 管的是模型能装下多少，两者互不相干
+  —— 预算比窗口还大时会按窗口发送，因为比承载它的上下文还长的回复没有任何接入点能服务。模型项里保留你写的
+  数字，只有发出去的那个被约束。
+- 预算放在哪个字段里由接入点决定，不由我们决定：Anthropic 的 Messages API 和 OpenAI 兼容服务（DeepSeek、GLM、
+  本地服务）用 `max_tokens`，OpenAI 官方地址用 `max_completion_tokens`（它的推理模型只认这个），Responses API
+  用 `max_output_tokens`。
 - 在把思考也算进预算的模型上，推理同样消耗这个额度，所以以 `ultra` 推理、预算只有 8000 的模型，留给回答
   的就是剩下来的部分。
 - 填 `0` 表示不发送预算，由接入点自己的默认值决定，用于不接受该参数、或把它算进提示里的服务。预算超过接入点

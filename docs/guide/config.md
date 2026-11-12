@@ -348,7 +348,12 @@ The default is 20,000 tokens. When a reply stops at the limit, the conversation 
 the model to carry on from there.
 
 - It is the **output** budget: it bounds one reply, not the conversation. `context_window` bounds what the model
-  carries, and the two are separate.
+  carries, and the two are separate — a budget larger than the window is sent as the window, because a reply longer
+  than the context that has to hold it is not a request any endpoint can serve. The entry keeps the number you wrote;
+  only what goes out is bounded.
+- The field the budget travels in is the endpoint's, not ours: `max_tokens` on Anthropic's Messages API and on the
+  OpenAI-compatible services (DeepSeek, GLM, a local server), `max_completion_tokens` on OpenAI's own address, which
+  its reasoning models demand, and `max_output_tokens` on the Responses API.
 - The budget is spent by reasoning as well as by text on models that count thinking towards it, so a model that
   reasons at `ultra` with 8,000 tokens of budget gives the answer whatever is left.
 - `0` sends no budget and leaves the endpoint's own default in force, for a service that refuses one or counts the
