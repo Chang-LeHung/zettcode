@@ -61,7 +61,12 @@ export function showInfo(thread: Thread): void {
 /** Pin or archive a thread. Both are kept at the gateway, so every browser sees the same list. */
 async function setFlag(thread: Thread, flag: "pinned" | "archived", on: boolean): Promise<void> {
   try {
-    await gateway.updateProfile(thread.id, { [flag]: on });
+    const answer = await gateway.updateProfile(thread.id, { [flag]: on });
+    // A gateway older than this page answers 200 and ignores a field it does not know: say so, rather than toast a change that was not made.
+    if (answer.thread && Boolean(answer.thread[flag]) !== on) {
+      toast(t("The gateway did not keep that. It may be an older version: restart it."), "bad");
+      return;
+    }
     await loadThreads();
     if (flag === "pinned") toast(on ? t("Pinned") : t("Unpinned"));
     else {
