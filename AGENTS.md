@@ -157,11 +157,19 @@ from the root.
 - The version lives in `packages/zettcode-engine/src/zettcode/version.py`; every distribution's `pyproject.toml` asks
   hatchling to read it from there, and a release is a commit that sets it plus a `v<version>` tag. The release
   workflow reads the same file, refuses to publish when the tag and it disagree, and publishes every distribution in
-  the order `.github/scripts/release_order.py` generates. The plugins are the only ones with a tag of their own.
-- A plugin in `packages/` is released on its own line: its version in its `__init__.py`, and a
-  `<name>-v<version>` tag — the plugin's entry-point name or its directory — or a manual run of
-  `release-packages.yml`. The workflow publishes only versions PyPI does not already have, so a re-run is a no-op;
-  adding a package needs a `pyproject.toml` and nothing in the workflow.
+  the order `.github/scripts/release_order.py` generates.
+- **One version for everything this repository publishes**, the plugins included. A plugin keeps a literal
+  `__version__` in its `__init__.py` (a wheel has to build from its sdist, where the engine's file is not there) and
+  every requirement on one of our own distributions carries `>=<version>,<next minor>`, so the number lives in more
+  than one place and is held together by `.github/scripts/versions.py`: `--check` reports every disagreement — the
+  test `packages/zettcode/tests/test_versions.py` and a step of `release.yml` both run it — and
+  `make version VERSION=x.y.z` writes the version into all of them and re-locks. A release starts with that command;
+  never bump `version.py` alone.
+- A plugin in `packages/` still has a tag of its own — `<name>-v<version>`, the plugin's entry-point name or its
+  directory, or a manual run of `release-packages.yml` — but its version is the program's, and it is published after
+  the program's tag rather than before (it requires the `zettcode-plugin-api` that tag publishes). The workflow
+  publishes only versions PyPI does not already have, so a re-run is a no-op; adding a package needs a
+  `pyproject.toml` and nothing in the workflow.
 - Publishing requires the `PYPI_API_TOKEN` repository secret; see `RELEASING.md`.
 - When `zett-agent` is released, raise the `zett-agent` floor in the same change
   — the dependency is a range (`>=0.1.13,<0.2`), never an exact pin, because

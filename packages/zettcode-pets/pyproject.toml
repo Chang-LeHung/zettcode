@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   # Written against the plugin contract, which is where the pet format is defined.
-  "zettcode-plugin-api",
+  "zettcode-plugin-api>=0.4.5,<0.5",
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for.

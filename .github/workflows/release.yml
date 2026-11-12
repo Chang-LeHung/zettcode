@@ -61,6 +61,12 @@ jobs:
           print(f"tag {tag} matches project version {version}")
           PY
 
+      - name: Check every distribution is on this version
+        # One number for the program, its parts and its plugins, and a floor on every requirement that says so. A tag
+        # whose tree still names an older version on a plugin, or a range that starts below what is being published,
+        # would publish a set that cannot be installed together — so it stops here rather than at PyPI.
+        run: uv run --no-project python .github/scripts/versions.py --check
+
       # The gateway's page is built from clients/gateway into the gateway's distribution; it is not in git, so a wheel
       # made without this step would serve an API and no page.
       - uses: actions/setup-node@v7

@@ -17,23 +17,23 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "zettcode-engine",
-  "zettcode-broker",
+  "zettcode-engine>=0.4.5,<0.5",
+  "zettcode-broker>=0.4.5,<0.5",
   # Parts of the agent that live in distributions of their own, found through the same `zettcode.plugin` group as
   # the ones published here. An SDK client offers skills and MCP servers and runs the same agent, so it installs them
   # all; `require_agent_parts` refuses a start that lacks one.
-  "zettcode-skills",
-  "zettcode-messaging",
-  "zettcode-mcp",
-  "zettcode-files",
-  "zettcode-jit-harness",
-  "zettcode-ask-user",
-  "zettcode-instructions",
-  "zettcode-memory",
-  "zettcode-todos",
-  "zettcode-tool-output",
-  "zettcode-truncation",
-  "zettcode-guidance",
+  "zettcode-skills>=0.4.5,<0.5",
+  "zettcode-messaging>=0.4.5,<0.5",
+  "zettcode-mcp>=0.4.5,<0.5",
+  "zettcode-files>=0.4.5,<0.5",
+  "zettcode-jit-harness>=0.4.5,<0.5",
+  "zettcode-ask-user>=0.4.5,<0.5",
+  "zettcode-instructions>=0.4.5,<0.5",
+  "zettcode-memory>=0.4.5,<0.5",
+  "zettcode-todos>=0.4.5,<0.5",
+  "zettcode-tool-output>=0.4.5,<0.5",
+  "zettcode-truncation>=0.4.5,<0.5",
+  "zettcode-guidance>=0.4.5,<0.5",
   "zett-agent>=0.2.10,<0.3",
   "httpx>=0.27,<1",
 ]

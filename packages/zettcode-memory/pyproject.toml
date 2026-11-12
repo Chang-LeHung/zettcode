@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   # The plugin base classes and the one helper that names a workspace's folder.
-  "zettcode-engine",
+  "zettcode-engine>=0.4.5,<0.5",
   # The extension hooks and the system message it adds.
   "zett-agent>=0.2.10,<0.3",
 ]

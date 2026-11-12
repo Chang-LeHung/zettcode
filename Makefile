@@ -85,6 +85,7 @@ help:
 	@echo "  make test     Run every distribution's suite, $(TEST_JOBS) at a time (TEST_JOBS=1 for one at a time)"
 	@echo "  JOBS=$(JOBS) TEST_JOBS=$(TEST_JOBS) CHECK_JOBS=$(CHECK_JOBS)  how many run at once (60% of the cores)"
 	@echo "  make order    Write the release order to packages/order.txt (generated, not in git)"
+	@echo "  make version VERSION=x.y.z  Move every distribution to one version, then re-lock"
 	@echo "  make python   Lint, type-check and test the Python side"
 	@echo "  make client   Build and test the TypeScript client"
 	@echo "  make vscode   Type-check, test and build the VS Code extension"
@@ -134,6 +135,18 @@ test:
 order:
 	$(UV) run --no-sync python $(ORDER) > $(PACKAGES)/order.txt
 	@cat $(PACKAGES)/order.txt
+
+# The version every distribution of this repository is published at: one number, in one file, and in every place that
+# names it — a plugin keeps its own `__version__` so its sdist builds outside this checkout, and every requirement on
+# one of ours carries the range a release needs. `make version VERSION=0.5.0` writes all of them, and `uv lock`
+# follows because a floor is part of what the lock resolved.
+VERSIONS := .github/scripts/versions.py
+version:
+	@test -n "$(VERSION)" || (echo "usage: make version VERSION=x.y.z" && exit 2)
+	$(UV) run --no-project python $(VERSIONS) --set $(VERSION)
+	$(UV) lock
+
+.PHONY: version
 
 python: lint typecheck test
 
