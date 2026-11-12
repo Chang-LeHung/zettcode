@@ -62,6 +62,7 @@ svg.i.xs { width: 0.95rem; height: 0.95rem; }
 }
 .btn:active:not(:disabled) { transform: scale(0.98); }
 .btn:disabled { opacity: 0.5; }
+.btn.sm .spin { width: 14px; height: 14px; border-width: 2px; }
 .btn.block { display: flex; width: 100%; }
 .btn.ghost { background: var(--accent-soft); color: var(--accent); }
 .btn.danger { background: var(--bad-soft); color: var(--bad); }
@@ -97,7 +98,7 @@ svg.i.xs { width: 0.95rem; height: 0.95rem; }
 .field-row input, .field-row select, .field-row textarea {
   flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--text); font-size: 1rem; padding: 8px 0;
 }
-.field-row select { appearance: none; -webkit-appearance: none; cursor: pointer; text-align: right; text-align-last: right; }
+.field-row select { appearance: none; -webkit-appearance: none; cursor: pointer; text-align: right; text-align-last: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .field-row select option { color: initial; }
 .field-row textarea { resize: vertical; min-height: 5rem; }
 .field-row.stack { align-items: stretch; flex-direction: column; gap: 2px; padding-top: 10px; }
@@ -113,6 +114,8 @@ svg.i.xs { width: 0.95rem; height: 0.95rem; }
 .empty { padding: 3rem 2rem; text-align: center; color: var(--muted); line-height: 1.45; }
 .empty b { display: block; color: var(--text); font-size: 1.05rem; margin-bottom: 6px; }
 .empty .btn { margin-top: 1rem; }
+.empty-card { margin: 18px 16px; padding: 30px 20px; border-radius: 18px; background: var(--surface); border: 1px solid var(--divider); box-shadow: var(--shadow); }
+.empty-card .btn { box-shadow: 0 10px 24px rgba(47, 124, 246, 0.2); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes blink { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }

@@ -44,7 +44,7 @@ async function recheck(): Promise<void> {
 <template>
   <div class="locked">
     <span>{{ reason }}</span>
-    <button v-if="thread.locked" class="btn sm" :disabled="checking" @click="recheck">{{ t("Check again") }}</button>
+    <button v-if="thread.locked" class="btn sm" :disabled="checking" @click="recheck"><span v-if="checking" class="spin" />{{ t("Check again") }}</button>
     <button v-if="restartable" class="btn sm" @click="again">{{ t("Start it again") }}</button>
   </div>
 </template>

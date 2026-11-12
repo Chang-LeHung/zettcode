@@ -1,22 +1,30 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { t } from "../../i18n";
+import Skeleton from "../common/Skeleton.vue";
 import { clockTime } from "../../lib/format";
-import { closeGroup, groupChat, groupNamed, joinGroup, loadEarlierGroup, membersOf, openGroup, senderName, sendToGroup } from "../../stores/groups";
+import { closeGroup, groupChat, groupNamed, joinGroup, loadEarlierGroup, membersOf, openGroup, removeFromGroup, senderName, sendToGroup } from "../../stores/groups";
+import type { Member } from "../../stores/groups";
 import { href } from "../../stores/route";
 import { lobby } from "../../stores/threads";
-import { toast } from "../../stores/ui";
+import { openSheet, toast } from "../../stores/ui";
 import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
 import UserAvatar from "../common/UserAvatar.vue";
 import MessageText from "../chat/MessageText.vue";
 import GroupMembers from "./GroupMembers.vue";
+import InviteSheet from "./InviteSheet.vue";
+import { confirmAction, showMenu } from "../sheets/sheets";
 
 const props = defineProps<{ name: string }>();
 
 const group = computed(() => groupNamed(props.name));
 const members = computed(() => (group.value ? membersOf(group.value) : []));
 const online = computed(() => members.value.filter((member) => member.online).length);
+const memberLabel = computed(() =>
+  members.value.length === 1 ? t("1 member") : t("{count} members", { count: members.value.length }),
+);
+const onlineLabel = computed(() => (online.value === 1 ? t("1 online") : t("{count} online", { count: online.value })));
 const meId = computed(() => lobby.status?.gateway.id ?? "");
 const joined = computed(() => group.value?.members.includes(meId.value) ?? false);
 const showMembers = ref(false);
@@ -93,6 +101,39 @@ async function submit(): Promise<void> {
   field.value?.focus({ preventScroll: true });
 }
 
+function invite(): void {
+  void openSheet(t("Invite to #{name}", { name: props.name }), InviteSheet, {
+    group: props.name,
+    members: members.value.map((member) => member.id),
+  });
+}
+
+/** Leave the group (the person themselves) or take a member out of it; the sheet spins while the broker answers. */
+async function takeOut(member: Member): Promise<void> {
+  const leaving = member.me;
+  const done = await confirmAction({
+    title: leaving ? t("Leave #{name}?", { name: props.name }) : t("Remove {name} from #{name2}?", { name: member.name, name2: props.name }),
+    text: leaving
+      ? t("You stop receiving what is said here and cannot write to it. The conversation stays readable, and you can join again.")
+      : t("{name} stops receiving what is said in this group. The session itself keeps running.", { name: member.name }),
+    ok: leaving ? t("Leave group") : t("Remove"),
+    danger: true,
+    run: () => removeFromGroup(props.name, member.id),
+  });
+  if (!done) return;
+  toast(leaving ? t("You left #{name}", { name: props.name }) : t("{name} was removed", { name: member.name }));
+  if (members.value.length === 0) showMembers.value = false;
+}
+
+function menu(): void {
+  const me = members.value.find((member) => member.me);
+  showMenu(`#${props.name}`, [
+    { icon: "users", label: t("Members"), run: () => (showMembers.value = true) },
+    joined.value && { icon: "plus", label: t("Invite"), run: invite },
+    me && { icon: "logout", label: t("Leave group"), run: () => void takeOut(me), danger: true },
+  ]);
+}
+
 async function join(): Promise<void> {
   const failure = await joinGroup(props.name);
   if (failure) toast(failure, "bad");
@@ -126,21 +167,22 @@ watch(text, () => void nextTick(resize));
         <Avatar :thread="{ id: `#${name}`, name, kind: 'external', status: 'idle' }" size="sm" />
         <span class="chat-title">
           <b>#{{ name }}</b>
-          <span>{{ t("{count} members", { count: members.length }) }} · {{ t("{count} online", { count: online }) }}</span>
+          <span>{{ memberLabel }} · {{ onlineLabel }}</span>
         </span>
       </button>
       <button class="iconbtn" :aria-pressed="showMembers" :aria-label="t('Members')" :title="t('Members')" @click="showMembers = !showMembers">
         <Icon name="users" />
       </button>
+      <button class="iconbtn" :aria-label="t('More')" :title="t('More')" @click="menu"><Icon name="more" /></button>
     </header>
     <div class="group-body">
       <div class="chat-bg group-main">
         <div ref="scroller" class="messages" role="log" aria-live="polite" @scroll.passive="following = nearBottom()">
           <div class="messages-body">
-            <div v-if="groupChat.loading" class="messages-note"><span class="spin" /></div>
+            <Skeleton v-if="groupChat.loading" kind="bubbles" :count="7" />
             <div v-else-if="groupChat.error" class="errcard">{{ groupChat.error }}</div>
             <button v-if="groupChat.more" class="btn sm ghost messages-more" :disabled="groupChat.loadingOlder" @click="loadEarlierGroup">
-              {{ t("Show earlier messages") }}
+              <span v-if="groupChat.loadingOlder" class="spin" />{{ t("Show earlier messages") }}
             </button>
             <div v-for="line in lines" :key="line.id" class="msg" :class="[line.mine ? 'out' : 'in', { cont: line.cont }]">
               <template v-if="!line.mine">
@@ -162,18 +204,21 @@ watch(text, () => void nextTick(resize));
                 <div v-else class="msg-avatar" />
               </template>
             </div>
-            <div v-if="!groupChat.loading && !lines.length && !groupChat.error" class="messages-note">
-              {{ t("Nothing has been said in this group yet.") }}
+            <div v-if="!groupChat.loading && !lines.length && !groupChat.error" class="group-empty">
+              <Avatar :thread="{ id: `#${name}`, name, kind: 'external', status: 'idle' }" size="xl" />
+              <b>#{{ name }}</b>
+              <span>{{ t("No messages yet. Say something to start the group.") }}</span>
+              <button v-if="joined" class="btn sm ghost" type="button" @click="invite">{{ t("Invite") }}</button>
             </div>
           </div>
         </div>
       </div>
-      <GroupMembers v-if="showMembers" :members="members" @close="showMembers = false" />
+      <GroupMembers v-if="showMembers" :members="members" :can-invite="joined" @invite="invite" @remove="takeOut" @close="showMembers = false" />
     </div>
     <div v-if="!joined" class="group-join">
       <span>{{ t("You are not in this group. You can read it; join to write.") }}</span>
       <button class="btn sm" type="button" :disabled="groupChat.sending" @click="join">
-        {{ groupChat.sending ? t("Joining…") : t("Join group") }}
+        <span v-if="groupChat.sending" class="spin" />{{ groupChat.sending ? t("Joining…") : t("Join group") }}
       </button>
     </div>
     <form v-else class="composer" @submit.prevent="submit">
@@ -201,6 +246,14 @@ watch(text, () => void nextTick(resize));
 .group-who { display: block; font-size: 0.8rem; font-weight: 650; color: var(--accent); margin-bottom: 2px; }
 .group-time { display: block; text-align: right; margin-top: 3px; font-size: 0.7rem; opacity: 0.6; user-select: none; }
 .msg.out .group-time { color: var(--out-meta); opacity: 1; }
+.group-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: clamp(48px, 14vh, 140px) 20px 32px;
+  text-align: center; color: var(--muted);
+}
+.group-empty .avatar { margin-bottom: 4px; box-shadow: var(--shadow); }
+.group-empty b { color: var(--text); font-size: 1.3rem; letter-spacing: -0.02em; }
+.group-empty span { max-width: 22rem; font-size: 0.92rem; line-height: 1.5; }
+.group-empty .btn { margin-top: 4px; }
 .group-join { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); border-top: 1px solid var(--divider); color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
 .group-join .btn { flex: none; }
 </style>

@@ -58,7 +58,7 @@ async function save(): Promise<void> {
     <input ref="input" type="file" accept="image/*" class="sr" tabindex="-1" @change="pick" />
     <p v-if="failure" class="errcard" role="alert">{{ failure }}</p>
     <button class="btn block" type="button" :disabled="busy" @click="save">
-      {{ busy ? t("Saving…") : t("Save") }}
+      <span v-if="busy" class="spin" />{{ busy ? t("Saving…") : t("Save") }}
     </button>
   </div>
 </template>

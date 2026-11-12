@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apiUrl, authorization, connection, configure, normalizeBaseUrl, tokenProtocol } from "../src/api/connection";
 import { socketProtocols, socketUrl } from "../src/api/events";
-import { request } from "../src/api/http";
+import { net, request } from "../src/api/http";
 import { picturePath, pictureUrl } from "../src/api/pictures";
 import { setLanguage, t } from "../src/i18n";
+import { closeSheet, openSheet, setSheetBusy, sheets } from "../src/stores/ui";
 import { makeProfile, parseStored } from "../src/lib/servers";
 import {
   addServer,
@@ -71,6 +72,66 @@ test("a request carries the chosen server and the token; the page keeps its own 
     globalThis.fetch = fetchBefore;
     configure({ baseUrl: "", token: "" });
   }
+});
+
+test("the in-flight counter returns to zero whether a request answers, fails, or never reaches the gateway", async () => {
+  const fetchBefore = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response("{}", { status: 200 })) as typeof fetch;
+    await request("GET", "/api/threads");
+    assert.equal(net.active, 0);
+
+    globalThis.fetch = (async () => new Response(JSON.stringify({ error: { message: "no" } }), { status: 500 })) as typeof fetch;
+    await assert.rejects(request("GET", "/api/threads"));
+    assert.equal(net.active, 0);
+
+    globalThis.fetch = (async () => {
+      throw new TypeError("offline");
+    }) as typeof fetch;
+    const pending = request("GET", "/api/threads");
+    assert.equal(net.active, 1);
+    await assert.rejects(pending);
+    assert.equal(net.active, 0);
+  } finally {
+    globalThis.fetch = fetchBefore;
+  }
+});
+
+test("a request that never answers is given up on, and a write is then marked as possibly delivered", async () => {
+  const fetchBefore = globalThis.fetch;
+  const timers = globalThis.setTimeout;
+  try {
+    globalThis.fetch = ((_url: unknown, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      })) as typeof fetch;
+    // Fire the request's own timer at once instead of waiting two minutes.
+    globalThis.setTimeout = ((handler: () => void) => timers(handler, 0)) as typeof setTimeout;
+    await assert.rejects(request("POST", "/api/threads/x/send", {}), (error: unknown) => {
+      const failure = error as { code: string; body: { uncertain?: boolean } };
+      return failure.code === "timeout" && failure.body.uncertain === true;
+    });
+    await assert.rejects(request("GET", "/api/threads"), (error: unknown) => (error as { body: { uncertain?: boolean } }).body.uncertain === false);
+    assert.equal(net.active, 0);
+  } finally {
+    globalThis.fetch = fetchBefore;
+    globalThis.setTimeout = timers;
+  }
+});
+
+test("a sheet with an action under way is not dismissed, but answers for itself", async () => {
+  const answer = openSheet<boolean>("Sure?", {} as never);
+  const id = sheets[sheets.length - 1]!.id;
+  setSheetBusy(id, true);
+  closeSheet(id);
+  assert.ok(sheets.some((entry) => entry.id === id), "a dismissal is refused while it is busy");
+  closeSheet(id, true);
+  assert.equal(await answer, true);
+  assert.ok(!sheets.some((entry) => entry.id === id));
+
+  const dismissed = openSheet<boolean>("Sure?", {} as never);
+  closeSheet(sheets[sheets.length - 1]!.id);
+  assert.equal(await dismissed, undefined);
 });
 
 test("the socket names the chosen server and offers the token as a protocol", () => {

@@ -15,6 +15,8 @@ export interface SheetEntry {
   component: Component;
   props: Record<string, unknown>;
   settle: (value: unknown) => void;
+  /** An action in the sheet is under way. */
+  busy?: boolean;
 }
 
 export const toasts = reactive<Toast[]>([]);
@@ -47,9 +49,17 @@ export function openSheet<R = undefined>(title: string, component: Component, pr
   });
 }
 
+/** A sheet with an action under way says so, and is then not dismissed (Escape, the backdrop, the ✕) until it is done. */
+export function setSheetBusy(id: number, busy: boolean): void {
+  const entry = sheets.find((item) => item.id === id);
+  if (entry) entry.busy = busy;
+}
+
 export function closeSheet(id: number, value?: unknown): void {
   const at = sheets.findIndex((entry) => entry.id === id);
   if (at < 0) return;
+  // Only the sheet itself answers while it is busy: a dismissal would report "no" for something that is still happening.
+  if (value === undefined && sheets[at]?.busy) return;
   const [entry] = sheets.splice(at, 1);
   entry?.settle(value);
 }

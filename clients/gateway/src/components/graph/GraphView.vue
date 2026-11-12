@@ -572,6 +572,7 @@ function retry(): void {
       <button class="btn ghost sm" @click="retry">{{ t("Retry") }}</button>
     </div>
 
+    <div v-if="(!graph.loaded && !graph.failed && !inReplay) || graphReplay.status === 'loading'" class="gv-loading" role="status"><span class="spin" />{{ t("Loading…") }}</div>
     <div v-if="graph.loaded && empty" class="gv-empty">
       <b>{{ t("No other sessions are running") }}</b>
       <span>{{ t("Start another session and the messages between them will appear here as they happen.") }}</span>
@@ -586,6 +587,8 @@ function retry(): void {
 </template>
 
 <style>
+.gv-loading { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow); color: var(--muted); font-size: 0.85rem; animation: drop 0.25s both; }
+.gv-loading .spin { width: 14px; height: 14px; border-width: 2px; }
 .gv-summary { margin-right: 6px; font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
 .gv-feedbtn { display: none; }
 .gv {

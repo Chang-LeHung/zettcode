@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, watch } from "vue";
 import { t } from "../../i18n";
 import { chat, closeChat, markRead, openChat } from "../../stores/chat";
 import { canWrite, threadOf } from "../../stores/threads";
+import Skeleton from "../common/Skeleton.vue";
 import ChatHeader from "./ChatHeader.vue";
 import Composer from "./Composer.vue";
 import LockedBar from "./LockedBar.vue";
@@ -42,7 +43,7 @@ onBeforeUnmount(() => {
     <Composer v-if="canWrite(thread)" :thread="thread" />
     <LockedBar v-else :thread="thread" />
   </div>
-  <div v-else class="empty"><span class="spin" /></div>
+  <Skeleton v-else kind="bubbles" :count="6" />
 </template>
 
 <style>

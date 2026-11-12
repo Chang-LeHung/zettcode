@@ -17,17 +17,17 @@
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
 
-  --bg: #ffffff;
+  --bg: #eef2f7;
   --surface: #ffffff;
-  --surface-2: #f4f4f5;
+  --surface-2: #f4f6fa;
   --chat-bg-a: #ffffff;
   --chat-bg-b: #ffffff;
   --text: #0f1419;
   --muted: #707579;
-  --divider: #e3e5e8;
-  --accent: #3390ec;
+  --divider: #e4e8ef;
+  --accent: #2f7cf6;
   --accent-text: #ffffff;
-  --accent-soft: rgba(51, 144, 236, 0.12);
+  --accent-soft: rgba(47, 124, 246, 0.1);
   --in-bubble: #f1f3f5;
   --in-text: #0f1419;
   --out-bubble: #3390ec;
@@ -37,9 +37,9 @@
   --warn: #e8960c;
   --bad: #e53935;
   --bad-soft: rgba(229, 57, 53, 0.13);
-  --rail-bg: #f4f4f5;
+  --rail-bg: #f8fafc;
   --hover: rgba(0, 0, 0, 0.05);
-  --shadow: none;
+  --shadow: 0 8px 30px rgba(31, 45, 61, 0.07);
   --sheet-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
   --code-bg: rgba(0, 0, 0, 0.06);
   --scrim: rgba(0, 0, 0, 0.45);
@@ -62,9 +62,9 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #17212b;
-    --surface: #17212b;
-    --surface-2: #0e1621;
+    --bg: #0b1520;
+    --surface: #14212d;
+    --surface-2: #0f1a25;
     --chat-bg-a: #0e1621;
     --chat-bg-b: #0e1621;
     --text: #f5f5f5;
@@ -78,9 +78,9 @@
     --out-bubble: #2b5278;
     --out-text: #ffffff;
     --out-meta: #7fc3f5;
-    --rail-bg: #0e1621;
+    --rail-bg: #0b1520;
     --hover: rgba(255, 255, 255, 0.06);
-    --shadow: none;
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
     --sheet-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
     --code-bg: rgba(255, 255, 255, 0.08);
     --scrim: rgba(0, 0, 0, 0.6);
@@ -101,9 +101,9 @@
 }
 
 :root[data-theme="dark"] {
-  --bg: #17212b;
-  --surface: #17212b;
-  --surface-2: #0e1621;
+  --bg: #0b1520;
+  --surface: #14212d;
+  --surface-2: #0f1a25;
   --chat-bg-a: #0e1621;
   --chat-bg-b: #0e1621;
   --text: #f5f5f5;
@@ -117,9 +117,9 @@
   --out-bubble: #2b5278;
   --out-text: #ffffff;
   --out-meta: #7fc3f5;
-  --rail-bg: #0e1621;
+  --rail-bg: #0b1520;
   --hover: rgba(255, 255, 255, 0.06);
-  --shadow: none;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
   --sheet-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
   --code-bg: rgba(255, 255, 255, 0.08);
   --scrim: rgba(0, 0, 0, 0.6);

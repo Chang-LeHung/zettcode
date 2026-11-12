@@ -55,10 +55,11 @@ const caption = computed(() =>
 .rail-tab {
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   min-height: 56px; border-radius: 12px; color: var(--muted); font-size: 0.68rem; font-weight: 500;
-  transition: background 0.15s, color 0.15s; text-decoration: none !important;
+  transition: background 0.15s, color 0.15s, transform 0.15s; text-decoration: none !important;
 }
 .rail-tab:hover { background: var(--hover); }
-.rail-tab[aria-current="page"] { color: var(--accent); }
+.rail-tab[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
+.rail-tab[aria-current="page"]::before { content: ''; position: absolute; left: 5px; width: 3px; height: 22px; border-radius: 3px; background: var(--accent); }
 .rail-tab .badge { position: absolute; top: 5px; left: calc(50% + 6px); }
 .rail-spacer { flex: 1; }
 .rail-status { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; font-size: 0.62rem; color: var(--muted); }

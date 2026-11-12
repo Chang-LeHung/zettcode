@@ -12,9 +12,11 @@ defineProps<{ title: string }>();
 <style>
 .pane-head {
   display: flex; align-items: center; gap: 8px; min-height: 56px;
-  padding: calc(var(--safe-top) + 8px) 12px 8px;
+  padding: calc(var(--safe-top) + 12px) 18px 10px;
 }
-.pane-head h1 { flex: 1; margin: 0; font-size: 1.2rem; font-weight: 650; letter-spacing: -0.01em; }
+.pane-head h1 { flex: 1; margin: 0; font-size: 1.45rem; font-weight: 700; letter-spacing: -0.025em; }
+.pane-head::after { content: ''; position: absolute; left: 18px; right: 18px; bottom: 0; height: 1px; background: linear-gradient(90deg, var(--divider), transparent); }
+.pane-head { position: relative; }
 .pane-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
 .pane-group { padding: 12px 16px 4px; font-size: 0.8rem; font-weight: 600; color: var(--accent); letter-spacing: 0.02em; }
 .pane-subgroup { padding: 8px 16px 2px; font-size: 0.74rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }

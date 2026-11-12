@@ -11,12 +11,39 @@ export const ZH: Record<string, string> = {
   Legend: "图例",
   "This session": "当前会话",
   "External agent": "外部智能体",
+  "What to start": "要启动什么",
+  Daemon: "守护进程",
   "External agent started": "外部智能体已启动",
   "A plugin installed in the gateway can start a session that answers by itself. It appears in Chats and can join a group on start.": "网关里安装的插件可以启动一个自主应答的会话。它会出现在聊天列表里，并可在启动时加入群组。",
+  "Start an external agent": "启动外部智能体",
+  "An installed gateway plugin starts a session that answers on its own. It appears in Chats and can join a group on start.":
+    "网关插件会启动一个自主应答的会话。它会出现在聊天列表里，并可在启动时加入群组。",
+  "Choose the kind of agent": "选择智能体类型",
+  "What this agent is for": "这个智能体用来做什么",
   "No external agent plugins are installed.": "没有安装外部智能体插件。",
+  "Install one, then restart the gateway. Codex and Claude Code come with zettcode-code-agents.":
+    "安装插件后重启网关。Codex 和 Claude Code 由 zettcode-code-agents 提供。",
   "Type": "类型",
   "Title": "标题",
   "Join group": "加入群组",
+  Invite: "邀请",
+  "Leave group": "退出群组",
+  "The gateway did not answer in time": "网关长时间没有响应",
+  "Remove from group": "移出群组",
+  "Leave #{name}?": "退出 #{name}？",
+  "Remove {name} from #{name2}?": "把 {name} 移出 #{name2}？",
+  "You stop receiving what is said here and cannot write to it. The conversation stays readable, and you can join again.": "你将不再收到这里的消息，也不能再发言。聊天记录仍可查看，之后也可以重新加入。",
+  "{name} stops receiving what is said in this group. The session itself keeps running.": "{name} 将不再收到这个群里的消息，该会话本身继续运行。",
+  "You left #{name}": "已退出 #{name}",
+  "{name} was removed": "已移出 {name}",
+  Invited: "已邀请",
+  "Invite to #{name}": "邀请加入 #{name}",
+  "Search sessions": "搜索会话",
+  "Search sessions or agents": "搜索会话或智能体",
+  "External agents": "外部智能体",
+  "Running agents": "运行中的智能体",
+  "Start & invite": "启动并邀请",
+  "Everyone here is already in the group.": "这里的会话都已在群组中。",
   "Joining…": "加入中…",
   "You are not in this group. You can read it; join to write.": "你不在这个群里。你可以阅读，加入后即可发言。",
   "Optional, without #": "可选，不需要 #",
@@ -207,6 +234,7 @@ export const ZH: Record<string, string> = {
 
   // Chats.
   "Choose a session on the left, or start a new daemon.": "在左侧选择一个会话,或新建一个守护进程。",
+  "Choose a session on the left, or start a new one.": "在左侧选择一个会话,或新建一个。",
   "No messages yet. Say something.": "还没有消息,说点什么吧。",
   "Scroll to the newest message": "滚动到最新消息",
   "Show earlier messages": "显示更早的消息",
@@ -299,6 +327,8 @@ export const ZH: Record<string, string> = {
     "写入 ZettCode 配置文件,并保留其中的注释。新建的 daemon 会使用改动;正在运行的仍用启动时的配置。",
   "Start a daemon, or open a ZettCode session in a terminal, and it appears here.":
     "启动一个守护进程,或在终端里打开 ZettCode 会话,它就会出现在这里。",
+  "Start a daemon, an external agent, or open a ZettCode session in a terminal, and it appears here.":
+    "启动守护进程、外部智能体,或在终端打开一个 ZettCode 会话,它就会出现在这里。",
   "Your text runs as this session's own prompt, and its answer comes back here.":
     "你的文字会作为该会话自己的提示词运行,它的回答会回到这里。",
   "Delivered as a message from another session. An older window does not run it as its own prompt.":
@@ -326,6 +356,8 @@ export const ZH: Record<string, string> = {
 
   // New daemon.
   "New daemon": "新建守护进程",
+  "New session": "新建会话",
+  "Start a daemon": "启动守护进程",
   "Start daemon": "启动守护进程",
   "Daemon started": "守护进程已启动",
   "Starting… this can take a few seconds": "启动中…可能需要几秒钟",
@@ -349,7 +381,10 @@ export const ZH: Record<string, string> = {
   "This group is not listed": "此群组不在列表中",
   "{count} members": "{count} 位成员",
   "{count} online": "{count} 位在线",
+  "1 member": "1 位成员",
+  "1 online": "1 位在线",
   "Nothing has been said in this group yet.": "这个群里还没有人说话。",
+  "No messages yet. Say something to start the group.": "还没有消息,说点什么来开始这个群组吧。",
   "You are not in this group. Writing here adds you to it.": "你不在这个群里,在这里发言会把你加入群组。",
   "Clear record": "清除记录",
   "Restart with a new configuration": "用新配置重新启动",

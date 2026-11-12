@@ -5,6 +5,7 @@ import { CONFIG_SECTIONS } from "../../sections";
 import { loadConfig, settings } from "../../stores/config";
 import { route } from "../../stores/route";
 import PageBar from "../common/PageBar.vue";
+import Skeleton from "../common/Skeleton.vue";
 import DefaultsSection from "./DefaultsSection.vue";
 import LimitsSection from "./LimitsSection.vue";
 import ModelsSection from "./ModelsSection.vue";
@@ -28,7 +29,8 @@ onMounted(() => void loadConfig());
   <div class="page">
     <div class="page-inner">
       <p v-if="settings.error" class="errcard">{{ settings.error }}</p>
-      <component :is="pages[id]" />
+      <Skeleton v-if="!settings.data && !settings.error" kind="cards" :count="3" />
+      <component :is="pages[id]" v-else />
     </div>
   </div>
 </template>
