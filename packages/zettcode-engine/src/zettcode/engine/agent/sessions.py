@@ -137,6 +137,10 @@ class SessionsMixin(ContextMixin):
         model = self.runtime.find_model(stored.model) if stored.model else None
         if model is not None and model is not self.runtime.active_model:
             self.runtime.use_model(model)
+            # The level was put back against the model the shell happened to be on, and `use_model` only moves what is
+            # in force to the nearest level the new model takes — a level the old model could not take was already
+            # gone by then. The session's own level is read again, now against the model it actually ran on.
+            self.runtime.adopt_effort()
         # Prime the report with what the next turn would send, not with what the
         # transcript shows: the display keeps every message a compaction folded
         # away, and measuring those claims a request several times the size of the

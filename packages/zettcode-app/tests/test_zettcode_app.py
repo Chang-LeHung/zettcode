@@ -461,13 +461,13 @@ class FakeRuntime:
     def new_session(self) -> str:
         self.session_id = "session-0002"
         self._claim()
-        self._adopt_effort()
+        self.adopt_effort()
         return self.session_id
 
     def use_session(self, session_id: str) -> None:
         self.session_id = session_id
         self._claim()
-        self._adopt_effort()
+        self.adopt_effort()
 
     def effort_choice(self, session_id: str) -> str | None:
         """Mirror the real runtime: the level a session last ran at, or ``None`` to follow the default."""
@@ -475,7 +475,7 @@ class FakeRuntime:
             return self.efforts_by_session[session_id]
         return None if self.persistence.store is None else self.persistence.store.session_effort(session_id)
 
-    def _adopt_effort(self) -> None:
+    def adopt_effort(self) -> None:
         """Mirror the real runtime: opening a session puts back the level it last ran at."""
         stored = self.effort_choice(self.session_id)
         try:

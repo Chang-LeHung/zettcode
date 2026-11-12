@@ -29,12 +29,13 @@ def _runtime(
     *,
     started_at: ReasoningEffort = ReasoningEffort.MEDIUM,
     levels: tuple[ReasoningEffort, ...] = (),
+    models: tuple[ModelConfig, ...] = (),
 ):
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     (tmp_path / "work").mkdir(exist_ok=True)
     config = ZettCodeConfig(
         workspace=tmp_path / "work",
-        models=(ModelConfig(model="m", token="t", reasoning_efforts=levels),),
+        models=models or (ModelConfig(model="m", token="t", reasoning_efforts=levels),),
         store=tmp_path / "sessions",
         mcp_config=tmp_path / "absent-mcp.json",
         sessions_enabled=False,
@@ -185,6 +186,30 @@ async def test_a_session_is_read_once_and_remembered(tmp_path: Path, monkeypatch
     runtime.use_session("s1")
 
     assert runtime.effort is ReasoningEffort.HIGH
+
+
+async def test_a_session_recorded_on_a_wider_model_comes_back_at_its_level(tmp_path: Path, monkeypatch):
+    """The level is read against the model the session ran on, not against whichever one the shell is on now.
+
+    Opening a session switches to its own model, but the level is put back first — so a level the *current* model
+    cannot take would be moved down on the way in and never read again. It is read again after the switch.
+    """
+    narrow = ModelConfig(model="narrow", token="t", reasoning_efforts=(ReasoningEffort.LOW, ReasoningEffort.MEDIUM))
+    wide = ModelConfig(model="wide", token="t")
+    runtime = _runtime(tmp_path, monkeypatch, models=(narrow, wide))
+    store = SessionStore(runtime.config.store, runtime.config.workspace)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    store.set_model("s1", "wide")
+    store.set_effort("s1", "high", default=runtime.default_effort.value)
+    assert runtime.active_model is not None and runtime.active_model.shown_name == "narrow"
+
+    from zettcode.app.agent.agent import TerminalAgent
+
+    agent = TerminalAgent(runtime)
+    agent.restore_session("s1")
+
+    assert agent.active_model is not None and agent.active_model.shown_name == "wide", "the session's own model"
+    assert agent.effort == "high", "and the level it ran at on that model"
 
 
 async def test_a_level_chosen_for_this_run_wins_over_what_a_session_remembers(tmp_path: Path, monkeypatch):
