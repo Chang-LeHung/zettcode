@@ -29,6 +29,8 @@ export interface Thread {
   locked: boolean;
   /** A page-set picture data URL, or empty for the generated avatar. */
   avatar?: string;
+  /** The plugin type a gateway-started external agent came from, when it has one. */
+  agent?: string;
 }
 
 export type ChatItem =

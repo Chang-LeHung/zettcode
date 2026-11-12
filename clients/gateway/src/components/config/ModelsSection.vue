@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { gateway } from "../../api/gateway";
-import { ApiError } from "../../api/http";
 import { t } from "../../i18n";
 import { tokens } from "../../lib/format";
 import { settings } from "../../stores/config";
@@ -18,15 +17,12 @@ async function remove(name: string): Promise<void> {
     text: t("It is taken out of the configuration file. A daemon already running keeps using it until it restarts."),
     ok: t("Remove"),
     danger: true,
+    run: async () => {
+      const reply = await gateway.removeModel(name);
+      if (settings.data) settings.data.models = reply.models;
+    },
   });
-  if (!sure) return;
-  try {
-    const reply = await gateway.removeModel(name);
-    if (settings.data) settings.data.models = reply.models;
-    toast(t("Model removed"));
-  } catch (error) {
-    toast(error instanceof ApiError ? error.message : String(error), "bad");
-  }
+  if (sure) toast(t("Model removed"));
 }
 </script>
 

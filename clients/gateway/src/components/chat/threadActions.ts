@@ -1,7 +1,6 @@
 // What can be done with a thread from its header: the menu, and each action in it.
 
 import { gateway } from "../../api/gateway";
-import { ApiError } from "../../api/http";
 import { t } from "../../i18n";
 import { copyText } from "../../lib/clipboard";
 import { go, route } from "../../stores/route";
@@ -25,15 +24,12 @@ async function stopDaemon(thread: Thread): Promise<void> {
       : t("The daemon stops, and stays in the list as offline with its conversation, so it can be started again."),
     ok: working ? t("Stop anyway") : t("Stop"),
     danger: true,
+    run: async () => {
+      await gateway.stop(thread.id, working);
+      await loadThreads();
+    },
   });
-  if (!sure) return;
-  try {
-    await gateway.stop(thread.id, working);
-    toast(t("Stopped"));
-    await loadThreads();
-  } catch (error) {
-    toast(error instanceof ApiError ? error.message : String(error), "bad");
-  }
+  if (sure) toast(t("Stopped"));
 }
 
 async function deleteDaemon(thread: Thread): Promise<void> {
@@ -42,16 +38,14 @@ async function deleteDaemon(thread: Thread): Promise<void> {
     text: t("The daemon and its whole conversation are removed for good. This cannot be undone."),
     ok: t("Delete"),
     danger: true,
+    run: async () => {
+      await gateway.remove(thread.id);
+      await loadThreads();
+    },
   });
   if (!sure) return;
-  try {
-    await gateway.remove(thread.id);
-    toast(t("Deleted"));
-    if (route.nav === "chats" && route.arg === thread.id) go("chats");
-    await loadThreads();
-  } catch (error) {
-    toast(error instanceof ApiError ? error.message : String(error), "bad");
-  }
+  toast(t("Deleted"));
+  if (route.nav === "chats" && route.arg === thread.id) go("chats");
 }
 
 function restart(thread: Thread): void {

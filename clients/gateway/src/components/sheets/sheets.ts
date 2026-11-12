@@ -12,12 +12,13 @@ export interface MenuEntry {
   danger?: boolean;
 }
 
-/** Ask a question. Resolves true only when the person chose the action. */
-export async function confirmAction(options: { title: string; text: string; ok: string; danger?: boolean }): Promise<boolean> {
+/** Ask a question. Resolves true only when the person chose the action; with `run`, only when the action then succeeded. */
+export async function confirmAction(options: { title: string; text: string; ok: string; danger?: boolean; run?: () => Promise<void> }): Promise<boolean> {
   const answer = await openSheet<boolean>(options.title, ConfirmSheet, {
     text: options.text,
     ok: options.ok,
     danger: options.danger ?? false,
+    run: options.run,
   });
   return answer === true;
 }
