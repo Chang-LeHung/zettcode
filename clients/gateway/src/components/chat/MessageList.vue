@@ -4,6 +4,7 @@ import { t } from "../../i18n";
 import Skeleton from "../common/Skeleton.vue";
 import { buildRows } from "../../lib/rows";
 import { chat, loadEarlier, markRead } from "../../stores/chat";
+import { currentKey, find, search } from "../../stores/chatSearch";
 import Icon from "../common/Icon.vue";
 import MessageBubble from "./MessageBubble.vue";
 import NoteBubble from "./NoteBubble.vue";
@@ -74,6 +75,19 @@ watch(
 );
 
 watch(typing, (now) => now && following.value && toBottom(true), { flush: "post" });
+// The search looks again whenever the words, or what there is to look in, change.
+watch([rows, () => find.query, () => find.open], () => find.open && search(rows.value), { flush: "post" });
+// The match the reader is on is brought to the middle of the page, and the page stops following the newest message.
+watch(
+  currentKey,
+  (key) => {
+    if (!key) return;
+    following.value = false;
+    const target = scroller.value?.querySelector(`[data-row="${key}"]`);
+    target?.scrollIntoView({ block: "center", behavior: "smooth" });
+  },
+  { flush: "post" },
+);
 // A turn that is being written grows the page: stay with it while the person is at the bottom.
 watch(
   () => [live.value?.text.length, live.value?.tools.length],

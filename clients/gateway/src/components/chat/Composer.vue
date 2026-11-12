@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { t } from "../../i18n";
 import { isPicture, prepare, refusal, roomOf } from "../../lib/pictures";
-import { chat, draftOf, sendMessage, setDraft, setWantsReply, wantsReply } from "../../stores/chat";
+import { chat, draftEdits, draftOf, sendMessage, setDraft, setWantsReply, wantsReply } from "../../stores/chat";
 import { loadConfig, settings } from "../../stores/config";
 import { prefs } from "../../stores/prefs";
 import { lobby } from "../../stores/threads";
@@ -57,6 +57,21 @@ watch(
     text.value = draftOf(id);
     pictures.value = [];
     void nextTick(resize);
+  },
+);
+// A quote was added to the draft from a message: show it, and put the cursor after it.
+watch(
+  () => draftEdits.revision,
+  () => {
+    text.value = draftOf(props.thread.id);
+    void nextTick(() => {
+      resize();
+      const el = field.value;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      el.setSelectionRange(el.value.length, el.value.length);
+      el.scrollTop = el.scrollHeight;
+    });
   },
 );
 onMounted(() => {
