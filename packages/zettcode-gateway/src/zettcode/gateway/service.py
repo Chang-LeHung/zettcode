@@ -428,10 +428,14 @@ class Gateway:
             changed = views != self._views
             self._views = views
             now = self.clock()
+            # A name and a picture are kept for a day after a session leaves the list; a pin or an archive is a choice
+            # the person made about that conversation and is kept until they undo it.
             vanished = [
                 session_id
                 for session_id in self._profiles
-                if session_id not in views and now - self._profile_seen.get(session_id, now) > PROFILE_TTL
+                if session_id not in views
+                and now - self._profile_seen.get(session_id, now) > PROFILE_TTL
+                and not self._profiles[session_id].keys() & {"pinned", "archived"}
             ]
             if vanished:
                 for session_id in vanished:
@@ -628,6 +632,12 @@ class Gateway:
                     profile[flag] = "1"
                 else:
                     profile.pop(flag, None)
+        # Pinned and archived exclude each other: a conversation is either kept at the top or put away, and the last
+        # one asked for wins (archiving unpins, pinning brings it back from the archive).
+        if data.get("archived") is True:
+            profile.pop("pinned", None)
+        elif data.get("pinned") is True:
+            profile.pop("archived", None)
         if profile:
             self._profiles[session_id] = profile
         else:
@@ -637,7 +647,13 @@ class Gateway:
         return {"thread": self._views.get(session_id)}
 
     def threads(self) -> list[dict[str, Any]]:
-        """Return the threads: pinned ones first, then the online ones, each run with the most recently active first."""
+        """Return the threads: pinned ones first, then the online ones, each run with the most recently active first.
+
+        The page splits the list into its Pinned, Groups, Daemons and Other sections itself and keeps this order inside
+        each, so the two must agree on what "first" means. Only sessions can be pinned or archived: the flags live in
+        a session's profile, and a group (named ``#name``, not a listed session) has none; giving groups the flag
+        means deciding its key and this sort together.
+        """
         return sorted(
             self._views.values(),
             key=lambda view: (not view["pinned"], not view["online"], -float(view["updated_at"])),

@@ -13,12 +13,14 @@ import { auth } from "./auth";
 import { route } from "./route";
 import { applyStream, resetStreams } from "./stream";
 import { servers } from "./servers";
-import { applyThreads, lobby, loadThreads } from "./threads";
+import { applyThreads, lobby, loadThreads, threadOf } from "./threads";
 
 let socket: EventSocket | null = null;
 
 function notify(event: Extract<GatewayEvent, { type: "inbound" }>): void {
   if (!prefs.notify) return;
+  // A conversation that was put away stays quiet, as it does in the unread counts.
+  if (threadOf(event.id)?.archived) return;
   const watching = !document.hidden && route.nav === "chats" && route.arg === event.id;
   if (watching) return;
   // The shell's notice is the one that works while the page is not the front window; a browser falls back to the
