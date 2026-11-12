@@ -1,5 +1,6 @@
 // Searching inside the open conversation: the words, which bubbles hold them, and which one the reader is looking at.
-// The search covers what is loaded; opening it reads the whole conversation first, so it is not a search of the last page.
+// The search covers what is loaded. Opening it fetches the earlier part of a truncated conversation, and the search runs
+// again as it arrives, so a long conversation is searched as far back as it has been read.
 
 import { computed, reactive } from "vue";
 import { matchingKeys } from "../lib/messages";
@@ -20,7 +21,7 @@ export const currentKey = computed(() => (find.open ? (find.keys[find.at] ?? "")
 
 export function openFind(): void {
   find.open = true;
-  // Only what is loaded can be searched: take the rest of the conversation before the words are typed.
+  // Only what is loaded can be searched: fetch what came before while the words are typed.
   if (chat.truncated) void loadEarlier();
 }
 

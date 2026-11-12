@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, watch } from "vue";
 import { t } from "../../i18n";
 import { chat, closeChat, markRead, openChat } from "../../stores/chat";
-import { closeFind, find } from "../../stores/chatSearch";
+import { closeFind, find, openFind } from "../../stores/chatSearch";
 import { canWrite, threadOf } from "../../stores/threads";
 import Skeleton from "../common/Skeleton.vue";
 import ChatHeader from "./ChatHeader.vue";
@@ -34,9 +34,20 @@ watch(() => chat.atBottom, (bottom) => bottom && !document.hidden && markRead())
 function onVisible(): void {
   if (!document.hidden) markRead();
 }
-onMounted(() => document.addEventListener("visibilitychange", onVisible));
+// Ctrl/Cmd+F searches this conversation instead of the browser's page: the conversation is what the reader means.
+function onFindKey(event: KeyboardEvent): void {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    openFind();
+  }
+}
+onMounted(() => {
+  document.addEventListener("visibilitychange", onVisible);
+  document.addEventListener("keydown", onFindKey);
+});
 onBeforeUnmount(() => {
   document.removeEventListener("visibilitychange", onVisible);
+  document.removeEventListener("keydown", onFindKey);
   closeFind();
   closeChat();
 });

@@ -54,6 +54,7 @@ const subtitle = computed(() => {
     </button>
     <button
       class="iconbtn"
+      data-find
       :aria-pressed="find.open"
       :title="t('Find in this conversation')"
       :aria-label="t('Find in this conversation')"

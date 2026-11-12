@@ -16,6 +16,8 @@ function onKey(event: KeyboardEvent): void {
   } else if (event.key === "Escape") {
     event.stopPropagation();
     closeFind();
+    // Focus goes back to the button that opened the bar, not to the page.
+    void nextTick(() => document.querySelector<HTMLElement>(".chat-head [data-find]")?.focus());
   }
 }
 </script>

@@ -1,7 +1,7 @@
 import "./dom-setup";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { matchingKeys, quoted, withQuote } from "../src/lib/messages";
+import { matchingKeys, quoted, visibleText, withQuote } from "../src/lib/messages";
 import type { Row } from "../src/lib/rows";
 import { closeFind, currentKey, find, search, step } from "../src/stores/chatSearch";
 
@@ -60,4 +60,41 @@ test("a quote goes after what is already written, with exactly one blank line be
   assert.equal(withQuote("my reply", "hi"), "my reply\n\n> hi\n\n");
   assert.equal(withQuote("my reply\n", "hi"), "my reply\n\n> hi\n\n");
   assert.equal(withQuote("my reply\n\n", "hi"), "my reply\n\n> hi\n\n");
+});
+
+test("a search matches what is on the screen: link labels and plain words, not addresses, marks or a fence's language", () => {
+  assert.equal(visibleText("see [the docs](https://x.test/secret-path) now"), "see the docs now");
+  assert.equal(visibleText("**bold** and `code` and _it_"), "bold and code and it");
+  assert.equal(visibleText("```python\nprint(1)\n```"), "\nprint(1)\n");
+  const rows = [
+    bubble("m0", "open [the gateway](https://x.test/secret-path)"),
+    bubble("m1", "gateway **is** down"),
+    bubble("m2", "```python\nprint(1)\n```"),
+  ];
+  assert.deepEqual(matchingKeys(rows, "secret-path"), [], "an address is not visible");
+  assert.deepEqual(matchingKeys(rows, "gateway is down"), ["m1"], "markup does not split a phrase");
+  assert.deepEqual(matchingKeys(rows, "python"), [], "a fence's language tag is not text");
+  assert.deepEqual(matchingKeys(rows, "print(1)"), ["m2"]);
+});
+
+test("a picture-only bubble has no words to find, and quoting blank text still yields a quote block", () => {
+  assert.deepEqual(matchingKeys([bubble("m0", "")], "a"), []);
+  assert.equal(quoted("  "), ">\n\n");
+  assert.equal(quoted("a\n \nb"), "> a\n>  \n> b\n\n");
+});
+
+test("a new query while on a match jumps to the newest match of the new words, and closing clears everything", () => {
+  const list = [bubble("m0", "alpha one"), bubble("m1", "beta"), bubble("m2", "alpha two"), bubble("m3", "beta two")];
+  find.open = true;
+  find.query = "alpha";
+  search(list);
+  step(-1);
+  assert.equal(currentKey.value, "m0");
+
+  find.query = "beta";
+  search(list);
+  assert.equal(currentKey.value, "m3", "the old position does not match, so the search starts at the newest");
+
+  closeFind();
+  assert.deepEqual([find.open, find.query, find.keys, find.at], [false, "", [], 0]);
 });
