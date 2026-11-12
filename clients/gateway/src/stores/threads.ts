@@ -15,9 +15,12 @@ export const lobby = reactive({
 
 export const byId = computed(() => new Map(lobby.threads.map((thread) => [thread.id, thread])));
 
-export const totalUnread = computed(() => lobby.threads.reduce((sum, thread) => sum + thread.unread, 0));
+/** What is unread in the list: an archived conversation was put away, so it does not call for attention. */
+const attended = computed(() => lobby.threads.filter((thread) => !thread.archived));
+
+export const totalUnread = computed(() => attended.value.reduce((sum, thread) => sum + thread.unread, 0));
 /** How many conversations have something unread: what the tab shows. */
-export const chatsWithUnread = computed(() => unreadChats(lobby.threads));
+export const chatsWithUnread = computed(() => unreadChats(attended.value));
 
 export const daemons = computed(() => lobby.threads.filter((thread) => thread.kind === "daemon"));
 

@@ -41,6 +41,8 @@ export const ICONS = {
   users:
     '<circle cx="9" cy="8.5" r="3.3"/><path d="M2.8 19.5c.7-3.4 3.2-5 6.2-5s5.5 1.6 6.2 5"/><path d="M16 5.4a3.3 3.3 0 0 1 0 6.2M18 14.8c1.8.6 3 2.2 3.4 4.7"/>',
   trash: '<path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/>',
+  pin: '<path d="M9 4h6l-1 5 3 3H7l3-3-1-5ZM12 12v8"/>',
+  archive: '<rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/>',
 } as const;
 
 export type IconName = keyof typeof ICONS;

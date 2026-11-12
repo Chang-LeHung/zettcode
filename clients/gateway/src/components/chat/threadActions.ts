@@ -1,6 +1,7 @@
 // What can be done with a thread from its header: the menu, and each action in it.
 
 import { gateway } from "../../api/gateway";
+import { ApiError } from "../../api/http";
 import { t } from "../../i18n";
 import { copyText } from "../../lib/clipboard";
 import { go, route } from "../../stores/route";
@@ -57,12 +58,30 @@ export function showInfo(thread: Thread): void {
   void openSheet(thread.name, ThreadInfo, { thread });
 }
 
+/** Pin or archive a thread. Both are kept at the gateway, so every browser sees the same list. */
+async function setFlag(thread: Thread, flag: "pinned" | "archived", on: boolean): Promise<void> {
+  try {
+    await gateway.updateProfile(thread.id, { [flag]: on });
+    await loadThreads();
+    if (flag === "pinned") toast(on ? t("Pinned") : t("Unpinned"));
+    else toast(on ? t("Archived. Search or open Archived to find it.") : t("Moved back to the list"));
+  } catch (error) {
+    toast(error instanceof ApiError ? error.message : String(error), "bad");
+  }
+}
+
 /** The menu behind the dots in a conversation's header. */
 export function showThreadMenu(thread: Thread): void {
   const daemon = thread.kind === "daemon";
   const alive = daemon && thread.online;
   showMenu(thread.name, [
     { icon: "info", label: t("Info"), run: () => showInfo(thread) },
+    { icon: "pin", label: thread.pinned ? t("Unpin") : t("Pin to the top"), run: () => void setFlag(thread, "pinned", !thread.pinned) },
+    {
+      icon: "archive",
+      label: thread.archived ? t("Move back to the list") : t("Archive"),
+      run: () => void setFlag(thread, "archived", !thread.archived),
+    },
     daemon && { icon: "logs", label: t("Logs"), run: () => go("logs", thread.id) },
     { icon: "copy", label: t("Copy session id"), run: () => void copyId(thread) },
     daemon && { icon: "refresh", label: t("Restart with a new configuration"), run: () => restart(thread) },
