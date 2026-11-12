@@ -35,6 +35,8 @@ class StoredSession:
             the metadata log is the other thing resuming used to do on the loop.
         model: The model the session last used, by the name the model picker shows, if one
             was recorded; read here for the same reason as the title.
+        effort: The reasoning level it last ran at, if one was recorded: it comes back with the
+            model, so a resume does not reason less than the conversation did.
     """
 
     session_id: str
@@ -42,6 +44,7 @@ class StoredSession:
     usage: UsageSnapshot
     title: str | None
     model: str | None = None
+    effort: str | None = None
 
 
 class SessionsMixin(ContextMixin):
@@ -117,10 +120,11 @@ class SessionsMixin(ContextMixin):
             usage=session_usage(session.branch()),
             title=persistence.session_title(session_id),
             model=persistence.session_model(session_id),
+            effort=persistence.session_effort(session_id),
         )
 
     def install_session(self, stored: StoredSession) -> None:
-        """Make a loaded session the active one: its totals, its id, its model.
+        """Make a loaded session the active one: its totals, its id, its model and reasoning level.
 
         The cheap half, and the one that changes state; everything it does is assignment.
         """

@@ -5,10 +5,11 @@
     {"version": 1, "session_id": "01a1...", "created_at": "...", "updated_at": "...",
      "title": "Fix the parser", "model": "gpt-5-mini"}
 
-It is written when a session begins, when it is renamed, and when the model it uses changes, and
-at no other time — about two hundred bytes, whatever the conversation does. A file written before
-the model was recorded simply has none, and a reader that does not know the field ignores it, so
-the layout version is unchanged. What a list needs besides that is when the
+It is written when a session begins, when it is renamed, when the model it uses changes, and when a
+setting the session keeps for itself changes — its permission level, its reasoning level, its choice
+about self-compaction — and at no other time — about two hundred bytes, whatever the conversation does.
+A file written before one of those was recorded simply has none, and a reader that does not know the
+field ignores it, so the layout version is unchanged. What a list needs besides that is when the
 conversation last changed, and the conversation file already says so: its modification time moves
 with every message it is given, so the age a list shows is read from there instead of being
 written down again on every append. The folder is also the unit a person copies, moves or
@@ -94,6 +95,11 @@ class SessionMetadata(BaseModel):
     #: it never chose one and a run starts at the level it was built with. Resuming the session puts it back in
     #: force, so a reader who chose ``full`` for a job does not answer the question again on the next start.
     permission: str | None = None
+    #: The reasoning level this session last ran at — ``low``, ``high``, ... — or ``None`` when it never chose one
+    #: and a run starts at the configuration's ``reasoning_effort``. It travels with the model, which is why it is
+    #: recorded at all: a conversation that reasoned at ``high`` and is resumed at the level a *new* session starts
+    #: at would answer the same question with less care, and nothing on screen would say why.
+    effort: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

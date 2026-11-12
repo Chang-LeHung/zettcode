@@ -241,6 +241,32 @@ async def test_a_session_continues_on_the_model_it_last_used(tmp_path, monkeypat
         assert later.model.name == "beta"
 
 
+async def test_a_session_continues_at_the_reasoning_level_it_last_used(tmp_path, monkeypatch):
+    wire(monkeypatch, ScriptedModel("on high"))
+    async with make(tmp_path) as client:
+        client.use_effort("high")
+        await client.prompt("hello")
+        stored = client.session.id
+
+    async with make(tmp_path) as later:
+        assert later.effort == "medium", "a client that has opened nothing reasons at what its configuration says"
+        read = await later.sessions.read(stored)
+        assert read.effort == "high", "a session read without opening it says where it stood"
+        await later.sessions.open(stored)
+        assert later.effort == "high"
+
+
+async def test_a_level_the_client_was_started_with_is_not_written_into_the_session(tmp_path, monkeypatch):
+    """``effort=`` is what this process runs at, not a decision about the conversation."""
+    wire(monkeypatch, ScriptedModel("done"))
+    async with zc.Client(config=config_for(tmp_path), effort="high") as client:
+        await client.prompt("hello")
+        stored = client.session.id
+
+    async with make(tmp_path) as later:
+        assert (await later.sessions.read(stored)).effort is None
+
+
 # -- history --------------------------------------------------------------------------------------
 
 

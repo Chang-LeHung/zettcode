@@ -290,11 +290,13 @@ class SessionMixin(ShellState):
     def _install_session(self, loaded: LoadedSession) -> None:
         """Make a loaded session the visible one. Assignment only; runs on the loop."""
         previous = self.model
+        previous_effort = self.client.effort
         self.transcript.replace(loaded.replayed.transcript.entries)
         self.client.sessions.install(loaded.stored)
         if not self.transcript.entries:
             self.transcript.welcome(WELCOME)
         self._announce_restored_model(previous, loaded.stored)
+        self._announce_restored_effort(previous_effort)
         self.view.follow_tail = True
         self.view.clear_selection()
         self._session_title = loaded.stored.title
@@ -324,6 +326,18 @@ class SessionMixin(ShellState):
             self.transcript.notice(
                 f"This session last used {stored.model}, which is not in your configuration; staying on {current.name}."
             )
+
+    def _announce_restored_effort(self, previous: str) -> None:
+        """Say so when resuming a session moved the reasoning level.
+
+        The level travels with the model, so a session that reasoned at ``high`` comes back at ``high`` even when
+        this shell was at the default; the header shows the new level, and a figure that changed by itself is a
+        thing to name. Silence is for when nothing changed: the session never recorded a level, or it is the one
+        already in force.
+        """
+        current = self.client.effort
+        if current and current != previous:
+            self.transcript.announce(f"Reasoning set to {current}, the level this session last used.")
 
     def _remeasure_context_later(self) -> None:
         """Measure the context again, for a figure that cannot be true.

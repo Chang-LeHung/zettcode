@@ -252,6 +252,10 @@ class FakePersistence:
         self.models[session_id] = model
         return written
 
+    def session_effort(self, session_id: str) -> str | None:
+        """The level a session last ran at: the store's answer, or ``None`` when there is no store to ask."""
+        return None if self.store is None else self.store.session_effort(session_id)
+
     def fork(self, session_id: str) -> str:
         """Copy one session's context the way the real store does, through the store it holds."""
         if self.store is None:
@@ -343,6 +347,10 @@ class FakeRuntime:
     context: ContextExtension = field(default_factory=ContextExtension)
     sides: SideQuestions = field(default_factory=SideQuestions)
     effort: ReasoningEffort = ReasoningEffort.MEDIUM
+    #: The level a run starts at, as the real runtime takes it from the configuration.
+    default_effort: ReasoningEffort = ReasoningEffort.MEDIUM
+    #: What each session last reasoned at, as the real runtime writes it into the session's own file.
+    efforts_by_session: dict[str, str] = field(default_factory=dict)
     # The fake is offline and always estimating: a loader that refuses is what
     # makes that true whatever the deadline does, now that a late answer is
     # adopted and a zero deadline would race with it.
@@ -453,11 +461,27 @@ class FakeRuntime:
     def new_session(self) -> str:
         self.session_id = "session-0002"
         self._claim()
+        self._adopt_effort()
         return self.session_id
 
     def use_session(self, session_id: str) -> None:
         self.session_id = session_id
         self._claim()
+        self._adopt_effort()
+
+    def effort_choice(self, session_id: str) -> str | None:
+        """Mirror the real runtime: the level a session last ran at, or ``None`` to follow the default."""
+        if session_id in self.efforts_by_session:
+            return self.efforts_by_session[session_id]
+        return None if self.persistence.store is None else self.persistence.store.session_effort(session_id)
+
+    def _adopt_effort(self) -> None:
+        """Mirror the real runtime: opening a session puts back the level it last ran at."""
+        stored = self.effort_choice(self.session_id)
+        try:
+            self.effort = self.default_effort if stored is None else ReasoningEffort(stored)
+        except ValueError:
+            self.effort = self.default_effort
 
     def approve_all_shell_commands(self) -> None:
         self.auto_approved = True
@@ -473,12 +497,15 @@ class FakeRuntime:
         self.harness.on = bool(on)
         return self.harness.on
 
-    def use_effort(self, name):
+    def use_effort(self, name, *, remember: bool = True):
         try:
             self.effort = ReasoningEffort(name.strip().lower())
         except ValueError:
             levels = ", ".join(level.value for level in ReasoningEffort)
             raise ValueError(f"Unknown reasoning effort: {name}. Try one of: {levels}") from None
+        self.remembered_effort = name if remember else None
+        if remember:
+            self.efforts_by_session[self.session_id] = self.effort.value
         return self.effort
 
 
@@ -8041,6 +8068,28 @@ async def test_resuming_a_session_that_never_recorded_a_model_keeps_the_one_in_u
     assert app.agent.active_model.shown_name == "GPT-4o"
     assert not [e for e in app.transcript.entries if e.kind == "announcement"]
     assert not [e for e in app.transcript.entries if e.kind == "notice"]
+
+
+async def test_resuming_a_session_switches_to_the_level_it_last_ran_at(tmp_path):
+    app = await _app_whose_stored_session_used(tmp_path, None)
+    app.agent.runtime.persistence.store.set_effort("previous", "high", default="medium")
+    app.change_effort("low")
+
+    await app.resume_session("previous")
+
+    assert app.agent.runtime.effort is ReasoningEffort.HIGH
+    announcements = [entry.text for entry in app.transcript.entries if entry.kind == "announcement"]
+    assert announcements == ["Reasoning set to high, the level this session last used."]
+
+
+async def test_resuming_at_the_level_already_in_force_says_nothing(tmp_path):
+    app = await _app_whose_stored_session_used(tmp_path, None)
+    app.agent.runtime.persistence.store.set_effort("previous", "high", default="medium")
+    app.change_effort("high")
+
+    await app.resume_session("previous")
+
+    assert not [e for e in app.transcript.entries if e.kind == "announcement"]
 
 
 async def test_a_model_no_longer_in_the_configuration_is_not_guessed_at_and_the_reader_is_told(tmp_path):
