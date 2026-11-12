@@ -187,6 +187,22 @@ export async function removeFromGroup(name: string, member: string): Promise<voi
   await loadGraph();
 }
 
+/** What a group's name may be, as the broker holds it: lower-case letters, digits, `-` and `_`, 1 to 40 long. */
+export const GROUP_NAME = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+
+/** Create a group with the person at the gateway in it, and the sessions asked for. Throws on failure; returns its name. */
+export async function createGroup(name: string, members: string[]): Promise<string> {
+  const made = await gateway.createGroup(name, members);
+  await loadGraph();
+  return made.group;
+}
+
+/** Delete a group and what was said in it. Throws on failure. */
+export async function deleteGroup(name: string): Promise<void> {
+  await gateway.deleteGroup(name);
+  await loadGraph();
+}
+
 /** Add a session to a group as the gateway owner. */
 export async function inviteToGroup(name: string, member: string): Promise<string> {
   groupChat.sending = true;

@@ -116,6 +116,7 @@ SEND_STATUS = {
     "lost": 504,
     "loop": 422,
     "invalid": 400,
+    "duplicate": 409,
 }
 
 
@@ -1287,6 +1288,47 @@ class Gateway:
             ) from error
         await self.refresh()
         return {"group": name, "member": session_id}
+
+    async def create_group(self, name: str, members: object) -> dict[str, Any]:
+        """Create a group as the broker owner, with the person at the gateway in it so they can write to it.
+
+        Raises:
+            GatewayError: The name is not one a group can have, is taken, or a member is not a listed session.
+        """
+        name = str(name or "").strip().lstrip("#").lower()
+        if not name:
+            raise GatewayError(400, "invalid", "a group needs a name")
+        if members is None:
+            members = []
+        if not isinstance(members, list) or not all(isinstance(item, str) for item in members):
+            raise GatewayError(400, "invalid", "members is a list of sessions")
+        if any(item not in self._views for item in members):
+            await self.refresh()
+        for item in members:
+            if item not in self._views:
+                raise GatewayError(404, "not_found", "No such session is listed")
+        mine = self.backend.gateway_id
+        everyone = [mine, *dict.fromkeys(item for item in members if item != mine)]
+        await self._group_call(self.backend.create_group(name, everyone))
+        await self.refresh()
+        return {"group": name, "members": everyone}
+
+    async def delete_group(self, name: str) -> dict[str, Any]:
+        """Delete a group, with the messages stored for it."""
+        name = name.lstrip("#")
+        await self._group_call(self.backend.delete_group(name))
+        await self.refresh()
+        return {"group": name}
+
+    async def _group_call(self, call: Any) -> None:
+        try:
+            await call
+        except SendError as error:
+            raise GatewayError(
+                404 if error.reason == "unknown" else SEND_STATUS.get(error.reason, 400),
+                error.reason,
+                str(error),
+            ) from error
 
     async def remove_group_member(self, name: str, session_id: str) -> dict[str, Any]:
         """Take a session out of a group as the broker owner; the gateway's own id is how the person leaves it."""

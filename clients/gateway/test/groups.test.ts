@@ -4,6 +4,7 @@ import "./dom-setup";
 import { applyGraph, graph, onGraphApplied, resetGraph } from "../src/stores/graph";
 import {
   applyGroupTraffic,
+  GROUP_NAME,
   groupChat,
   groupList,
   groupArg,
@@ -160,4 +161,9 @@ test("a message written in the open group is shown there; in another it is count
   assert.equal(unreadOf("other"), 2);
   assert.equal(groupList.value[0]!.name, "other");
   assert.equal(groupList.value.find((group) => group.name === "other")?.last?.id, 3);
+});
+
+test("a group name is what the broker accepts: lower case, digits, - and _, 1 to 40, not starting with a symbol", () => {
+  for (const good of ["review", "a", "team-1", "x_y", "0day", "a".repeat(40)]) assert.ok(GROUP_NAME.test(good), good);
+  for (const bad of ["", "-lead", "_x", "Review", "two words", "a".repeat(41), "组", "#review"]) assert.ok(!GROUP_NAME.test(bad), bad);
 });

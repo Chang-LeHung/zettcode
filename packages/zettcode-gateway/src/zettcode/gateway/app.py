@@ -377,6 +377,13 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         given = await body(request)
         return await gateway.invite_group(request.path_params["name"], str(given.get("member") or ""))
 
+    async def create_group(request: Request) -> Any:
+        given = await body(request)
+        return await gateway.create_group(str(given.get("name") or ""), given.get("members"))
+
+    async def delete_group(request: Request) -> Any:
+        return await gateway.delete_group(request.path_params["name"])
+
     async def leave_group(request: Request) -> Any:
         return await gateway.leave_group(request.path_params["name"])
 
@@ -519,6 +526,8 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/threads/{id}/recheck", api(recheck), methods=["POST"]),
         Route("/api/threads/{id}/send", api(send), methods=["POST"]),
         Route("/api/threads/{id}/pictures/{picture}", api(picture)),
+        Route("/api/groups", api(create_group), methods=["POST"]),
+        Route("/api/groups/{name}", api(delete_group), methods=["DELETE"]),
         Route("/api/groups/{name}/send", api(send_group), methods=["POST"]),
         Route("/api/groups/{name}/join", api(join_group), methods=["POST"]),
         Route("/api/groups/{name}/members", api(invite_group), methods=["POST"]),

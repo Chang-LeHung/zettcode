@@ -10,6 +10,9 @@ import ConnectionBanner from "../shell/ConnectionBanner.vue";
 import PaneHeader from "../shell/PaneHeader.vue";
 import GroupRow from "../groups/GroupRow.vue";
 import ChatRow from "./ChatRow.vue";
+import Icon from "../common/Icon.vue";
+import NewGroupSheet from "../groups/NewGroupSheet.vue";
+import { openSheet } from "../../stores/ui";
 import SearchBox from "./SearchBox.vue";
 import Skeleton from "../common/Skeleton.vue";
 import { search } from "./search";
@@ -41,7 +44,11 @@ const open = computed(() => (route.nav === "chats" ? route.arg : chat.id));
 </script>
 
 <template>
-  <PaneHeader :title="t('Chats')" />
+  <PaneHeader :title="t('Chats')">
+    <button class="iconbtn" :aria-label="t('New group')" :title="t('New group')" @click="openSheet(t('New group'), NewGroupSheet)">
+      <Icon name="users" />
+    </button>
+  </PaneHeader>
   <SearchBox v-model="search" />
   <ConnectionBanner />
   <div class="pane-list">

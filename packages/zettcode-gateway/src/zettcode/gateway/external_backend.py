@@ -205,6 +205,12 @@ class ExternalBackend(Backend):
     async def remove_group_member(self, group: str, session_id: str) -> None:
         await self._owner_post("/groups", {"action": "remove", "name": group, "members": [session_id]})
 
+    async def create_group(self, group: str, members: list[str]) -> None:
+        await self._owner_post("/groups", {"action": "create", "name": group, "members": members})
+
+    async def delete_group(self, group: str) -> None:
+        await self._owner_post("/groups", {"action": "delete", "name": group})
+
     # -- reads the owner may make -----------------------------------------------------------------
     async def _owner_post(self, path: str, data: dict[str, Any]) -> dict[str, Any]:
         owner = self._owner
