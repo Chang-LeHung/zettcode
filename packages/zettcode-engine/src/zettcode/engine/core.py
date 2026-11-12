@@ -193,13 +193,20 @@ def _build_provider(selected: ModelConfig) -> Adapter:
     endpoint; Anthropic's adapter has none, so it goes in the body of the request, where the API reads it.
 
     The output budget is :attr:`ModelConfig.max_tokens`: the adapter's own ``max_tokens`` where it has one, and a
-    field of the request body where it does not — ``max_tokens`` on a chat endpoint, ``max_output_tokens`` on the
-    Responses API, which names it differently. Zero sends none, so an endpoint whose own default is what the reader
-    wants keeps it; every other entry spends the budget instead of the provider's smaller default, which is what
-    used to end a long answer in the middle with ``max_tokens``.
+    field of the request body where it does not. Which field is not one name: the Responses API calls it
+    ``max_output_tokens``, OpenAI's own chat API calls it ``max_completion_tokens`` — its reasoning models refuse
+    ``max_tokens`` — and every other chat endpoint (DeepSeek, GLM, a local server) calls it ``max_tokens``, so the
+    name follows the endpoint: OpenAI's own address when the entry names none, the compatible spelling when it does.
+    Zero sends none, so an endpoint whose own default is what the reader wants keeps it; every other entry spends the
+    budget instead of the provider's smaller default, which is what used to end a long answer in the middle with
+    ``max_tokens``.
+
+    A budget larger than the window is sent as the window: a reply longer than the context that has to hold it is not
+    a request any endpoint can serve, and the default of 20,000 would otherwise make every small-context entry
+    impossible the moment it was read. The entry keeps the number it was given; only the request is bounded.
     """
     token = selected.token or KEYLESS_TOKEN
-    budget = selected.max_tokens
+    budget = min(selected.max_tokens, selected.context_window) if selected.max_tokens > 0 else 0
     if selected.anthropic:
         from zett_agent.providers.anthropic import AnthropicProvider
 
@@ -223,9 +230,8 @@ def _build_provider(selected: ModelConfig) -> Adapter:
     if selected.temperature is not None:
         options["temperature"] = selected.temperature
     if budget > 0:
-        # The OpenAI SDK sends `extra_body` as fields of the request, which is where an output budget belongs: the
-        # Responses API calls it `max_output_tokens`, chat completions `max_tokens`.
-        options["extra_body"] = {"max_output_tokens" if selected.responses_api else "max_tokens": budget}
+        # The OpenAI SDK sends `extra_body` as fields of the request, which is where an output budget belongs.
+        options["extra_body"] = {_budget_field(selected): budget}
     return OpenAIProvider(
         selected.model,
         token,
@@ -233,6 +239,19 @@ def _build_provider(selected: ModelConfig) -> Adapter:
         response=selected.responses_api,
         **options,  # type: ignore[arg-type]
     )
+
+
+def _budget_field(selected: ModelConfig) -> str:
+    """Return the field one endpoint reads the output budget from, by the API it speaks and whose it is.
+
+    The Responses API names it ``max_output_tokens``. Chat completions has two spellings: OpenAI's own address — an
+    entry that names no ``base_url`` — takes ``max_completion_tokens``, which its reasoning models demand and its older
+    ones accept, while the compatible endpoints (DeepSeek, GLM, a local server) take ``max_tokens``. A compatible
+    endpoint that also refuses ``max_tokens`` sets ``max_tokens = 0`` and keeps its own default.
+    """
+    if selected.responses_api:
+        return "max_output_tokens"
+    return "max_completion_tokens" if selected.base_url is None else "max_tokens"
 
 
 class _ContextReportAdapter(ContextReportService):
