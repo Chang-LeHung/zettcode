@@ -24,7 +24,7 @@ dependencies = [
   # Imported directly (the command, the plugin base classes). The plugin API this release uses — `PluginContext`,
   # `TuiPlugin`, the three groups — is new in 0.3, and the 0.2 line still spells it `TerminalPlugin` /
   # `TerminalContainer`, so the floor is the 0.3 line and the cap the one after it.
-  "zettcode-plugin-api>=0.4.5,<0.5",
+  "zettcode-plugin-api>=0.4.6,<0.5",
   # Imported directly for the extension hooks and message types; the floor zettcode itself asks for, so an
   # environment carries one zett-agent.
   "zett-agent>=0.2.10,<0.3",

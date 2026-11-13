@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   # The plugin base classes, and the factory the extension is built from (`engine.extensions.guidance`).
-  "zettcode-engine>=0.4.5,<0.5",
+  "zettcode-engine>=0.4.6,<0.5",
   # The type the factory returns; the module is only imported by the type checker.
   "zett-agent>=0.2.10,<0.3",
 ]

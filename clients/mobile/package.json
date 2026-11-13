@@ -1,6 +1,6 @@
 {
   "name": "zettcode-mobile",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "The ZettCode Android app: a WebView shell that opens the gateway page for a chosen server",
   "license": "MIT",
