@@ -59,7 +59,7 @@ python -m zettcode daemon spawn --name builder --title "tool builder" --permissi
 下图里七个智能体正在一起规划、评审和测试这个工具，任意一条消息都可以回放。
 
 <p align="center">
-  <img src="docs/public/demo/graph.gif" width="760" alt="Graph 页面：一个群里的八个会话，消息在它们之间流动" />
+  <img src="docs/public/demo/graph.gif" width="720" alt="Graph 页面：一个群里的八个会话，消息在它们之间流动" />
 </p>
 
 ## 先跑起来
