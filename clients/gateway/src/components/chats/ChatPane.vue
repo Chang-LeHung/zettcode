@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { t } from "../../i18n";
+import { attachPull, THRESHOLD, type Pull } from "../../lib/pull";
 import { go, route } from "../../stores/route";
-import { lobby } from "../../stores/threads";
+import { loadThreads, lobby } from "../../stores/threads";
+import { loadGraph } from "../../stores/graph";
 import { chat } from "../../stores/chat";
 import { groupArg, groupList, membersOf } from "../../stores/groups";
 import type { Thread } from "../../types";
@@ -12,7 +14,7 @@ import GroupRow from "../groups/GroupRow.vue";
 import ChatRow from "./ChatRow.vue";
 import Icon from "../common/Icon.vue";
 import NewGroupSheet from "../groups/NewGroupSheet.vue";
-import { openSheet } from "../../stores/ui";
+import { openSheet, toast } from "../../stores/ui";
 import SearchBox from "./SearchBox.vue";
 import Skeleton from "../common/Skeleton.vue";
 import { search } from "./search";
@@ -48,6 +50,30 @@ const daemons = computed(() => rest.value.filter((thread) => thread.kind === "da
 const firstOffline = computed(() => daemons.value.find((thread) => !thread.online)?.id ?? "");
 const others = computed(() => rest.value.filter((thread) => thread.kind !== "daemon"));
 const open = computed(() => (route.nav === "chats" ? route.arg : chat.id));
+
+// Pull the list down on a phone to read it again, which is what a person does when it looks out of date.
+const list = ref<HTMLElement | null>(null);
+const pull = ref<Pull | null>(null);
+const refreshing = ref(false);
+const indicator = computed(() => (refreshing.value ? THRESHOLD / 2 : (pull.value?.distance ?? 0)));
+let detach: (() => void) | undefined;
+onMounted(() => {
+  if (!list.value) return;
+  detach = attachPull(list.value, {
+    change: (next) => (pull.value = next),
+    refresh: async () => {
+      refreshing.value = true;
+      try {
+        await Promise.all([loadThreads(), loadGraph()]);
+      } catch {
+        toast(t("Could not refresh."), "bad");
+      } finally {
+        refreshing.value = false;
+      }
+    },
+  });
+});
+onBeforeUnmount(() => detach?.());
 </script>
 
 <template>
@@ -58,7 +84,10 @@ const open = computed(() => (route.nav === "chats" ? route.arg : chat.id));
   </PaneHeader>
   <SearchBox v-model="search" />
   <ConnectionBanner />
-  <div class="pane-list">
+  <div ref="list" class="pane-list" :class="{ pulling: pull !== null }">
+    <div class="pull-indicator" :style="{ height: `${indicator}px` }" aria-hidden="true">
+      <span v-if="refreshing" class="spin" /><Icon v-else-if="indicator > 0" name="chevron" size="sm" :class="{ ready: pull?.ready }" />
+    </div>
     <Skeleton v-if="!lobby.loaded" kind="rows" :count="8" />
     <div v-else-if="!lobby.threads.length && !groupList.length" class="empty empty-card">
       <b>{{ t("No sessions yet") }}</b>
@@ -98,6 +127,11 @@ const open = computed(() => (route.nav === "chats" ? route.arg : chat.id));
 </template>
 
 <style>
+.pull-indicator { flex: none; display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--muted); }
+.pane-list:not(.pulling) .pull-indicator { transition: height 0.18s ease; }
+.pull-indicator svg { transform: rotate(90deg); transition: transform 0.15s ease, color 0.15s ease; }
+.pull-indicator svg.ready { color: var(--accent); transform: rotate(-90deg); }
+.pane-list { overscroll-behavior-y: contain; }
 .pane-toggle { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; color: var(--muted); }
 .pane-toggle .pane-chevron { margin-left: auto; transition: transform 0.18s ease; }
 .pane-toggle .pane-chevron.open { transform: rotate(90deg); }

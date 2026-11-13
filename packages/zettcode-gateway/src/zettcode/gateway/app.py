@@ -541,6 +541,14 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
             headers={"cache-control": "no-cache"},
         )
 
+    async def worker(_: Request) -> Response:
+        script = static / "sw.js"
+        if not script.is_file():
+            return PlainTextResponse("", status_code=404)
+        # Served from the root so its scope is the whole page, and never cached: a browser checks it afresh anyway, and
+        # an old worker must not outlive the page it belongs to.
+        return FileResponse(script, media_type="text/javascript", headers={"cache-control": "no-cache"})
+
     # -- the event socket -------------------------------------------------------------------------
     async def events(websocket: WebSocket) -> None:
         protocols = offered(websocket)
@@ -586,6 +594,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
     routes = [
         Route("/", index),
         Route("/manifest.webmanifest", manifest),
+        Route("/sw.js", worker),
         Route("/api/session", api(session, public=True)),
         Route("/api/login", api(login, public=True), methods=["POST"]),
         Route("/api/logout", api(logout, public=True), methods=["POST"]),
