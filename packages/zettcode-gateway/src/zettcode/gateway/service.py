@@ -1025,6 +1025,54 @@ class Gateway:
         await self.refresh()
         return {"result": said}
 
+    async def restart(self, session_id: str) -> dict[str, Any]:
+        """Start a stopped daemon again, on its own conversation, as it was: its folder, model, level and label.
+
+        This is what the page's one-click Restart does. Changing any of those is the New form's job (it can be filled in
+        from the daemon). A model that has since been removed from the configuration is replaced by the default one,
+        and the answer says so in ``note``, rather than refusing to start an agent the person only wants back.
+        """
+        if not SESSION_ID.match(session_id):
+            raise GatewayError(400, "invalid", "A daemon is named by its session id")
+        daemon = next((item for item in self.backend.daemons() if item.session_id == session_id), None)
+        if daemon is None:
+            raise GatewayError(
+                404, "not_found", "There is no record of this daemon on the machine; start one from New instead"
+            )
+        if daemon.status != "dead":
+            raise GatewayError(409, "running", "This daemon is not stopped")
+        if not daemon.workspace:
+            raise GatewayError(409, "no_workspace", "This daemon never recorded its folder; start it again from New")
+        try:
+            await self.backend.history(session_id, daemon.workspace)
+        except SessionNotFoundError:
+            # A session is stored when its first message is, so a daemon that was stopped before anyone wrote to it has
+            # nothing to continue. Starting one fresh would be a different session under the same name; say so instead.
+            raise GatewayError(
+                409,
+                "nothing_to_resume",
+                "It was stopped before it had a conversation, so there is nothing to continue. Delete it and start a "
+                "new one from New",
+            ) from None
+        except (ZettCodeError, OSError):
+            pass  # an unreadable store is reported by the start itself, with what the daemon said
+        form: dict[str, Any] = {
+            "workspace": daemon.workspace,
+            "permission": daemon.permission,
+            "name": daemon.name,
+            "resume": session_id,
+        }
+        known = {item.name for item in self.backend.models()}
+        note = ""
+        if daemon.model and daemon.model in known:
+            form["model"], form["effort"] = daemon.model, daemon.effort
+        elif daemon.model:
+            note = f"The model {daemon.model!r} is no longer configured, so it started on the default one"
+        answer = await self.spawn(form)
+        if note:
+            answer["note"] = note
+        return answer
+
     async def delete(self, session_id: str) -> dict[str, str]:
         """Remove a stopped daemon for good: its record and its conversation."""
         if not SESSION_ID.match(session_id):

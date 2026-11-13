@@ -41,6 +41,9 @@ export const gateway = {
   spawn: (form: Partial<SpawnForm>) => request<SpawnReply>("POST", "/api/daemons", form),
   stop: (threadId: string, force = false) =>
     request<{ result: string }>("POST", `/api/daemons/${id(threadId)}/stop`, { force }),
+  /** Start a stopped daemon again as it was, on its own conversation. `note` says when it could not keep something (a removed model). */
+  restart: (threadId: string) =>
+    request<{ thread: Thread | null; note?: string }>("POST", `/api/daemons/${id(threadId)}/restart`, {}),
   remove: (threadId: string) => request<{ result: string }>("DELETE", `/api/daemons/${id(threadId)}`),
   log: (threadId: string) => request<{ text: string }>("GET", `/api/daemons/${id(threadId)}/log`),
   config: () => request<GatewayConfig>("GET", "/api/config"),

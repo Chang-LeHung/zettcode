@@ -128,6 +128,7 @@ def test_a_read_only_sign_in_reads_everything_but_changes_nothing(parts):
         ("POST", "/api/models"),
         ("POST", "/api/agents"),
         ("POST", "/api/daemons/01d/stop"),
+        ("POST", "/api/daemons/01d/restart"),
         ("DELETE", "/api/daemons/01d"),
     ):
         response = client.request(method, path, json={})

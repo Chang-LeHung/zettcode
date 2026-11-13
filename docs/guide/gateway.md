@@ -101,7 +101,12 @@ are not, each group with the latest activity first. Group chats are listed above
 read what was said in it, see its members and who is online, and write to it (writing adds the gateway to the group
 if it is not in it). A daemon can be started and stopped from it — a daemon that is working asks you to confirm
 before it is stopped — and a stopped one stays in the list, offline, until you delete it, which removes it and its
-conversation for good. Any of them can be talked to as a contact: what you type is sent as a message from the
+conversation for good. A stopped daemon has a **Restart it** button under its conversation (and in the chat's `⋯`
+menu, and beside it in a group's member list): one press starts it again on the same conversation, with the folder,
+model, reasoning level, shell level and label it had. **Change settings** (or `⋯` → *Change settings and restart*)
+opens the New form filled in from it instead. A daemon stopped before anyone wrote to it has no conversation to
+continue, so it can only be deleted and started anew; one that was set to the full shell level needs the gateway to
+have allowed that when it started, like any new daemon. Any of them can be talked to as a contact: what you type is sent as a message from the
 gateway, and what the session says comes back into the same conversation. A message from the page waits
 for the session's current request to end: the page does not show that request live, so it never changes
 one you cannot watch. (The terminal asks whether to steer; the page simply waits.) The gateway is a session of
