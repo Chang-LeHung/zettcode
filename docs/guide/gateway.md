@@ -117,7 +117,10 @@ message (or focus it with Tab and press Enter) to jump to the message it came fr
 the messages loaded on the page, as whole words, so two messages that said the same thing are told apart only by being
 nearer, a quote of only a couple of letters is too small to point at anything, and one that has scrolled out of what is
 loaded (use **Show earlier messages**) or was never said here answers "The quoted message is not on this page."
-**Ctrl/Cmd+F** searches the conversation, and typing `@` in a group lists the members you can address.
+**Ctrl/Cmd+F** searches the conversation, and typing `@` in a group lists the members you can address. A group shows
+a divider where the day changes (Today, Yesterday, the weekday, then the date). Scrolled up, a round button takes you
+back to the newest message, with a count of what arrived meanwhile. A single conversation's history carries no times,
+so it has no day dividers.
 
 **Pictures.** A chat with a daemon has an attach button, and a picture can also be pasted or dropped on the
 composer: up to four per message, 4 MiB each and 8 MiB together. A large picture is shrunk in the browser to what a

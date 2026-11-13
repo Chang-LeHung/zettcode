@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { t } from "../../i18n";
+import { currentLanguage, t } from "../../i18n";
 import Skeleton from "../common/Skeleton.vue";
 import { clockTime } from "../../lib/format";
 import { copyText } from "../../lib/clipboard";
@@ -22,6 +22,7 @@ import InviteSheet from "./InviteSheet.vue";
 import { confirmAction, showMenu } from "../sheets/sheets";
 import { backspaceWhole } from "../../lib/erase";
 import { longPress } from "../../lib/press";
+import { dayName, sameDay } from "../../lib/day";
 
 const props = defineProps<{ name: string }>();
 
@@ -44,6 +45,8 @@ const replyKey = computed(() => `#${props.name}`);
 const field = ref<HTMLTextAreaElement | null>(null);
 const scroller = ref<HTMLElement | null>(null);
 const following = ref(true);
+/** Messages that came in at the bottom while the reader was scrolled up reading: counted on the "newest" button. */
+const unseen = ref(0);
 const typesByEnter = !matchMedia("(pointer: coarse)").matches;
 
 interface Line {
@@ -53,9 +56,17 @@ interface Line {
   senderId: string;
   text: string;
   time: string;
+  /** Set on the first message of a calendar day: the divider drawn above it ("Today", "Yesterday", a weekday, a date). */
+  day?: string;
   /** The message follows another from the same sender within a moment: no name and no avatar again. */
   cont: boolean;
   tail: boolean;
+}
+
+/** The divider's words for the day of `ms`: today and yesterday are translated, the rest is the reader's own calendar. */
+function dayLabel(ms: number): string {
+  const day = dayName(ms, Date.now(), currentLanguage() === "zh" ? "zh-CN" : undefined);
+  return day.kind === "today" ? t("Today") : day.kind === "yesterday" ? t("Yesterday") : day.text;
 }
 
 const lines = computed<Line[]>(() => {
@@ -72,8 +83,9 @@ const lines = computed<Line[]>(() => {
       senderId: message.from.session_id,
       text: message.text,
       time: clockTime(message.ts * 1000),
-      cont: same(previous, message),
-      tail: !same(message, next),
+      day: previous && sameDay(previous.ts * 1000, message.ts * 1000) ? undefined : dayLabel(message.ts * 1000),
+      cont: same(previous, message) && sameDay(previous!.ts * 1000, message.ts * 1000),
+      tail: !same(message, next) || !sameDay(message.ts * 1000, next!.ts * 1000),
     });
   });
   return found;
@@ -87,12 +99,25 @@ function toBottom(smooth: boolean): void {
   void nextTick(() => scroller.value?.scrollTo({ top: scroller.value.scrollHeight, behavior: smooth ? "smooth" : "auto" }));
 }
 
+function onScroll(): void {
+  following.value = nearBottom();
+  if (following.value) unseen.value = 0;
+}
+
 watch(() => props.name, (name) => void openGroup(name), { immediate: true });
+let lastId = 0;
 watch(
   () => groupChat.messages.length,
   (now, before) => {
     // Older messages added above are not a reason to move; a new one at the bottom is, for a reader who is following.
-    if (before === 0 || following.value) toBottom(before !== 0);
+    const fresh = lastId ? groupChat.messages.filter((message) => message.id > lastId).length : 0;
+    lastId = groupChat.messages[now - 1]?.id ?? 0;
+    if (before === 0 || following.value) {
+      unseen.value = 0;
+      toBottom(before !== 0);
+    } else {
+      unseen.value += fresh;
+    }
   },
   { flush: "post" },
 );
@@ -349,16 +374,16 @@ watch(text, () => void nextTick(resize));
     </header>
     <div class="group-body">
       <div class="chat-bg group-main">
-        <div ref="scroller" class="messages" role="log" aria-live="polite" @scroll.passive="following = nearBottom()">
+        <div ref="scroller" class="messages" role="log" aria-live="polite" @scroll.passive="onScroll">
           <div class="messages-body">
             <Skeleton v-if="groupChat.loading" kind="bubbles" :count="7" />
             <div v-else-if="groupChat.error" class="errcard">{{ groupChat.error }}</div>
             <button v-if="groupChat.more" class="btn sm ghost messages-more" :disabled="groupChat.loadingOlder" @click="loadEarlierGroup">
               <span v-if="groupChat.loadingOlder" class="spin" />{{ t("Show earlier messages") }}
             </button>
+            <template v-for="line in lines" :key="line.id">
+            <div v-if="line.day" class="day-sep" role="separator"><span>{{ line.day }}</span></div>
             <div
-              v-for="line in lines"
-              :key="line.id"
               class="msg"
               :class="[line.mine ? 'out' : 'in', { cont: line.cont }]"
               :data-row="line.id"
@@ -391,6 +416,7 @@ watch(text, () => void nextTick(resize));
                 <div v-else class="msg-avatar" />
               </template>
             </div>
+            </template>
             <div v-if="!groupChat.loading && !lines.length && !groupChat.error" class="group-empty">
               <Avatar :thread="{ id: `#${name}`, name, kind: 'external', status: 'idle' }" size="xl" />
               <b>#{{ name }}</b>
@@ -399,6 +425,10 @@ watch(text, () => void nextTick(resize));
             </div>
           </div>
         </div>
+        <button v-show="!following" type="button" class="fab" :aria-label="t('Scroll to the newest message')" @click="toBottom(true)">
+          <Icon name="down" />
+          <span v-if="unseen" class="badge">{{ unseen }}</span>
+        </button>
       </div>
       <GroupMembers v-if="showMembers" :members="members" :can-invite="joined" @invite="invite" @remove="takeOut" @close="showMembers = false" />
     </div>
@@ -475,6 +505,8 @@ watch(text, () => void nextTick(resize));
 .group-body { flex: 1; min-height: 0; display: flex; }
 .group-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .group-who { display: block; font-size: 0.8rem; font-weight: 650; color: var(--accent); margin-bottom: 2px; }
+.day-sep { align-self: center; margin: 12px 0 8px; }
+.day-sep span { display: inline-block; padding: 3px 12px; border-radius: 12px; background: var(--chip-bg); color: #fff; font-size: 0.78rem; }
 .group-time { display: block; text-align: right; margin-top: 3px; font-size: 0.7rem; opacity: 0.6; user-select: none; }
 .msg.out .group-time { color: var(--out-meta); opacity: 1; }
 .group-empty {
