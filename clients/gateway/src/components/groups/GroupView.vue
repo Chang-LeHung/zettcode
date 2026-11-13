@@ -240,14 +240,15 @@ function onKey(event: KeyboardEvent): void {
 /** The ``@word`` the caret is at the end of, when the caret is in one: where it starts and what has been typed of it. */
 const mention = ref<{ start: number; query: string } | null>(null);
 const active = ref(0);
-/** The members an ``@`` can address: on the roster (so they have a handle), and not the person typing. */
+/** The members an ``@`` can address: everyone but the person typing, with a name to be called by. An offline member is
+ * listed too, marked as offline: the text still names them, even though nothing is delivered until they are back. */
+const others = computed(() => members.value.filter((member) => !member.me && member.handle));
 const choices = computed(() => {
   const found = mention.value;
   if (!found) return [];
   const query = found.query.toLowerCase();
-  return members.value.filter(
-    (member) =>
-      !member.me && member.handle && (member.handle.toLowerCase().includes(query) || member.name.toLowerCase().includes(query)),
+  return others.value.filter(
+    (member) => member.handle.toLowerCase().includes(query) || member.name.toLowerCase().includes(query),
   );
 });
 
@@ -256,7 +257,7 @@ function mentionAtCaret(): { start: number; query: string } | null {
   const el = field.value;
   if (!el || el.selectionStart !== el.selectionEnd) return null;
   const before = el.value.slice(0, el.selectionStart);
-  const found = /(^|\s)@([\w-]*)$/.exec(before);
+  const found = /(^|\s)@([\p{L}\p{N}_-]*)$/u.exec(before);
   const word = found?.[2];
   return word === undefined ? null : { start: before.length - word.length - 1, query: word };
 }
@@ -375,6 +376,9 @@ watch(text, () => void nextTick(resize));
         <span v-if="groupChat.sending" class="spin" />{{ groupChat.sending ? t("Joining…") : t("Join group") }}
       </button>
     </div>
+    <div v-if="joined && mention && !choices.length" class="mention-list mention-none" role="status">
+      {{ others.length ? t("No member matches.") : t("There is nobody else in this group to mention.") }}
+    </div>
     <div
       v-if="joined && mention && choices.length"
       id="mention-list"
@@ -399,6 +403,7 @@ watch(text, () => void nextTick(resize));
         <Avatar :thread="{ id: member.id, name: member.name, kind: 'external', status: 'idle' }" size="sm" />
         <span class="mention-name">{{ member.name }}</span>
         <span class="mention-handle">@{{ member.handle }}</span>
+        <span v-if="!member.online" class="mention-offline">{{ t("offline") }}</span>
         <span class="mention-state" :class="member.status" />
       </button>
     </div>
@@ -450,6 +455,8 @@ watch(text, () => void nextTick(resize));
 .mention-row.on { background: var(--surface-2); }
 .mention-name { font-weight: 600; }
 .mention-handle { color: var(--muted); font-size: 0.85rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mention-none { color: var(--muted); font-size: 0.88rem; padding-top: 10px; padding-bottom: 10px; }
+.mention-offline { font-size: 0.74rem; color: var(--muted); padding: 1px 7px; border-radius: 9px; background: var(--surface-2); }
 .mention-state { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .mention-state.idle { background: var(--ok, #3bb273); }
 .mention-state.working { background: var(--accent); }

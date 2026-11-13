@@ -4,6 +4,7 @@
 import { computed, reactive } from "vue";
 import { gateway } from "../api/gateway";
 import { ApiError } from "../api/http";
+import { mentionName } from "../lib/messages";
 import type { GraphGroup, GraphMessage } from "../types";
 import { graph, loadGraph, onGraphApplied } from "./graph";
 import { lobby, threadOf } from "./threads";
@@ -27,7 +28,7 @@ export interface Member {
   me: boolean;
   /** The gateway lists a conversation with it, so the row can open one. */
   chat: boolean;
-  /** What follows an ``@`` to address it: the roster's handle. Empty when it is not on the roster, so it cannot be reached. */
+  /** What follows an ``@`` to address it: the roster's handle, or the one the conversation list kept for an offline member. Empty when neither knows it. */
   handle: string;
 }
 
@@ -62,7 +63,9 @@ export function memberOf(id: string): Member {
     status: !online ? "offline" : live.status === "working" ? "working" : "idle",
     me: id === meId(),
     chat: thread !== undefined,
-    handle: live?.handle ?? "",
+    // The live roster's handle; an offline member has none (the roster has dropped it), so it is called by its title,
+    // which is one of the names the broker also accepts, written as one word.
+    handle: live?.handle || thread?.handle || mentionName(thread?.title || thread?.name || ""),
   };
 }
 
