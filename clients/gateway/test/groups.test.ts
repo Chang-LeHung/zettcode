@@ -94,6 +94,22 @@ test("members come online first, named from the conversation list, then the rost
   assert.equal(members.find((member) => member.id === "c")?.chat, true);
 });
 
+test("an offline member can be mentioned by its title as one word, and an online one by its roster handle", () => {
+  // As the gateway really lists a stopped daemon: no handle (the roster dropped it), a title.
+  applyThreads([
+    { ...thread("p", "planner"), handle: "", title: "Release Planner (v2)", online: false },
+    { ...thread("n", "nameless"), handle: "", title: "", name: "", online: false },
+  ]);
+  start([{ name: "team", members: ["a", "p", "n"], created: 1 }]);
+
+  const byId = Object.fromEntries(membersOf(groupList.value[0]!).map((member) => [member.id, member]));
+
+  assert.equal(byId.a?.handle, "alpha", "online: the roster's handle");
+  assert.equal(byId.p?.handle, "Release-Planner-v2", "offline: its title, written as one word");
+  assert.equal(byId.p?.online, false);
+  assert.equal(byId.n?.handle, "", "nothing to call it by: it is not offered, and the picker says so");
+});
+
 test("opening a group reads its newest messages, and earlier ones are added in front from the oldest held", async () => {
   start([{ name: "team", members: ["a"], created: 1 }]);
   await withPages(

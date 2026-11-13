@@ -1,7 +1,7 @@
 import "./dom-setup";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attributed, findQuoted, matchingKeys, quoted, safeName, visibleText, withQuote } from "../src/lib/messages";
+import { attributed, findQuoted, matchingKeys, mentionName, quoted, safeName, visibleText, withQuote } from "../src/lib/messages";
 import type { Row } from "../src/lib/rows";
 import { closeFind, currentKey, find, search, step } from "../src/stores/chatSearch";
 
@@ -178,4 +178,16 @@ test("a name cannot carry markup, a second speaker or a link into a quote that a
   assert.ok(safeName("a".repeat(200)).length <= 40);
   // The text stays markdown by design; only the name is cleaned.
   assert.equal(attributed("builder", "**bold** `code`"), "**builder**: **bold** `code`");
+});
+
+test("a title becomes one word the @ picker can hold: letters and digits kept, the rest a single dash, none at the ends", () => {
+  assert.equal(mentionName("planner"), "planner");
+  assert.equal(mentionName("Release Planner (v2)"), "Release-Planner-v2");
+  assert.equal(mentionName("  --a  b--  "), "a-b");
+  assert.equal(mentionName("规划 助手"), "规划-助手", "other scripts are kept");
+  assert.equal(mentionName("snake_case"), "snake_case");
+  assert.equal(mentionName("!!!"), "");
+  assert.equal(mentionName(""), "");
+  // The picker reads an @word of [\w-]; a name it made must be read back whole.
+  assert.match(`@${mentionName("a b, c")} `, /^@[\w-]+ $/);
 });

@@ -41,6 +41,19 @@ export function withQuote(draft: string, text: string): string {
   return `${draft}${gap}${quoted(text)}`;
 }
 
+/**
+ * A title as one word to follow an ``@``: letters and digits kept, anything else between them made into one dash, and no
+ * dash at either end. The picker finds an ``@word`` of letters, digits, ``_`` and ``-`` (any script), so a name with a space
+ * or a punctuation mark in it would end the word early and leave half of it in the message. An empty result means the title
+ * has nothing to call it by.
+ */
+export function mentionName(title: string): string {
+  return title
+    .trim()
+    .replace(/[^\p{L}\p{N}_]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 /** The longest name a quote carries, so a very long title does not fill the quote. */
 const NAME_LIMIT = 40;
 
