@@ -322,6 +322,8 @@ class Gateway:
         self._senders: dict[str, str] = {}
         self._seen: dict[str, int] = self._load_seen()
         self._created: set[str] = set()
+        #: Daemons a restart is starting right now, so a second press is told so rather than racing the first.
+        self._restarting: set[str] = set()
         self._sent: deque[float] = deque()
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
         self._lock = asyncio.Lock()
@@ -1062,13 +1064,26 @@ class Gateway:
             "name": daemon.name,
             "resume": session_id,
         }
-        known = {item.name for item in self.backend.models()}
+        known = {item.name: item for item in self.backend.models()}
         note = ""
         if daemon.model and daemon.model in known:
-            form["model"], form["effort"] = daemon.model, daemon.effort
+            form["model"] = daemon.model
+            if daemon.effort and daemon.effort in known[daemon.model].efforts:
+                form["effort"] = daemon.effort
+            elif daemon.effort:
+                note = (
+                    f"{daemon.model} no longer has the reasoning level {daemon.effort!r}, "
+                    "so it started at that model's own level"
+                )
         elif daemon.model:
             note = f"The model {daemon.model!r} is no longer configured, so it started on the default one"
-        answer = await self.spawn(form)
+        if session_id in self._restarting:
+            raise GatewayError(409, "starting", "This daemon is already being started")
+        self._restarting.add(session_id)
+        try:
+            answer = await self.spawn(form)
+        finally:
+            self._restarting.discard(session_id)
         if note:
             answer["note"] = note
         return answer

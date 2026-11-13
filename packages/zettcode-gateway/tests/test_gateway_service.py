@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from gateway_fakes import GATEWAY_ID, FakeBackend
+from gateway_fakes import GATEWAY_ID, FakeBackend, model
 from zettcode.gateway import service as service_module
 from zettcode.gateway.agents import AgentManager, AgentPlugin
 from zettcode.gateway.chat import REPLY_REQUEST, strip_reply_request
@@ -540,6 +540,50 @@ async def test_a_restart_says_what_it_could_not_do_instead_of_starting_something
             await gateway.restart(session_id)
         assert (refused.value.status, refused.value.code) == (status, code), session_id
     assert backend.spawned == []
+
+
+async def test_a_restart_keeps_a_reasoning_level_the_model_still_has_and_drops_one_it_no_longer_does(tmp_path):
+    work = str(tmp_path / "work")
+    for efforts, kept in ((("low", "high"), "high"), (("low",), None)):
+        gateway, backend = await make(tmp_path)
+        backend.model_list = [model("fast", *efforts)]
+        info = backend.add_daemon(DAEMON, work, name="lvl", status="dead", online=False)
+        backend.daemon_list[DAEMON] = dataclasses.replace(info, effort="high")
+        backend.histories[DAEMON] = []
+        await gateway.refresh()
+
+        answer = await gateway.restart(DAEMON)
+
+        assert backend.spawned[0]["effort"] == kept and backend.spawned[0]["model"] == "fast"
+        assert ("note" in answer) is (kept is None)
+        if kept is None:
+            assert "high" in answer["note"]
+
+
+async def test_a_second_restart_while_the_first_is_starting_is_told_so_and_starts_nothing_twice(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.add_daemon(DAEMON, str(tmp_path / "work"), name="slow", status="dead", online=False)
+    backend.histories[DAEMON] = []
+    await gateway.refresh()
+    gate = asyncio.Event()
+    real_spawn = backend.spawn
+
+    async def slow_spawn(*args: object, **kwargs: object):
+        await gate.wait()
+        return await real_spawn(*args, **kwargs)  # type: ignore[arg-type]
+
+    backend.spawn = slow_spawn  # type: ignore[method-assign]
+    first = asyncio.create_task(gateway.restart(DAEMON))
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+    with pytest.raises(GatewayError) as second:
+        await gateway.restart(DAEMON)
+    gate.set()
+    await first
+
+    assert (second.value.status, second.value.code) == (409, "starting")
+    assert len(backend.spawned) == 1
 
 
 async def test_a_restart_of_a_daemon_that_never_had_a_conversation_says_so_instead_of_starting_another(tmp_path):

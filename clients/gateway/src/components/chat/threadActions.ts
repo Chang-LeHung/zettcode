@@ -6,6 +6,7 @@ import { ApiError } from "../../api/http";
 import { t } from "../../i18n";
 import { copyText } from "../../lib/clipboard";
 import { auth } from "../../stores/auth";
+import { settings } from "../../stores/config";
 import { go, route } from "../../stores/route";
 import { fromThread } from "../../stores/spawn";
 import { loadThreads } from "../../stores/threads";
@@ -51,10 +52,15 @@ async function deleteDaemon(thread: Thread): Promise<void> {
   if (route.nav === "chats" && route.arg === thread.id) go("chats");
 }
 
-/** Whether a stopped daemon can be started again with one press: it has a record, nothing else has its session open, and the
- * reader may change things. (A session that is merely offline has no record to start from; it comes back by being resumed.) */
-export const canRestart = (thread: Thread | undefined): thread is Thread =>
+/** Whether a stopped daemon can be started again at all from here: it has a record, nothing else has its session open, and
+ * the reader may change things. (A session that is merely offline has no record to start from.) */
+export const canStartAgain = (thread: Thread | undefined): thread is Thread =>
   !!thread && thread.kind === "daemon" && thread.status === "dead" && !thread.locked && !auth.readOnly;
+
+/** Whether the one-press Restart is offered: as above, and not for a daemon that ran at the full shell level on a gateway
+ * that was started with `--no-full`, which would refuse it. That one can still be changed and restarted from the form. */
+export const canRestart = (thread: Thread | undefined): thread is Thread =>
+  canStartAgain(thread) && !(thread.permission === "full" && settings.data?.allow_full === false);
 
 /** The daemons being started right now, for a spinner and so that a second press does nothing. */
 export const restarting = reactive(new Set<string>());
@@ -66,7 +72,8 @@ export async function restartNow(thread: Thread): Promise<boolean> {
   try {
     const answer = await gateway.restart(thread.id);
     await loadThreads();
-    toast(answer.note ?? t("Started {name}", { name: thread.name }), answer.note ? "bad" : undefined);
+    // The daemon is back either way; a note only says what it could not keep, so it is not styled as a failure.
+    toast(answer.note ?? t("Started {name}", { name: thread.name }));
     return true;
   } catch (error) {
     toast(error instanceof ApiError ? error.message : String(error), "bad");
