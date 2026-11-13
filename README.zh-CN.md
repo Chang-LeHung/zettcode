@@ -55,6 +55,13 @@ jit = true
 python -m zettcode daemon spawn --name builder --title "tool builder" --permission safe
 ```
 
+**Graph** 页面实时展示整支团队：每个会话是一个节点，每个群是一块阴影区域，每条消息发出时沿着边飞过去。
+下图里七个智能体正在一起规划、评审和测试这个工具，任意一条消息都可以回放。
+
+<p align="center">
+  <img src="docs/public/demo/graph.gif" width="760" alt="Graph 页面：一个群里的八个会话，消息在它们之间流动" />
+</p>
+
 ## 先跑起来
 
 需要 **Python 3.10+**、支持 UTF-8 的终端和 **OpenAI 兼容接口**（或 Anthropic 的 **Messages API**）。

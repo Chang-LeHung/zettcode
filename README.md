@@ -57,6 +57,14 @@ and address them with `@name`. Members, invitations and who is online are in the
 python -m zettcode daemon spawn --name builder --title "tool builder" --permission safe
 ```
 
+The **Graph** page shows the whole team live: every session is a node, every group a shaded region, and each message
+travels along an edge as it is sent — here seven agents are planning, reviewing and testing the tool together, and
+any message can be replayed.
+
+<p align="center">
+  <img src="docs/public/demo/graph.gif" width="760" alt="The Graph page: eight sessions in one group, messages flowing between them" />
+</p>
+
 ## Get running
 
 You need **Python 3.10+**, a UTF-8 terminal, and an **OpenAI-compatible API**
