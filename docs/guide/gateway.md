@@ -46,6 +46,31 @@ gateway.
   page of your own, and also needs a token. The Android app loads the gateway's page at its own origin and needs no
   entry here.
 
+### A read-only token
+
+`--read-token` (or `$ZETTCODE_GATEWAY_READ_TOKEN`) adds a second token that signs in **read-only**: whoever has it can
+open the page, read every conversation, group and the graph, and watch live, but cannot change anything. Every change
+is refused with `read_only` — sending, creating or deleting a group, starting, stopping or deleting a daemon, editing
+models or agents — and the page hides those controls and says so. A reader may still mark a thread as seen and sign
+out, and cannot use the folder picker, since it lists directories on the machine and belongs to starting a daemon.
+
+Give it to someone who should watch the work, not steer it. It needs the main token (without one there is nobody to be
+read-only next to) and must differ from it; either mistake stops the gateway from starting. Prefer the environment
+variable: an argument is visible to every user of the machine in `ps`. A restart keeps it like the main token, and
+changing a token ends every sign-in made with the old one.
+
+### The audit log
+
+The gateway appends one JSON line to `audit.jsonl` in its folder (`~/.zettcode/gateway` by default) for every
+sign-in, sign-out and refused or failed attempt, every connection of the live event socket, and every change made
+through it, with the time, whether it was the read or the write token, the address it came from, the route and the
+answer. Plain reads are not logged. It records **that** something happened, never what: no token, no cookie, and no
+message text. A change that answered with a server error carries `"outcome": "unknown"`, because the gateway cannot
+tell whether it took effect; do not read a 500 as "nothing happened". The file is readable by its owner only and moves
+to `audit.jsonl.1` once it passes 5 MB, so it holds the most recent stretch, not all of history. A refused socket is
+logged at most once a minute per address, so a client reconnecting in a loop cannot push the sign-ins out of it. If the
+file cannot be written the gateway keeps answering and says so once in its log.
+
 ## What the page can do
 
 The page lists the daemons and the other sessions this machine has: the ones that are online first, then the ones that
