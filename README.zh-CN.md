@@ -2,8 +2,8 @@
   <img src="clients/vscode/media/logo.svg" width="120" alt="ZettCode 吉祥物：骑着剑飞过月亮的机器人" />
 </p>
 <h1 align="center">ZettCode</h1>
-<p align="center"><strong>你的终端。你的编码伙伴。</strong></p>
-<p align="center">专注的编码智能体：读懂项目、展示过程，把决定权留给你。</p>
+<p align="center"><strong>缺什么工具，就自己造什么工具的编码智能体。</strong></p>
+<p align="center">即时（JIT）Harness：任务需要一个你没有的工具时，智能体当场写好、加载、运行——在沙箱子进程里，过程公开，由你掌控。</p>
 <p align="center">
   <a href="README.md">English</a> · <strong>简体中文</strong><br />
   <a href="https://chang-lehung.github.io/zettcode/zh/guide/getting-started">快速开始</a> ·
@@ -16,6 +16,44 @@
   <img src="docs/public/terminal.svg" width="1000" alt="ZettCode 依次展示任务、思考、读文件、改代码、通过的测试和 Markdown 回答" />
 </p>
 <p align="center"><sub>示例对话由 ZettCode 的实际终端组件渲染。</sub></p>
+
+## JIT Harness
+
+多数智能体只带一套固定工具，ZettCode 让模型自己长出工具。开启 harness 后，模型可以新建一个小型 Python 仓库，
+写入工具，`repo_load` 之后在同一轮里直接调用：
+
+1. **写**：工具就是普通 Python，放在 `~/.zettcode/harness/<工作区>/<会话>/`，由 `MANIFEST` 声明。
+2. **载**：`repo_load` 在**子进程**中导入，崩溃或卡死不会拖垮你的会话。
+3. **跑**：模型像调用其他工具一样调用它，每一步都是可展开查看的行。
+4. **受限**：低于 `full` 权限时，它与 `safe` 使用同一个沙箱；`BAN_TOOLS` 文件可以禁止某些工具名。
+
+```toml
+# ~/.zettcode/config.toml
+[harness]
+jit = true
+```
+
+也可以用 `/harness gen` 只在这一次运行中试用。详见[配置参考](https://chang-lehung.github.io/zettcode/zh/guide/config)。
+
+### 后台运行智能体，在群里和它们对话
+
+智能体不必待在你的终端里。启动一个 **daemon**（后台会话），在网关网页里观察它：下图中它被要求造一个
+`find_todos` 工具，写下 `kit/todos.py`、加载并在项目上运行，随后又回答了追问。
+
+<p align="center">
+  <img src="docs/public/demo/daemon.gif" width="800" alt="后台智能体构建、加载并运行 find_todos 工具，再回答追问" />
+</p>
+
+把会话和智能体（包括通过 `zettcode-code-agents` 插件接入的 Codex 与 Claude Code）拉进一个**群**，用 `@名字` 呼叫。
+成员、邀请和在线状态都在同一个页面里。
+
+<p align="center">
+  <img src="docs/public/demo/group.gif" width="800" alt="新建群、@builder 智能体并读到它的回复" />
+</p>
+
+```bash
+python -m zettcode daemon spawn --name builder --title "tool builder" --permission safe
+```
 
 ## 先跑起来
 
