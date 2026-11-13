@@ -108,9 +108,10 @@ one you cannot watch. (The terminal asks whether to steer; the page simply waits
 its own, registered with the broker like a terminal's, so the daemons see a person's messages — not an
 agent's. Its name is `Web gateway`.
 
-**Working with messages.** Hover a message and press its `⋯` button (right-click it, or double-tap on a phone) for
-**Copy text** and **Quote in reply**; the same menu is on messages in a group, where the quote also names who said it.
-A quote is added to what you are writing as ordinary markdown, so the agent reads it too. In a group the quote names who
+**Working with messages.** Hover a message and press its `⋯` button (right-click it, or long-press on a phone) for
+**Copy text** and **Reply**; the same menu is on messages in a group. **Reply** puts a bar above the input showing who
+you are answering and a line of what they said; the `×` on it, Escape, or Backspace in an empty input drops it. When you
+send, the message goes out with that text as a quote followed by yours, as ordinary markdown, so the agent reads it too. In a group the quote names who
 said it; the name is cleaned of markup first, because a title is whatever its owner chose. Click a quote inside a
 message (or focus it with Tab and press Enter) to jump to the message it came from: it is found by its words among
 the messages loaded on the page, as whole words, so two messages that said the same thing are told apart only by being

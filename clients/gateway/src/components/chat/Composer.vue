@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { t } from "../../i18n";
 import { isPicture, prepare, refusal, roomOf } from "../../lib/pictures";
-import { chat, draftEdits, draftOf, sendMessage, setDraft, setWantsReply, wantsReply } from "../../stores/chat";
+import { chat, draftOf, sendMessage, setDraft, setWantsReply, wantsReply } from "../../stores/chat";
 import { loadConfig, settings } from "../../stores/config";
 import { prefs } from "../../stores/prefs";
 import { lobby } from "../../stores/threads";
@@ -11,6 +11,8 @@ import type { Picture, Thread } from "../../types";
 import Icon from "../common/Icon.vue";
 import { confirmAction } from "../sheets/sheets";
 import { backspaceWhole } from "../../lib/erase";
+import { clearReply, replies, withReply } from "../../stores/reply";
+import ReplyBar from "./ReplyBar.vue";
 
 const props = defineProps<{ thread: Thread }>();
 const field = ref<HTMLTextAreaElement | null>(null);
@@ -60,18 +62,14 @@ watch(
     void nextTick(resize);
   },
 );
-// A quote was added to the draft from a message: show it, and put the cursor after it.
+// A message was chosen to reply to: show it above the input, and take focus so the answer can be typed at once.
 watch(
-  () => draftEdits.revision,
-  () => {
-    text.value = draftOf(props.thread.id);
+  () => replies[props.thread.id],
+  (now) => {
+    if (!now) return;
     void nextTick(() => {
       resize();
-      const el = field.value;
-      if (!el) return;
-      el.focus({ preventScroll: true });
-      el.setSelectionRange(el.value.length, el.value.length);
-      el.scrollTop = el.scrollHeight;
+      field.value?.focus({ preventScroll: true });
     });
   },
 );
@@ -137,14 +135,23 @@ async function submit(): Promise<void> {
     confirmed.add(thread.id);
   }
   const sending = pictures.value;
+  const sent = withReply(thread.id, body);
+  clearReply(thread.id);
   text.value = "";
   pictures.value = [];
   // Keep the keyboard up, as a messenger does: a person sending several lines in a row does not want it to drop each time.
   field.value?.focus({ preventScroll: true });
-  await sendMessage(body, wantsReply(thread), sending);
+  await sendMessage(sent, wantsReply(thread), sending);
 }
 
 function onKey(event: KeyboardEvent): void {
+  // The reply bar is one thing above the input: Escape, or Backspace with nothing left to erase, takes it away.
+  const id = props.thread.id;
+  if (replies[id] && !event.isComposing && (event.key === "Escape" || (event.key === "Backspace" && !text.value))) {
+    event.preventDefault();
+    clearReply(id);
+    return;
+  }
   // A quote is one thing in a messenger: Backspace right after it takes all of it, not a character at a time.
   const el = field.value;
   const whole = el && backspaceWhole(event, el);
@@ -163,6 +170,7 @@ function onKey(event: KeyboardEvent): void {
 
 <template>
   <div v-if="budget" class="composer-note">{{ budget }}</div>
+  <ReplyBar v-if="replies[thread.id]" :who="replies[thread.id]!.who" :text="replies[thread.id]!.text" @cancel="clearReply(thread.id)" />
   <div v-if="pictures.length" class="composer-pictures" role="list" :aria-label="t('Pictures to send')">
     <div v-for="(picture, at) in pictures" :key="at" class="composer-picture" role="listitem">
       <img :src="picture.src" :alt="picture.name" />
