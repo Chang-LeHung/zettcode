@@ -222,7 +222,8 @@ def test_the_log_never_holds_a_token_a_cookie_or_what_was_said(parts):
     raw = settings.audit_path.read_text(encoding="utf-8")
 
     assert TOKEN not in raw and READ not in raw and "12345" not in raw and "launch" not in raw
-    assert stat.S_IMODE(os.stat(settings.audit_path).st_mode) == 0o600
+    if os.name != "nt":  # Windows has no permission bits to read back: a file there is always reported as 0o666
+        assert stat.S_IMODE(os.stat(settings.audit_path).st_mode) == 0o600
 
 
 def test_a_refused_socket_in_a_loop_cannot_push_the_sign_ins_out_of_the_log(tmp_path):
