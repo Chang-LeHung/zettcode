@@ -133,7 +133,11 @@ class Auth:
     def issue(self, role: str = "write") -> str:
         """Return a new cookie value for a browser that showed a token of this role."""
         value = secrets.token_urlsafe(32)
-        self._sessions[value] = (self.clock() + COOKIE_SECONDS, role)
+        now = self.clock()
+        # Drop what has run out, so the table holds what can still sign in rather than every login since the start.
+        for stale in [key for key, (expires, _) in self._sessions.items() if expires < now]:
+            del self._sessions[stale]
+        self._sessions[value] = (now + COOKIE_SECONDS, role)
         return value
 
     def revoke(self, value: str | None) -> None:
@@ -200,17 +204,18 @@ def same_origin(connection: HTTPConnection, *, required: bool = False, allowed: 
     return urlsplit(origin).netloc == connection.headers.get("host", "")
 
 
-def refuses_read_only(request: Request) -> bool:
+def refuses_read_only(request: Request, *, reader_may: bool, write_only: bool) -> bool:
     """Return whether a read-only sign-in may not make this request.
 
-    The rule is "any method but these": marking the page as seen (it writes the gateway's own seen file, not the
-    sessions) is something a reader must do, and sign-in and sign-out are public. A GET is let through except the
-    folder picker, which lists directories on the machine and belongs to starting a daemon, which a reader cannot do.
+    The decision is the route's, declared where the route is registered (``api(..., reader_may=True)``), not read off
+    the path: a route added later is refused to a reader unless it says otherwise. The rule is "any method but the
+    routes that say so": marking a thread as seen (it writes the gateway's own seen file, not the sessions) is one, and
+    sign-in and sign-out are public. A GET is let through unless the route is ``write_only``: the folder picker lists
+    directories on the machine and belongs to starting a daemon, which a reader cannot do.
     """
-    path = request.url.path
-    if request.method in ("GET", "HEAD"):
-        return path == "/api/dirs"
-    return not (request.method == "POST" and path.startswith("/api/threads/") and path.endswith("/read"))
+    if write_only:
+        return True
+    return request.method not in ("GET", "HEAD") and not reader_may
 
 
 def offered(connection: HTTPConnection) -> list[str]:
@@ -303,7 +308,9 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
             logger.info("stop", extra={"host": settings.host, "port": settings.port})
 
     # -- plumbing ---------------------------------------------------------------------------------
-    def api(handler: Handler, *, public: bool = False) -> Callable[[Request], Awaitable[Response]]:
+    def api(
+        handler: Handler, *, public: bool = False, reader_may: bool = False, write_only: bool = False
+    ) -> Callable[[Request], Awaitable[Response]]:
         """Wrap an endpoint: check who is asking, run it, and answer a refusal or a fault in the one shape."""
 
         async def route(request: Request) -> Response:
@@ -317,7 +324,11 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
                     request, required=auth.open, allowed=allowed
                 ):
                     raise GatewayError(403, "forbidden", "This request came from another site")
-                if role == "read" and not public and refuses_read_only(request):
+                if (
+                    role == "read"
+                    and not public
+                    and refuses_read_only(request, reader_may=reader_may, write_only=write_only)
+                ):
                     raise GatewayError(403, "read_only", "This sign-in can look but not change anything")
                 result = await handler(request)
                 response = result if isinstance(result, Response) else JSONResponse(result)
@@ -342,6 +353,8 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
                         method=request.method,
                         path=request.url.path,
                         status=status,
+                        # A 5xx on a change means the gateway does not know whether it took effect.
+                        outcome="unknown" if status >= 500 and request.method not in ("GET", "HEAD") else None,
                         client=request.client.host if request.client else None,
                     )
 
@@ -535,7 +548,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         offered_role = auth.role(websocket) or auth.token_role(websocket_token(websocket))
         client = websocket.client.host if websocket.client else None
         if offered_role is None or not same_origin(websocket, required=auth.open, allowed=allowed):
-            audit.record("socket.refused", client=client)
+            audit.record_limited("socket.refused", client or "-", client=client)
             # Accept first: a close before the handshake is an HTTP refusal, which a browser reports as 1006, and the
             # page could not tell a refused token from a dropped network. Echo the offered subprotocol as well: a
             # browser that negotiated one refuses a handshake that comes back without it.
@@ -584,13 +597,13 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/models", api(add_model), methods=["POST"]),
         Route("/api/models/{name:path}", api(change_model), methods=["PATCH"]),
         Route("/api/models/{name:path}", api(remove_model), methods=["DELETE"]),
-        Route("/api/dirs", api(dirs)),
+        Route("/api/dirs", api(dirs, write_only=True)),
         Route("/api/graph", api(graph)),
         Route("/api/graph/timeline", api(timeline)),
         Route("/api/graph/older", api(older)),
         Route("/api/threads", api(threads)),
         Route("/api/threads/{id}", api(thread)),
-        Route("/api/threads/{id}/read", api(read), methods=["POST"]),
+        Route("/api/threads/{id}/read", api(read, reader_may=True), methods=["POST"]),
         Route("/api/threads/{id}/profile", api(profile), methods=["PATCH"]),
         Route("/api/threads/{id}/recheck", api(recheck), methods=["POST"]),
         Route("/api/threads/{id}/send", api(send), methods=["POST"]),

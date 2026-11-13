@@ -141,7 +141,24 @@ def test_a_reader_may_mark_a_thread_seen_and_sign_out_but_not_list_directories(p
 
     assert client.post("/api/threads/01d/read").status_code == 200
     assert client.get("/api/dirs").status_code == 403
+    assert client.head("/api/dirs").status_code == 403
     assert client.post("/api/logout").status_code == 200
+
+
+def test_the_one_thing_a_reader_may_write_is_that_route_alone_not_any_path_that_ends_in_read(parts):
+    client, _ = parts
+    sign_in(client, READ)
+
+    # Neither a sibling shape nor another route ending in /read gets the exception: it belongs to the route, not to the
+    # text of the path.
+    for path in ("/api/threads/01d/x/read", "/api/groups/g/read"):
+        response = client.post(path, follow_redirects=True)
+        assert response.status_code in (403, 404, 405), path
+    # A trailing slash is the router's redirect to the same route, which is then checked like any request.
+    slash = client.post("/api/threads/01d/read/", follow_redirects=False)
+    assert slash.status_code in (307, 308) and slash.headers["location"].endswith("/api/threads/01d/read")
+    assert client.put("/api/threads/01d/read").status_code in (403, 405)
+    assert client.delete("/api/threads/01d/read").status_code in (403, 405)
 
 
 def test_the_write_token_still_does_everything_and_a_read_bearer_cannot_write(parts):
@@ -205,6 +222,50 @@ def test_the_log_never_holds_a_token_a_cookie_or_what_was_said(parts):
 
     assert TOKEN not in raw and READ not in raw and "12345" not in raw and "launch" not in raw
     assert stat.S_IMODE(os.stat(settings.audit_path).st_mode) == 0o600
+
+
+def test_a_refused_socket_in_a_loop_cannot_push_the_sign_ins_out_of_the_log(tmp_path):
+    now = [1000.0]
+    audit = Audit(tmp_path / "audit.jsonl", clock=lambda: now[0])
+    assert audit.record_limited("socket.refused", "10.0.0.9", client="10.0.0.9")
+    for _ in range(500):
+        assert not audit.record_limited("socket.refused", "10.0.0.9", client="10.0.0.9")
+    assert audit.record_limited("socket.refused", "10.0.0.8", client="10.0.0.8")  # another client is its own
+    now[0] += 61
+    assert audit.record_limited("socket.refused", "10.0.0.9", client="10.0.0.9")
+    assert len(audit.tail()) == 3
+
+
+def test_a_change_that_failed_inside_the_gateway_is_logged_as_not_known_to_have_failed(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    backend = FakeBackend()
+
+    async def explode(*_a, **_k):
+        raise RuntimeError("after the work")
+
+    backend.send_group = explode  # type: ignore[method-assign]
+    settings = Settings(token=TOKEN, roots=(work,), directory=tmp_path / "gw")
+    with TestClient(create_app(settings, backend, static=page(tmp_path)), base_url="http://testserver") as client:
+        sign_in(client, TOKEN)
+        client.post("/api/groups/g/send", json={"text": "hello"})
+        client.post("/api/groups", json={"name": "ok"})
+
+    events = lines(settings)
+    broken = next(e for e in events if e.get("path") == "/api/groups/g/send")
+    assert broken["status"] == 500 and broken["outcome"] == "unknown"
+    done = next(e for e in events if e.get("path") == "/api/groups" and e["method"] == "POST")
+    assert "outcome" not in done
+
+
+def test_expired_cookies_are_dropped_when_the_next_one_is_issued():
+    now = [0.0]
+    auth = Auth(TOKEN, clock=lambda: now[0], read_token=READ)
+    old = auth.issue("read")
+    now[0] += 10**9
+    fresh = auth.issue("write")
+    assert auth.cookie_role(old) is None and auth.cookie_role(fresh) == "write"
+    assert list(auth._sessions) == [fresh]
 
 
 def test_the_log_is_rotated_when_it_grows_past_its_bound_and_a_failure_does_not_stop_writing(tmp_path, monkeypatch):
