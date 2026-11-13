@@ -2,8 +2,8 @@
   <img src="clients/vscode/media/logo.svg" width="120" alt="ZettCode mascot riding a sword past the moon" />
 </p>
 <h1 align="center">ZettCode</h1>
-<p align="center"><strong>Your terminal. Your coding partner.</strong></p>
-<p align="center">A focused coding agent that reads your project, shows its work, and keeps you in control.</p>
+<p align="center"><strong>A coding agent that builds the tools it is missing.</strong></p>
+<p align="center">Just-in-time harness: when the task needs a tool you don't have, the agent writes it, loads it and runs it — in a sandboxed child process, in the open, under your control.</p>
 <p align="center">
   <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a><br />
   <a href="https://chang-lehung.github.io/zettcode/guide/getting-started">Get started</a> ·
@@ -16,6 +16,46 @@
   <img src="docs/public/terminal.svg" width="1000" alt="ZettCode showing a task, thinking, file reads, a code edit, passing tests, and a Markdown answer" />
 </p>
 <p align="center"><sub>Illustrative conversation, rendered with ZettCode’s actual terminal widgets.</sub></p>
+
+## The JIT harness
+
+Most agents ship with a fixed set of tools. ZettCode lets the model grow its own. With the harness on, the
+model can create a small Python repository, write a tool into it, `repo_load` it and call it in the same turn:
+
+1. **Write** — the tool is plain Python in `~/.zettcode/harness/<workspace>/<session>/`, declared in a `MANIFEST`.
+2. **Load** — `repo_load` imports it in a **child process**; a crash or a hang stays out of your session.
+3. **Run** — the model calls it like any other tool, and every step is a row you can expand and read.
+4. **Contained** — below `full` permission it runs inside the same sandbox as `safe`; a `BAN_TOOLS` file can forbid names.
+
+```toml
+# ~/.zettcode/config.toml
+[harness]
+jit = true
+```
+
+Or try it for one run with `/harness gen`. Details: the
+[configuration reference](https://chang-lehung.github.io/zettcode/guide/config).
+
+### Run agents in the background, talk to them in a group
+
+Agents don't have to live in your terminal. Start a **daemon** — a background session — and watch it from the
+gateway web page: here one is asked to build a `find_todos` tool, writes `kit/todos.py`, loads it, and runs it on a
+project, then is called again with a follow-up.
+
+<p align="center">
+  <img src="docs/public/demo/daemon.gif" width="800" alt="A background agent builds, loads and runs a find_todos tool, then answers a follow-up" />
+</p>
+
+Put sessions and agents (including Codex and Claude Code, through the `zettcode-code-agents` plugin) in a **group**,
+and address them with `@name`. Members, invitations and who is online are in the same page.
+
+<p align="center">
+  <img src="docs/public/demo/group.gif" width="800" alt="Creating a group, mentioning the builder agent, and reading its reply" />
+</p>
+
+```bash
+python -m zettcode daemon spawn --name builder --title "tool builder" --permission safe
+```
 
 ## Get running
 
