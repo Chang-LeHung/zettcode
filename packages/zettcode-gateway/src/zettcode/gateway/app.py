@@ -364,6 +364,8 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
                         client=request.client.host if request.client else None,
                     )
 
+        # What this route's requests are counted under, readable by a test that the names are all different.
+        setattr(route, "metrics_name", route_name(handler))  # noqa: B010
         return route
 
     async def body(request: Request, limit: int = MAX_BODY) -> dict[str, Any]:
@@ -587,7 +589,6 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         # client sends on it is acted on, so a read-only sign-in may hold it; this is where to refuse a frame that
         # ever changes something.
         audit.record("socket", role=offered_role, client=client)
-        metrics.socket_opened()
         # A native client offers ``zettcode`` beside its token; echo it, or the browser would refuse the socket.
         await websocket.accept(subprotocol=subprotocol)
         queue = gateway.subscribe()
@@ -602,6 +603,9 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
                     await websocket.send_text(json.dumps(event, separators=(",", ":")))
 
         writer = asyncio.ensure_future(pump())
+        # Counted only once the socket is accepted and subscribed, right before the ``try`` whose ``finally`` takes it
+        # off: a handshake that fails earlier would otherwise leave the gauge one too high for the life of the process.
+        metrics.socket_opened()
         try:
             while True:
                 await websocket.receive_text()
