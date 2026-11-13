@@ -3,20 +3,26 @@ import { nextTick, ref, watch } from "vue";
 import { t } from "../../i18n";
 import { copyText } from "../../lib/clipboard";
 import { markQuotes } from "../../lib/jump";
+import { markMentions } from "../../lib/mentions";
 import { prefs } from "../../stores/prefs";
 import { toast } from "../../stores/ui";
 
-const props = defineProps<{ text: string; plain?: boolean }>();
+const props = defineProps<{ text: string; plain?: boolean; mentions?: readonly string[]; me?: string }>();
 /** The reader chose a quote inside the message; the quote itself, for the page to find where its words were said. */
 const emit = defineEmits<{ quote: [from: HTMLElement] }>();
 const html = ref("");
 const root = ref<HTMLElement | null>(null);
 
-// A quote is a way to the message it came from, so it is a control (see markQuotes). The markup is drawn by the renderer,
-// so the attributes are put on after each draw.
+// A quote is a way to the message it came from, so it is a control (see markQuotes); an `@member` is drawn as a mention.
+// The markup is drawn by the renderer, so both are put on after each draw, and again when the group's members change.
 watch(
-  html,
-  () => void nextTick(() => root.value && markQuotes(root.value, t("Go to the quoted message"))),
+  () => [html.value, props.mentions, props.me] as const,
+  () =>
+    void nextTick(() => {
+      if (!root.value) return;
+      markQuotes(root.value, t("Go to the quoted message"));
+      if (props.mentions?.length) markMentions(root.value, props.mentions, props.me);
+    }),
   { flush: "post" },
 );
 
@@ -83,6 +89,9 @@ async function onClick(event: MouseEvent): Promise<void> {
 .md blockquote[role="button"]:hover, .md blockquote[role="button"]:focus-visible { border-left-color: var(--warn); background: rgba(127, 127, 127, 0.22); }
 .md blockquote[role="button"]:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; border-radius: 4px; }
 .md hr { border: 0; border-top: 1px solid var(--divider); margin: 0.9em 0; }
+.md .mention { color: var(--accent); font-weight: 500; }
+.md .mention.me { background: var(--accent-soft); border-radius: 4px; padding: 0 3px; }
+.msg.out .bubble .md .mention { color: #fff; font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
 .md a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
 .md a:hover { text-decoration-thickness: 2px; }
 .md img { max-width: 100%; height: auto; border-radius: 8px; }
