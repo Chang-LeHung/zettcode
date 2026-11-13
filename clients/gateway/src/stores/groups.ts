@@ -16,7 +16,8 @@ import { lobby, threadOf } from "./threads";
 /** A group is addressed as `#name` in the page's address, which no session id can look like. */
 export const groupArg = (name: string): string => `#${name}`;
 export const isGroupArg = (arg: string): boolean => arg.startsWith("#");
-export const groupNameOf = (arg: string): string => (isGroupArg(arg) ? arg.slice(1) : arg);
+/** The group a page address names, spelled as the broker holds it, so `#Straße` typed or bookmarked finds `strasse`. */
+export const groupNameOf = (arg: string): string => (isGroupArg(arg) ? spellGroup(arg.slice(1)) : arg);
 
 /** A member of a group, as the member list draws it. */
 export interface Member {
@@ -209,8 +210,16 @@ export async function removeFromGroup(name: string, member: string): Promise<voi
  */
 export const GROUP_NAME = /^[\p{L}\p{N}][\p{L}\p{N}\p{M}_-]{0,39}$/u;
 
-/** A typed name as the page sends it: `＃Team ` is `team`. The broker's spelling (which also folds `ß`) has the last word. */
-export const spellGroup = (raw: string): string => raw.normalize("NFKC").trim().replace(/^#+/, "").toLowerCase().normalize("NFKC");
+/**
+ * Case folding as the broker does it (Python's `casefold`), for the cases that matter: `toLowerCase` plus `ß` to `ss` and the
+ * final sigma `ς` to `σ`. The ligatures (ﬁ, ﬂ …) are already split by the compatibility normalisation that runs first.
+ * The broker has the last word, so a character this misses is spelled by it; the page only needs to agree on the common ones
+ * so that an address typed or bookmarked as `#Straße` finds the group stored as `strasse`.
+ */
+const caseFold = (text: string): string => text.toLowerCase().replace(/ß/g, "ss").replace(/ς/g, "σ");
+
+/** A typed name as the page spells it: `＃Straße ` is `strasse`. The broker's spelling (`spell_group`) is the same rule. */
+export const spellGroup = (raw: string): string => caseFold(raw.normalize("NFKC").trim().replace(/^#+/, "")).normalize("NFKC");
 
 /** Create a group with the person at the gateway in it, and the sessions asked for. Throws on failure; returns its name. */
 export async function createGroup(name: string, members: string[]): Promise<string> {

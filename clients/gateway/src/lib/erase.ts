@@ -61,6 +61,8 @@ export function eraseWhole(value: string, caret: number, handles: readonly strin
  */
 export function applyErase(field: HTMLTextAreaElement, whole: Erased): boolean {
   try {
+    // `execCommand` acts on the focused element's selection, and setting a range does not focus a textarea everywhere.
+    field.focus({ preventScroll: true });
     field.setSelectionRange(whole.from, whole.to);
     if (typeof document.execCommand === "function" && document.execCommand("delete") && field.value === whole.value) {
       field.setSelectionRange(whole.caret, whole.caret);

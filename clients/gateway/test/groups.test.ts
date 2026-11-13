@@ -79,6 +79,10 @@ test("a typed name is spelled as the broker spells it where JavaScript can: comp
   assert.equal(spellGroup(" ＃Team "), "team");
   assert.equal(spellGroup("cafe\u0301"), "caf\u00e9");
   assert.equal(spellGroup("##Review"), "review");
+  assert.equal(spellGroup("Straße"), "strasse", "ß folds to ss as the broker's casefold does");
+  assert.equal(spellGroup("ΟΔΥΣΣΕΥΣ"), spellGroup("οδυσσευς"), "a final sigma folds to the same letter");
+  assert.equal(groupNameOf("#Straße"), "strasse", "a typed or bookmarked address finds the stored name");
+  assert.equal(groupNameOf("01a1-session"), "01a1-session", "a session id is left alone");
 });
 
 test("a group is addressed as #name and a session id is not mistaken for one", () => {
