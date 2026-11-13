@@ -39,9 +39,12 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from zettcode.version import __version__
+
 from .audit import Audit
 from .backend import Backend, GatewayStartError
 from .external_backend import ExternalBackend
+from .metrics import Metrics, route_name
 from .runfile import clear as clear_runfile
 from .runfile import write as write_runfile
 from .service import Gateway, GatewayError
@@ -281,6 +284,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
     """Return the application for these settings; a test gives a backend of its own, and the folder the page is in."""
     auth = Auth(settings.token, read_token=settings.read_token)
     audit = Audit(settings.audit_path)
+    metrics = Metrics()
     allowed = settings.allowed_origins
     gateway = Gateway(
         backend if backend is not None else ExternalBackend(settings.directory, settings.store),
@@ -316,6 +320,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         async def route(request: Request) -> Response:
             status = 500
             role: str | None = None
+            started = time.monotonic()
             try:
                 role = auth.role(request)
                 if not public and role is None:
@@ -344,6 +349,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
                     {"error": {"code": "internal", "message": f"The request failed ({type(error).__name__})"}}, 500
                 )
             finally:
+                metrics.request(route_name(handler), request.method, status, time.monotonic() - started)
                 # Every change is recorded, and so is every refusal of one: a read-only sign-in that tried to write is
                 # exactly what a person reading the log wants to find. Reads are not (the page polls them).
                 if not public and (request.method not in ("GET", "HEAD") or status in (401, 403)):
@@ -386,15 +392,18 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         client = request.client.host if request.client else None
         if auth.locked_out():
             audit.record("login.locked", client=client)
+            metrics.login("locked")
             raise GatewayError(429, "rate", "Too many wrong tokens; wait a few minutes", retry_after=60)
         given = (await body(request)).get("token")
         role = auth.token_role(given.strip()) if isinstance(given, str) else None
         if role is None:
             auth.failed()
             audit.record("login.failed", client=client)
+            metrics.login("failed")
             await asyncio.sleep(0.4)
             raise GatewayError(401, "unauthorized", "That is not the token")
         audit.record("login", role=role, client=client)
+        metrics.login(role)
         response = JSONResponse({"authenticated": True, "role": role})
         response.set_cookie(
             COOKIE,
@@ -415,6 +424,17 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         return response
 
     # -- the endpoints ----------------------------------------------------------------------------
+    async def metrics_text(_: Request) -> Any:
+        threads = gateway.threads()
+        gauges: dict[str, float] = {
+            "threads": len(threads),
+            "threads_online": sum(1 for item in threads if item.get("online")),
+            "threads_working": sum(1 for item in threads if item.get("status") == "working"),
+            "broker_reachable": 1 if gateway.status()["broker"]["reachable"] else 0,
+        }
+        text = metrics.render(gauges, {"version": __version__})
+        return PlainTextResponse(text, media_type="text/plain; version=0.0.4; charset=utf-8")
+
     async def status(_: Request) -> Any:
         return gateway.status()
 
@@ -567,6 +587,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         # client sends on it is acted on, so a read-only sign-in may hold it; this is where to refuse a frame that
         # ever changes something.
         audit.record("socket", role=offered_role, client=client)
+        metrics.socket_opened()
         # A native client offers ``zettcode`` beside its token; echo it, or the browser would refuse the socket.
         await websocket.accept(subprotocol=subprotocol)
         queue = gateway.subscribe()
@@ -590,6 +611,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
             writer.cancel()
             await asyncio.gather(writer, return_exceptions=True)
             gateway.unsubscribe(queue)
+            metrics.socket_closed()
 
     routes = [
         Route("/", index),
@@ -599,6 +621,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/login", api(login, public=True), methods=["POST"]),
         Route("/api/logout", api(logout, public=True), methods=["POST"]),
         Route("/api/status", api(status)),
+        Route("/metrics", api(metrics_text)),
         Route("/api/config", api(config)),
         Route("/api/agents", api(agents)),
         Route("/api/agents", api(create_agent), methods=["POST"]),

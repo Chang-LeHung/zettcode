@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EventSocket, STALE_AFTER } from "../src/api/events";
 import { attachPull, MAX_PULL, pullOf, THRESHOLD } from "../src/lib/pull";
-import { connect, disconnect, setWorker, showNotice } from "../src/stores/live";
+import { connect, disconnect, registerWorker, setWorker, showNotice } from "../src/stores/live";
 
 // -- pull to refresh ----------------------------------------------------------------------------
 
@@ -144,6 +144,37 @@ test("a socket that was stopped is not woken", () => {
   socket.stop();
   socket.wake(Number.POSITIVE_INFINITY);
   assert.equal(FakeSocket.instances.length, 1);
+});
+
+test("the page moves to a chat when the worker asks, and only to a chat", async () => {
+  const heard: { fn: ((message: { data: unknown }) => void) | null } = { fn: null };
+  const fake = {
+    addEventListener: (_: string, fn: (message: { data: unknown }) => void) => (heard.fn = fn),
+    register: async () => ({ showNotification: async () => {} }),
+  };
+  Object.defineProperty(globalThis, "navigator", { value: { serviceWorker: fake }, configurable: true });
+  const place = { protocol: "http:", host: "localhost", hash: "#/chats" };
+  Object.assign(globalThis, { location: place });
+
+  registerWorker();
+  const listener = heard.fn;
+  assert.ok(listener, "the page listens for the worker");
+  // The shape the worker sends: a hash built as `#/chats/${encodeURIComponent(id)}`.
+  listener({ data: { type: "open-chat", hash: "#/chats/01a%2Fb" } });
+  assert.equal(place.hash, "#/chats/01a%2Fb");
+
+  place.hash = "#/chats";
+  for (const data of [
+    { type: "open-chat", hash: "#/groups/x" },
+    { type: "open-chat", hash: "#/config" },
+    { type: "open-chat", hash: 5 },
+    { type: "something-else", hash: "#/chats/01a" },
+    null,
+    "#/chats/01a",
+  ]) {
+    listener!({ data });
+    assert.equal(place.hash, "#/chats", `a message of ${JSON.stringify(data)} must not move the page`);
+  }
 });
 
 // -- notifications ------------------------------------------------------------------------------
