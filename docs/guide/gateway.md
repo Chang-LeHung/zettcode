@@ -73,7 +73,8 @@ scrape_configs:
     static_configs: [{ targets: ["gateway.example:8765"] }]
 ```
 
-It reports the gateway's version and uptime; API requests by route, method and status class (`2xx`, `4xx`, `5xx`)
+It reports the gateway's version and uptime; API requests (including the scrape itself, so its own route grows at your
+scrape interval) by route, method and status class (`2xx`, `4xx`, `5xx`)
 with a latency histogram per route; sign-in attempts by outcome (`read`, `write`, `failed`, `locked`); the event
 sockets open now and accepted since the start; and, read at the moment of the scrape, how many sessions the gateway
 lists, how many are online and working, and whether the broker is reachable. Counters live in memory and start again

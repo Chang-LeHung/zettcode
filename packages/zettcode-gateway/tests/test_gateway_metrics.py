@@ -63,8 +63,7 @@ def test_requests_logins_and_sockets_are_counted_by_what_the_code_named_not_what
     assert "never-a-route" not in after and "does-not-exist" not in after
     assert "zettcode_gateway_event_sockets 1" in during
     # Not asserted here: that the gauge falls back to 0. Starlette's TestClient runs a socket's cleanup only when it is
-    # torn down, so it cannot show it; ``test_the_socket_gauge_falls_and_never_goes_below_zero`` covers the counter, and
-    # a real uvicorn server was checked by hand (1 while open, 0 after the client closed).
+    # torn down, so it cannot show it; ``test_the_socket_gauge_falls_and_never_goes_below_zero`` covers the counter.
     assert "zettcode_gateway_event_sockets_opened_total 1" in after
     assert "zettcode_gateway_threads_online" in after
     assert TOKEN not in after and READ not in after
@@ -83,6 +82,57 @@ def test_the_histogram_is_cumulative_and_its_count_matches_the_requests():
     assert 'request_seconds_bucket{route="threads",le="+Inf"} 3' in text
     assert 'request_seconds_count{route="threads"} 3' in text
     assert 'requests_total{route="threads",method="GET",status="5xx"} 1' in text
+
+
+def test_every_route_is_counted_under_a_name_of_its_own(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    settings = Settings(token=TOKEN, roots=(work,), directory=tmp_path / "gw")
+    app = create_app(settings, FakeBackend(), static=page(tmp_path))
+
+    names = [
+        (route.path, route.endpoint.metrics_name)  # type: ignore[attr-defined]
+        for route in app.routes
+        if hasattr(getattr(route, "endpoint", None), "metrics_name")
+    ]
+
+    assert len(names) > 20  # the API's routes, not an empty comprehension
+    labels = [name for _, name in names]
+    assert "handler" not in labels, "a handler with no name of its own would be counted as 'handler'"
+    # Two registrations of the same handler (different methods on one path) may share a name; nothing else may.
+    seen: dict[str, str] = {}
+    for path, name in names:
+        assert seen.setdefault(name, path) == path, f"{name!r} is the label of both {seen[name]} and {path}"
+
+
+def test_a_handshake_that_fails_before_the_socket_is_accepted_does_not_leave_the_gauge_up(client, monkeypatch):
+    from starlette.websockets import WebSocket, WebSocketDisconnect
+
+    async def refuse(self, *args, **kwargs):
+        raise RuntimeError("the client went away before the handshake")
+
+    monkeypatch.setattr(WebSocket, "accept", refuse)
+    with pytest.raises((RuntimeError, WebSocketDisconnect)):
+        with client.websocket_connect("/api/events", headers={"authorization": f"Bearer {TOKEN}"}):
+            pass
+    monkeypatch.undo()
+
+    text = scrape(client)
+    assert "zettcode_gateway_event_sockets 0" in text
+    assert "zettcode_gateway_event_sockets_opened_total 0" in text
+
+
+def test_the_socket_gauge_falls_and_never_goes_below_zero():
+    metrics = Metrics()
+    metrics.socket_opened()
+    metrics.socket_opened()
+    metrics.socket_closed()
+    assert "zettcode_gateway_event_sockets 1" in metrics.render()
+    metrics.socket_closed()
+    metrics.socket_closed()  # a close with nothing open must not make the gauge negative
+    text = metrics.render()
+    assert "zettcode_gateway_event_sockets 0" in text
+    assert "zettcode_gateway_event_sockets_opened_total 2" in text
 
 
 def test_a_label_value_is_escaped():
