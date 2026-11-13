@@ -20,6 +20,30 @@ function wordsOfRow(row: HTMLElement): string {
   return body ? ownWords(body) : "";
 }
 
+/** The most of a quote's words put into the name of its control. */
+const NAME_WORDS = 80;
+
+/**
+ * Make each quote under `root` a control that jumps to its source: reachable by keyboard and named by what it points at.
+ * A control's name replaces what is inside it for a screen reader, so the name carries the opening words of the quote
+ * rather than one fixed phrase that would make every quote on the page read the same. A quote that holds a link or other
+ * focusable content is left a plain quote, because that nesting is invalid and unreachable; its words and link are read
+ * as they were, and a click on it still jumps. Returns how many quotes became controls.
+ */
+export function markQuotes(root: Element, label: string): number {
+  let marked = 0;
+  root.querySelectorAll("blockquote").forEach((quote) => {
+    if (quote.querySelector("a, button, input, [tabindex]")) return;
+    const words = ownWords(quote).replace(/\s+/g, " ").trim();
+    const shown = words.length > NAME_WORDS ? `${words.slice(0, NAME_WORDS).trimEnd()}…` : words;
+    quote.setAttribute("role", "button");
+    quote.setAttribute("tabindex", "0");
+    quote.setAttribute("aria-label", `${label}: ${shown}`);
+    marked += 1;
+  });
+  return marked;
+}
+
 let fading: ReturnType<typeof setTimeout> | undefined;
 let lit: HTMLElement | null = null;
 

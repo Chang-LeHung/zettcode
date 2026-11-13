@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from "vue";
 import { t } from "../../i18n";
 import { copyText } from "../../lib/clipboard";
+import { markQuotes } from "../../lib/jump";
 import { prefs } from "../../stores/prefs";
 import { toast } from "../../stores/ui";
 
@@ -11,24 +12,17 @@ const emit = defineEmits<{ quote: [from: HTMLElement] }>();
 const html = ref("");
 const root = ref<HTMLElement | null>(null);
 
-// A quote is a way to the message it came from, so it is a control: reachable by keyboard and named for a screen reader.
-// The markup is drawn by the renderer, so the attributes are put on after each draw.
+// A quote is a way to the message it came from, so it is a control (see markQuotes). The markup is drawn by the renderer,
+// so the attributes are put on after each draw.
 watch(
   html,
-  () =>
-    void nextTick(() =>
-      root.value?.querySelectorAll("blockquote").forEach((quote) => {
-        quote.setAttribute("role", "button");
-        quote.setAttribute("tabindex", "0");
-        quote.setAttribute("aria-label", t("Go to the quoted message"));
-      }),
-    ),
+  () => void nextTick(() => root.value && markQuotes(root.value, t("Go to the quoted message"))),
   { flush: "post" },
 );
 
 function onKey(event: KeyboardEvent): void {
   const quote = event.target as HTMLElement;
-  if ((event.key === "Enter" || event.key === " ") && quote.tagName === "BLOCKQUOTE") {
+  if ((event.key === "Enter" || event.key === " ") && quote.tagName === "BLOCKQUOTE" && quote.getAttribute("role") === "button") {
     event.preventDefault();
     emit("quote", quote);
   }
