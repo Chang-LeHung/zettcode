@@ -74,9 +74,11 @@ async function onClick(event: MouseEvent): Promise<void> {
 .md li { margin: 0.15em 0; }
 .md li > p { margin: 0.2em 0; }
 .md input[type="checkbox"] { margin-right: 0.4em; }
-.md blockquote { margin: 0.6em 0; padding: 0.1em 0 0.1em 0.9em; border-left: 3px solid var(--accent); color: var(--muted); cursor: pointer; }
-.md blockquote:hover, .md blockquote:focus-visible { border-left-color: var(--warn); }
-.md blockquote:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; border-radius: 4px; }
+.md blockquote { margin: 0.6em 0; padding: 0.1em 0 0.1em 0.9em; border-left: 3px solid var(--accent); color: var(--muted); }
+/* Only a quote that is a control promises a jump: one left plain (it holds a link or another quote) keeps the text cursor. */
+.md blockquote[role="button"] { cursor: pointer; }
+.md blockquote[role="button"]:hover, .md blockquote[role="button"]:focus-visible { border-left-color: var(--warn); }
+.md blockquote[role="button"]:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; border-radius: 4px; }
 .md hr { border: 0; border-top: 1px solid var(--divider); margin: 0.9em 0; }
 .md a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
 .md a:hover { text-decoration-thickness: 2px; }

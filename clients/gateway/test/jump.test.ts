@@ -82,14 +82,22 @@ test("each quote is named by what it points at, so two quotes on a page do not r
   root.remove();
 });
 
-test("a long quote is named by its opening words, and a quote inside a quote is not read into the outer name", () => {
+test("a long quote is named by its opening words; of a quote inside a quote only the innermost is a control", () => {
   const long = "word ".repeat(60).trim();
   const root = list([{ key: "a", html: `<blockquote><p>${long}</p></blockquote><blockquote><p>outer</p><blockquote><p>inner</p></blockquote></blockquote>` }]);
 
-  markQuotes(root, "Go");
+  const marked = markQuotes(root, "Go");
+
+  assert.equal(marked, 2, "the long one and the inner one, not the outer");
   const label = quoteIn(root, "a", 0).getAttribute("aria-label")!;
   assert.ok(label.length < 100 && label.endsWith("…"), label);
-  assert.equal(quoteIn(root, "a", 1).getAttribute("aria-label"), "Go: outer");
+  const outer = quoteIn(root, "a", 1);
+  const inner = outer.querySelector("blockquote")!;
+  assert.equal(outer.getAttribute("role"), null, "a control must not hold a control");
+  assert.equal(outer.getAttribute("tabindex"), null);
+  assert.equal(inner.getAttribute("role"), "button");
+  assert.equal(inner.getAttribute("aria-label"), "Go: inner");
+  assert.equal(root.querySelectorAll('[role="button"] [role="button"]').length, 0, "no control inside a control");
   root.remove();
 });
 
