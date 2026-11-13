@@ -208,6 +208,7 @@ export const ZH: Record<string, string> = {
   Info: "信息",
   Name: "名称",
   Message: "消息",
+  "Mention a member": "提及成员",
   Model: "模型",
   Status: "状态",
   Where: "位置",

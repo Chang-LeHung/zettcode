@@ -158,10 +158,72 @@ async function join(): Promise<void> {
 }
 
 function onKey(event: KeyboardEvent): void {
+  if (mention.value && choices.value.length) {
+    const key = event.key;
+    if (key === "ArrowDown" || key === "ArrowUp") {
+      event.preventDefault();
+      const n = choices.value.length;
+      active.value = (active.value + (key === "ArrowDown" ? 1 : n - 1)) % n;
+      return;
+    }
+    if ((key === "Enter" || key === "Tab") && !event.isComposing) {
+      event.preventDefault();
+      const chosen = choices.value[active.value];
+      if (chosen) pick(chosen);
+      return;
+    }
+  }
+  if (mention.value && event.key === "Escape") {
+    event.preventDefault();
+    mention.value = null;
+    return;
+  }
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing && typesByEnter) {
     event.preventDefault();
     void submit();
   }
+}
+
+/** The ``@word`` the caret is at the end of, when the caret is in one: where it starts and what has been typed of it. */
+const mention = ref<{ start: number; query: string } | null>(null);
+const active = ref(0);
+/** The members an ``@`` can address: on the roster (so they have a handle), and not the person typing. */
+const choices = computed(() => {
+  const found = mention.value;
+  if (!found) return [];
+  const query = found.query.toLowerCase();
+  return members.value.filter(
+    (member) =>
+      !member.me && member.handle && (member.handle.toLowerCase().includes(query) || member.name.toLowerCase().includes(query)),
+  );
+});
+
+function watchCaret(): void {
+  const el = field.value;
+  if (!el || el.selectionStart !== el.selectionEnd) {
+    mention.value = null;
+    return;
+  }
+  const before = el.value.slice(0, el.selectionStart);
+  const found = /(^|\s)@([\w-]*)$/.exec(before);
+  const word = found?.[2];
+  mention.value = word === undefined ? null : { start: before.length - word.length - 1, query: word };
+  active.value = 0;
+}
+
+function pick(member: Member): void {
+  const el = field.value;
+  const found = mention.value;
+  if (!el || !found) return;
+  const end = el.selectionStart;
+  const insert = `@${member.handle} `;
+  text.value = text.value.slice(0, found.start) + insert + text.value.slice(end);
+  mention.value = null;
+  void nextTick(() => {
+    el.focus({ preventScroll: true });
+    const at = found.start + insert.length;
+    el.setSelectionRange(at, at);
+  });
 }
 
 function resize(): void {
@@ -240,7 +302,26 @@ watch(text, () => void nextTick(resize));
         <span v-if="groupChat.sending" class="spin" />{{ groupChat.sending ? t("Joining…") : t("Join group") }}
       </button>
     </div>
-    <form v-else class="composer" @submit.prevent="submit">
+    <div v-if="joined && mention && choices.length" class="mention-list" role="listbox" :aria-label="t('Mention a member')">
+      <button
+        v-for="(member, at) in choices"
+        :key="member.id"
+        type="button"
+        role="option"
+        class="mention-row"
+        :class="{ on: at === active }"
+        :aria-selected="at === active"
+        @pointerdown.prevent
+        @mouseenter="active = at"
+        @click="pick(member)"
+      >
+        <Avatar :thread="{ id: member.id, name: member.name, kind: 'external', status: 'idle' }" size="sm" />
+        <span class="mention-name">{{ member.name }}</span>
+        <span class="mention-handle">@{{ member.handle }}</span>
+        <span class="mention-state" :class="member.status" />
+      </button>
+    </div>
+    <form v-if="joined" class="composer" @submit.prevent="submit">
       <div class="composer-field">
         <textarea
           ref="field"
@@ -250,6 +331,10 @@ watch(text, () => void nextTick(resize));
           :aria-label="t('Message')"
           enterkeyhint="send"
           @keydown="onKey"
+          @input="watchCaret"
+          @click="watchCaret"
+          @keyup="(e: KeyboardEvent) => (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && watchCaret()"
+          @blur="mention = null"
         />
       </div>
       <button class="sendbtn" type="submit" :disabled="!text.trim() || groupChat.sending" :aria-label="t('Send')" @pointerdown.prevent>
@@ -275,4 +360,12 @@ watch(text, () => void nextTick(resize));
 .group-empty .btn { margin-top: 4px; }
 .group-join { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px calc(10px + var(--safe-bottom)); background: var(--surface); border-top: 1px solid var(--divider); color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
 .group-join .btn { flex: none; }
+.mention-list { flex: none; max-height: 220px; overflow-y: auto; padding: 6px calc(var(--safe-right) + 12px) 6px calc(var(--safe-left) + 12px); background: var(--surface); border-top: 1px solid var(--divider); }
+.mention-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; text-align: left; color: var(--text); }
+.mention-row.on { background: var(--surface-2); }
+.mention-name { font-weight: 600; }
+.mention-handle { color: var(--muted); font-size: 0.85rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mention-state { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.mention-state.idle { background: var(--ok, #3bb273); }
+.mention-state.working { background: var(--accent); }
 </style>

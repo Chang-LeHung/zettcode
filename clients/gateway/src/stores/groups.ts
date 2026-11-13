@@ -27,6 +27,8 @@ export interface Member {
   me: boolean;
   /** The gateway lists a conversation with it, so the row can open one. */
   chat: boolean;
+  /** What follows an ``@`` to address it: the roster's handle. Empty when it is not on the roster, so it cannot be reached. */
+  handle: string;
 }
 
 const PAGE = 50;
@@ -60,6 +62,7 @@ export function memberOf(id: string): Member {
     status: !online ? "offline" : live.status === "working" ? "working" : "idle",
     me: id === meId(),
     chat: thread !== undefined,
+    handle: live?.handle ?? "",
   };
 }
 
