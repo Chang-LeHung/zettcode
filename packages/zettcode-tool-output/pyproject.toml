@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   # The plugin base classes, the session store the extension moves the output into, and the name it is handed under.
-  "zettcode-engine>=0.4.5,<0.5",
+  "zettcode-engine>=0.4.6,<0.5",
   # The extension, its hooks and the messages it rewrites.
   "zett-agent>=0.2.10,<0.3",
 ]

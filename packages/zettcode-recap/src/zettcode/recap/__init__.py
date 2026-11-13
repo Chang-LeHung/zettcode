@@ -47,7 +47,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 
 #: The one place the version is written; ``pyproject.toml`` reads it from here.
-__version__ = "0.4.5"
+__version__ = "0.4.6"
 
 __all__ = ["RecapPlugin", "__version__"]
 

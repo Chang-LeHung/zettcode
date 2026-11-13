@@ -1,6 +1,6 @@
 {
   "name": "zettcode-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "The ZettCode desktop app: the gateway's page in a window, with a list of servers",
   "author": "Chang-LeHung",

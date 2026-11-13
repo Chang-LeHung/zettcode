@@ -23,9 +23,9 @@ dependencies = [
   "qrcode>=8,<9",
   # The daemon it owns is the SDK's, the session it talks over is the broker's, and the lock and the version are
   # the engine's.
-  "zettcode-engine>=0.4.5,<0.5",
-  "zettcode-broker>=0.4.5,<0.5",
-  "zettcode-sdk>=0.4.5,<0.5",
+  "zettcode-engine>=0.4.6,<0.5",
+  "zettcode-broker>=0.4.6,<0.5",
+  "zettcode-sdk>=0.4.6,<0.5",
 ]
 
 # A program of its own, not a part of `zettcode`: nothing in the terminal needs it, and a reader who wants it
