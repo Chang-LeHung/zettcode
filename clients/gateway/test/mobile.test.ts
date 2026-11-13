@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EventSocket, STALE_AFTER } from "../src/api/events";
 import { attachPull, MAX_PULL, pullOf, THRESHOLD } from "../src/lib/pull";
+import { connect, disconnect, setWorker, showNotice } from "../src/stores/live";
 
 // -- pull to refresh ----------------------------------------------------------------------------
 
@@ -143,4 +144,79 @@ test("a socket that was stopped is not woken", () => {
   socket.stop();
   socket.wake(Number.POSITIVE_INFINITY);
   assert.equal(FakeSocket.instances.length, 1);
+});
+
+// -- notifications ------------------------------------------------------------------------------
+
+test("a page hidden twice is measured from the first time, so a long absence is not mistaken for a short one", () => {
+  FakeSocket.instances = [];
+  Object.assign(globalThis, { WebSocket: FakeSocket, location: { protocol: "http:", host: "localhost", hash: "" } });
+  let hidden = true;
+  Object.defineProperty(document, "hidden", { get: () => hidden, configurable: true });
+  const realNow = Date.now;
+  let now = 1_000_000;
+  Date.now = () => now;
+  try {
+    connect();
+    FakeSocket.instances[0]!.open();
+
+    document.dispatchEvent(new window.Event("visibilitychange")); // hidden at t0
+    now += STALE_AFTER * 3;
+    document.dispatchEvent(new window.Event("visibilitychange")); // a second notice, much later, still hidden
+    hidden = false;
+    document.dispatchEvent(new window.Event("visibilitychange")); // back
+
+    assert.equal(FakeSocket.instances.length, 2, "the dead socket was replaced");
+  } finally {
+    Date.now = realNow;
+    disconnect();
+  }
+});
+
+class FakeNotification {
+  static made: { title: string; body?: string }[] = [];
+  static refuse = false;
+  static permission = "granted";
+  onclick: (() => void) | null = null;
+  constructor(title: string, options?: { body?: string }) {
+    if (FakeNotification.refuse) throw new TypeError("Illegal constructor");
+    FakeNotification.made.push({ title, body: options?.body });
+  }
+  close(): void {}
+}
+
+function registration(show: (title: string, options: unknown) => Promise<void>): ServiceWorkerRegistration {
+  return { showNotification: show } as unknown as ServiceWorkerRegistration;
+}
+
+test("a notification goes through the worker when there is one, with the conversation to open", async () => {
+  const shown: { title: string; options: any }[] = [];
+  FakeNotification.made = [];
+  FakeNotification.refuse = false;
+  Object.assign(globalThis, { Notification: FakeNotification });
+  setWorker(registration(async (title, options) => void shown.push({ title, options })));
+
+  showNotice("builder", "hello", "01a");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(shown, [{ title: "builder", options: { body: "hello", tag: "01a", data: { id: "01a" } } }]);
+  assert.equal(FakeNotification.made.length, 0, "the page makes none of its own");
+});
+
+test("a worker that fails falls back to the page's own notification, and a page that may not make one stays quiet", async () => {
+  FakeNotification.made = [];
+  FakeNotification.refuse = false;
+  Object.assign(globalThis, { Notification: FakeNotification });
+  setWorker(registration(() => Promise.reject(new Error("no"))));
+  showNotice("builder", "hello", "01a");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(FakeNotification.made, [{ title: "builder", body: "hello" }]);
+
+  // Android's Chrome: the page's own notification throws. Nothing escapes, because nothing is left to try.
+  FakeNotification.refuse = true;
+  setWorker(null);
+  assert.doesNotThrow(() => showNotice("builder", "again", "01a"));
+  setWorker(registration(() => Promise.reject(new Error("no"))));
+  assert.doesNotThrow(() => showNotice("builder", "again", "01a"));
+  await new Promise((resolve) => setTimeout(resolve, 0));
 });

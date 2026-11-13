@@ -85,7 +85,8 @@ export class EventSocket {
    * The page came back (it was shown again, the phone got a network, or it was restored from the back/forward cache).
    * A phone suspends a page's sockets without telling it, so one that looks open may be dead: when the page was away
    * for a while, drop it and open a new one, whose opening reads everything again. A socket that is not open is
-   * retried at once, without the back-off a running page would wait.
+   * retried at once, without the back-off a running page would wait. (The page's "live" flag stays as it was until the
+   * new socket opens or fails: a flicker to "offline" on every return would be worse than a moment of stale status.)
    */
   wake(awayMs: number): void {
     if (!this.wanted) return;

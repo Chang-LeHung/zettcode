@@ -84,8 +84,10 @@ def test_nothing_but_the_page_and_sign_in_answers_before_sign_in(parts):
     assert client.post("/api/daemons", json={}).status_code == 401
 
 
-def test_the_notification_worker_is_served_from_the_root_as_script_and_never_cached(parts, tmp_path):
+def test_the_notification_worker_is_public_served_from_the_root_as_script_and_never_cached(parts, tmp_path):
     client, _, _ = parts
+    # Not signed in: like the page and its manifest, the worker is the code, not the data, and a browser fetches it
+    # before the page has a cookie to send.
     # The page's folder has no worker until one is built: absent is a plain 404, not an error page.
     assert client.get("/sw.js").status_code == 404
 
