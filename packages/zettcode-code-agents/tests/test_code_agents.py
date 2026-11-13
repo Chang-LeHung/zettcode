@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
+import os
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -19,6 +24,39 @@ from zettcode.code_agents import (
     _timeout,
 )
 from zettcode.code_agents.config import DEFAULT_PERMISSION, resolve
+
+
+class _Done:
+    """A finished child process, as ``asyncio.create_subprocess_exec`` hands one back."""
+
+    returncode = 0
+
+    def __init__(self, stdout: str) -> None:
+        self._stdout = stdout
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return self._stdout.encode(), b""
+
+    async def wait(self) -> int:
+        return 0
+
+
+@pytest.fixture
+def cli(monkeypatch) -> Callable[[Callable[[list[str], Path], str]], None]:
+    """Replace starting a program with a function from ``(argv, cwd)`` to what the program prints.
+
+    The plugin's own work is building the command line, choosing the folder, and keeping the session the CLI names. None of
+    that needs a real program, and a script cannot stand in for one on every platform (Windows will not run a file that is
+    not an executable), so the tests that are about those things use this; one test below runs a real child on POSIX.
+    """
+
+    def install(program: Callable[[list[str], Path], str]) -> None:
+        async def start(*argv: str, cwd: str, **_: Any) -> _Done:
+            return _Done(program(list(argv), Path(cwd)))
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", start)
+
+    return install
 
 
 def test_a_command_uses_the_resume_form_when_a_session_is_known(tmp_path):
@@ -68,7 +106,10 @@ def test_a_bad_timeout_is_refused_before_a_command_starts(monkeypatch):
     assert _timeout() > 0
 
 
-async def test_a_cli_turn_saves_the_session_and_returns_its_text(tmp_path, monkeypatch):
+@pytest.mark.skipif(
+    os.name == "nt", reason="the stand-in is a script with a shebang, which Windows will not run directly"
+)
+async def test_a_real_child_process_turn_saves_the_session_and_returns_its_text(tmp_path, monkeypatch):
     script = tmp_path / "fake"
     script.write_text(
         "#!/usr/bin/env python3\nimport json, sys\nprint(json.dumps({'session_id': 's-1', 'result': sys.argv[1]}))\n",
@@ -78,6 +119,16 @@ async def test_a_cli_turn_saves_the_session_and_returns_its_text(tmp_path, monke
     monkeypatch.setenv("ZETTCODE_CODE_AGENTS_DIR", str(tmp_path / "state"))
 
     agent = CliAgent("agent-1", "Fake", Command(str(script), "{prompt}", "resume {session} {prompt}"))
+
+    assert await agent._run("hello") == "hello"
+    assert json.loads((tmp_path / "state" / "agent-1.json").read_text()) == {"session": "s-1"}
+
+
+async def test_a_cli_turn_saves_the_session_and_returns_its_text(tmp_path, monkeypatch, cli):
+    cli(lambda argv, cwd: json.dumps({"session_id": "s-1", "result": argv[1]}))
+    monkeypatch.setenv("ZETTCODE_CODE_AGENTS_DIR", str(tmp_path / "state"))
+
+    agent = CliAgent("agent-1", "Fake", Command("fake", "{prompt}", "resume {session} {prompt}"))
 
     assert await agent._run("hello") == "hello"
     assert json.loads((tmp_path / "state" / "agent-1.json").read_text()) == {"session": "s-1"}
@@ -195,16 +246,10 @@ def test_a_missing_or_empty_settings_file_is_no_settings(settings_file, tmp_path
     ],
 )
 async def test_each_trust_level_becomes_the_arguments_of_its_cli(
-    tmp_path, settings_file, monkeypatch, tool, permission, resumed, expected
+    tmp_path, settings_file, monkeypatch, cli, tool, permission, resumed, expected
 ):
-    script = tmp_path / "fake"
-    script.write_text(
-        "#!/usr/bin/env python3\nimport json, sys\n"
-        "print(json.dumps({'session_id': 's-1', 'result': json.dumps(sys.argv[1:])}))\n",
-        encoding="utf-8",
-    )
-    script.chmod(0o755)
-    settings_file({"permission": permission, tool.name: {"bin": str(script)}})
+    cli(lambda argv, cwd: json.dumps({"session_id": "s-1", "result": json.dumps(argv[1:])}))
+    settings_file({"permission": permission, tool.name: {"bin": "fake"}})
     if resumed:
         (tmp_path / "state").mkdir()
         (tmp_path / "state" / "a.json").write_text(json.dumps({"session": "s-0"}), encoding="utf-8")
@@ -218,18 +263,12 @@ async def test_each_trust_level_becomes_the_arguments_of_its_cli(
     assert ("resume" in argv) is (resumed and tool is CODEX)
 
 
-async def test_an_edit_of_the_settings_applies_to_the_next_message_with_no_restart(tmp_path, settings_file):
-    script = tmp_path / "fake"
-    script.write_text(
-        "#!/usr/bin/env python3\nimport json, os, sys\n"
-        "print(json.dumps({'session_id': 's-1', 'result': json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd()})}))\n",
-        encoding="utf-8",
-    )
-    script.chmod(0o755)
+async def test_an_edit_of_the_settings_applies_to_the_next_message_with_no_restart(tmp_path, settings_file, cli):
+    cli(lambda argv, cwd: json.dumps({"session_id": "s-1", "result": json.dumps({"argv": argv[1:], "cwd": str(cwd)})}))
     first, second = tmp_path / "first", tmp_path / "second"
     first.mkdir()
     second.mkdir()
-    agent = CliAgent("agent-1", "Codex", dataclasses.replace(CODEX, binary=str(script)))
+    agent = CliAgent("agent-1", "Codex", dataclasses.replace(CODEX, binary="fake"))
 
     settings_file({"cwd": str(first), "permission": "read"})
     one = json.loads(await agent._run("hello"))
@@ -242,7 +281,9 @@ async def test_an_edit_of_the_settings_applies_to_the_next_message_with_no_resta
     assert "resume" in two["argv"]
 
 
-async def test_a_broken_settings_file_fails_the_turn_with_a_sentence_and_the_agent_goes_on(tmp_path, settings_file):
+async def test_a_broken_settings_file_fails_the_turn_with_a_sentence_and_the_agent_goes_on(
+    tmp_path, settings_file, cli
+):
     agent = CliAgent("agent-1", "Codex", CODEX)
     settings_file("{oops")
 
@@ -250,10 +291,8 @@ async def test_a_broken_settings_file_fails_the_turn_with_a_sentence_and_the_age
         await agent._run("hello")
 
     # Mended, the very next turn runs; nothing about the agent had to be rebuilt.
-    script = tmp_path / "fake"
-    script.write_text('#!/usr/bin/env python3\nprint(\'{"result": "ok"}\')\n', encoding="utf-8")
-    script.chmod(0o755)
-    settings_file({"codex": {"bin": str(script)}})
+    cli(lambda argv, cwd: '{"result": "ok"}')
+    settings_file({"codex": {"bin": "fake"}})
     assert await agent._run("hello") == "ok"
 
 
