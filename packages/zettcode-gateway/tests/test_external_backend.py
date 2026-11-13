@@ -105,3 +105,21 @@ async def test_owner_reads_report_a_closed_broker(tmp_path):
     backend = ExternalBackend(tmp_path / "gw")
     with pytest.raises(GatewayError):
         await backend.graph()
+
+
+async def test_stopping_a_daemon_keeps_its_record_so_it_can_be_started_again(tmp_path, monkeypatch):
+    """The page says a stopped daemon stays listed as offline and can be started again; that needs its record."""
+    asked: list[dict[str, object]] = []
+
+    async def stop_daemon(session_id: str, *, force: bool = False, keep: bool = False) -> str:
+        asked.append({"session_id": session_id, "force": force, "keep": keep})
+        return "stopped; its record was kept"
+
+    from zettcode.sdk import daemons as sdk_daemons
+
+    monkeypatch.setattr(sdk_daemons, "stop_daemon", stop_daemon)
+
+    said = await ExternalBackend(tmp_path / "gw").stop("01d", force=True)
+
+    assert said == "stopped; its record was kept"
+    assert asked == [{"session_id": "01d", "force": True, "keep": True}]
