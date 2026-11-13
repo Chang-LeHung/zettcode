@@ -1245,9 +1245,30 @@ class Gateway:
             raise GatewayError(404 if error.reason == "unknown" else 503, error.reason, str(error)) from error
 
     # -- external agents --------------------------------------------------------------------------
-    def agent_types(self) -> list[dict[str, str]]:
-        """Return the external agent types an installed plugin offers."""
+    def agent_types(self) -> list[dict[str, Any]]:
+        """Return the external agent types an installed plugin offers, with the settings each lets the page choose."""
         return [item.to_dict() for item in self.agents.available()]
+
+    def _agent_options(self, kind: str, options: object) -> dict[str, str]:
+        """Return the page's settings for an agent, checked by the plugin's fields and by what this gateway allows.
+
+        A ``directory`` setting must lie within the roots, as a daemon's workspace must; the ``unrestricted`` choice is
+        refused when the gateway was started with ``--no-full``. The page hides what the gateway would refuse, and the
+        gateway refuses it again here, because the page is not what keeps a sign-in from asking.
+        """
+        try:
+            checked = self.agents.check_options(kind, options)
+        except AgentError as error:
+            raise GatewayError(400, "invalid", str(error)) from error
+        for field in self.agents.fields_of(kind):
+            value = checked.get(field.name, "")
+            if not value:
+                continue
+            if field.kind == "directory":
+                checked[field.name] = str(self.workspace(value))
+            if field.unrestricted and value == field.unrestricted and not self.settings.allow_full:
+                raise GatewayError(403, "forbidden", "This gateway does not let an agent have full access (--no-full)")
+        return checked
 
     async def create_agent(self, data: Mapping[str, Any]) -> dict[str, Any]:
         """Start one plugin-provided external agent and return its thread."""
@@ -1260,6 +1281,7 @@ class Gateway:
         if not isinstance(title, str) or not isinstance(session_id, str) or not isinstance(group, str):
             raise GatewayError(400, "invalid", "title, session_id and group are strings")
         group = _group_name(group)
+        chosen = self._agent_options(kind, data.get("options"))
         generated = bool(group) and not session_id
         if generated:
             # Keep the id here as well, so a join that committed before its response was lost can be undone. A caller's
@@ -1267,7 +1289,7 @@ class Gateway:
             # this method generated can need the compensating remove below.
             session_id = f"web-{secrets.token_hex(6)}"
         try:
-            session = await self.agents.create(kind, title, session_id, group)
+            session = await self.agents.create(kind, title, session_id, group, chosen)
         except AgentError as error:
             if generated:
                 with contextlib.suppress(SendError, GatewayError):

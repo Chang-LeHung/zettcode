@@ -242,6 +242,55 @@ async def test_an_edit_of_the_settings_applies_to_the_next_message_with_no_resta
     assert "resume" in two["argv"]
 
 
+async def test_what_was_chosen_for_one_agent_wins_over_the_file_and_belongs_to_that_agent_alone(
+    tmp_path, settings_file
+):
+    script = tmp_path / "fake"
+    script.write_text(
+        "#!/usr/bin/env python3\nimport json, os, sys\n"
+        "print(json.dumps({'session_id': 's-1', 'result': json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd()})}))\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    filed, chosen = tmp_path / "filed", tmp_path / "chosen"
+    filed.mkdir()
+    chosen.mkdir()
+    tool = dataclasses.replace(CODEX, binary=str(script))
+    settings_file({"cwd": str(filed), "permission": "full"})
+
+    picky = CodexAgent().create_with("picky", "Picky", {"cwd": str(chosen), "permission": "read"})
+    plain = CodexAgent().create("plain", "Plain")
+    assert isinstance(picky, CliAgent) and isinstance(plain, CliAgent)
+    picky.source = plain.source = tool
+
+    one = json.loads(await picky._run("hello"))
+    two = json.loads(await plain._run("hello"))
+
+    assert one["cwd"] == str(chosen.resolve()) and "read-only" in one["argv"]
+    # An agent started with no choice follows the file, as before.
+    assert two["cwd"] == str(filed.resolve()) and "read-only" not in two["argv"]
+
+
+def test_an_empty_choice_leaves_the_file_in_charge_and_a_choice_the_tool_does_not_know_is_refused(
+    tmp_path, settings_file
+):
+    settings_file({"permission": "workspace"})
+
+    assert resolve(CODEX, overrides={"permission": "", "cwd": ""}).permission == "workspace"
+    assert resolve(CODEX, overrides={"permission": "read"}).permission == "read"
+    assert resolve(CODEX, overrides={"unknown": "x", "timeout": "5"}).timeout != 5
+    with pytest.raises(ConfigError, match="full, workspace or read"):
+        resolve(CODEX, overrides={"permission": "root"})
+
+
+def test_the_two_plugins_offer_a_folder_and_an_access_level_and_name_full_as_the_unrestricted_one():
+    for plugin in (CodexAgent(), ClaudeCodeAgent()):
+        fields = {item.name: item for item in plugin.fields}
+        assert fields["cwd"].kind == "directory"
+        assert fields["permission"].choices == ("full", "workspace", "read")
+        assert fields["permission"].unrestricted == "full"
+
+
 async def test_a_broken_settings_file_fails_the_turn_with_a_sentence_and_the_agent_goes_on(tmp_path, settings_file):
     agent = CliAgent("agent-1", "Codex", CODEX)
     settings_file("{oops")
