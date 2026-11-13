@@ -77,7 +77,7 @@ def test_nothing_but_the_page_and_sign_in_answers_before_sign_in(parts):
     client, _, _ = parts
 
     assert client.get("/").status_code == 200
-    assert client.get("/api/session").json() == {"authenticated": False, "open": False}
+    assert client.get("/api/session").json() == {"authenticated": False, "open": False, "role": None}
     for path in ("/api/threads", "/api/status", "/api/config", "/api/dirs", "/api/threads/01d"):
         assert client.get(path).status_code == 401, path
     assert client.post("/api/threads/01d/send", json={"text": "x"}).status_code == 401
@@ -484,7 +484,7 @@ def test_with_no_token_a_browser_on_this_machine_is_in_and_one_reaching_it_by_an
     with TestClient(
         create_app(settings, FakeBackend(), static=page(tmp_path)), base_url="http://localhost:8765"
     ) as client:
-        assert client.get("/api/session").json() == {"authenticated": True, "open": True}
+        assert client.get("/api/session").json() == {"authenticated": True, "open": True, "role": "write"}
         assert client.get("/api/threads").status_code == 200
         rebound = client.get("/api/threads", headers={"host": "evil.example:8765"})
         assert rebound.status_code == 401

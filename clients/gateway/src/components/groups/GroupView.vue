@@ -6,6 +6,7 @@ import { clockTime } from "../../lib/format";
 import { closeGroup, groupChat, groupNamed, joinGroup, loadEarlierGroup, membersOf, openGroup, deleteGroup, removeFromGroup, senderName, sendToGroup } from "../../stores/groups";
 import type { Member } from "../../stores/groups";
 import { go, href } from "../../stores/route";
+import { auth } from "../../stores/auth";
 import { lobby } from "../../stores/threads";
 import { openSheet, toast } from "../../stores/ui";
 import Avatar from "../common/Avatar.vue";
@@ -143,12 +144,13 @@ async function dissolve(): Promise<void> {
 
 function menu(): void {
   const me = members.value.find((member) => member.me);
+  const writer = !auth.readOnly;
   showMenu(`#${props.name}`, [
     { icon: "users", label: t("Members"), run: () => (showMembers.value = true) },
-    joined.value && { icon: "plus", label: t("Invite"), run: invite },
-    me && { icon: "logout", label: t("Leave group"), run: () => void takeOut(me), danger: true },
+    writer && joined.value && { icon: "plus", label: t("Invite"), run: invite },
+    writer && me && { icon: "logout", label: t("Leave group"), run: () => void takeOut(me), danger: true },
     // Deleting takes the group and what was said in it away from every member, so only a member is offered it.
-    joined.value && { icon: "trash", label: t("Delete group"), run: () => void dissolve(), danger: true },
+    writer && joined.value && { icon: "trash", label: t("Delete group"), run: () => void dissolve(), danger: true },
   ]);
 }
 
@@ -160,7 +162,7 @@ async function join(): Promise<void> {
 function onKey(event: KeyboardEvent): void {
   if (mention.value && choices.value.length) {
     const key = event.key;
-    if (key === "ArrowDown" || key === "ArrowUp") {
+    if ((key === "ArrowDown" || key === "ArrowUp") && !event.isComposing) {
       event.preventDefault();
       const n = choices.value.length;
       active.value = (active.value + (key === "ArrowDown" ? 1 : n - 1)) % n;
@@ -198,23 +200,29 @@ const choices = computed(() => {
   );
 });
 
-function watchCaret(): void {
+/** The ``@word`` the caret is at the end of right now, read from the field itself: where it starts and what was typed. */
+function mentionAtCaret(): { start: number; query: string } | null {
   const el = field.value;
-  if (!el || el.selectionStart !== el.selectionEnd) {
-    mention.value = null;
-    return;
-  }
+  if (!el || el.selectionStart !== el.selectionEnd) return null;
   const before = el.value.slice(0, el.selectionStart);
   const found = /(^|\s)@([\w-]*)$/.exec(before);
   const word = found?.[2];
-  mention.value = word === undefined ? null : { start: before.length - word.length - 1, query: word };
+  return word === undefined ? null : { start: before.length - word.length - 1, query: word };
+}
+
+function watchCaret(): void {
+  mention.value = mentionAtCaret();
   active.value = 0;
 }
 
 function pick(member: Member): void {
   const el = field.value;
-  const found = mention.value;
-  if (!el || !found) return;
+  // Read the caret again: Home, End and a click move it without any of the events that update ``mention``.
+  const found = mentionAtCaret();
+  if (!el || !found) {
+    mention.value = null;
+    return;
+  }
   const end = el.selectionStart;
   const insert = `@${member.handle} `;
   text.value = text.value.slice(0, found.start) + insert + text.value.slice(end);
@@ -296,15 +304,26 @@ watch(text, () => void nextTick(resize));
       </div>
       <GroupMembers v-if="showMembers" :members="members" :can-invite="joined" @invite="invite" @remove="takeOut" @close="showMembers = false" />
     </div>
-    <div v-if="!joined" class="group-join">
+    <div v-if="auth.readOnly" class="group-join">
+      <span>{{ t("You are signed in read-only: you can read everything and change nothing.") }}</span>
+    </div>
+    <div v-else-if="!joined" class="group-join">
       <span>{{ t("You are not in this group. You can read it; join to write.") }}</span>
       <button class="btn sm" type="button" :disabled="groupChat.sending" @click="join">
         <span v-if="groupChat.sending" class="spin" />{{ groupChat.sending ? t("Joining…") : t("Join group") }}
       </button>
     </div>
-    <div v-if="joined && mention && choices.length" class="mention-list" role="listbox" :aria-label="t('Mention a member')">
+    <div
+      v-if="joined && mention && choices.length"
+      id="mention-list"
+      class="mention-list"
+      role="listbox"
+      :aria-label="t('Mention a member')"
+      @pointerdown.prevent
+    >
       <button
         v-for="(member, at) in choices"
+        :id="`mention-${at}`"
         :key="member.id"
         type="button"
         role="option"
@@ -333,7 +352,11 @@ watch(text, () => void nextTick(resize));
           @keydown="onKey"
           @input="watchCaret"
           @click="watchCaret"
-          @keyup="(e: KeyboardEvent) => (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && watchCaret()"
+          @keyup="(e: KeyboardEvent) => ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key) && watchCaret()"
+          :aria-expanded="Boolean(joined && mention && choices.length)"
+          aria-controls="mention-list"
+          aria-autocomplete="list"
+          :aria-activedescendant="mention && choices.length ? `mention-${active}` : undefined"
           @blur="mention = null"
         />
       </div>

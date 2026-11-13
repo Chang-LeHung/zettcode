@@ -67,6 +67,7 @@ def write(settings: Settings) -> None:
         "allow_full": settings.allow_full,
         "log_level": settings.log_level,
         "client_origins": list(settings.client_origins),
+        "read_token": settings.read_token,
     }
     descriptor, temporary = tempfile.mkstemp(dir=settings.directory, prefix=".run-", suffix=".tmp")
     try:
@@ -98,6 +99,7 @@ def read(directory: Path) -> Running | None:
     host, token, log_level = raw.get("host"), raw.get("token"), raw.get("log_level")
     roots, allow_full = raw.get("roots"), raw.get("allow_full")
     client_origins = raw.get("client_origins", [])
+    read_token = raw.get("read_token", "")
     if not (_whole(pid) and pid > 0 and _whole(port) and 0 < port < 65536):
         return None
     if not (isinstance(host, str) and isinstance(token, str) and isinstance(log_level, str)):
@@ -108,18 +110,25 @@ def read(directory: Path) -> Running | None:
         return None
     if not isinstance(client_origins, list) or not all(isinstance(item, str) for item in client_origins):
         return None
-    settings = Settings(
-        token=token,
-        host=host,
-        port=port,
-        roots=tuple(Path(root) for root in roots),
-        allow_full=allow_full,
-        # The folder the record was found in, not a path written inside it: a record cannot send a restart to another
-        # folder.
-        directory=directory,
-        log_level=log_level,
-        client_origins=tuple(client_origins),
-    )
+    if not isinstance(read_token, str):
+        return None
+    try:
+        settings = Settings(
+            token=token,
+            host=host,
+            port=port,
+            roots=tuple(Path(root) for root in roots),
+            allow_full=allow_full,
+            # The folder the record was found in, not a path written inside it: a record cannot send a restart to
+            # another folder.
+            directory=directory,
+            log_level=log_level,
+            client_origins=tuple(client_origins),
+            read_token=read_token,
+        )
+    except ValueError:
+        # A read token the settings refuse (no token, blank, or the same as the token) is a damaged record.
+        return None
     return Running(pid, settings)
 
 

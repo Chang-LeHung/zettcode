@@ -39,6 +39,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from .audit import Audit
 from .backend import Backend, GatewayStartError
 from .external_backend import ExternalBackend
 from .runfile import clear as clear_runfile
@@ -93,17 +94,30 @@ POLICY = (
 
 
 class Auth:
-    """Who is signed in: the token, the cookies issued for it, and how many wrong tokens have been tried."""
+    """Who is signed in: the tokens, the cookies issued for them, and how many wrong tokens have been tried.
 
-    def __init__(self, token: str, clock: Callable[[], float] = time.monotonic) -> None:
+    There are two roles. The ``token`` signs in as ``write`` (everything), the optional ``read_token`` as ``read`` (it
+    may look at everything and change nothing). With no token at all every request on this machine is ``write``.
+    """
+
+    def __init__(self, token: str, clock: Callable[[], float] = time.monotonic, read_token: str = "") -> None:
         self.token = token
+        # A read token equal to the write token would silently be the write token; there is no read-only then.
+        self.read_token = read_token if token and read_token != token else ""
         self.clock = clock
-        self._sessions: dict[str, float] = {}
+        self._sessions: dict[str, tuple[float, str]] = {}
         self._failures: deque[float] = deque()
 
     def token_ok(self, given: str) -> bool:
-        """Return whether ``given`` is the token, compared in constant time."""
+        """Return whether ``given`` is the (write) token, compared in constant time."""
         return bool(self.token) and hmac.compare_digest(given.encode(), self.token.encode())
+
+    def token_role(self, given: str) -> str | None:
+        """Return the role a token signs in as, or ``None`` when it is neither token."""
+        # Both are always compared, so the time taken does not say which of them was close.
+        write = self.token_ok(given)
+        read = bool(self.read_token) and hmac.compare_digest(given.encode(), self.read_token.encode())
+        return "write" if write else "read" if read else None
 
     def locked_out(self) -> bool:
         """Return whether too many wrong tokens were tried lately."""
@@ -116,10 +130,10 @@ class Auth:
         """Count a wrong token."""
         self._failures.append(self.clock())
 
-    def issue(self) -> str:
-        """Return a new cookie value for a browser that showed the token."""
+    def issue(self, role: str = "write") -> str:
+        """Return a new cookie value for a browser that showed a token of this role."""
         value = secrets.token_urlsafe(32)
-        self._sessions[value] = self.clock() + COOKIE_SECONDS
+        self._sessions[value] = (self.clock() + COOKIE_SECONDS, role)
         return value
 
     def revoke(self, value: str | None) -> None:
@@ -127,36 +141,45 @@ class Auth:
         if value:
             self._sessions.pop(value, None)
 
+    def cookie_role(self, value: str | None) -> str | None:
+        """Return the role a cookie was issued for, or ``None`` when it was not issued or has run out."""
+        if not value:
+            return None
+        found = self._sessions.get(value)
+        if found is None:
+            return None
+        if found[0] < self.clock():
+            self._sessions.pop(value, None)
+            return None
+        return found[1]
+
     def cookie_ok(self, value: str | None) -> bool:
         """Return whether a cookie was issued and has not run out."""
-        if not value:
-            return False
-        expires = self._sessions.get(value)
-        if expires is None:
-            return False
-        if expires < self.clock():
-            self._sessions.pop(value, None)
-            return False
-        return True
+        return self.cookie_role(value) is not None
 
     @property
     def open(self) -> bool:
         """Return whether there is no token, so nothing is asked of a browser but that it is on this machine."""
         return not self.token
 
-    def allowed(self, connection: HTTPConnection) -> bool:
-        """Return whether a request or socket is signed in, by cookie or by bearer token.
+    def role(self, connection: HTTPConnection) -> str | None:
+        """Return ``write`` or ``read`` for a request or socket that is signed in, by cookie or bearer token, else ``None``.
 
-        With no token every request is let in, but only one addressed to this machine by name: a page on another site
-        can make a browser send requests to a local port, and a name that resolves to it (DNS rebinding) would
-        otherwise be trusted as the page itself.
+        With no token every request is let in as ``write``, but only one addressed to this machine by name: a page on
+        another site can make a browser send requests to a local port, and a name that resolves to it (DNS rebinding)
+        would otherwise be trusted as the page itself.
         """
         if self.open:
-            return urlsplit("//" + connection.headers.get("host", "")).hostname in LOOPBACK_NAMES
-        if self.cookie_ok(connection.cookies.get(COOKIE)):
-            return True
+            return "write" if urlsplit("//" + connection.headers.get("host", "")).hostname in LOOPBACK_NAMES else None
+        cookie = self.cookie_role(connection.cookies.get(COOKIE))
+        if cookie:
+            return cookie
         scheme, _, given = connection.headers.get("authorization", "").partition(" ")
-        return scheme.lower() == "bearer" and self.token_ok(given.strip())
+        return self.token_role(given.strip()) if scheme.lower() == "bearer" else None
+
+    def allowed(self, connection: HTTPConnection) -> bool:
+        """Return whether a request or socket is signed in at all, as either role."""
+        return self.role(connection) is not None
 
 
 def same_origin(connection: HTTPConnection, *, required: bool = False, allowed: tuple[str, ...] = ()) -> bool:
@@ -175,6 +198,19 @@ def same_origin(connection: HTTPConnection, *, required: bool = False, allowed: 
     if origin in allowed:
         return True
     return urlsplit(origin).netloc == connection.headers.get("host", "")
+
+
+def refuses_read_only(request: Request) -> bool:
+    """Return whether a read-only sign-in may not make this request.
+
+    The rule is "any method but these": marking the page as seen (it writes the gateway's own seen file, not the
+    sessions) is something a reader must do, and sign-in and sign-out are public. A GET is let through except the
+    folder picker, which lists directories on the machine and belongs to starting a daemon, which a reader cannot do.
+    """
+    path = request.url.path
+    if request.method in ("GET", "HEAD"):
+        return path == "/api/dirs"
+    return not (request.method == "POST" and path.startswith("/api/threads/") and path.endswith("/read"))
 
 
 def offered(connection: HTTPConnection) -> list[str]:
@@ -238,7 +274,8 @@ Handler = Callable[[Request], Awaitable[Any]]
 
 def create_app(settings: Settings, backend: Backend | None = None, *, static: Path = STATIC) -> Starlette:
     """Return the application for these settings; a test gives a backend of its own, and the folder the page is in."""
-    auth = Auth(settings.token)
+    auth = Auth(settings.token, read_token=settings.read_token)
+    audit = Audit(settings.audit_path)
     allowed = settings.allowed_origins
     gateway = Gateway(
         backend if backend is not None else ExternalBackend(settings.directory, settings.store),
@@ -270,16 +307,24 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         """Wrap an endpoint: check who is asking, run it, and answer a refusal or a fault in the one shape."""
 
         async def route(request: Request) -> Response:
+            status = 500
+            role: str | None = None
             try:
-                if not public and not auth.allowed(request):
+                role = auth.role(request)
+                if not public and role is None:
                     raise GatewayError(401, "unauthorized", "Sign in first")
                 if request.method not in ("GET", "HEAD") and not same_origin(
                     request, required=auth.open, allowed=allowed
                 ):
                     raise GatewayError(403, "forbidden", "This request came from another site")
+                if role == "read" and not public and refuses_read_only(request):
+                    raise GatewayError(403, "read_only", "This sign-in can look but not change anything")
                 result = await handler(request)
-                return result if isinstance(result, Response) else JSONResponse(result)
+                response = result if isinstance(result, Response) else JSONResponse(result)
+                status = response.status_code
+                return response
             except GatewayError as error:
+                status = error.status
                 headers = {"retry-after": str(error.extra["retry_after"])} if "retry_after" in error.extra else None
                 return JSONResponse(error.to_dict(), error.status, headers=headers)
             except Exception as error:  # noqa: BLE001 - one request failing must not end the server
@@ -287,6 +332,18 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
                 return JSONResponse(
                     {"error": {"code": "internal", "message": f"The request failed ({type(error).__name__})"}}, 500
                 )
+            finally:
+                # Every change is recorded, and so is every refusal of one: a read-only sign-in that tried to write is
+                # exactly what a person reading the log wants to find. Reads are not (the page polls them).
+                if not public and (request.method not in ("GET", "HEAD") or status in (401, 403)):
+                    audit.record(
+                        "request",
+                        role=role,
+                        method=request.method,
+                        path=request.url.path,
+                        status=status,
+                        client=request.client.host if request.client else None,
+                    )
 
         return route
 
@@ -309,20 +366,26 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
 
     # -- sign-in ----------------------------------------------------------------------------------
     async def session(request: Request) -> Any:
-        return {"authenticated": auth.allowed(request), "open": auth.open}
+        role = auth.role(request)
+        return {"authenticated": role is not None, "open": auth.open, "role": role}
 
     async def login(request: Request) -> Any:
+        client = request.client.host if request.client else None
         if auth.locked_out():
+            audit.record("login.locked", client=client)
             raise GatewayError(429, "rate", "Too many wrong tokens; wait a few minutes", retry_after=60)
         given = (await body(request)).get("token")
-        if not isinstance(given, str) or not auth.token_ok(given.strip()):
+        role = auth.token_role(given.strip()) if isinstance(given, str) else None
+        if role is None:
             auth.failed()
+            audit.record("login.failed", client=client)
             await asyncio.sleep(0.4)
             raise GatewayError(401, "unauthorized", "That is not the token")
-        response = JSONResponse({"authenticated": True})
+        audit.record("login", role=role, client=client)
+        response = JSONResponse({"authenticated": True, "role": role})
         response.set_cookie(
             COOKIE,
-            auth.issue(),
+            auth.issue(role),
             max_age=COOKIE_SECONDS,
             httponly=True,
             samesite="strict",
@@ -332,6 +395,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         return response
 
     async def logout(request: Request) -> Any:
+        audit.record("logout", role=auth.role(request), client=request.client.host if request.client else None)
         auth.revoke(request.cookies.get(COOKIE))
         response = JSONResponse({"authenticated": False})
         response.delete_cookie(COOKIE, path="/")
@@ -468,15 +532,20 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
     async def events(websocket: WebSocket) -> None:
         protocols = offered(websocket)
         subprotocol = WS_PROTOCOL if WS_PROTOCOL in protocols else None
-        if not (auth.allowed(websocket) or auth.token_ok(websocket_token(websocket))) or not same_origin(
-            websocket, required=auth.open, allowed=allowed
-        ):
+        offered_role = auth.role(websocket) or auth.token_role(websocket_token(websocket))
+        client = websocket.client.host if websocket.client else None
+        if offered_role is None or not same_origin(websocket, required=auth.open, allowed=allowed):
+            audit.record("socket.refused", client=client)
             # Accept first: a close before the handshake is an HTTP refusal, which a browser reports as 1006, and the
             # page could not tell a refused token from a dropped network. Echo the offered subprotocol as well: a
             # browser that negotiated one refuses a handshake that comes back without it.
             await websocket.accept(subprotocol=subprotocol)
             await websocket.close(UNAUTHORIZED)
             return
+        # The socket only sends events: the page writes over HTTP, where a read-only sign-in is refused. Nothing a
+        # client sends on it is acted on, so a read-only sign-in may hold it; this is where to refuse a frame that
+        # ever changes something.
+        audit.record("socket", role=offered_role, client=client)
         # A native client offers ``zettcode`` beside its token; echo it, or the browser would refuse the socket.
         await websocket.accept(subprotocol=subprotocol)
         queue = gateway.subscribe()

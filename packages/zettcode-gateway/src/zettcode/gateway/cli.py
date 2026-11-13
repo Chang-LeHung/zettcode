@@ -34,7 +34,7 @@ from zettcode.processes import command_line, is_module_command, still_there
 from zettcode.version import __version__
 
 from . import runfile
-from .settings import DEFAULT_HOST, DEFAULT_PORT, TOKEN_VARIABLE, Settings, default_directory
+from .settings import DEFAULT_HOST, DEFAULT_PORT, READ_TOKEN_VARIABLE, TOKEN_VARIABLE, Settings, default_directory
 
 logger = logging.getLogger("zettcode.gateway")
 
@@ -123,6 +123,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--read-token",
+        default=argparse.SUPPRESS,
+        help=(
+            "a second token that signs in read-only: it can look at everything and change nothing. Prefer "
+            f"${READ_TOKEN_VARIABLE}: an argument is visible to every user of the machine in `ps`. "
+            "Needs a token and must differ from it"
+        ),
+    )
+    parser.add_argument(
         "-r",
         "--root",
         metavar="DIR",
@@ -201,6 +210,15 @@ def settings_from(argv: list[str] | None = None, *, base: Settings | None = None
             token = base.token
         else:
             token = os.environ.get(TOKEN_VARIABLE) or ""
+    read_token = getattr(args, "read_token", None)
+    if read_token is None:
+        read_token = base.read_token if base is not None else os.environ.get(READ_TOKEN_VARIABLE) or ""
+    if read_token and not token:
+        raise SystemExit("zettcode gateway: --read-token needs a token: with no sign-in nobody can be read-only")
+    if read_token and not read_token.strip():
+        raise SystemExit("zettcode gateway: the read token is blank")
+    if read_token and read_token == token:
+        raise SystemExit("zettcode gateway: the read token must differ from the token, or it would not be read-only")
     roots_given = getattr(args, "root", None)
     if roots_given is None:
         roots = base.roots if base is not None and base.roots else (Path(Path.home().anchor or "/"),)
@@ -246,6 +264,7 @@ def settings_from(argv: list[str] | None = None, *, base: Settings | None = None
         directory=directory,
         log_level=log_level,
         client_origins=client_origins,
+        read_token=read_token,
     )
 
 
@@ -409,7 +428,7 @@ def spawn(settings: Settings) -> subprocess.Popen[bytes]:
         arguments.extend(("--root", str(root)))
     for source in settings.client_origins:
         arguments.extend(("--client-origin", source))
-    environment = {**os.environ, TOKEN_VARIABLE: settings.token}
+    environment = {**os.environ, TOKEN_VARIABLE: settings.token, READ_TOKEN_VARIABLE: settings.read_token}
     options: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "cwd": str(settings.directory),
@@ -520,6 +539,9 @@ def _say(settings: Settings) -> None:
         print("  sign-in  none: anybody on this machine can use it (give --token to ask for one)", flush=True)
     else:
         print(f"  open     {settings.url}/#token={settings.token}", flush=True)
+        if settings.read_token:
+            print(f"  read-only {settings.url}/#token={settings.read_token}", flush=True)
+        print(f"  audit    {settings.audit_path}", flush=True)
     anywhere = len(settings.roots) == 1 and settings.roots[0] == settings.roots[0].parent
     print(
         "  agents   may be started in: " + ("any directory" if anywhere else ", ".join(map(str, settings.roots))),
