@@ -46,7 +46,7 @@ from zettcode.code_agents.config import (
 from zettcode.gateway.agents import AgentPlugin
 
 #: The one place this plugin's version is written.
-__version__ = "0.1.0"
+__version__ = "0.4.5"
 
 
 def _timeout() -> float:
