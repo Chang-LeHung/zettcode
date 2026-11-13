@@ -4,7 +4,10 @@ export interface Press {
   move(event: PointerEvent): void;
   /** Lift, cancel or leave: no menu any more. */
   end(): void;
-  /** Whether a press has just opened the menu, so the `contextmenu` event some browsers add after it is not a second one. */
+  /**
+   * Whether the last press opened the menu, so the `contextmenu` event some browsers add after it (however late) is not a
+   * second one. It stays set until the next pointer goes down, which is also what a mouse's right click does first.
+   */
   recent(): boolean;
 }
 
@@ -14,26 +17,32 @@ export const PRESS_SLOP = 10;
 
 /**
  * Call `open` when a touch stays down for {@link PRESS_MS}. A mouse and a pen are left alone: they have a right click, and
- * a double tap is no longer a menu because it also selects a word.
+ * a double tap is no longer a menu because it also selects a word. A change of the page's text selection while the finger
+ * is down means the system has begun selecting (a press on text does that on iOS), so the press is dropped rather than
+ * opening a menu under the system's own.
  */
-export function longPress(open: (event: PointerEvent) => void, now: () => number = Date.now): Press {
+export function longPress(open: (event: PointerEvent) => void): Press {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let x = 0;
   let y = 0;
-  let firedAt = -Infinity;
+  let fired = false;
+  const watching = typeof document !== "undefined";
   const stop = (): void => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
+    if (watching) document.removeEventListener("selectionchange", stop);
   };
   return {
     down(event) {
       stop();
+      fired = false;
       if (event.pointerType !== "touch" || !event.isPrimary) return;
       x = event.clientX;
       y = event.clientY;
+      if (watching) document.addEventListener("selectionchange", stop);
       timer = setTimeout(() => {
-        timer = undefined;
-        firedAt = now();
+        stop();
+        fired = true;
         open(event);
       }, PRESS_MS);
     },
@@ -41,6 +50,6 @@ export function longPress(open: (event: PointerEvent) => void, now: () => number
       if (timer !== undefined && Math.hypot(event.clientX - x, event.clientY - y) > PRESS_SLOP) stop();
     },
     end: stop,
-    recent: () => now() - firedAt < 1000,
+    recent: () => fired,
   };
 }

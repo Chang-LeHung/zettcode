@@ -20,7 +20,7 @@ import MessageText from "../chat/MessageText.vue";
 import GroupMembers from "./GroupMembers.vue";
 import InviteSheet from "./InviteSheet.vue";
 import { confirmAction, showMenu } from "../sheets/sheets";
-import { backspaceWhole } from "../../lib/erase";
+import { applyErase, backspaceWhole } from "../../lib/erase";
 import { longPress } from "../../lib/press";
 import { dayName, sameDay } from "../../lib/day";
 
@@ -28,7 +28,9 @@ const props = defineProps<{ name: string }>();
 
 const group = computed(() => groupNamed(props.name));
 const members = computed(() => (group.value ? membersOf(group.value) : []));
-/** The words an `@` in a message can name: every member's handle, so a mention reads as one whoever is online. */
+/** The words an `@` in a message can name: every member's handle, so a mention reads as one whoever is online. This is
+ * decoration for the reader, not delivery: an offline member's word is derived from a title (`address` false) and the broker
+ * does not resolve it, so colour must never be taken to mean "this person was notified". */
 const mentionable = computed(() => members.value.map((member) => member.handle).filter(Boolean));
 const myHandle = computed(() => members.value.find((member) => member.me)?.handle ?? "");
 const online = computed(() => members.value.filter((member) => member.online).length);
@@ -256,9 +258,12 @@ function onKey(event: KeyboardEvent): void {
   const whole = el && backspaceWhole(event, el, others.value.map((member) => member.handle));
   if (el && whole) {
     event.preventDefault();
-    text.value = whole.value;
     mention.value = null;
-    void nextTick(() => el.setSelectionRange(whole.caret, whole.caret));
+    // Through the browser's own delete when it will, so Ctrl/Cmd+Z brings the mention or quote back.
+    if (!applyErase(el, whole)) {
+      text.value = whole.value;
+      void nextTick(() => el.setSelectionRange(whole.caret, whole.caret));
+    }
     return;
   }
   if (mention.value && choices.value.length) {

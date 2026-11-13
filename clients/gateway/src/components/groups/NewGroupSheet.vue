@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { ApiError } from "../../api/http";
 import { t } from "../../i18n";
-import { createGroup, GROUP_NAME } from "../../stores/groups";
+import { createGroup, GROUP_NAME, spellGroup } from "../../stores/groups";
 import { go } from "../../stores/route";
 import { lobby } from "../../stores/threads";
 import { toast } from "../../stores/ui";
@@ -15,7 +15,7 @@ const chosen = ref<string[]>([]);
 const busy = ref(false);
 const failure = ref("");
 
-const clean = computed(() => name.value.trim().replace(/^#/, "").toLowerCase());
+const clean = computed(() => spellGroup(name.value));
 const valid = computed(() => GROUP_NAME.test(clean.value));
 const hint = computed(() => (clean.value && !valid.value ? t("1 to 40 letters, digits, - or _ (any language)") : ""));
 const wanted = computed(() => query.value.trim().toLowerCase());

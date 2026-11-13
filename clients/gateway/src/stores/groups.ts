@@ -201,8 +201,16 @@ export async function removeFromGroup(name: string, member: string): Promise<voi
   await loadGraph();
 }
 
-/** What a group's name may be, as the broker holds it: letters of any script, digits, `-` and `_`, 1 to 40 long. */
-export const GROUP_NAME = /^[\p{L}\p{N}][\p{L}\p{N}_-]{0,39}$/u;
+/**
+ * What a group's name may be, as the broker holds it: letters and digits of any script, and the combining marks that make
+ * up a word in many of them, then `-` and `_` after the first character; 1 to 40 long. The broker spells a name in one
+ * canonical form before it checks it (compatibility-normalised, case-folded), so the page only needs the same character
+ * classes to say at once what will be refused. Look-alike letters from another script are two different names.
+ */
+export const GROUP_NAME = /^[\p{L}\p{N}][\p{L}\p{N}\p{M}_-]{0,39}$/u;
+
+/** A typed name as the page sends it: `＃Team ` is `team`. The broker's spelling (which also folds `ß`) has the last word. */
+export const spellGroup = (raw: string): string => raw.normalize("NFKC").trim().replace(/^#+/, "").toLowerCase().normalize("NFKC");
 
 /** Create a group with the person at the gateway in it, and the sessions asked for. Throws on failure; returns its name. */
 export async function createGroup(name: string, members: string[]): Promise<string> {

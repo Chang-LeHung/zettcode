@@ -122,11 +122,27 @@ async def test_a_group_may_be_named_in_any_language_but_not_with_spaces_or_marks
 
     group(hub, a, "create", "#测试群")
     group(hub, a, "create", "Équipe-2")
-    assert {g["name"] for g in hub.listing_groups(a.session.key)["groups"]} == {"测试群", "équipe-2"}
-    for bad in ("", "a b", "测试 群", "-lead", "_x", "a/b", "a#b", "x" * 41):
+    group(hub, a, "create", "हिन्दी")
+    group(hub, a, "create", "தமிழ்")
+    assert {g["name"] for g in hub.listing_groups(a.session.key)["groups"]} == {"测试群", "équipe-2", "हिन्दी", "தமிழ்"}
+    for bad in ("", "a b", "测试 群", "-lead", "_x", "a/b", "a#b", "x" * 41, "a\u200db", "\u0301x"):
         with pytest.raises(Refused) as refused:
             group(hub, a, "create", bad)
         assert refused.value.reason == "invalid", bad
+
+
+async def test_one_name_is_one_group_however_it_is_spelled(trio):
+    hub, a, b, _ = trio
+
+    group(hub, a, "create", "Straße")
+    for twin in ("STRASSE", "strasse", "＃Strasse"):
+        with pytest.raises(Refused) as taken:
+            group(hub, b, "create", twin)
+        assert taken.value.reason == "duplicate", twin
+    group(hub, a, "create", "caf\u00e9")
+    with pytest.raises(Refused) as composed:
+        group(hub, b, "create", "cafe\u0301")
+    assert composed.value.reason == "duplicate", "a decomposed accent is the same name as the composed one"
 
 
 async def test_a_group_name_is_taken_once(trio):
