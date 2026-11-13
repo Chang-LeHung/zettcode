@@ -40,6 +40,8 @@ export const ZH: Record<string, string> = {
   "The gateway did not keep that. It may be an older version: restart it.": "网关没有保存这个设置，它可能是旧版本，请重启网关。",
   "Copy text": "复制文字",
   "Could not copy": "复制失败",
+  "Today": "今天",
+  "Yesterday": "昨天",
   "Reply": "回复",
   "Reply to {name}": "回复 {name}",
   "Reply to your message": "回复你的消息",
