@@ -17,7 +17,7 @@ const failure = ref("");
 
 const clean = computed(() => name.value.trim().replace(/^#/, "").toLowerCase());
 const valid = computed(() => GROUP_NAME.test(clean.value));
-const hint = computed(() => (clean.value && !valid.value ? t("1 to 40 letters, digits, - or _") : ""));
+const hint = computed(() => (clean.value && !valid.value ? t("1 to 40 letters, digits, - or _ (any language)") : ""));
 const wanted = computed(() => query.value.trim().toLowerCase());
 const candidates = computed(() =>
   lobby.threads.filter(

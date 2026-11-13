@@ -19,6 +19,7 @@ import MessageText from "../chat/MessageText.vue";
 import GroupMembers from "./GroupMembers.vue";
 import InviteSheet from "./InviteSheet.vue";
 import { confirmAction, showMenu } from "../sheets/sheets";
+import { backspaceWhole } from "../../lib/erase";
 
 const props = defineProps<{ name: string }>();
 
@@ -211,6 +212,16 @@ async function join(): Promise<void> {
 }
 
 function onKey(event: KeyboardEvent): void {
+  // A picked mention and a quote are each one thing in a messenger: Backspace right after one takes all of it.
+  const el = field.value;
+  const whole = el && backspaceWhole(event, el, others.value.map((member) => member.handle));
+  if (el && whole) {
+    event.preventDefault();
+    text.value = whole.value;
+    mention.value = null;
+    void nextTick(() => el.setSelectionRange(whole.caret, whole.caret));
+    return;
+  }
   if (mention.value && choices.value.length) {
     const key = event.key;
     if ((key === "ArrowDown" || key === "ArrowUp") && !event.isComposing) {

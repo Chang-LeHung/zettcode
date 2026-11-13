@@ -1,0 +1,51 @@
+/** What a backspace removes, when it removes a whole thing rather than one character, as a messenger's does. */
+export interface Erased {
+  value: string;
+  caret: number;
+}
+
+/**
+ * What a Backspace keydown in a text field should do when it takes a whole unit (see {@link eraseWhole}): the new text, or
+ * `null` to leave the key to the browser. A selection, a modifier (word and line deletes) and an IME composition are the
+ * browser's.
+ */
+export function backspaceWhole(event: KeyboardEvent, field: HTMLTextAreaElement, handles: readonly string[] = []): Erased | null {
+  if (event.key !== "Backspace" || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return null;
+  if (field.selectionStart !== field.selectionEnd) return null;
+  return eraseWhole(field.value, field.selectionStart, handles);
+}
+
+/**
+ * The text after a Backspace at `caret` when it should take a whole unit, or `null` when it is an ordinary one-character
+ * delete. A unit is:
+ *
+ * - a mention the person picked, `@handle ` with the caret just after its space (only a `handle` the caller says is a
+ *   member's: a word the person typed that merely starts with `@` is text and is erased as text); and
+ * - a quote, the `> ` lines of one with the caret at the start of the line after it, along with the blank line that
+ *   follows the quote.
+ *
+ * `handles` are compared without regard to case.
+ */
+export function eraseWhole(value: string, caret: number, handles: readonly string[] = []): Erased | null {
+  const before = value.slice(0, caret);
+  const after = value.slice(caret);
+
+  const mention = /(^|\s)@([\p{L}\p{N}_-]+) $/u.exec(before);
+  if (mention && handles.some((handle) => handle.toLowerCase() === mention[2]!.toLowerCase())) {
+    const start = before.length - mention[0].length + mention[1]!.length;
+    return { value: before.slice(0, start) + after, caret: start };
+  }
+
+  if (before.endsWith("\n")) {
+    const lines = before.replace(/\n+$/, "").split("\n");
+    let first = lines.length;
+    while (first > 0 && /^>/.test(lines[first - 1]!)) first -= 1;
+    if (first < lines.length) {
+      const kept = lines.slice(0, first).join("\n").replace(/\n+$/, "");
+      // The blank line that separated the quote from what came before it goes too, so nothing is left dangling.
+      const head = kept ? `${kept}\n` : "";
+      return { value: head + after, caret: head.length };
+    }
+  }
+  return null;
+}

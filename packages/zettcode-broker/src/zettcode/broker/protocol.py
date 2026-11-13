@@ -128,8 +128,10 @@ ACK_TIMEOUT = 10.0
 RATE_LIMIT = 20
 RATE_WINDOW = 60.0
 
-#: A group chat's name, as it is typed after ``#``: lower case, so ``#Review`` and ``#review`` are one group.
-GROUP_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
+#: A group chat's name, as it is typed after ``#``: lower case, so ``#Review`` and ``#review`` are one group. Letters of
+#: any script count (``#测试群``), so a name can be written in the language the people in it speak; whitespace,
+#: punctuation and control characters do not, which keeps a name one word in a line of text.
+GROUP_NAME = re.compile(r"^[^\W_][\w-]{0,39}$")
 
 #: How many sessions one group may hold: a group is a working party, not a channel.
 MAX_GROUP_MEMBERS = 64
@@ -324,7 +326,7 @@ def group_name(raw: object) -> str:
     """
     name = raw.strip().lstrip("#").lower() if isinstance(raw, str) else ""
     if not GROUP_NAME.match(name):
-        raise Refused("invalid", "a group name is 1-40 letters, digits, '-' or '_', such as #review")
+        raise Refused("invalid", "a group name is 1-40 letters, digits, '-' or '_' (any language), such as #review")
     return name
 
 
