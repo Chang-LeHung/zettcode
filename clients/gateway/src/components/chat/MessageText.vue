@@ -46,8 +46,9 @@ async function onClick(event: MouseEvent): Promise<void> {
   const target = event.target as HTMLElement;
   const button = target.closest<HTMLElement>("[data-copy]");
   if (!button) {
-    // A quote: a link inside it keeps its own meaning, and selecting words to copy must not jump away.
-    const quote = target.closest<HTMLElement>("blockquote");
+    // A quote: only one that is a control jumps (see markQuotes), so the mouse does what the keyboard can. A link inside it
+    // keeps its own meaning, and selecting words to copy must not jump away.
+    const quote = target.closest<HTMLElement>('blockquote[role="button"]');
     if (quote && !target.closest("a") && !window.getSelection()?.toString()) emit("quote", quote);
     return;
   }

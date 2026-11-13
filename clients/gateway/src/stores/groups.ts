@@ -65,8 +65,13 @@ export function memberOf(id: string): Member {
     status: !online ? "offline" : live.status === "working" ? "working" : "idle",
     me: id === meId(),
     chat: thread !== undefined,
-    // The live roster's handle; an offline member has none (the roster has dropped it), so it is called by its title,
-    // which is one of the names the broker also accepts, written as one word.
+    // ``handle`` is what the picker writes after an ``@``. For a member on the roster it is the roster's handle, which the
+    // broker resolves (``address`` is true). An offline member has none, so it is written as its title made into one word:
+    // that is a DISPLAY NAME for the people who read the message, not a key. The broker compares a whole title, so
+    // "Release-Planner-v2" is not a name it knows for "Release Planner (v2)". An ``@`` has no routing effect today (a group
+    // message goes to every online member whatever it says), so nothing depends on it; if a mention ever decides who is
+    // notified, only ``address: true`` members can be keyed by it, and this insertion must change or the others must stop
+    // being offered.
     handle: live?.handle || thread?.handle || mentionName(thread?.title || thread?.name || ""),
     address: Boolean(live?.handle || thread?.handle),
   };
