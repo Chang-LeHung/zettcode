@@ -501,6 +501,72 @@ async def test_the_first_message_goes_once_the_daemon_is_reachable_and_a_failure
     assert failed["thread"] is not None
 
 
+async def test_a_stopped_daemon_is_started_again_in_one_call_as_it_was_on_its_own_conversation(tmp_path):
+    gateway, backend = await make(tmp_path)
+    work = str(tmp_path / "work")
+    backend.add_daemon(DAEMON, work, name="reviewer", status="dead", online=False, permission="safe")
+    backend.histories[DAEMON] = []
+    await gateway.refresh()
+
+    answer = await gateway.restart(DAEMON)
+
+    assert backend.spawned == [
+        {"workspace": work, "model": "fast", "effort": None, "resume": DAEMON, "name": "reviewer", "permission": "safe"}
+    ]
+    assert answer["thread"]["id"] == DAEMON and answer["thread"]["status"] != "dead" and "note" not in answer
+
+
+async def test_a_restart_says_what_it_could_not_do_instead_of_starting_something_else(tmp_path):
+    gateway, backend = await make(tmp_path)
+    work = str(tmp_path / "work")
+    backend.add_daemon("01running0000000", work, name="up")
+    backend.add_daemon("01nofolder000000", "", name="lost", status="dead", online=False)
+    backend.add_daemon("01outside0000000", "/", name="out", status="dead", online=False)
+    backend.add_daemon("01full0000000000", work, name="full", status="dead", online=False, permission="full")
+    for stored in ("01outside0000000", "01full0000000000"):
+        backend.histories[stored] = []
+    await gateway.refresh()
+
+    cases = [
+        ("01nothere0000000", 404, "not_found"),
+        ("../x", 400, "invalid"),
+        ("01running0000000", 409, "running"),
+        ("01nofolder000000", 409, "no_workspace"),
+        ("01outside0000000", 403, "forbidden"),
+        ("01full0000000000", 403, "forbidden"),
+    ]
+    for session_id, status, code in cases:
+        with pytest.raises(GatewayError) as refused:
+            await gateway.restart(session_id)
+        assert (refused.value.status, refused.value.code) == (status, code), session_id
+    assert backend.spawned == []
+
+
+async def test_a_restart_of_a_daemon_that_never_had_a_conversation_says_so_instead_of_starting_another(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.add_daemon(DAEMON, str(tmp_path / "work"), name="blank", status="dead", online=False)
+    await gateway.refresh()
+
+    with pytest.raises(GatewayError) as refused:
+        await gateway.restart(DAEMON)
+
+    assert (refused.value.status, refused.value.code) == (409, "nothing_to_resume")
+    assert backend.spawned == []
+
+
+async def test_a_restart_of_a_daemon_whose_model_was_removed_uses_the_default_and_says_so(tmp_path):
+    gateway, backend = await make(tmp_path)
+    work = str(tmp_path / "work")
+    backend.add_daemon(DAEMON, work, name="old", status="dead", online=False, model_name="retired")
+    backend.histories[DAEMON] = []
+    await gateway.refresh()
+
+    answer = await gateway.restart(DAEMON)
+
+    assert backend.spawned[0]["model"] is None and backend.spawned[0]["effort"] is None
+    assert "retired" in answer["note"]
+
+
 async def test_a_daemon_is_stopped_by_its_id_and_stays_listed_until_it_is_deleted(tmp_path):
     gateway, backend = await make(tmp_path)
     backend.add_daemon(DAEMON, "/w", name="d")

@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { t } from "../../i18n";
 import { href } from "../../stores/route";
+import { lobby } from "../../stores/threads";
 import type { Member } from "../../stores/groups";
+import type { Thread } from "../../types";
+import { canRestart, restartNow, restarting } from "../chat/threadActions";
 import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
 
@@ -10,6 +13,12 @@ defineEmits<{ close: []; invite: []; remove: [member: Member] }>();
 
 const word = (member: Member): string =>
   member.me ? t("you") : member.status === "working" ? t("typing…") : member.online ? t("online") : t("offline");
+
+/** The stopped daemon a member is, when it can be started again from here with one press. */
+const stopped = (member: Member): Thread | undefined => {
+  const thread = lobby.threads.find((item) => item.id === member.id);
+  return canRestart(thread) ? thread : undefined;
+};
 </script>
 
 <template>
@@ -34,6 +43,18 @@ const word = (member: Member): string =>
             <span class="member-state" :class="{ on: member.online }">{{ word(member) }}</span>
           </span>
         </component>
+        <button
+          v-if="stopped(member)"
+          class="iconbtn member-out member-restart"
+          type="button"
+          :disabled="restarting.has(member.id)"
+          :aria-label="t('Restart it')"
+          :title="t('Restart {name}', { name: member.name })"
+          @click="restartNow(stopped(member)!)"
+        >
+          <span v-if="restarting.has(member.id)" class="spin" />
+          <Icon v-else name="refresh" size="sm" />
+        </button>
         <button
           v-if="canInvite || member.me"
           class="iconbtn member-out"

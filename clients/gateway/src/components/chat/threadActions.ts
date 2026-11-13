@@ -1,9 +1,11 @@
 // What can be done with a thread from its header: the menu, and each action in it.
 
+import { reactive } from "vue";
 import { gateway } from "../../api/gateway";
 import { ApiError } from "../../api/http";
 import { t } from "../../i18n";
 import { copyText } from "../../lib/clipboard";
+import { auth } from "../../stores/auth";
 import { go, route } from "../../stores/route";
 import { fromThread } from "../../stores/spawn";
 import { loadThreads } from "../../stores/threads";
@@ -49,6 +51,32 @@ async function deleteDaemon(thread: Thread): Promise<void> {
   if (route.nav === "chats" && route.arg === thread.id) go("chats");
 }
 
+/** Whether a stopped daemon can be started again with one press: it has a record, nothing else has its session open, and the
+ * reader may change things. (A session that is merely offline has no record to start from; it comes back by being resumed.) */
+export const canRestart = (thread: Thread | undefined): thread is Thread =>
+  !!thread && thread.kind === "daemon" && thread.status === "dead" && !thread.locked && !auth.readOnly;
+
+/** The daemons being started right now, for a spinner and so that a second press does nothing. */
+export const restarting = reactive(new Set<string>());
+
+/** Start a stopped daemon again as it was (its folder, model, level and label), on its own conversation. */
+export async function restartNow(thread: Thread): Promise<boolean> {
+  if (restarting.has(thread.id)) return false;
+  restarting.add(thread.id);
+  try {
+    const answer = await gateway.restart(thread.id);
+    await loadThreads();
+    toast(answer.note ?? t("Started {name}", { name: thread.name }), answer.note ? "bad" : undefined);
+    return true;
+  } catch (error) {
+    toast(error instanceof ApiError ? error.message : String(error), "bad");
+    return false;
+  } finally {
+    restarting.delete(thread.id);
+  }
+}
+
+/** The long way, for changing something: the New form filled in from the daemon, started on the same conversation. */
 function restart(thread: Thread): void {
   fromThread(thread);
   go("new");
@@ -93,7 +121,8 @@ export function showThreadMenu(thread: Thread): void {
     },
     daemon && { icon: "logs", label: t("Logs"), run: () => go("logs", thread.id) },
     { icon: "copy", label: t("Copy session id"), run: () => void copyId(thread) },
-    daemon && { icon: "refresh", label: t("Restart with a new configuration"), run: () => restart(thread) },
+    canRestart(thread) && { icon: "refresh", label: t("Restart it"), run: () => void restartNow(thread) },
+    daemon && { icon: "refresh", label: t("Change settings and restart"), run: () => restart(thread) },
     alive && { icon: "stop", label: t("Stop daemon"), run: () => void stopDaemon(thread), danger: true },
     daemon && !alive && { icon: "trash", label: t("Delete daemon"), run: () => void deleteDaemon(thread), danger: true },
   ]);

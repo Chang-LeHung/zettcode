@@ -542,6 +542,9 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         given = await body(request)
         return await gateway.stop(request.path_params["id"], force=given.get("force") is True)
 
+    async def restart(request: Request) -> Any:
+        return await gateway.restart(request.path_params["id"])
+
     async def delete(request: Request) -> Any:
         return await gateway.delete(request.path_params["id"])
 
@@ -655,6 +658,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/daemons", api(spawn), methods=["POST"]),
         Route("/api/daemons/{id}", api(delete), methods=["DELETE"]),
         Route("/api/daemons/{id}/stop", api(stop), methods=["POST"]),
+        Route("/api/daemons/{id}/restart", api(restart), methods=["POST"]),
         Route("/api/daemons/{id}/log", api(log)),
         WebSocketRoute("/api/events", events),
         Mount("/static", Files(directory=static, check_dir=False), name="static"),
