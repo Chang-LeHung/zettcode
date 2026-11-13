@@ -28,12 +28,14 @@ const NAME_WORDS = 80;
  * A control's name replaces what is inside it for a screen reader, so the name carries the opening words of the quote
  * rather than one fixed phrase that would make every quote on the page read the same. A quote that holds a link or other
  * focusable content is left a plain quote, because that nesting is invalid and unreachable; its words and link are read
- * as they were, and a click on it still jumps. Returns how many quotes became controls.
+ * as they were, and a click on it still jumps. So is a quote that holds another quote: a control inside a control is the
+ * same invalid nesting, and the outer one would hide the inner from a screen reader, so only the innermost becomes a
+ * control (a click on an outer quote still resolves through `closest`). Returns how many quotes became controls.
  */
 export function markQuotes(root: Element, label: string): number {
   let marked = 0;
   root.querySelectorAll("blockquote").forEach((quote) => {
-    if (quote.querySelector("a, button, input, [tabindex]")) return;
+    if (quote.querySelector("a, button, input, [tabindex], blockquote")) return;
     const words = ownWords(quote).replace(/\s+/g, " ").trim();
     const shown = words.length > NAME_WORDS ? `${words.slice(0, NAME_WORDS).trimEnd()}…` : words;
     quote.setAttribute("role", "button");

@@ -242,15 +242,24 @@ const mention = ref<{ start: number; query: string } | null>(null);
 const active = ref(0);
 /** The members an ``@`` can address: everyone but the person typing, with a name to be called by. An offline member is
  * listed too, marked as offline: the text still names them, even though nothing is delivered until they are back. */
-const others = computed(() => members.value.filter((member) => !member.me && member.handle));
+const others = computed(() => members.value.filter((member) => !member.me));
+const callable = computed(() => others.value.filter((member) => member.handle));
 const choices = computed(() => {
   const found = mention.value;
   if (!found) return [];
   const query = found.query.toLowerCase();
-  return others.value.filter(
+  return callable.value.filter(
     (member) => member.handle.toLowerCase().includes(query) || member.name.toLowerCase().includes(query),
   );
 });
+/** Why the picker is empty: nobody else is here, someone is but none has a name to be called by, or nothing matches. */
+const nobody = computed(() =>
+  !others.value.length
+    ? t("There is nobody else in this group to mention.")
+    : !callable.value.length
+      ? t("No member here can be mentioned.")
+      : t("No member matches."),
+);
 
 /** The ``@word`` the caret is at the end of right now, read from the field itself: where it starts and what was typed. */
 function mentionAtCaret(): { start: number; query: string } | null {
@@ -377,7 +386,7 @@ watch(text, () => void nextTick(resize));
       </button>
     </div>
     <div v-if="joined && mention && !choices.length" class="mention-list mention-none" role="status">
-      {{ others.length ? t("No member matches.") : t("There is nobody else in this group to mention.") }}
+      {{ nobody }}
     </div>
     <div
       v-if="joined && mention && choices.length"
@@ -402,7 +411,8 @@ watch(text, () => void nextTick(resize));
       >
         <Avatar :thread="{ id: member.id, name: member.name, kind: 'external', status: 'idle' }" size="sm" />
         <span class="mention-name">{{ member.name }}</span>
-        <span class="mention-handle">@{{ member.handle }}</span>
+        <!-- Only a roster handle is an address the broker resolves; a word made from a title is shown as the name it is. -->
+        <span class="mention-handle">{{ member.address ? `@${member.handle}` : "" }}</span>
         <span v-if="!member.online" class="mention-offline">{{ t("offline") }}</span>
         <span class="mention-state" :class="member.status" />
       </button>

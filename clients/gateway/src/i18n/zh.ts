@@ -212,6 +212,7 @@ export const ZH: Record<string, string> = {
   "The quoted message is not on this page.": "被引用的消息不在当前页面里。",
   "Go to the quoted message": "跳到被引用的消息",
   "No member matches.": "没有匹配的成员。",
+  "No member here can be mentioned.": "这里没有可以提及的成员。",
   "There is nobody else in this group to mention.": "这个群里没有别的成员可以提及。",
   "You are signed in read-only: you can read everything and change nothing.": "你以只读身份登录：可以查看一切，但不能做任何修改。",
   Model: "模型",

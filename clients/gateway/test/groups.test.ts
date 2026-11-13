@@ -105,9 +105,25 @@ test("an offline member can be mentioned by its title as one word, and an online
   const byId = Object.fromEntries(membersOf(groupList.value[0]!).map((member) => [member.id, member]));
 
   assert.equal(byId.a?.handle, "alpha", "online: the roster's handle");
+  assert.equal(byId.a?.address, true, "a roster handle is an address the broker resolves");
   assert.equal(byId.p?.handle, "Release-Planner-v2", "offline: its title, written as one word");
+  assert.equal(byId.p?.address, false, "a word made from a title is a name, not an address, and is not shown as one");
   assert.equal(byId.p?.online, false);
   assert.equal(byId.n?.handle, "", "nothing to call it by: it is not offered, and the picker says so");
+  assert.equal(byId.n?.address, false);
+});
+
+test("two offline members whose titles make the same word are both listed, and neither claims an address", () => {
+  applyThreads([
+    { ...thread("p", "one"), handle: "", title: "Planner!", online: false },
+    { ...thread("q", "two"), handle: "", title: "planner?", online: false },
+  ]);
+  start([{ name: "team", members: ["p", "q"], created: 1 }]);
+
+  const found = membersOf(groupList.value[0]!).filter((member) => !member.me);
+
+  assert.deepEqual(found.map((member) => member.name).sort(), ["one", "two"]);
+  assert.ok(found.every((member) => !member.address), "so the picker does not show either as @planner");
 });
 
 test("opening a group reads its newest messages, and earlier ones are added in front from the oldest held", async () => {

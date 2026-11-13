@@ -28,8 +28,10 @@ export interface Member {
   me: boolean;
   /** The gateway lists a conversation with it, so the row can open one. */
   chat: boolean;
-  /** What follows an ``@`` to address it: the roster's handle, or the one the conversation list kept for an offline member. Empty when neither knows it. */
+  /** What follows an ``@`` to address it: the roster's handle, or for an offline member its title written as one word. Empty when neither is known. */
   handle: string;
+  /** Whether ``handle`` is the roster's own, which the broker resolves; false when it was made from a title, a name only. */
+  address: boolean;
 }
 
 const PAGE = 50;
@@ -66,6 +68,7 @@ export function memberOf(id: string): Member {
     // The live roster's handle; an offline member has none (the roster has dropped it), so it is called by its title,
     // which is one of the names the broker also accepts, written as one word.
     handle: live?.handle || thread?.handle || mentionName(thread?.title || thread?.name || ""),
+    address: Boolean(live?.handle || thread?.handle),
   };
 }
 
