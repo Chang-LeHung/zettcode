@@ -59,6 +59,28 @@ read-only next to) and must differ from it; either mistake stops the gateway fro
 variable: an argument is visible to every user of the machine in `ps`. A restart keeps it like the main token, and
 changing a token ends every sign-in made with the old one.
 
+### Metrics
+
+`GET /metrics` answers in the text format Prometheus reads, for a dashboard or an alert. It needs a sign-in like
+every other route, so a scraper sends the token as a bearer (`Authorization: Bearer <token>`); the read-only token is
+enough, which is the one to give a monitoring system.
+
+```yaml
+scrape_configs:
+  - job_name: zettcode-gateway
+    metrics_path: /metrics
+    authorization: { credentials: "<the read-only token>" }
+    static_configs: [{ targets: ["gateway.example:8765"] }]
+```
+
+It reports the gateway's version and uptime; API requests by route, method and status class (`2xx`, `4xx`, `5xx`)
+with a latency histogram per route; sign-in attempts by outcome (`read`, `write`, `failed`, `locked`); the event
+sockets open now and accepted since the start; and, read at the moment of the scrape, how many sessions the gateway
+lists, how many are online and working, and whether the broker is reachable. Counters live in memory and start again
+at zero when the gateway restarts, which a scraper reads as a reset. Labels are only names the gateway chose (a
+route's name, a status class), never a path or a value a client sent, so a client cannot grow the table by asking for
+strange addresses. It carries no tokens, no message text and no session names.
+
 ### The audit log
 
 The gateway appends one JSON line to `audit.jsonl` in its folder (`~/.zettcode/gateway` by default) for every
