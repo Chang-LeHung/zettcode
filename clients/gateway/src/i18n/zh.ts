@@ -271,12 +271,6 @@ export const ZH: Record<string, string> = {
   "Open chat": "打开会话",
   "Pick a conversation": "选择一个会话",
   "Choose a folder": "选择文件夹",
-  Folder: "文件夹",
-  Access: "权限",
-  "The folder the agent works in. Left empty, the one in the settings file, or the plugin's own folder.":
-    "智能体工作的文件夹。留空则使用设置文件里的那个，或插件自己的文件夹。",
-  "full: no sandbox and no approval. workspace: may change files in its folder. read: may only read.":
-    "full：没有沙箱、不询问。workspace：可以修改它所在文件夹里的文件。read：只能读取。",
   "No folders here.": "这里没有文件夹。",
   "Use this folder": "使用此文件夹",
   "/path/to/project": "/path/to/project",

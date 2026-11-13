@@ -1,16 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { gateway } from "../../api/gateway";
 import { ApiError } from "../../api/http";
 import { t } from "../../i18n";
-import { initial as fieldStart, offered, optionsOf } from "../../lib/agentFields";
-import { loadConfig, settings } from "../../stores/config";
 import { go } from "../../stores/route";
 import { loadThreads } from "../../stores/threads";
-import { openSheet, toast } from "../../stores/ui";
-import type { AgentField, AgentType } from "../../types";
-import Icon from "../common/Icon.vue";
-import FolderPicker from "./FolderPicker.vue";
+import { toast } from "../../stores/ui";
+import type { AgentType } from "../../types";
 
 const types = ref<AgentType[]>([]);
 const kind = ref("");
@@ -21,26 +17,7 @@ const loading = ref(true);
 const failure = ref("");
 const ready = computed(() => !!kind.value && !busy.value);
 
-// What the chosen kind lets the person decide (a folder, an access level), and what they decided.
-const allowFull = computed(() => settings.data?.allow_full === true);
-const fields = computed<AgentField[]>(() => types.value.find((type) => type.name === kind.value)?.fields ?? []);
-const values = reactive<Record<string, string>>({});
-watch(
-  [kind, allowFull],
-  () => {
-    for (const key of Object.keys(values)) delete values[key];
-    for (const field of fields.value) values[field.name] = fieldStart(field, allowFull.value);
-  },
-  { immediate: true },
-);
-
-async function browse(field: AgentField): Promise<void> {
-  const chosen = await openSheet<string>(t("Choose a folder"), FolderPicker, { start: values[field.name] ?? "" });
-  if (chosen) values[field.name] = chosen;
-}
-
 onMounted(async () => {
-  void loadConfig();
   try {
     const answer = await gateway.agents();
     types.value = answer.agents;
@@ -57,12 +34,7 @@ async function start(): Promise<void> {
   busy.value = true;
   failure.value = "";
   try {
-    const made = await gateway.createAgent({
-      kind: kind.value,
-      title: title.value.trim(),
-      group: group.value.trim(),
-      options: optionsOf(fields.value, values),
-    });
+    const made = await gateway.createAgent({ kind: kind.value, title: title.value.trim(), group: group.value.trim() });
     await loadThreads();
     toast(t("External agent started"));
     go("chats", made.thread?.id ?? made.agent.session_id);
@@ -120,54 +92,6 @@ function initial(agent: AgentType): string {
       </div>
 
       <div class="agent-fields">
-        <template v-for="field in fields" :key="field.name">
-          <div v-if="field.kind === 'choice'" class="agent-field">
-            <span>{{ t(field.label) }}</span>
-            <div class="agent-choices" role="radiogroup" :aria-label="t(field.label)">
-              <button
-                type="button"
-                class="agent-choice"
-                :class="{ on: !values[field.name] }"
-                role="radio"
-                :aria-checked="!values[field.name]"
-                @click="values[field.name] = ''"
-              >
-                {{ t("Default") }}
-              </button>
-              <button
-                v-for="choice in offered(field, allowFull)"
-                :key="choice"
-                type="button"
-                class="agent-choice"
-                :class="{ on: values[field.name] === choice }"
-                role="radio"
-                :aria-checked="values[field.name] === choice"
-                @click="values[field.name] = choice"
-              >
-                {{ choice }}
-              </button>
-            </div>
-            <small v-if="field.help">{{ t(field.help) }}</small>
-          </div>
-          <label v-else class="agent-field">
-            <span>{{ t(field.label) }} <em>{{ t("Optional") }}</em></span>
-            <span class="agent-input-row">
-              <input
-                v-model="values[field.name]"
-                type="text"
-                autocomplete="off"
-                autocapitalize="off"
-                spellcheck="false"
-                :placeholder="field.kind === 'directory' ? t('/path/to/project') : ''"
-                maxlength="1000"
-              />
-              <button v-if="field.kind === 'directory'" class="iconbtn" type="button" :aria-label="t('Choose a folder')" @click="browse(field)">
-                <Icon name="folder" />
-              </button>
-            </span>
-            <small v-if="field.help">{{ t(field.help) }}</small>
-          </label>
-        </template>
         <label class="agent-field">
           <span>{{ t("Title") }} <em>{{ t("Optional") }}</em></span>
           <input v-model="title" type="text" autocomplete="off" :placeholder="t('What this agent is for')" maxlength="120" />
@@ -191,12 +115,6 @@ function initial(agent: AgentType): string {
 </template>
 
 <style>
-.agent-choices { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 6px; }
-.agent-choice { padding: 6px 13px; border-radius: 14px; background: var(--surface-2); font-size: 0.86rem; }
-.agent-choice.on { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
-.agent-input-row { display: flex; align-items: center; gap: 6px; }
-.agent-input-row input { flex: 1; min-width: 0; }
-.agent-field small { display: block; margin-top: 4px; color: var(--muted); font-size: 0.78rem; line-height: 1.4; }
 .agent-setup { display: flex; flex-direction: column; gap: 12px; }
 .agent-lead { padding: 2px 4px 0; }
 .agent-lead p { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.5; }

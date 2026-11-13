@@ -45,7 +45,7 @@ export const gateway = {
   log: (threadId: string) => request<{ text: string }>("GET", `/api/daemons/${id(threadId)}/log`),
   config: () => request<GatewayConfig>("GET", "/api/config"),
   agents: () => request<{ agents: AgentType[] }>("GET", "/api/agents"),
-  createAgent: (form: { kind: string; title?: string; session_id?: string; group?: string; options?: Record<string, string> }) =>
+  createAgent: (form: { kind: string; title?: string; session_id?: string; group?: string }) =>
     request<AgentReply>("POST", "/api/agents", form),
   removeAgent: (sessionId: string) => request<{ ok: true }>("DELETE", `/api/agents/${id(sessionId)}`),
   addModel: (entry: Record<string, unknown>) =>
