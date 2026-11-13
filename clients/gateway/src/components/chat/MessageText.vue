@@ -1,14 +1,38 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { t } from "../../i18n";
 import { copyText } from "../../lib/clipboard";
 import { prefs } from "../../stores/prefs";
 import { toast } from "../../stores/ui";
 
 const props = defineProps<{ text: string; plain?: boolean }>();
-/** The reader clicked a quote inside the message; the words quoted, for the page to find where they were said. */
-const emit = defineEmits<{ quote: [words: string, from: HTMLElement] }>();
+/** The reader chose a quote inside the message; the quote itself, for the page to find where its words were said. */
+const emit = defineEmits<{ quote: [from: HTMLElement] }>();
 const html = ref("");
+const root = ref<HTMLElement | null>(null);
+
+// A quote is a way to the message it came from, so it is a control: reachable by keyboard and named for a screen reader.
+// The markup is drawn by the renderer, so the attributes are put on after each draw.
+watch(
+  html,
+  () =>
+    void nextTick(() =>
+      root.value?.querySelectorAll("blockquote").forEach((quote) => {
+        quote.setAttribute("role", "button");
+        quote.setAttribute("tabindex", "0");
+        quote.setAttribute("aria-label", t("Go to the quoted message"));
+      }),
+    ),
+  { flush: "post" },
+);
+
+function onKey(event: KeyboardEvent): void {
+  const quote = event.target as HTMLElement;
+  if ((event.key === "Enter" || event.key === " ") && quote.tagName === "BLOCKQUOTE") {
+    event.preventDefault();
+    emit("quote", quote);
+  }
+}
 
 // The renderer is a separate chunk, loaded the first time a message needs it; until then the text shows as it is.
 watch(
@@ -30,9 +54,7 @@ async function onClick(event: MouseEvent): Promise<void> {
   if (!button) {
     // A quote: a link inside it keeps its own meaning, and selecting words to copy must not jump away.
     const quote = target.closest<HTMLElement>("blockquote");
-    if (quote && !target.closest("a") && !window.getSelection()?.toString()) {
-      emit("quote", quote.textContent ?? "", quote);
-    }
+    if (quote && !target.closest("a") && !window.getSelection()?.toString()) emit("quote", quote);
     return;
   }
   const code = button.closest(".code")?.querySelector("code")?.textContent ?? "";
@@ -42,7 +64,7 @@ async function onClick(event: MouseEvent): Promise<void> {
 </script>
 
 <template>
-  <div v-if="html" class="md" @click="onClick" v-html="html" />
+  <div v-if="html" ref="root" class="md" @click="onClick" @keydown="onKey" v-html="html" />
   <div v-else class="plain">{{ text }}</div>
 </template>
 
@@ -59,7 +81,8 @@ async function onClick(event: MouseEvent): Promise<void> {
 .md li > p { margin: 0.2em 0; }
 .md input[type="checkbox"] { margin-right: 0.4em; }
 .md blockquote { margin: 0.6em 0; padding: 0.1em 0 0.1em 0.9em; border-left: 3px solid var(--accent); color: var(--muted); cursor: pointer; }
-.md blockquote:hover { border-left-color: var(--warn); }
+.md blockquote:hover, .md blockquote:focus-visible { border-left-color: var(--warn); }
+.md blockquote:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; border-radius: 4px; }
 .md hr { border: 0; border-top: 1px solid var(--divider); margin: 0.9em 0; }
 .md a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
 .md a:hover { text-decoration-thickness: 2px; }

@@ -41,18 +41,47 @@ export function withQuote(draft: string, text: string): string {
   return `${draft}${gap}${quoted(text)}`;
 }
 
+/** The longest name a quote carries, so a very long title does not fill the quote. */
+const NAME_LIMIT = 40;
+
+/**
+ * A member's name as it may appear in a quote. A name is whatever its owner set, and an agent reads the quote as a
+ * citation, so markup is taken out of it: a name must not be able to end the bold, open a code span, start a new line
+ * (a second speaker) or become a link.
+ */
+export function safeName(who: string): string {
+  return who
+    .replace(/[*_`~\\<>[\]()#|:]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, NAME_LIMIT)
+    .trim();
+}
+
 /** A group message's text with who said it, so a quote in a group says whose words they are. */
 export function attributed(who: string, text: string): string {
-  return who ? `**${who}**: ${text}` : text;
+  const name = safeName(who);
+  return name ? `**${name}**: ${text}` : text;
 }
 
 const squash = (text: string): string => text.replace(/\s+/g, " ").trim().toLowerCase();
 
-/** The spellings of a quote to look for: as written, and without a leading "who: " that a group quote adds. */
-function spellings(quote: string): string[] {
-  const whole = squash(quote);
-  const bare = whole.replace(/^[^:\n]{1,40}: /, "");
-  return [...new Set([whole, bare])].filter((text) => text.length > 0);
+/** A quote shorter than this is too small to point at one message: "ok" is in half of them. */
+export const MIN_QUOTE = 3;
+
+const isWordChar = (char: string | undefined): boolean => char !== undefined && /[\p{L}\p{N}]/u.test(char);
+
+/** Whether `needle` is in `hay` as whole words: not in the middle of a longer one ("ok" is not in "broken"). */
+function holds(hay: string, needle: string): boolean {
+  for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + 1)) {
+    if (!isWordChar(hay[at - 1]) && !isWordChar(hay[at + needle.length])) return true;
+  }
+  return false;
+}
+
+/** The quote without a leading "who: " that a group quote adds; the same text when it has none. */
+function bare(whole: string): string {
+  return whole.replace(/^[^:\n]{1,40}: /, "");
 }
 
 /**
@@ -60,14 +89,21 @@ function spellings(quote: string): string[] {
  * messages in the order they are drawn, each with the words it shows *outside* its own quotes (otherwise a message that
  * quoted the same words would be found instead of the one that said them). A quote is plain text, so this is a match on
  * words, not a reference: two messages that said the same thing are told apart only by being nearer.
+ *
+ * The quote as written is tried first, along the whole page; only when no message holds it is the quote tried without a
+ * leading "who: ", so dropping the name can never move the jump to a nearer message than the one that said the words.
+ * A message that is not drawn (`fromKey` unknown) has no "before", so nothing is found.
  */
 export function findQuoted(candidates: readonly { key: string; text: string }[], fromKey: string, quote: string): string | null {
-  const wanted = spellings(quote);
-  if (!wanted.length) return null;
+  const whole = squash(quote);
+  if (whole.length < MIN_QUOTE) return null;
   const at = candidates.findIndex((item) => item.key === fromKey);
-  for (let i = (at < 0 ? candidates.length : at) - 1; i >= 0; i -= 1) {
-    const words = squash(candidates[i]!.text);
-    if (wanted.some((text) => words.includes(text))) return candidates[i]!.key;
+  if (at < 0) return null;
+  const spellings = [whole, bare(whole)].filter((text, i, all) => text.length >= MIN_QUOTE && all.indexOf(text) === i);
+  for (const wanted of spellings) {
+    for (let i = at - 1; i >= 0; i -= 1) {
+      if (holds(squash(candidates[i]!.text), wanted)) return candidates[i]!.key;
+    }
   }
   return null;
 }

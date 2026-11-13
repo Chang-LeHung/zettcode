@@ -98,12 +98,14 @@ function onContext(event: MouseEvent): void {
 // On a touch screen there is no hover: a double tap opens the menu, as there is no mouse to point at the button.
 const touch = matchMedia("(pointer: coarse)").matches;
 function onDouble(event: MouseEvent): void {
-  if (touch && !window.getSelection()?.toString() && !onLink(event)) menu();
+  // A tap on a quote is a jump to its source, so the second tap of a double tap must not also open the menu.
+  const inQuote = (event.target as HTMLElement | null)?.closest?.("blockquote") != null;
+  if (touch && !window.getSelection()?.toString() && !onLink(event) && !inQuote) menu();
 }
 
 /** A click on a quote in this message: go to the message it was taken from, and say so when it is not on the page. */
-function onQuote(words: string, from: HTMLElement): void {
-  if (!jumpToQuoted(from, words)) toast(t("The quoted message is not on this page."));
+function onQuote(from: HTMLElement): void {
+  if (!jumpToQuoted(from)) toast(t("The quoted message is not on this page."));
 }
 
 function again(): void {
