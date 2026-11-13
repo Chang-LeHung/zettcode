@@ -1,6 +1,6 @@
 // Pull down on a list to read it again, as a phone's lists do. The arithmetic is here, apart from the DOM, so it is tested.
 
-/** How far (in pixels of finger travel) a pull must go before letting go refreshes. */
+/** How far the indicator must be drawn down (not how far the finger went: that is twice this) before letting go refreshes. */
 export const THRESHOLD = 64;
 /** The most the indicator is drawn pulled, however far the finger goes. */
 export const MAX_PULL = 96;
@@ -19,7 +19,7 @@ export function pullOf(dy: number, dx: number, scrollTop: number): Pull | null {
   if (scrollTop > 0 || dy <= 0 || dy < Math.abs(dx) * STEEPNESS) return null;
   // Resistance: the indicator follows the finger at half speed, so it feels pulled against something.
   const distance = Math.min(MAX_PULL, dy / 2);
-  return { distance, ready: dy >= THRESHOLD * 2 };
+  return { distance, ready: distance >= THRESHOLD };
 }
 
 export interface PullHandlers {
