@@ -61,7 +61,7 @@ export const ZH: Record<string, string> = {
   "Create group": "创建群组",
   "Group name": "群组名称",
   "group-name": "群组名称",
-  "1 to 40 letters, digits, - or _": "1 到 40 个字母、数字、- 或 _",
+  "1 to 40 letters, digits, - or _ (any language)": "1 到 40 个字母（任何语言）、数字、- 或 _",
   "{count} chosen": "已选 {count}",
   "No session is online to add yet. You can invite later.": "现在没有在线的会话可加入，之后也可以再邀请。",
   "Created #{name}": "已创建 #{name}",

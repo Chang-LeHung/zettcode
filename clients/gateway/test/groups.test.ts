@@ -69,6 +69,11 @@ async function withPages(pages: Record<number, { messages: GraphMessage[]; more:
   }
 }
 
+test("a group's name may be in any language, one word, and no wider than the broker's rule", () => {
+  for (const ok of ["review", "测试群", "équipe-2", "项目_A"]) assert.ok(GROUP_NAME.test(ok), ok);
+  for (const bad of ["", "a b", "测试 群", "-lead", "_x", "a/b", "a#b", "x".repeat(41)]) assert.ok(!GROUP_NAME.test(bad), bad);
+});
+
 test("a group is addressed as #name and a session id is not mistaken for one", () => {
   assert.equal(groupArg("team"), "#team");
   assert.ok(isGroupArg("#team") && !isGroupArg("01abc"));
@@ -195,7 +200,7 @@ test("a message written in the open group is shown there; in another it is count
   assert.equal(groupList.value.find((group) => group.name === "other")?.last?.id, 3);
 });
 
-test("a group name is what the broker accepts: lower case, digits, - and _, 1 to 40, not starting with a symbol", () => {
-  for (const good of ["review", "a", "team-1", "x_y", "0day", "a".repeat(40)]) assert.ok(GROUP_NAME.test(good), good);
-  for (const bad of ["", "-lead", "_x", "Review", "two words", "a".repeat(41), "组", "#review"]) assert.ok(!GROUP_NAME.test(bad), bad);
+test("a group name is what the broker accepts: letters of any script, digits, - and _, 1 to 40, not starting with a symbol", () => {
+  for (const good of ["review", "a", "team-1", "x_y", "0day", "a".repeat(40), "组"]) assert.ok(GROUP_NAME.test(good), good);
+  for (const bad of ["", "-lead", "_x", "two words", "a".repeat(41), "#review"]) assert.ok(!GROUP_NAME.test(bad), bad);
 });

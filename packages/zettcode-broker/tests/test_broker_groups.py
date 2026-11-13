@@ -117,6 +117,18 @@ async def test_members_come_and_go_and_an_empty_group_is_deleted(trio):
     assert again.value.reason == "invalid"
 
 
+async def test_a_group_may_be_named_in_any_language_but_not_with_spaces_or_marks(trio):
+    hub, a, *_ = trio
+
+    group(hub, a, "create", "#测试群")
+    group(hub, a, "create", "Équipe-2")
+    assert {g["name"] for g in hub.listing_groups(a.session.key)["groups"]} == {"测试群", "équipe-2"}
+    for bad in ("", "a b", "测试 群", "-lead", "_x", "a/b", "a#b", "x" * 41):
+        with pytest.raises(Refused) as refused:
+            group(hub, a, "create", bad)
+        assert refused.value.reason == "invalid", bad
+
+
 async def test_a_group_name_is_taken_once(trio):
     hub, a, b, _ = trio
     group(hub, a, "create", "team")

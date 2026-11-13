@@ -201,8 +201,8 @@ export async function removeFromGroup(name: string, member: string): Promise<voi
   await loadGraph();
 }
 
-/** What a group's name may be, as the broker holds it: lower-case letters, digits, `-` and `_`, 1 to 40 long. */
-export const GROUP_NAME = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+/** What a group's name may be, as the broker holds it: letters of any script, digits, `-` and `_`, 1 to 40 long. */
+export const GROUP_NAME = /^[\p{L}\p{N}][\p{L}\p{N}_-]{0,39}$/u;
 
 /** Create a group with the person at the gateway in it, and the sessions asked for. Throws on failure; returns its name. */
 export async function createGroup(name: string, members: string[]): Promise<string> {

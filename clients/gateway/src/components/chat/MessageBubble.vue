@@ -179,7 +179,8 @@ function again(): void {
 .msg.out.cont .bubble { border-top-right-radius: 6px; }
 .msg.out .bubble a, .msg.out .bubble .md a { color: #fff; }
 .msg.out .bubble .md code { background: rgba(255, 255, 255, 0.2); }
-.msg.out .bubble .md blockquote { color: rgba(255, 255, 255, 0.8); border-color: rgba(255, 255, 255, 0.6); }
+.msg.out .bubble .md blockquote { color: rgba(255, 255, 255, 0.85); border-color: rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.16); }
+.msg.out .bubble .md blockquote[role="button"]:hover, .msg.out .bubble .md blockquote[role="button"]:focus-visible { background: rgba(255, 255, 255, 0.24); }
 .msg.out .bubble .msg-code { background: rgba(255, 255, 255, 0.2); }
 .bubble.reply { box-shadow: var(--shadow), inset 3px 0 0 var(--accent); }
 .bubble-more {

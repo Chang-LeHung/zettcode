@@ -10,6 +10,7 @@ import { toast } from "../../stores/ui";
 import type { Picture, Thread } from "../../types";
 import Icon from "../common/Icon.vue";
 import { confirmAction } from "../sheets/sheets";
+import { backspaceWhole } from "../../lib/erase";
 
 const props = defineProps<{ thread: Thread }>();
 const field = ref<HTMLTextAreaElement | null>(null);
@@ -144,6 +145,15 @@ async function submit(): Promise<void> {
 }
 
 function onKey(event: KeyboardEvent): void {
+  // A quote is one thing in a messenger: Backspace right after it takes all of it, not a character at a time.
+  const el = field.value;
+  const whole = el && backspaceWhole(event, el);
+  if (el && whole) {
+    event.preventDefault();
+    text.value = whole.value;
+    void nextTick(() => el.setSelectionRange(whole.caret, whole.caret));
+    return;
+  }
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing && typesByEnter) {
     event.preventDefault();
     void submit();
