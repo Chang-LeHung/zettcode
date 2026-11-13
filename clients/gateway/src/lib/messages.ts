@@ -40,3 +40,34 @@ export function withQuote(draft: string, text: string): string {
   const gap = draft.endsWith("\n\n") ? "" : draft.endsWith("\n") ? "\n" : "\n\n";
   return `${draft}${gap}${quoted(text)}`;
 }
+
+/** A group message's text with who said it, so a quote in a group says whose words they are. */
+export function attributed(who: string, text: string): string {
+  return who ? `**${who}**: ${text}` : text;
+}
+
+const squash = (text: string): string => text.replace(/\s+/g, " ").trim().toLowerCase();
+
+/** The spellings of a quote to look for: as written, and without a leading "who: " that a group quote adds. */
+function spellings(quote: string): string[] {
+  const whole = squash(quote);
+  const bare = whole.replace(/^[^:\n]{1,40}: /, "");
+  return [...new Set([whole, bare])].filter((text) => text.length > 0);
+}
+
+/**
+ * The message a quote is from: the nearest one before `fromKey` whose own words hold the quote. `candidates` are the
+ * messages in the order they are drawn, each with the words it shows *outside* its own quotes (otherwise a message that
+ * quoted the same words would be found instead of the one that said them). A quote is plain text, so this is a match on
+ * words, not a reference: two messages that said the same thing are told apart only by being nearer.
+ */
+export function findQuoted(candidates: readonly { key: string; text: string }[], fromKey: string, quote: string): string | null {
+  const wanted = spellings(quote);
+  if (!wanted.length) return null;
+  const at = candidates.findIndex((item) => item.key === fromKey);
+  for (let i = (at < 0 ? candidates.length : at) - 1; i >= 0; i -= 1) {
+    const words = squash(candidates[i]!.text);
+    if (wanted.some((text) => words.includes(text))) return candidates[i]!.key;
+  }
+  return null;
+}

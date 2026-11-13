@@ -5,6 +5,7 @@ import { t } from "../../i18n";
 import type { ChatImage } from "../../types";
 import type { Row } from "../../lib/rows";
 import { dismiss, quoteIntoDraft, retry, wantsReply } from "../../stores/chat";
+import { jumpToQuoted } from "../../lib/jump";
 import { currentKey, find } from "../../stores/chatSearch";
 import { canWrite, threadOf } from "../../stores/threads";
 import { toast } from "../../stores/ui";
@@ -100,6 +101,11 @@ function onDouble(event: MouseEvent): void {
   if (touch && !window.getSelection()?.toString() && !onLink(event)) menu();
 }
 
+/** A click on a quote in this message: go to the message it was taken from, and say so when it is not on the page. */
+function onQuote(words: string, from: HTMLElement): void {
+  if (!jumpToQuoted(from, words)) toast(t("The quoted message is not on this page."));
+}
+
 function again(): void {
   const entry = props.row.pending;
   const thread = threadOf(props.thread);
@@ -130,7 +136,7 @@ function again(): void {
           <img :src="picture.src" :alt="t('A picture in the message')" loading="lazy" decoding="async" />
         </button>
       </div>
-      <MessageText v-if="row.item.text" :text="row.item.text" />
+      <MessageText v-if="row.item.text" :text="row.item.text" @quote="onQuote" />
       <span v-if="state === 'sending' || state === 'queued' || state === 'failed'" class="meta">
         <span v-if="state === 'queued'">{{ t("queued") }}</span>
         <Icon v-if="state === 'sending'" name="clock" size="xs" />
@@ -183,6 +189,9 @@ function again(): void {
 /* A match for the search: the bubble is outlined, and the one the reader is on is outlined harder and settles in. */
 .msg.found .bubble { outline: 2px solid color-mix(in srgb, var(--warn) 55%, transparent); outline-offset: 2px; }
 .msg.current .bubble { outline: 3px solid var(--warn); animation: found 0.5s ease-out; }
+/* Where a quote came from, after the reader clicked it: the bubble lights up and fades. */
+.msg.jumped .bubble { animation: jumped 1.6s ease-out; }
+@keyframes jumped { 0%, 55% { box-shadow: var(--shadow), 0 0 0 4px color-mix(in srgb, var(--warn) 70%, transparent); } 100% { box-shadow: var(--shadow), 0 0 0 4px transparent; } }
 @keyframes found { from { outline-offset: 10px; outline-color: transparent; } to { outline-offset: 2px; } }
 .bubble.err { box-shadow: var(--shadow), inset 0 0 0 1px var(--bad); }
 .bubble-who { display: block; font-size: 0.8rem; font-weight: 600; color: rgba(255, 255, 255, 0.85); margin-bottom: 2px; }

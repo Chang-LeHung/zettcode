@@ -6,6 +6,8 @@ import { prefs } from "../../stores/prefs";
 import { toast } from "../../stores/ui";
 
 const props = defineProps<{ text: string; plain?: boolean }>();
+/** The reader clicked a quote inside the message; the words quoted, for the page to find where they were said. */
+const emit = defineEmits<{ quote: [words: string, from: HTMLElement] }>();
 const html = ref("");
 
 // The renderer is a separate chunk, loaded the first time a message needs it; until then the text shows as it is.
@@ -23,8 +25,16 @@ watch(
 );
 
 async function onClick(event: MouseEvent): Promise<void> {
-  const button = (event.target as HTMLElement).closest<HTMLElement>("[data-copy]");
-  if (!button) return;
+  const target = event.target as HTMLElement;
+  const button = target.closest<HTMLElement>("[data-copy]");
+  if (!button) {
+    // A quote: a link inside it keeps its own meaning, and selecting words to copy must not jump away.
+    const quote = target.closest<HTMLElement>("blockquote");
+    if (quote && !target.closest("a") && !window.getSelection()?.toString()) {
+      emit("quote", quote.textContent ?? "", quote);
+    }
+    return;
+  }
   const code = button.closest(".code")?.querySelector("code")?.textContent ?? "";
   if (await copyText(code)) toast(t("Copied"));
   else toast(t("Cannot copy here"), "bad");
@@ -48,7 +58,8 @@ async function onClick(event: MouseEvent): Promise<void> {
 .md li { margin: 0.15em 0; }
 .md li > p { margin: 0.2em 0; }
 .md input[type="checkbox"] { margin-right: 0.4em; }
-.md blockquote { margin: 0.6em 0; padding: 0.1em 0 0.1em 0.9em; border-left: 3px solid var(--accent); color: var(--muted); }
+.md blockquote { margin: 0.6em 0; padding: 0.1em 0 0.1em 0.9em; border-left: 3px solid var(--accent); color: var(--muted); cursor: pointer; }
+.md blockquote:hover { border-left-color: var(--warn); }
 .md hr { border: 0; border-top: 1px solid var(--divider); margin: 0.9em 0; }
 .md a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
 .md a:hover { text-decoration-thickness: 2px; }

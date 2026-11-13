@@ -3,6 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { t } from "../../i18n";
 import Skeleton from "../common/Skeleton.vue";
 import { clockTime } from "../../lib/format";
+import { copyText } from "../../lib/clipboard";
+import { jumpToQuoted } from "../../lib/jump";
+import { attributed, withQuote } from "../../lib/messages";
 import { closeGroup, groupChat, groupNamed, joinGroup, loadEarlierGroup, membersOf, openGroup, deleteGroup, removeFromGroup, senderName, sendToGroup } from "../../stores/groups";
 import type { Member } from "../../stores/groups";
 import { go, href } from "../../stores/route";
@@ -103,6 +106,52 @@ async function submit(): Promise<void> {
   following.value = true;
   toBottom(true);
   field.value?.focus({ preventScroll: true });
+}
+
+/** What can be done with a message: copy it, or quote it, with its sender's name, in the next one. */
+function lineMenu(line: Line): void {
+  if (!line.text) return;
+  showMenu(t("Message"), [
+    {
+      icon: "copy",
+      label: t("Copy text"),
+      run: async () => toast((await copyText(line.text)) ? t("Copied") : t("Could not copy")),
+    },
+    // The composer is drawn only to a member who may write; a reader and a visitor have none to quote into.
+    joined.value &&
+      !auth.readOnly && {
+        icon: "reply",
+        label: t("Quote in reply"),
+        run: () => {
+          text.value = withQuote(text.value, attributed(line.mine ? "" : line.who, line.text));
+          void nextTick(() => {
+            const el = field.value;
+            if (!el) return;
+            el.focus({ preventScroll: true });
+            el.setSelectionRange(el.value.length, el.value.length);
+            el.scrollTop = el.scrollHeight;
+          });
+        },
+      },
+  ]);
+}
+
+/** A right click, and the long press on Android that becomes one; a reader who has selected words wants the browser's own menu. */
+function onLineContext(event: MouseEvent, line: Line): void {
+  if (!line.text || window.getSelection()?.toString() || (event.target as HTMLElement).closest("a")) return;
+  event.preventDefault();
+  lineMenu(line);
+}
+
+/** On a touch screen there is no hover: a double tap opens the menu. */
+const touch = matchMedia("(pointer: coarse)").matches;
+function onLineDouble(event: MouseEvent, line: Line): void {
+  if (touch && !window.getSelection()?.toString() && !(event.target as HTMLElement).closest("a")) lineMenu(line);
+}
+
+/** A click on a quote: go to the message it was taken from. */
+function onQuote(words: string, from: HTMLElement): void {
+  if (!jumpToQuoted(from, words)) toast(t("The quoted message is not on this page."));
 }
 
 function invite(): void {
@@ -273,7 +322,15 @@ watch(text, () => void nextTick(resize));
             <button v-if="groupChat.more" class="btn sm ghost messages-more" :disabled="groupChat.loadingOlder" @click="loadEarlierGroup">
               <span v-if="groupChat.loadingOlder" class="spin" />{{ t("Show earlier messages") }}
             </button>
-            <div v-for="line in lines" :key="line.id" class="msg" :class="[line.mine ? 'out' : 'in', { cont: line.cont }]">
+            <div
+              v-for="line in lines"
+              :key="line.id"
+              class="msg"
+              :class="[line.mine ? 'out' : 'in', { cont: line.cont }]"
+              :data-row="line.id"
+              @contextmenu="onLineContext($event, line)"
+              @dblclick="onLineDouble($event, line)"
+            >
               <template v-if="!line.mine">
                 <Avatar
                   v-if="line.tail"
@@ -284,8 +341,11 @@ watch(text, () => void nextTick(resize));
                 <div v-else class="msg-avatar" />
               </template>
               <div class="bubble">
+                <button v-if="line.text && !touch" type="button" class="bubble-more" :aria-label="t('Message actions')" :title="t('Message actions')" @click.stop="lineMenu(line)">
+                  <Icon name="more" size="xs" />
+                </button>
                 <span v-if="!line.mine && !line.cont" class="group-who">{{ line.who }}</span>
-                <MessageText :text="line.text" />
+                <MessageText :text="line.text" @quote="onQuote" />
                 <span class="group-time">{{ line.time }}</span>
               </div>
               <template v-if="line.mine">
