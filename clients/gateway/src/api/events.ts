@@ -75,4 +75,36 @@ export class EventSocket {
     this.socket?.close();
     this.socket = null;
   }
+
+  /** Whether the socket is open right now. */
+  get open(): boolean {
+    return this.socket?.readyState === WebSocket.OPEN;
+  }
+
+  /**
+   * The page came back (it was shown again, the phone got a network, or it was restored from the back/forward cache).
+   * A phone suspends a page's sockets without telling it, so one that looks open may be dead: when the page was away
+   * for a while, drop it and open a new one, whose opening reads everything again. A socket that is not open is
+   * retried at once, without the back-off a running page would wait.
+   */
+  wake(awayMs: number): void {
+    if (!this.wanted) return;
+    if (this.socket && this.socket.readyState === WebSocket.CONNECTING) return;
+    if (this.socket && awayMs < STALE_AFTER) return;
+    clearTimeout(this.timer);
+    this.attempts = 0;
+    const old = this.socket;
+    this.socket = null;
+    if (old) {
+      // Its close must not schedule a retry of its own or tell the page the connection dropped.
+      old.onclose = null;
+      old.onerror = null;
+      old.onmessage = null;
+      old.close();
+    }
+    this.start();
+  }
 }
+
+/** How long a page may have been away before a socket that looks open is no longer trusted. */
+export const STALE_AFTER = 20_000;

@@ -290,6 +290,7 @@ export const ZH: Record<string, string> = {
   "Cannot copy here": "此处无法复制",
   "Check again": "重新检查",
   "Could not check.": "无法检查。",
+  "Could not refresh.": "无法刷新。",
   "Busy elsewhere": "在别处占用",
   "Another window has this session open, so it is read-only here.": "另一个窗口已打开此会话,所以这里只读。",
   "Still open in another window.": "仍在另一个窗口中打开。",

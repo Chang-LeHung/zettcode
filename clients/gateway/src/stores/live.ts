@@ -16,6 +16,32 @@ import { servers } from "./servers";
 import { applyThreads, lobby, loadThreads, threadOf } from "./threads";
 
 let socket: EventSocket | null = null;
+let hiddenAt = 0;
+
+/** The page is in front again, or the network came back: make sure the socket is one that can still be heard. */
+function wake(): void {
+  const away = hiddenAt ? Date.now() - hiddenAt : 0;
+  hiddenAt = 0;
+  socket?.wake(away);
+}
+
+function onVisibility(): void {
+  if (document.hidden) hiddenAt = Date.now();
+  else wake();
+}
+
+/** A network that just came back is a reason to distrust the socket however recently the page was shown. */
+function onOnline(): void {
+  hiddenAt = 0;
+  socket?.wake(Number.POSITIVE_INFINITY);
+}
+
+function listen(on: boolean): void {
+  const act = on ? "addEventListener" : "removeEventListener";
+  document[act]("visibilitychange", onVisibility);
+  window[act]("online", onOnline);
+  window[act]("pageshow", wake);
+}
 
 function notify(event: Extract<GatewayEvent, { type: "inbound" }>): void {
   if (!prefs.notify) return;
@@ -31,12 +57,37 @@ function notify(event: Extract<GatewayEvent, { type: "inbound" }>): void {
     return;
   }
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-  const shown = new Notification(event.sender, { body: event.text, tag: event.id });
-  shown.onclick = () => {
-    window.focus();
-    location.hash = `#/chats/${encodeURIComponent(event.id)}`;
-    shown.close();
-  };
+  // A page that is not in front may not be allowed to make a notification itself (Android's Chrome never is); the
+  // service worker can, and tapping it brings the page back at this conversation.
+  if (worker) {
+    void worker.showNotification(event.sender, { body: event.text, tag: event.id, data: { id: event.id } }).catch(() => plain(event));
+    return;
+  }
+  plain(event);
+}
+
+function plain(event: Extract<GatewayEvent, { type: "inbound" }>): void {
+  try {
+    const shown = new Notification(event.sender, { body: event.text, tag: event.id });
+    shown.onclick = () => {
+      window.focus();
+      location.hash = `#/chats/${encodeURIComponent(event.id)}`;
+      shown.close();
+    };
+  } catch {
+    // A browser that refuses a page's own notification and has no worker to make it has nothing left to try.
+  }
+}
+
+/** The service worker that shows notifications, once the browser has one: only a secure page (https or localhost) may. */
+let worker: ServiceWorkerRegistration | null = null;
+
+export function registerWorker(): void {
+  if (!("serviceWorker" in navigator) || nativeBridge()) return;
+  navigator.serviceWorker
+    .register("/sw.js")
+    .then((registration) => (worker = registration))
+    .catch(() => undefined);
 }
 
 function handle(event: GatewayEvent): void {
@@ -59,7 +110,10 @@ function handle(event: GatewayEvent): void {
 
 /** Open the socket, and read everything again whenever it comes back, because events were missed while it was away. */
 export function connect(): void {
+  if (!worker) registerWorker();
   socket?.stop();
+  listen(false);
+  listen(true);
   socket = new EventSocket({
     event: handle,
     connection(up) {
@@ -80,6 +134,7 @@ export function connect(): void {
 }
 
 export function disconnect(): void {
+  listen(false);
   socket?.stop();
   socket = null;
   lobby.live = false;

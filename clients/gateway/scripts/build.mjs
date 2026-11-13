@@ -53,6 +53,7 @@ async function finish() {
   await copyFile("public/logo.svg", `${assets}/logo.svg`);
   await copyFile("public/icon.png", `${assets}/icon.png`);
   await copyFile("public/manifest.webmanifest", `${assets}/manifest.webmanifest`);
+  await copyFile("public/sw.js", `${assets}/sw.js`);
   if (app) await copyFile("public/manifest.webmanifest", `${out}/manifest.webmanifest`);
 }
 
