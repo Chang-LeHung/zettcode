@@ -8,7 +8,7 @@ import { fromThread } from "../../stores/spawn";
 import { loadThreads, lobby } from "../../stores/threads";
 import { toast } from "../../stores/ui";
 import type { Thread } from "../../types";
-import { canRestart, restartNow, restarting } from "./threadActions";
+import { canRestart, canStartAgain, restartNow, restarting } from "./threadActions";
 
 const props = defineProps<{ thread: Thread }>();
 const checking = ref(false);
@@ -23,6 +23,7 @@ const reason = computed(() => {
   return props.thread.kind === "daemon" ? t("This daemon is not connected.") : t("This session is not connected.");
 });
 const restartable = computed(() => canRestart(props.thread));
+const startable = computed(() => canStartAgain(props.thread));
 const starting = computed(() => restarting.has(props.thread.id));
 
 /** The long way, to change something first: the New form, filled in from the daemon. */
@@ -50,9 +51,9 @@ async function recheck(): Promise<void> {
   <div class="locked">
     <span>{{ reason }}</span>
     <button v-if="thread.locked && !auth.readOnly" class="btn sm" :disabled="checking" @click="recheck"><span v-if="checking" class="spin" />{{ t("Check again") }}</button>
-    <template v-if="restartable">
-      <button class="btn sm" :disabled="starting" @click="restartNow(thread)"><span v-if="starting" class="spin" />{{ t("Restart it") }}</button>
-      <button class="btn sm ghost" :disabled="starting" @click="change">{{ t("Change settings") }}</button>
+    <template v-if="startable">
+      <button v-if="restartable" class="btn sm" :disabled="starting" @click="restartNow(thread)"><span v-if="starting" class="spin" />{{ t("Restart it") }}</button>
+      <button class="btn sm" :class="{ ghost: restartable }" :disabled="starting" @click="change">{{ t("Change settings") }}</button>
     </template>
   </div>
 </template>
