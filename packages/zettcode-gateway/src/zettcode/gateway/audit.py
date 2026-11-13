@@ -2,7 +2,9 @@
 
 It records the *fact* of an action (when, who by role and address, which route, which target, the answer) and never
 its content: no token, no cookie, no message text. A person reading it learns that a message was sent to a session at
-a time, not what it said. Writing is best effort: a full disk or a read-only folder must not stop the gateway from
+a time, not what it said. A change that answered 5xx carries ``"outcome": "unknown"``: the gateway does not know
+whether it took effect, so a 500 is not a promise that nothing happened. Writing is best effort: a full disk or a
+read-only folder must not stop the gateway from
 answering, so a failure is logged once and the line is dropped.
 """
 
@@ -30,6 +32,7 @@ class Audit:
         self._clock = clock
         self._lock = threading.Lock()
         self._warned = False
+        self._limited: dict[tuple[str, str], float] = {}
 
     def record(self, event: str, **fields: Any) -> None:
         """Append one line: the time, the ``event`` name, and the fields (``None`` values are left out)."""
@@ -42,6 +45,22 @@ class Audit:
             if not self._warned:
                 self._warned = True
                 logger.warning("audit.failed", extra={"path": str(self.path), "error": type(error).__name__})
+
+    def record_limited(self, event: str, key: str, *, seconds: float = 60.0, **fields: Any) -> bool:
+        """Record ``event`` unless one with this ``key`` was recorded within ``seconds``; say whether it was written.
+
+        For what an unauthenticated client can repeat as fast as it likes (a refused socket in a reconnect loop): it
+        must not be able to rotate the sign-ins out of the file.
+        """
+        now = self._clock()
+        last = self._limited.get((event, key))
+        if last is not None and now - last < seconds:
+            return False
+        if len(self._limited) > 1024:
+            self._limited = {k: v for k, v in self._limited.items() if now - v < seconds}
+        self._limited[(event, key)] = now
+        self.record(event, **fields)
+        return True
 
     def _append(self, text: str) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
