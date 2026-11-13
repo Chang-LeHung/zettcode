@@ -46,30 +46,12 @@ plugins stay `kind="external"` and still receive/write groups when the owner add
 and keeps the narrower permissions. A `kind="zettcode"` agent sends with `via="agent"`; `ExternalSession.send_group`
 and `join_group` are available to it.
 
-## Settings the page can choose
-
-A plugin that lets the person decide something when starting an agent lists it in `AgentPlugin.fields`
-(`AgentField(name, label, kind, choices, default, help, unrestricted)`) and overrides `create_with(session_id, title,
-options)`. A plugin that does neither is unchanged: `create_with` falls back to `create`, and the type lists no fields.
-
-- `kind` is `"text"`, `"choice"` (one of `choices`) or `"directory"`.
-- The manager's `check_options` refuses a name the type does not list, a value that is not text, a choice that is not
-  offered and anything past `MAX_OPTION` characters, and fills a field's `default` when the page sent none.
-- The **gateway** (`Gateway._agent_options`) then applies what only it knows: a `directory` must exist and lie inside
-  `--root` (`Gateway.workspace`, the check a daemon's workspace passes), and the field's `unrestricted` choice is
-  refused when the gateway was started with `--no-full`. The page hides what the gateway would refuse, and the gateway
-  refuses it again, because the page is not what keeps a sign-in from asking. A default is checked the same way as
-  something the person typed.
-- `zettcode-code-agents` offers `cwd` (a directory) and `permission` (`full`/`workspace`/`read`, `full` unrestricted).
-  A choice becomes `CliAgent.overrides`, which `resolve(..., overrides=)` ranks above the file's tool section: it
-  belongs to that one agent and is never written to the settings file.
-
 ## Page API
 
 | Route | What it does |
 | --- | --- |
-| `GET /api/agents` | the installed types: `{agents: [{name, title, description, avatar, fields: [...]}]}` |
-| `POST /api/agents` | `{kind, title?, group?, options?}` starts one and returns `{agent, thread}` |
+| `GET /api/agents` | the installed types: `{agents: [{name, title, description}]}` |
+| `POST /api/agents` | `{kind, title?, group?}` starts one and returns `{agent, thread}` |
 | `DELETE /api/agents/{session_id}` | stops one |
 
 The New page shows a form for the installed types. A created agent appears in Chats after the next refresh; its

@@ -35,12 +35,6 @@ A key inside `"codex"` or `"claude"` wins over the same key at the top, which wi
 same setting, which wins over the default. `bin`, `args` and `resume_args` belong to one tool and are set only inside its
 section.
 
-**Per agent, from the gateway page.** The New → External agent form also lets the person choose a **Folder** and an
-**Access** level (`full`, `workspace`, `read`) for the one agent being started. What they choose wins over the file for
-that agent alone — it is kept with the agent, not written anywhere — and an agent started with nothing chosen follows
-the file as before. The gateway checks the choices again: the folder must lie inside the gateway's `--root` folders and
-exist, and `full` is refused (and not offered) by a gateway started with `--no-full`.
-
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `cwd` | the gateway process's directory | The folder the CLI runs in. It must exist. A relative path is taken from the gateway process's folder, not from this file's. |

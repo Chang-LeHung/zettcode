@@ -151,14 +151,12 @@ def _template(key: str, value: object) -> str:
     return text
 
 
-def resolve(tool: Tool, *, timeout: float = TIMEOUT, overrides: Mapping[str, str] | None = None) -> Settings:
+def resolve(tool: Tool, *, timeout: float = TIMEOUT) -> Settings:
     """Return the settings of one tool as they are now.
 
     Args:
         tool: The CLI.
         timeout: The timeout when neither the file nor the tool's section sets one.
-        overrides: What the person chose for one agent when starting it (``cwd`` and ``permission`` only). It wins over
-            the file, which is then the default for an agent started with no choice.
 
     Raises:
         ConfigError: The file cannot be read or parsed, a value has the wrong type, ``permission`` is not a level, or
@@ -168,11 +166,8 @@ def resolve(tool: Tool, *, timeout: float = TIMEOUT, overrides: Mapping[str, str
     section = data.get(tool.name, {})
     if not isinstance(section, dict):
         raise ConfigError(f'"{tool.name}" in {config_path()} must be an object')
-    chosen = {key: value for key, value in (overrides or {}).items() if key in ("cwd", "permission") and value}
 
     def value(key: str, fallback: object, *, shared: bool = True) -> object:
-        if key in chosen:
-            return chosen[key]
         if key in section:
             return section[key]
         if shared and key in data:
