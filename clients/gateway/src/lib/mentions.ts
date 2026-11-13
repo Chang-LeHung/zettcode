@@ -18,14 +18,16 @@ export function markMentions(root: Element, handles: readonly string[], mine = "
   let drawn = 0;
   for (const node of texts) {
     const value = node.data;
-    const pattern = /(^|[\s(（"“'‘>])@([\p{L}\p{N}_-]+)/gu;
+    // An `@` starts a mention unless it follows a letter, a digit or `_` (an address, `bob@host`): any punctuation before it
+    // does, in any script, so `好的，@planner` and `(@planner)` both read as mentions.
+    const pattern = /(?<![\p{L}\p{N}_])@([\p{L}\p{N}_-]+)/gu;
     let last = 0;
     let found: RegExpExecArray | null;
     const parts: Node[] = [];
     while ((found = pattern.exec(value))) {
-      const word = found[2]!;
+      const word = found[1]!;
       if (!known.has(word.toLowerCase())) continue;
-      const start = found.index + found[1]!.length;
+      const start = found.index;
       if (start > last) parts.push(doc.createTextNode(value.slice(last, start)));
       const span = doc.createElement("span");
       span.className = word.toLowerCase() === me ? "mention me" : "mention";

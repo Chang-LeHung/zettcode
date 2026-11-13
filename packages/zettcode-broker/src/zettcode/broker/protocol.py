@@ -73,6 +73,7 @@ from __future__ import annotations
 
 import base64
 import re
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -128,10 +129,22 @@ ACK_TIMEOUT = 10.0
 RATE_LIMIT = 20
 RATE_WINDOW = 60.0
 
-#: A group chat's name, as it is typed after ``#``: lower case, so ``#Review`` and ``#review`` are one group. Letters of
-#: any script count (``#测试群``), so a name can be written in the language the people in it speak; whitespace,
-#: punctuation and control characters do not, which keeps a name one word in a line of text.
-GROUP_NAME = re.compile(r"^[^\W_][\w-]{0,39}$")
+#: A group chat's name, as it is typed after ``#``. Letters and digits of any script count (``#测试群``), and so do the
+#: combining marks that make up a word in many of them (a Hindi vowel sign), so a name can be written in the language the
+#: people in it speak; ``_`` and ``-`` are allowed after the first character. Whitespace, punctuation and control or
+#: format characters (a zero-width joiner) are not, which keeps a name one visible word in a line of text. It is spelled
+#: in one canonical form (:func:`spell_group`) before it is checked, so the same name is the same group however it is typed.
+#: It is not proof against look-alike letters from another script (a Cyrillic ``е`` for a Latin ``e``): two such names are
+#: two groups, as two user names that differ by one letter are.
+GROUP_NAME_MAX = 40
+
+
+def _group_char(char: str, first: bool) -> bool:
+    category = unicodedata.category(char)
+    if category[0] in ("L", "N"):
+        return True
+    return not first and (category[0] == "M" or char in "_-")
+
 
 #: How many sessions one group may hold: a group is a working party, not a channel.
 MAX_GROUP_MEMBERS = 64
@@ -318,14 +331,26 @@ def _kind(raw: Mapping[str, Any]) -> str:
     return kind if isinstance(kind, str) and kind in KINDS else KIND_ZETTCODE
 
 
+def spell_group(raw: object) -> str:
+    """Return ``raw`` as a group's name is spelled: ``" #Review "`` is ``review``, ``#Straße`` is ``strasse``.
+
+    Compatibility-normalised (a full-width letter, a decomposed ``é``), stripped of spaces and leading ``#``, and
+    case-folded, so one name is one group however it was typed. It does not check the name; see :func:`group_name`.
+    """
+    if not isinstance(raw, str):
+        return ""
+    text = unicodedata.normalize("NFKC", raw).strip().lstrip("#")
+    return unicodedata.normalize("NFKC", text.casefold())
+
+
 def group_name(raw: object) -> str:
     """Return the normalised name of a group: ``#Review`` is ``review``.
 
     Raises:
         Refused: ``invalid`` when it is not a name a group can have.
     """
-    name = raw.strip().lstrip("#").lower() if isinstance(raw, str) else ""
-    if not GROUP_NAME.match(name):
+    name = spell_group(raw)
+    if not name or len(name) > GROUP_NAME_MAX or not all(_group_char(c, i == 0) for i, c in enumerate(name)):
         raise Refused("invalid", "a group name is 1-40 letters, digits, '-' or '_' (any language), such as #review")
     return name
 

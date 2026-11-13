@@ -16,6 +16,12 @@ test("a member's handle becomes a mention, anywhere in the text, and what is aro
   assert.equal(root.textContent, "hi @Reviewer, and (@测试员) please; also @planner-2!");
 });
 
+test("a mention after any punctuation counts, in any script", () => {
+  const root = md("<p>好的，@planner。@reviewer：请看；@tester！「@docs」 and e-mail bob@docs.dev</p>");
+  assert.equal(markMentions(root, ["planner", "reviewer", "tester", "docs"]), 4);
+  assert.equal(root.textContent, "好的，@planner。@reviewer：请看；@tester！「@docs」 and e-mail bob@docs.dev");
+});
+
 test("only a handle from the list counts, and a word that merely follows an @ is text", () => {
   const root = md("<p>mail bob@reviewer.dev or @stranger or @reviewerx</p>");
   assert.equal(markMentions(root, ["reviewer"]), 0);

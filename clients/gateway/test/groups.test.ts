@@ -13,6 +13,7 @@ import {
   loadEarlierGroup,
   membersOf,
   openGroup,
+  spellGroup,
   unreadOf,
 } from "../src/stores/groups";
 import { applyThreads } from "../src/stores/threads";
@@ -70,8 +71,14 @@ async function withPages(pages: Record<number, { messages: GraphMessage[]; more:
 }
 
 test("a group's name may be in any language, one word, and no wider than the broker's rule", () => {
-  for (const ok of ["review", "测试群", "équipe-2", "项目_A"]) assert.ok(GROUP_NAME.test(ok), ok);
-  for (const bad of ["", "a b", "测试 群", "-lead", "_x", "a/b", "a#b", "x".repeat(41)]) assert.ok(!GROUP_NAME.test(bad), bad);
+  for (const ok of ["review", "测试群", "équipe-2", "项目_A", "हिन्दी", "தமிழ்"]) assert.ok(GROUP_NAME.test(ok), ok);
+  for (const bad of ["", "a b", "测试 群", "-lead", "_x", "a/b", "a#b", "x".repeat(41), "a\u200db", "\u0301x"]) assert.ok(!GROUP_NAME.test(bad), bad);
+});
+
+test("a typed name is spelled as the broker spells it where JavaScript can: compatibility form, no #, lower case", () => {
+  assert.equal(spellGroup(" ＃Team "), "team");
+  assert.equal(spellGroup("cafe\u0301"), "caf\u00e9");
+  assert.equal(spellGroup("##Review"), "review");
 });
 
 test("a group is addressed as #name and a session id is not mistaken for one", () => {

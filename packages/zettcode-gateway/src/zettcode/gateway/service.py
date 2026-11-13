@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from zettcode.broker.protocol import spell_group
 from zettcode.sdk.errors import (
     ConfigurationError,
     DaemonStartError,
@@ -124,9 +125,10 @@ def _group_name(raw: object) -> str:
     """Return a group's name as the broker spells it (``" #Review "`` is ``review``).
 
     The broker is the authority on what a name may be and refuses a bad one; this only makes every route spell the
-    same name the same way, so that the one a page sends is the one it later deletes, leaves or reads.
+    same name the same way, so that the one a page sends is the one it later deletes, leaves or reads. It is the
+    broker's own function, so the two cannot drift apart.
     """
-    return raw.strip().lstrip("#").lower() if isinstance(raw, str) else ""
+    return spell_group(raw)
 
 
 def read_pictures(raw: object, limits: SendLimits) -> list[Image]:

@@ -10,7 +10,7 @@ import { toast } from "../../stores/ui";
 import type { Picture, Thread } from "../../types";
 import Icon from "../common/Icon.vue";
 import { confirmAction } from "../sheets/sheets";
-import { backspaceWhole } from "../../lib/erase";
+import { applyErase, backspaceWhole } from "../../lib/erase";
 import { clearReply, replies, withReply } from "../../stores/reply";
 import ReplyBar from "./ReplyBar.vue";
 
@@ -157,8 +157,11 @@ function onKey(event: KeyboardEvent): void {
   const whole = el && backspaceWhole(event, el);
   if (el && whole) {
     event.preventDefault();
-    text.value = whole.value;
-    void nextTick(() => el.setSelectionRange(whole.caret, whole.caret));
+    // Through the browser's own delete when it will, so Ctrl/Cmd+Z brings the quote back.
+    if (!applyErase(el, whole)) {
+      text.value = whole.value;
+      void nextTick(() => el.setSelectionRange(whole.caret, whole.caret));
+    }
     return;
   }
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing && typesByEnter) {
