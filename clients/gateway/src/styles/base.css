@@ -115,7 +115,7 @@ svg.i.xs { width: 0.95rem; height: 0.95rem; }
 .empty b { display: block; color: var(--text); font-size: 1.05rem; margin-bottom: 6px; }
 .empty .btn { margin-top: 1rem; }
 .empty-card { margin: 18px 16px; padding: 30px 20px; border-radius: 18px; background: var(--surface); border: 1px solid var(--divider); box-shadow: var(--shadow); }
-.empty-card .btn { box-shadow: 0 10px 24px rgba(47, 124, 246, 0.2); }
+.empty-card .btn { display: flex; width: max-content; margin: 1.1rem auto 0; box-shadow: 0 10px 24px rgba(47, 124, 246, 0.2); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes blink { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
