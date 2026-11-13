@@ -5,7 +5,8 @@ import Skeleton from "../common/Skeleton.vue";
 import { clockTime } from "../../lib/format";
 import { copyText } from "../../lib/clipboard";
 import { jumpToQuoted } from "../../lib/jump";
-import { attributed, withQuote } from "../../lib/messages";
+import { clearReply, replies, setReply, withReply } from "../../stores/reply";
+import ReplyBar from "../chat/ReplyBar.vue";
 import { closeGroup, groupChat, groupNamed, joinGroup, loadEarlierGroup, membersOf, openGroup, deleteGroup, removeFromGroup, senderName, sendToGroup } from "../../stores/groups";
 import type { Member } from "../../stores/groups";
 import { go, href } from "../../stores/route";
@@ -20,6 +21,7 @@ import GroupMembers from "./GroupMembers.vue";
 import InviteSheet from "./InviteSheet.vue";
 import { confirmAction, showMenu } from "../sheets/sheets";
 import { backspaceWhole } from "../../lib/erase";
+import { longPress } from "../../lib/press";
 
 const props = defineProps<{ name: string }>();
 
@@ -37,6 +39,8 @@ const existed = ref(false);
 watch(group, (now) => now && (existed.value = true), { immediate: true });
 const showMembers = ref(false);
 const text = ref("");
+/** Where this group's reply is kept: a group's key is `#name`, never a session id. */
+const replyKey = computed(() => `#${props.name}`);
 const field = ref<HTMLTextAreaElement | null>(null);
 const scroller = ref<HTMLElement | null>(null);
 const following = ref(true);
@@ -98,12 +102,13 @@ onBeforeUnmount(closeGroup);
 async function submit(): Promise<void> {
   const body = text.value.trim();
   if (!body || groupChat.sending || !joined.value) return;
-  const failure = await sendToGroup(props.name, body);
+  const failure = await sendToGroup(props.name, withReply(replyKey.value, body));
   if (failure) {
     toast(failure, "bad");
     return;
   }
   text.value = "";
+  clearReply(replyKey.value);
   following.value = true;
   toBottom(true);
   field.value?.focus({ preventScroll: true });
@@ -118,20 +123,14 @@ function lineMenu(line: Line): void {
       label: t("Copy text"),
       run: async () => toast((await copyText(line.text)) ? t("Copied") : t("Could not copy")),
     },
-    // The composer is drawn only to a member who may write; a reader and a visitor have none to quote into.
+    // The composer is drawn only to a member who may write; a reader and a visitor have none to reply from.
     joined.value &&
       !auth.readOnly && {
         icon: "reply",
-        label: t("Quote in reply"),
+        label: t("Reply"),
         run: () => {
-          text.value = withQuote(text.value, attributed(line.mine ? "" : line.who, line.text));
-          void nextTick(() => {
-            const el = field.value;
-            if (!el) return;
-            el.focus({ preventScroll: true });
-            el.setSelectionRange(el.value.length, el.value.length);
-            el.scrollTop = el.scrollHeight;
-          });
+          setReply(replyKey.value, line.mine ? "" : line.who, line.text);
+          void nextTick(() => field.value?.focus({ preventScroll: true }));
         },
       },
   ]);
@@ -141,15 +140,21 @@ function lineMenu(line: Line): void {
 function onLineContext(event: MouseEvent, line: Line): void {
   if (!line.text || window.getSelection()?.toString() || (event.target as HTMLElement).closest("a")) return;
   event.preventDefault();
-  lineMenu(line);
+  // A long press on a touch screen has just opened the menu itself; the browser's own contextmenu after it is not another.
+  if (!press.recent()) lineMenu(line);
 }
 
-/** On a touch screen there is no hover: a double tap opens the menu. */
+/** A touch screen has no hover and no right click: a long press opens the menu, as in a messenger. A double tap selects a
+ * word, so it is left to the browser. */
 const touch = matchMedia("(pointer: coarse)").matches;
-function onLineDouble(event: MouseEvent, line: Line): void {
-  // A tap on a quote is a jump to its source, so the second tap of a double tap must not also open the menu.
-  const target = event.target as HTMLElement;
-  if (touch && !window.getSelection()?.toString() && !target.closest("a") && !target.closest("blockquote")) lineMenu(line);
+let pressed: Line | null = null;
+const press = longPress((event) => {
+  const line = pressed;
+  if (line && line.text && !(event.target as HTMLElement).closest("a") && !window.getSelection()?.toString()) lineMenu(line);
+});
+function pressDown(event: PointerEvent, line: Line): void {
+  pressed = line;
+  press.down(event);
 }
 
 /** A click on a quote: go to the message it was taken from. */
@@ -212,6 +217,12 @@ async function join(): Promise<void> {
 }
 
 function onKey(event: KeyboardEvent): void {
+  // The reply bar is one thing above the input: Escape, or Backspace with nothing left to erase, takes it away.
+  if (replies[replyKey.value] && !mention.value && !event.isComposing && (event.key === "Escape" || (event.key === "Backspace" && !text.value))) {
+    event.preventDefault();
+    clearReply(replyKey.value);
+    return;
+  }
   // A picked mention and a quote are each one thing in a messenger: Backspace right after one takes all of it.
   const el = field.value;
   const whole = el && backspaceWhole(event, el, others.value.map((member) => member.handle));
@@ -352,7 +363,11 @@ watch(text, () => void nextTick(resize));
               :class="[line.mine ? 'out' : 'in', { cont: line.cont }]"
               :data-row="line.id"
               @contextmenu="onLineContext($event, line)"
-              @dblclick="onLineDouble($event, line)"
+              @pointerdown="pressDown($event, line)"
+              @pointermove="press.move"
+              @pointerup="press.end"
+              @pointercancel="press.end"
+              @pointerleave="press.end"
             >
               <template v-if="!line.mine">
                 <Avatar
@@ -428,6 +443,7 @@ watch(text, () => void nextTick(resize));
         <span class="mention-state" :class="member.status" />
       </button>
     </div>
+    <ReplyBar v-if="joined && replies[replyKey]" :who="replies[replyKey]!.who" :text="replies[replyKey]!.text" @cancel="clearReply(replyKey)" />
     <form v-if="joined" class="composer" @submit.prevent="submit">
       <div class="composer-field">
         <textarea

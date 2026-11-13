@@ -4,12 +4,14 @@ import { picturePath, pictureUrl } from "../../api/pictures";
 import { t } from "../../i18n";
 import type { ChatImage } from "../../types";
 import type { Row } from "../../lib/rows";
-import { dismiss, quoteIntoDraft, retry, wantsReply } from "../../stores/chat";
+import { dismiss, retry, wantsReply } from "../../stores/chat";
+import { setReply } from "../../stores/reply";
 import { jumpToQuoted } from "../../lib/jump";
 import { currentKey, find } from "../../stores/chatSearch";
 import { canWrite, threadOf } from "../../stores/threads";
 import { toast } from "../../stores/ui";
 import { copyText } from "../../lib/clipboard";
+import { longPress } from "../../lib/press";
 import { showMenu } from "../sheets/sheets";
 import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
@@ -82,7 +84,7 @@ function menu(): void {
   showMenu(t("Message"), [
     { icon: "copy", label: t("Copy text"), run: () => void copy() },
     // The composer is drawn only when the thread can be written to and is not held by another window (the locked bar replaces it).
-    !!thread && canWrite(thread) && !thread.locked && { icon: "reply", label: t("Quote in reply"), run: () => quoteIntoDraft(props.thread, text) },
+    !!thread && canWrite(thread) && !thread.locked && { icon: "reply", label: t("Reply"), run: () => setReply(props.thread, props.row.side === "in" ? thread.name : "", text) },
   ]);
 }
 
@@ -93,15 +95,15 @@ const onLink = (event: Event): boolean => (event.target as HTMLElement | null)?.
 function onContext(event: MouseEvent): void {
   if (!props.row.item.text || window.getSelection()?.toString() || onLink(event)) return;
   event.preventDefault();
-  menu();
+  // A long press on a touch screen has just opened the menu itself; the browser's own contextmenu after it is not another.
+  if (!press.recent()) menu();
 }
-// On a touch screen there is no hover: a double tap opens the menu, as there is no mouse to point at the button.
+// A touch screen has no hover and no right click: a long press opens the menu, as in a messenger. (A double tap selects a
+// word, so it is left to the browser.) A link keeps its own menu.
 const touch = matchMedia("(pointer: coarse)").matches;
-function onDouble(event: MouseEvent): void {
-  // A tap on a quote is a jump to its source, so the second tap of a double tap must not also open the menu.
-  const inQuote = (event.target as HTMLElement | null)?.closest?.("blockquote") != null;
-  if (touch && !window.getSelection()?.toString() && !onLink(event) && !inQuote) menu();
-}
+const press = longPress((event) => {
+  if (props.row.item.text && !onLink(event) && !window.getSelection()?.toString()) menu();
+});
 
 /** A click on a quote in this message: go to the message it was taken from, and say so when it is not on the page. */
 function onQuote(from: HTMLElement): void {
@@ -116,7 +118,7 @@ function again(): void {
 </script>
 
 <template>
-  <div class="msg" :class="[row.side, { cont: row.cont, found, current }]" :data-row="row.key" @contextmenu="onContext" @dblclick="onDouble">
+  <div class="msg" :class="[row.side, { cont: row.cont, found, current }]" :data-row="row.key" @contextmenu="onContext" @pointerdown="press.down" @pointermove="press.move" @pointerup="press.end" @pointercancel="press.end" @pointerleave="press.end">
     <template v-if="row.side === 'in'">
       <Avatar v-if="row.tail && owner" class="msg-avatar" :thread="owner" size="sm" />
       <div v-else class="msg-avatar" />
