@@ -28,6 +28,9 @@ const props = defineProps<{ name: string }>();
 
 const group = computed(() => groupNamed(props.name));
 const members = computed(() => (group.value ? membersOf(group.value) : []));
+/** The words an `@` in a message can name: every member's handle, so a mention reads as one whoever is online. */
+const mentionable = computed(() => members.value.map((member) => member.handle).filter(Boolean));
+const myHandle = computed(() => members.value.find((member) => member.me)?.handle ?? "");
 const online = computed(() => members.value.filter((member) => member.online).length);
 const memberLabel = computed(() =>
   members.value.length === 1 ? t("1 member") : t("{count} members", { count: members.value.length }),
@@ -408,7 +411,7 @@ watch(text, () => void nextTick(resize));
                   <Icon name="more" size="xs" />
                 </button>
                 <span v-if="!line.mine && !line.cont" class="group-who">{{ line.who }}</span>
-                <MessageText :text="line.text" @quote="onQuote" />
+                <MessageText :text="line.text" :mentions="mentionable" :me="myHandle" @quote="onQuote" />
                 <span class="group-time">{{ line.time }}</span>
               </div>
               <template v-if="line.mine">
