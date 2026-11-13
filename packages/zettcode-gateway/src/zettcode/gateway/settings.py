@@ -10,6 +10,7 @@ from zettcode.paths import DEFAULT_STORE
 
 #: The environment variables the command reads.
 TOKEN_VARIABLE = "ZETTCODE_GATEWAY_TOKEN"
+READ_TOKEN_VARIABLE = "ZETTCODE_GATEWAY_READ_TOKEN"
 DIRECTORY_VARIABLE = "ZETTCODE_GATEWAY_DIR"
 
 DEFAULT_HOST = "127.0.0.1"
@@ -46,6 +47,8 @@ class Settings:
         log_level: uvicorn's log level.
         client_origins: Extra origins a native client or a page of its own is served from, on top of
             :data:`APP_ORIGINS`. Ignored without a token.
+        read_token: A second token that signs in read-only: it may look at everything and change nothing. Empty means
+            there is none, and it is ignored without ``token``.
     """
 
     token: str = ""
@@ -57,6 +60,20 @@ class Settings:
     store: Path = DEFAULT_STORE
     log_level: str = "info"
     client_origins: tuple[str, ...] = ()
+    read_token: str = ""
+
+    def __post_init__(self) -> None:
+        if self.read_token and not self.token:
+            raise ValueError("a read token needs a token: with no sign-in there is nobody to be read-only")
+        if self.read_token and not self.read_token.strip():
+            raise ValueError("the read token is blank")
+        if self.read_token and self.read_token == self.token:
+            raise ValueError("the read token must differ from the token, or it would not be read-only")
+
+    @property
+    def audit_path(self) -> Path:
+        """Return the file every sign-in and every change made through the gateway is appended to."""
+        return self.directory / "audit.jsonl"
 
     @property
     def open(self) -> bool:

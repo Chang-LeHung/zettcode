@@ -22,8 +22,8 @@ import { request } from "./http";
 const id = (value: string): string => encodeURIComponent(value);
 
 export const gateway = {
-  session: () => request<{ authenticated: boolean; open: boolean }>("GET", "/api/session"),
-  login: (token: string) => request<{ authenticated: boolean }>("POST", "/api/login", { token }),
+  session: () => request<{ authenticated: boolean; open: boolean; role?: "read" | "write" | null }>("GET", "/api/session"),
+  login: (token: string) => request<{ authenticated: boolean; role?: "read" | "write" }>("POST", "/api/login", { token }),
   logout: () => request<{ authenticated: boolean }>("POST", "/api/logout"),
   threads: () => request<{ threads: Thread[]; status: GatewayStatus }>("GET", "/api/threads"),
   thread: (threadId: string, all = false) =>

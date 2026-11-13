@@ -3,6 +3,7 @@
 import { computed, reactive } from "vue";
 import { gateway } from "../api/gateway";
 import { unreadChats } from "../lib/unread";
+import { auth } from "./auth";
 import type { GatewayStatus, Thread } from "../types";
 
 export const lobby = reactive({
@@ -44,7 +45,7 @@ export function isBusy(thread: Thread): boolean {
   return thread.status === "working" || thread.status === "starting";
 }
 
-/** Whether a message can be written to a thread now. */
+/** Whether a message can be written to a thread now. A read-only sign-in never can: the gateway refuses it. */
 export function canWrite(thread: Thread): boolean {
-  return thread.online && lobby.status?.broker.reachable !== false;
+  return !auth.readOnly && thread.online && lobby.status?.broker.reachable !== false;
 }

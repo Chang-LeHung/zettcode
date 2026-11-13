@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { gateway } from "../../api/gateway";
 import { t } from "../../i18n";
+import { auth } from "../../stores/auth";
 import { go } from "../../stores/route";
 import { fromThread } from "../../stores/spawn";
 import { loadThreads, lobby } from "../../stores/threads";
@@ -12,6 +13,7 @@ const props = defineProps<{ thread: Thread }>();
 const checking = ref(false);
 
 const reason = computed(() => {
+  if (auth.readOnly) return t("You are signed in read-only: you can read everything and change nothing.");
   if (lobby.status?.broker.reachable === false) return t("The session broker is not connected.");
   if (props.thread.locked) return t("This session is open in another ZettCode window, so it is read-only here.");
   if (props.thread.status === "dead") return t("This daemon has stopped.");
@@ -44,8 +46,8 @@ async function recheck(): Promise<void> {
 <template>
   <div class="locked">
     <span>{{ reason }}</span>
-    <button v-if="thread.locked" class="btn sm" :disabled="checking" @click="recheck"><span v-if="checking" class="spin" />{{ t("Check again") }}</button>
-    <button v-if="restartable" class="btn sm" @click="again">{{ t("Start it again") }}</button>
+    <button v-if="thread.locked && !auth.readOnly" class="btn sm" :disabled="checking" @click="recheck"><span v-if="checking" class="spin" />{{ t("Check again") }}</button>
+    <button v-if="restartable && !auth.readOnly" class="btn sm" @click="again">{{ t("Start it again") }}</button>
   </div>
 </template>
 
