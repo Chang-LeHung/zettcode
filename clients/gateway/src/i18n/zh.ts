@@ -209,6 +209,7 @@ export const ZH: Record<string, string> = {
   Name: "名称",
   Message: "消息",
   "Mention a member": "提及成员",
+  "The quoted message is not on this page.": "被引用的消息不在当前页面里。",
   "You are signed in read-only: you can read everything and change nothing.": "你以只读身份登录：可以查看一切，但不能做任何修改。",
   Model: "模型",
   Status: "状态",

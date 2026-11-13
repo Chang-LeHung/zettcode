@@ -108,6 +108,14 @@ one you cannot watch. (The terminal asks whether to steer; the page simply waits
 its own, registered with the broker like a terminal's, so the daemons see a person's messages — not an
 agent's. Its name is `Web gateway`.
 
+**Working with messages.** Hover a message and press its `⋯` button (right-click it, or double-tap on a phone) for
+**Copy text** and **Quote in reply**; the same menu is on messages in a group, where the quote also names who said it.
+A quote is added to what you are writing as ordinary markdown, so the agent reads it too. Click a quote inside a
+message to jump to the message it came from: it is found by its words among the messages loaded on the page, so two
+messages that said the same thing are told apart only by being nearer, and one that has scrolled out of what is
+loaded (use **Show earlier messages**) or was never said here answers "The quoted message is not on this page."
+**Ctrl/Cmd+F** searches the conversation, and typing `@` in a group lists the members you can address.
+
 **Pictures.** A chat with a daemon has an attach button, and a picture can also be pasted or dropped on the
 composer: up to four per message, 4 MiB each and 8 MiB together. A large picture is shrunk in the browser to what a
 model reads anyway (1568 pixels on its longest side); a photo is always drawn again, which also drops what its file

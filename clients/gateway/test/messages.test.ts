@@ -1,7 +1,7 @@
 import "./dom-setup";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { matchingKeys, quoted, visibleText, withQuote } from "../src/lib/messages";
+import { attributed, findQuoted, matchingKeys, quoted, visibleText, withQuote } from "../src/lib/messages";
 import type { Row } from "../src/lib/rows";
 import { closeFind, currentKey, find, search, step } from "../src/stores/chatSearch";
 
@@ -97,4 +97,47 @@ test("a new query while on a match jumps to the newest match of the new words, a
 
   closeFind();
   assert.deepEqual([find.open, find.query, find.keys, find.at], [false, "", [], 0]);
+});
+
+// -- a quote and the message it is from ---------------------------------------------------------
+
+const said = [
+  { key: "a", text: "cart.py:11 negative quantity is the first one to fix" },
+  { key: "b", text: "I disagree, tax comes first" },
+  { key: "c", text: "ok" },
+  { key: "d", text: "Why negative quantity?" },
+];
+
+test("a quote is found in the nearest earlier message that said those words, spacing and case aside", () => {
+  assert.equal(findQuoted(said, "d", "NEGATIVE   quantity is the first\none to fix"), "a");
+  assert.equal(findQuoted(said, "d", "tax comes first"), "b");
+});
+
+test("a message is never its own source, and nothing later is", () => {
+  assert.equal(findQuoted(said, "a", "negative quantity is the first one to fix"), null);
+  assert.equal(findQuoted(said, "b", "Why negative quantity?"), null);
+});
+
+test("two messages that said the same thing are told apart by being nearer", () => {
+  const twice = [
+    { key: "x", text: "ok" },
+    { key: "y", text: "something else" },
+    { key: "z", text: "ok" },
+    { key: "q", text: "reply" },
+  ];
+  assert.equal(findQuoted(twice, "q", "ok"), "z");
+  assert.equal(findQuoted(twice, "z", "ok"), "x");
+});
+
+test("a group quote's leading name is not part of what was said, and a blank quote finds nothing", () => {
+  assert.equal(findQuoted(said, "d", "builder: tax comes first"), "b");
+  assert.equal(findQuoted(said, "d", "   "), null);
+  assert.equal(findQuoted(said, "d", "words nobody said"), null);
+  assert.equal(findQuoted(said, "gone", "tax comes first"), "b", "a source that is not drawn searches everything");
+});
+
+test("a group quote says whose words they are, and a message with no name is left as it is", () => {
+  assert.equal(attributed("builder", "fix it"), "**builder**: fix it");
+  assert.equal(attributed("", "fix it"), "fix it");
+  assert.equal(quoted(attributed("builder", "line one\nline two")), "> **builder**: line one\n> line two\n\n");
 });
