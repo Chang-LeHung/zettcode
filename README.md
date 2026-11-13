@@ -62,7 +62,7 @@ travels along an edge as it is sent — here seven agents are planning, reviewin
 any message can be replayed.
 
 <p align="center">
-  <img src="docs/public/demo/graph.gif" width="760" alt="The Graph page: eight sessions in one group, messages flowing between them" />
+  <img src="docs/public/demo/graph.gif" width="720" alt="The Graph page: eight sessions in one group, messages flowing between them" />
 </p>
 
 ## Get running
