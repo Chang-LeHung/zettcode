@@ -371,7 +371,9 @@ class ExternalBackend(Backend):
         )
 
     async def stop(self, session_id: str, *, force: bool) -> str:
-        return await sdk_daemons.stop_daemon(session_id, force=force)
+        # The record stays, listed as dead: that is the contract (:meth:`Backend.stop`) and what the page promises, and it
+        # is what lets the daemon be started again from where it stopped.
+        return await sdk_daemons.stop_daemon(session_id, force=force, keep=True)
 
     async def delete(self, session_id: str) -> str:
         return await sdk_daemons.delete_daemon(session_id)
