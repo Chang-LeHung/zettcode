@@ -588,7 +588,6 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         # The socket only sends events: the page writes over HTTP, where a read-only sign-in is refused. Nothing a
         # client sends on it is acted on, so a read-only sign-in may hold it; this is where to refuse a frame that
         # ever changes something.
-        audit.record("socket", role=offered_role, client=client)
         # A native client offers ``zettcode`` beside its token; echo it, or the browser would refuse the socket.
         await websocket.accept(subprotocol=subprotocol)
         queue = gateway.subscribe()
@@ -603,8 +602,10 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
                     await websocket.send_text(json.dumps(event, separators=(",", ":")))
 
         writer = asyncio.ensure_future(pump())
-        # Counted only once the socket is accepted and subscribed, right before the ``try`` whose ``finally`` takes it
-        # off: a handshake that fails earlier would otherwise leave the gauge one too high for the life of the process.
+        # Counted and logged only once the socket is accepted and subscribed, right before the ``try`` whose ``finally``
+        # takes it off: a handshake that fails earlier would otherwise leave the gauge one too high and the audit log
+        # showing a sign-in that never had a socket.
+        audit.record("socket", role=offered_role, client=client)
         metrics.socket_opened()
         try:
             while True:

@@ -105,7 +105,9 @@ def test_every_route_is_counted_under_a_name_of_its_own(tmp_path):
         assert seen.setdefault(name, path) == path, f"{name!r} is the label of both {seen[name]} and {path}"
 
 
-def test_a_handshake_that_fails_before_the_socket_is_accepted_does_not_leave_the_gauge_up(client, monkeypatch):
+def test_a_handshake_that_fails_before_the_socket_is_accepted_does_not_leave_the_gauge_up(
+    client, monkeypatch, tmp_path
+):
     from starlette.websockets import WebSocket, WebSocketDisconnect
 
     async def refuse(self, *args, **kwargs):
@@ -120,6 +122,10 @@ def test_a_handshake_that_fails_before_the_socket_is_accepted_does_not_leave_the
     text = scrape(client)
     assert "zettcode_gateway_event_sockets 0" in text
     assert "zettcode_gateway_event_sockets_opened_total 0" in text
+    # And the audit log does not claim a socket that was never opened.
+    audit_file = tmp_path / "gw" / "audit.jsonl"
+    log = audit_file.read_text(encoding="utf-8") if audit_file.exists() else ""
+    assert '"event":"socket"' not in log
 
 
 def test_the_socket_gauge_falls_and_never_goes_below_zero():
