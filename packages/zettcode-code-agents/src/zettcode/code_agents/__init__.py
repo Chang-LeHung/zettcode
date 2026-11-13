@@ -27,6 +27,7 @@ import os
 import shlex
 import signal
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,7 @@ from zettcode.broker.external import ExternalSession
 from zettcode.broker.models import Incoming, Receipt
 from zettcode.broker.protocol import KIND_EXTERNAL
 from zettcode.code_agents.config import (
+    PERMISSIONS,
     TIMEOUT,
     ConfigError,
     Settings,
@@ -43,7 +45,7 @@ from zettcode.code_agents.config import (
     state_directory,
     work_directory,
 )
-from zettcode.gateway.agents import AgentPlugin
+from zettcode.gateway.agents import AgentField, AgentPlugin
 
 #: The one place this plugin's version is written.
 __version__ = "0.1.0"
@@ -135,12 +137,20 @@ def _events(stdout: str) -> tuple[str, str]:
 class CliAgent(ExternalSession):
     """An external session whose one handler runs a CLI and keeps its session id."""
 
-    def __init__(self, session_id: str, title: str, source: Tool | Command) -> None:
+    def __init__(
+        self,
+        session_id: str,
+        title: str,
+        source: Tool | Command,
+        overrides: Mapping[str, str] | None = None,
+    ) -> None:
         self._turns: set[asyncio.Task[None]] = set()
         self._limit = max(1, int(os.environ.get("ZETTCODE_CODE_AGENTS_QUEUE", "4")))
         super().__init__(session_id, title, kind=KIND_EXTERNAL, on_message=self._start_turn)
         #: A tool's settings are read again for every turn; a bare command (a caller's own) is run as it is given.
         self.source = source
+        #: What the person chose for this one agent when starting it (``cwd``, ``permission``): it wins over the file.
+        self.overrides = dict(overrides or {})
         self.state = state_directory() / f"{session_id}.json"
         self._lock = asyncio.Lock()
         self._process: asyncio.subprocess.Process | None = None
@@ -173,7 +183,7 @@ class CliAgent(ExternalSession):
         source = self.source
         if isinstance(source, Command):
             return Launch(source, work_directory(), _timeout(), (), ())
-        settings: Settings = resolve(source, timeout=_timeout())
+        settings: Settings = resolve(source, timeout=_timeout(), overrides=self.overrides)
         command = Command(settings.binary, settings.args, settings.resume_args)
         return Launch(
             command,
@@ -309,14 +319,38 @@ CLAUDE = Tool(
 )
 
 
+#: What the page may choose for a code agent when it starts one. Left empty, the settings file (and then the defaults)
+#: apply, so an agent started with no choice behaves as before.
+FIELDS = (
+    AgentField(
+        "cwd",
+        "Folder",
+        kind="directory",
+        help="The folder the agent works in. Left empty, the one in the settings file, or the plugin's own folder.",
+    ),
+    AgentField(
+        "permission",
+        "Access",
+        kind="choice",
+        choices=PERMISSIONS,
+        help="full: no sandbox and no approval. workspace: may change files in its folder. read: may only read.",
+        unrestricted="full",
+    ),
+)
+
+
 class CodexAgent(AgentPlugin):
     name = CODEX.name
     title = "Codex"
     description = "OpenAI Codex CLI, in the same session every time"
     avatar = _logo("codex.svg")
+    fields = FIELDS
 
     def create(self, session_id: str, title: str) -> ExternalSession:
         return CliAgent(session_id, title, CODEX)
+
+    def create_with(self, session_id: str, title: str, options: Mapping[str, str]) -> ExternalSession:
+        return CliAgent(session_id, title, CODEX, options)
 
 
 class ClaudeCodeAgent(AgentPlugin):
@@ -324,9 +358,13 @@ class ClaudeCodeAgent(AgentPlugin):
     title = "Claude Code"
     description = "Anthropic Claude Code, in the same session every time"
     avatar = _logo("claude.svg")
+    fields = FIELDS
 
     def create(self, session_id: str, title: str) -> ExternalSession:
         return CliAgent(session_id, title, CLAUDE)
+
+    def create_with(self, session_id: str, title: str, options: Mapping[str, str]) -> ExternalSession:
+        return CliAgent(session_id, title, CLAUDE, options)
 
 
 __all__ = [

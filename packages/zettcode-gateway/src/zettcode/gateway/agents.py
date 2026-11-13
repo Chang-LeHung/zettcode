@@ -14,6 +14,7 @@ import base64
 import logging
 import secrets
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -90,6 +91,46 @@ class AgentError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class AgentField:
+    """One setting a plugin lets the page choose for an agent it starts.
+
+    Attributes:
+        name: The key the page sends back in ``options``.
+        label: What the form shows.
+        kind: ``"text"`` (free text), ``"choice"`` (one of ``choices``) or ``"directory"`` (a folder the gateway may
+            start agents in: the gateway checks it against its roots, as it does for a daemon).
+        choices: The values a ``"choice"`` may take.
+        default: The value used when the page sends none; empty means the plugin's own setting applies.
+        help: One sentence under the field.
+        unrestricted: The choice that gives the agent the person's full access. The gateway refuses it when it was
+            started with ``--no-full``, as it does for a daemon's full shell level.
+    """
+
+    name: str
+    label: str
+    kind: str = "text"
+    choices: tuple[str, ...] = ()
+    default: str = ""
+    help: str = ""
+    unrestricted: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "label": self.label,
+            "kind": self.kind,
+            "choices": list(self.choices),
+            "default": self.default,
+            "help": self.help,
+            "unrestricted": self.unrestricted,
+        }
+
+
+#: The longest value a text field may carry, so a page cannot hand a plugin an unbounded string.
+MAX_OPTION = 1000
+
+
+@dataclass(frozen=True, slots=True)
 class AgentType:
     """One kind of external agent a plugin offers."""
 
@@ -97,13 +138,15 @@ class AgentType:
     title: str
     description: str = ""
     avatar: str = ""
+    fields: tuple[AgentField, ...] = ()
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "title": self.title,
             "description": self.description,
             "avatar": avatar_data(self.avatar),
+            "fields": [item.to_dict() for item in self.fields],
         }
 
 
@@ -111,7 +154,8 @@ class AgentPlugin(ABC):
     """The contract an installed gateway plugin implements.
 
     ``name`` is the stable type id the page sends back; ``title`` is what a list shows. :meth:`create` returns an
-    unconnected :class:`ExternalSession`; the manager calls ``connect`` and owns its lifetime.
+    unconnected :class:`ExternalSession`; the manager calls ``connect`` and owns its lifetime. A plugin that lets the page
+    choose settings lists them in ``fields`` and overrides :meth:`create_with`; one that does not is unchanged.
     """
 
     name: str = ""
@@ -119,10 +163,19 @@ class AgentPlugin(ABC):
     description: str = ""
     #: A data URL shown for the agent when the page has no profile picture of its own.
     avatar: str = ""
+    #: The settings the page may choose when it starts one, which the manager checks before calling :meth:`create_with`.
+    fields: tuple[AgentField, ...] = ()
 
     @abstractmethod
     def create(self, session_id: str, title: str) -> ExternalSession:
         """Return the agent's external session, not yet connected."""
+
+    def create_with(self, session_id: str, title: str, options: Mapping[str, str]) -> ExternalSession:
+        """Return the session with the page's chosen ``options`` (already checked against :attr:`fields`).
+
+        The default ignores them, so a plugin written before options existed keeps working.
+        """
+        return self.create(session_id, title)
 
 
 class AgentManager:
@@ -143,9 +196,16 @@ class AgentManager:
     def available(self) -> list[AgentType]:
         """Return the agent types a page may create."""
         return [
-            AgentType(plugin.name, plugin.title or plugin.name, plugin.description, avatar_data(plugin.avatar))
+            AgentType(
+                plugin.name, plugin.title or plugin.name, plugin.description, avatar_data(plugin.avatar), plugin.fields
+            )
             for plugin in self._plugins.values()
         ]
+
+    def fields_of(self, kind: str) -> tuple[AgentField, ...]:
+        """Return the settings a type lets the page choose; empty for an unknown type."""
+        plugin = self._plugins.get(kind)
+        return plugin.fields if plugin is not None else ()
 
     def avatar(self, kind: str) -> str:
         """Return the default picture a type offers, or an empty string."""
@@ -165,7 +225,48 @@ class AgentManager:
         """Return the agents this gateway started, by session id."""
         return dict(self._running)
 
-    async def create(self, kind: str, title: str = "", session_id: str = "", group: str = "") -> ExternalSession:
+    def check_options(self, kind: str, options: object) -> dict[str, str]:
+        """Return the page's options for a type, checked against the type's fields.
+
+        A field the page left out takes its default when it has one and is left out when it has none, so the plugin's own
+        setting applies. A name the type does not list, a value that is not text, a choice that is not offered and a value
+        past :data:`MAX_OPTION` are refused rather than passed on.
+
+        Raises:
+            AgentError: One of those.
+        """
+        if options is None:
+            options = {}
+        if not isinstance(options, Mapping):
+            raise AgentError("options is an object of settings")
+        known = {item.name: item for item in self.fields_of(kind)}
+        found: dict[str, str] = {}
+        for name, value in options.items():
+            field = known.get(name)
+            if field is None:
+                raise AgentError(f"there is no setting {name!r} for this agent")
+            if not isinstance(value, str):
+                raise AgentError(f"the setting {field.label!r} is text")
+            value = value.strip()
+            if len(value) > MAX_OPTION:
+                raise AgentError(f"the setting {field.label!r} is too long")
+            if field.kind == "choice" and value and value not in field.choices:
+                raise AgentError(f"the setting {field.label!r} is {', '.join(field.choices)}, not {value!r}")
+            if value:
+                found[name] = value
+        for name, field in known.items():
+            if name not in found and field.default:
+                found[name] = field.default
+        return found
+
+    async def create(
+        self,
+        kind: str,
+        title: str = "",
+        session_id: str = "",
+        group: str = "",
+        options: Mapping[str, str] | None = None,
+    ) -> ExternalSession:
         """Start one agent and return its session.
 
         Raises:
@@ -181,7 +282,7 @@ class AgentManager:
             raise AgentError(f"a gateway may run at most {MAX_AGENTS} external agents")
         session: ExternalSession | None = None
         try:
-            session = plugin.create(session_id, title or plugin.title or kind)
+            session = plugin.create_with(session_id, title or plugin.title or kind, options or {})
             await session.connect()
             if group:
                 await session.join_group(group)

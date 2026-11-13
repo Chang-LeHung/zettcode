@@ -171,11 +171,24 @@ export interface SpawnReply {
   first?: { ok: boolean; disposition?: string; error?: { code: string; message: string } };
 }
 
+/** A setting a plugin lets the page choose when it starts an agent. */
+export interface AgentField {
+  name: string;
+  label: string;
+  kind: "text" | "choice" | "directory";
+  choices: string[];
+  default: string;
+  help: string;
+  /** The choice that gives the agent full access: hidden when the gateway does not allow it. */
+  unrestricted: string;
+}
+
 export interface AgentType {
   name: string;
   title: string;
   description: string;
   avatar?: string;
+  fields?: AgentField[];
 }
 
 export interface AgentReply {
