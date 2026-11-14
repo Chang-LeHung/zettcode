@@ -234,15 +234,19 @@ def fake_config(tmp_path: Path, **changes: object) -> SimpleNamespace:
         "plugins_file": tmp_path / "plugins.json",
         "plugins_enabled": True,
         "disabled_plugins": (),
+        "enabled_plugins": (),
     }
     values.update(changes)
     return SimpleNamespace(**values)
 
 
 def folder_with_greeter(tmp_path: Path) -> Path:
+    """A single-file plugin the command may import to ask its default, as a real one would be."""
     folder = tmp_path / "plugins"
     folder.mkdir()
-    (folder / "greeter.py").write_text("class Greeter(TuiPlugin):\n    pass\n", encoding="utf-8")
+    (folder / "greeter.py").write_text(
+        "from zettcode.plugin_api import TuiPlugin\n\n\nclass Greeter(TuiPlugin):\n    pass\n", encoding="utf-8"
+    )
     return folder
 
 
@@ -271,6 +275,134 @@ def test_enable_removes_the_name_from_the_configuration_file(tmp_path, monkeypat
 
     assert tomllib.loads(config_file.read_text(encoding="utf-8"))["plugins"]["disable"] == []
     assert "enabled greeter" in capsys.readouterr().out
+
+
+def test_enable_names_a_plugin_that_is_off_by_default_in_the_list_that_loads_it(tmp_path, monkeypatch, capsys):
+    folder = folder_with_greeter(tmp_path)
+    config = fake_config(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+    monkeypatch.setattr(cli, "_resolve_switch_name", lambda state, name: "quiet")
+    monkeypatch.setattr(cli, "_off_by_default_named", lambda name: True)
+
+    assert cli.switch("quiet", enabled=True) == 0
+
+    data = tomllib.loads((tmp_path / "config.toml").read_text(encoding="utf-8"))
+    assert data["plugins"]["enable"] == ["quiet"], "the line that turns an off-by-default plugin on"
+    assert data["plugins"].get("disable", []) == []
+    assert "enabled quiet" in capsys.readouterr().out
+
+
+def test_the_default_a_plugin_asks_for_is_read_from_its_class(monkeypatch):
+    monkeypatch.setattr(
+        cli,
+        "_installed_plugins",
+        lambda group: [
+            ("quiet", "zettcode-quiet", "/site-packages", _Point(False)),
+            ("loud", "zettcode-loud", "/site-packages", _Point(True)),
+        ],
+    )
+
+    assert cli._off_by_default_named("quiet") is True
+    assert cli._off_by_default_named("loud") is False
+    assert cli._off_by_default_named("absent") is False, "nothing is called that, so nothing is off by default"
+
+
+def quiet_file(tmp_path: Path) -> Path:
+    """A single-file plugin whose class asks to be off until it is named."""
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    (folder / "quiet.py").write_text(
+        "from zettcode.plugin_api import TuiPlugin\n\n\n"
+        "class Quiet(TuiPlugin):\n"
+        '    name = "quiet"\n\n'
+        "    @classmethod\n"
+        "    def default_enabled(cls) -> bool:\n"
+        "        return False\n",
+        encoding="utf-8",
+    )
+    return folder
+
+
+def test_enable_names_a_single_file_plugin_that_is_off_by_default(tmp_path, monkeypatch, capsys):
+    """The file is imported to ask its class, so the command writes the line the loader actually reads."""
+    folder = quiet_file(tmp_path)
+    config = fake_config(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+
+    assert cli.switch("quiet", enabled=True) == 0
+
+    data = tomllib.loads((tmp_path / "config.toml").read_text(encoding="utf-8"))
+    assert data["plugins"]["enable"] == ["quiet"] and data["plugins"].get("disable", []) == []
+    assert "enabled quiet" in capsys.readouterr().out
+
+
+def test_list_does_not_import_a_file_plugin_it_is_told_not_to_load(tmp_path, monkeypatch, capsys):
+    """A start never imports a file a switch holds back; a look must not run the code the reader switched off."""
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    marker = tmp_path / "imported"
+    (folder / "quiet.py").write_text(
+        f"from pathlib import Path\n\nPath({str(marker)!r}).write_text('ran', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    config = fake_config(tmp_path, disabled_plugins=("quiet",))
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+
+    assert cli.list_plugins() == 0
+
+    row = next(line for line in capsys.readouterr().out.splitlines() if "quiet" in line)
+    assert " no " in f" {row} " and "[plugins] disable" in row
+    assert not marker.exists(), "the file was not imported"
+
+
+def test_a_file_that_cannot_be_read_is_not_reported_as_enabled(tmp_path, monkeypatch, capsys):
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    (folder / "broken.py").write_text("raise RuntimeError('no plugin here')\n", encoding="utf-8")
+    config = fake_config(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+
+    assert cli.switch("broken", enabled=True) == 1
+
+    assert "cannot be read as a plugin" in capsys.readouterr().err
+    assert not (tmp_path / "config.toml").exists(), "a switch that cannot help writes nothing"
+
+
+def test_a_distribution_that_cannot_be_imported_is_not_reported_as_enabled(tmp_path, monkeypatch, capsys):
+    """The same untruth as a broken file, one shape over: a class that will not import has no answer to give."""
+
+    class Broken:
+        def load(self) -> type:
+            raise ImportError("no provider here")
+
+    config = fake_config(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: tmp_path / "plugins")
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+    monkeypatch.setattr(cli, "_resolve_switch_name", lambda state, name: "broken")
+    monkeypatch.setattr(
+        cli, "_installed_plugins", lambda group: [("broken", "zettcode-broken", "/site-packages", Broken())]
+    )
+
+    assert cli.switch("broken", enabled=True) == 1
+
+    assert "cannot be read as a plugin" in capsys.readouterr().err
+    assert not (tmp_path / "config.toml").exists(), "a switch that cannot help writes nothing"
+
+
+def test_list_draws_a_single_file_plugin_that_is_off_by_default_as_off(tmp_path, monkeypatch, capsys):
+    folder = quiet_file(tmp_path)
+    config = fake_config(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+
+    assert cli.list_plugins() == 0
+
+    row = next(line for line in capsys.readouterr().out.splitlines() if "quiet" in line)
+    assert " no " in f" {row} " and "[plugins] enable" in row
 
 
 def test_a_switch_for_something_that_is_not_installed_says_what_exists(tmp_path, monkeypatch, capsys):
@@ -475,6 +607,67 @@ def test_list_marks_a_switched_off_file_as_off(tmp_path, monkeypatch, capsys):
     said = capsys.readouterr().out
     row = next(line for line in said.splitlines() if "greeter" in line)
     assert " no " in f" {row} " and "[plugins] disable" in row
+
+
+class _Point:
+    """The slice of an entry point a list asks whether the plugin behind it is off by default."""
+
+    def __init__(self, default: bool) -> None:
+        self.default = default
+
+    def load(self) -> type:
+        default = self.default
+
+        class PluginClass:
+            @classmethod
+            def default_enabled(cls) -> bool:
+                return default
+
+        return PluginClass
+
+
+def test_list_draws_a_plugin_that_is_off_by_default_as_off(tmp_path, monkeypatch, capsys):
+    """The loader leaves it out, so a row saying yes would be a lie; the switch that turns it on is `enable`."""
+    config = fake_config(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: tmp_path / "plugins")
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+    monkeypatch.setattr(
+        cli, "_installed_plugins", lambda group: [("quiet", "zettcode-quiet", "/site-packages", _Point(False))]
+    )
+
+    assert cli.list_plugins() == 0
+
+    row = next(line for line in capsys.readouterr().out.splitlines() if "quiet" in line)
+    assert " no " in f" {row} " and "[plugins] enable" in row
+
+
+def test_list_names_the_disable_line_that_holds_a_plugin_off_by_default_back(tmp_path, monkeypatch, capsys):
+    """Both lists can hold it; the one the reader can act on now is the one a switch turning it on clears."""
+    config = fake_config(tmp_path, disabled_plugins=("quiet",))
+    monkeypatch.setattr(cli, "plugins_dir", lambda: tmp_path / "plugins")
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+    monkeypatch.setattr(
+        cli, "_installed_plugins", lambda group: [("quiet", "zettcode-quiet", "/site-packages", _Point(False))]
+    )
+
+    assert cli.list_plugins() == 0
+
+    row = next(line for line in capsys.readouterr().out.splitlines() if "quiet" in line)
+    assert " no " in f" {row} " and "[plugins] disable" in row
+
+
+def test_list_says_yes_for_a_named_plugin_even_when_it_is_off_by_default(tmp_path, monkeypatch, capsys):
+    config = fake_config(tmp_path, enabled_plugins=("quiet",))
+    monkeypatch.setattr(cli, "plugins_dir", lambda: tmp_path / "plugins")
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+    monkeypatch.setattr(
+        cli, "_installed_plugins", lambda group: [("quiet", "zettcode-quiet", "/site-packages", _Point(False))]
+    )
+
+    assert cli.list_plugins() == 0
+
+    row = next(line for line in capsys.readouterr().out.splitlines() if "quiet" in line)
+    assert " yes " in f" {row} "
 
 
 def test_list_as_json_names_the_location_and_the_switch(tmp_path, monkeypatch, capsys):

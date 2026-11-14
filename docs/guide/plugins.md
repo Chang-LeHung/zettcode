@@ -466,7 +466,13 @@ class Quiet(TuiPlugin):
 enable = ["quiet"]
 ```
 
-The default is `True`, so a plugin that says nothing loads as before.
+The default is `True`, so a plugin that says nothing loads as before. A plugin in this state is drawn as **off** by
+`/plugins` and `zettcode plugin list` — the loader leaves it out, so a list that showed it on would be telling you
+something untrue — and the row says `off by default; [plugins] enable turns it on`. Pressing its switch (or running
+`zettcode plugin enable quiet`) writes that name into `[plugins] enable`, the same way any other press takes a name
+out of `[plugins] disable`. One exception: a plugin that loaded only because another plugin needs it may take two
+presses, because the page cannot ask its class without loading it — the row then says which line the second press
+writes.
 
 ## Command-line flags
 

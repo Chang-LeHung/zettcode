@@ -3,7 +3,9 @@
 Two things decide it, and both are written now for the process that starts next:
 
 * A plugin installed as a distribution is switched by `[plugins] disable` in the configuration file; an older
-  file of names beside the session store is still read and merged.
+  file of names beside the session store is still read and merged. A plugin that says it is off by default
+  (:meth:`~zettcode.engine.plugins.plugin.Plugin.default_enabled`) is the other way round: it stays off until
+  `[plugins] enable` names it, and that is the line a switch turning one on writes.
 * A plugin compiled into the program has no file of its own. What turns its work off is a setting the reader already
   has — ``[skills] enabled``, ``[mcp] enabled`` — which the plugin declares (see
   :attr:`~zettcode.engine.plugins.plugin.Plugin.setting`). A compiled-in plugin that declares none cannot be switched
@@ -82,6 +84,7 @@ class SwitchState:
     plugins_file: Path
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
+    enabled_plugins: tuple[str, ...] = ()
 
 
 def off_names(config: ZettCodeConfig) -> tuple[str, ...]:
@@ -111,6 +114,10 @@ def catalog(
     """
     builtins = set(bundle.builtins)
     off = set(off_names(config))
+    # The two lists a reader wrote, and the plugins the loader left out only because they ask to be: a row is on when
+    # it was named, or when nothing holds it back and it wants to be on.
+    turned_on = set(config.enabled_plugins)
+    by_default = set(bundle.default_off)
     compiled: list[PluginEntry] = []
     installed: list[PluginEntry] = []
     for plugin in bundle.plugins:
@@ -129,7 +136,17 @@ def catalog(
                     )
                 )
             continue
-        installed.append(_installed(plugin.name, origin, config, off=off, description=plugin.description))
+        installed.append(
+            _installed(
+                plugin.name,
+                origin,
+                config,
+                off=off,
+                turned_on=turned_on,
+                by_default=by_default,
+                description=plugin.description,
+            )
+        )
     points = tuple(entry_points) if entry_points is not None else loader.installed_entry_points()
     seen = {entry.origin for entry in installed} | {origin for origin, _why in bundle.failed}
     for point in points:
@@ -144,12 +161,24 @@ def catalog(
                 continue
         # This one never loaded, so there is no object to ask: its distribution's summary is what it has to say. The
         # metadata is read here and not for every entry point, because a row that loaded speaks for itself.
-        installed.append(_installed(point.name, point.name, config, off=off, description=_summary(point)))
+        installed.append(
+            _installed(
+                point.name,
+                point.name,
+                config,
+                off=off,
+                turned_on=turned_on,
+                by_default=by_default,
+                description=_summary(point),
+            )
+        )
     # A single-file plugin that is switched off is not in the bundle (the loader never imported it), so the folder is
     # what says it exists: it stays on the page, off, where it can be switched back on.
     for path in loader.installed_files(config.plugins_dir):
         if path.stem not in seen:
-            installed.append(_installed(path.stem, path.stem, config, off=off))
+            installed.append(
+                _installed(path.stem, path.stem, config, off=off, turned_on=turned_on, by_default=by_default)
+            )
     # A file can load some of its classes and fail others: every reason belongs on the file's one row, not on a
     # second row named after the class, which no switch could ever write. A file that fails all of its classes still
     # gets one row, with every reason joined.
@@ -193,19 +222,35 @@ def catalog(
     )
 
 
-def _installed(name: str, origin: str, config: ZettCodeConfig, *, off: set[str], description: str = "") -> PluginEntry:
-    """Return one installed plugin's row: whether the next start loads it, and whether its switch can move."""
+def _installed(
+    name: str,
+    origin: str,
+    config: ZettCodeConfig,
+    *,
+    off: set[str],
+    turned_on: set[str] | frozenset[str] = frozenset(),
+    by_default: set[str] | frozenset[str] = frozenset(),
+    description: str = "",
+) -> PluginEntry:
+    """Return one installed plugin's row: whether the next start loads it, and whether its switch can move.
+
+    A plugin that asks to be off until it is named is off here too, and its row says so: the loader leaves it out
+    for that reason, and a switch turning it on writes ``[plugins] enable``. A name in ``[plugins] disable`` is a
+    reader's decision about it, so the row is off and the note is not shown for one.
+    """
     why = (
         "installed plugins are off entirely: [plugins] enabled = false in the configuration file"
         if not config.plugins_enabled
         else ""
     )
+    off_by_default = origin in by_default and origin not in turned_on and origin not in off
     return PluginEntry(
         name,
         origin,
-        enabled=config.plugins_enabled and origin not in off,
+        enabled=config.plugins_enabled and origin not in off and not off_by_default,
         switchable=why == "",
         why=why,
+        note="off by default; [plugins] enable turns it on" if off_by_default and config.plugins_enabled else "",
         description=description,
     )
 
@@ -297,33 +342,73 @@ def _drop_legacy_names(path: Path, names: set[str]) -> bool:
     return True
 
 
-def _write_off(config: ZettCodeConfig | SwitchState, enable: set[str], disable: set[str]) -> None:
-    """Edit ``[plugins] disable`` in the configuration file, then drop the same names from the legacy switch file.
+def _config_enabled(path: Path) -> list[str]:
+    """Return the names ``[plugins] enable`` holds in the configuration file, validating the shape."""
+    from zettcode._compat import tomllib
+
+    if not path.is_file():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    data = tomllib.loads(text) if text.strip() else {}
+    plugins = data.get("plugins", {})
+    if not isinstance(plugins, dict):
+        raise ValueError(f"{path} writes [plugins] in a way /plugins cannot edit; edit the file by hand")
+    values = plugins.get("enable", [])
+    if not isinstance(values, list) or any(not isinstance(name, str) or not name.strip() for name in values):
+        raise ValueError(f"{path} has a [plugins] enable that is not an array of names; edit the file by hand")
+    return [name.strip() for name in values]
+
+
+def _write_switches(
+    config: ZettCodeConfig | SwitchState,
+    *,
+    turn_on: set[str] | frozenset[str] = frozenset(),
+    turn_off: set[str] | frozenset[str] = frozenset(),
+    by_default: set[str] | frozenset[str] = frozenset(),
+    forget: set[str] | frozenset[str] = frozenset(),
+) -> None:
+    """Write a switch into ``[plugins] disable`` and, for a plugin that asks to be off, ``[plugins] enable``.
+
+    ``by_default`` names the plugins that are off until they are named
+    (:meth:`~zettcode.engine.plugins.plugin.Plugin.default_enabled`); turning one on is what writes `[plugins]
+    enable`, and turning it off takes the name out again. A plugin that is on unless it is dropped needs no line
+    when it is turned on, so a switch that changes nothing still writes nothing. ``forget`` takes a name out of both
+    lists — an uninstall retires it rather than switching it.
 
     The configuration file is the one the reader edits and the one ``load_config`` reads, so the switch is written
     there; a file that does not exist yet gets one with the table, and the models are added when the reader sets one.
-    A switch that changes nothing writes nothing and does not create the file. The read and the replace are held
-    under a lock, so two plugin switches (or two plugin-settings edits) cannot lose one another.
+    The read and the replace are held under a lock, so two plugin switches (or two plugin-settings edits) cannot
+    lose one another.
     """
     target = config_path()
     if target.exists() and not target.is_file():
         raise ValueError(f"{target} is not a file; edit the plugin switches by hand")
+    on, off, named_for, gone = set(turn_on), set(turn_off), set(by_default), set(forget)
     changed = False
     try:
         with _lock(target):
             text = target.read_text(encoding="utf-8") if target.is_file() else ""
             current = set(_config_disabled(target))
-            names = (current | disable) - enable
+            names = (current | (off - named_for)) - on - gone
             if names != current:
                 text = set_string_list(text, "plugins", "disable", sorted(names), where=target, command="/plugins")
-                write_text_atomically(target, text)
                 changed = True
+            asked = set(_config_enabled(target))
+            wanted = (asked | (on & named_for)) - off - gone
+            if wanted != asked:
+                text = set_string_list(text, "plugins", "enable", sorted(wanted), where=target, command="/plugins")
+                changed = True
+            if changed:
+                write_text_atomically(target, text)
     except (OSError, ValueError) as error:
         raise ValueError(f"the plugin switch could not be written: {error}") from error
-    if not _drop_legacy_names(config.plugins_file, enable | disable) and enable:
+    if not _drop_legacy_names(config.plugins_file, on | off | gone) and on:
         if changed:
-            raise ValueError(f"the configuration was changed, but {_still_in_legacy(enable)}")
-        raise ValueError(_still_in_legacy(enable))
+            raise ValueError(f"the configuration was changed, but {_still_in_legacy(on)}")
+        raise ValueError(_still_in_legacy(on))
 
 
 def _still_in_legacy(enable: set[str]) -> str:
@@ -411,10 +496,11 @@ def set_many(
         written[name] = enabled
     if off_changes:
         try:
-            _write_off(
+            _write_switches(
                 config,
-                enable={name for name, enabled in off_changes.items() if enabled},
-                disable={name for name, enabled in off_changes.items() if not enabled},
+                turn_on={name for name, enabled in off_changes.items() if enabled},
+                turn_off={name for name, enabled in off_changes.items() if not enabled},
+                by_default=set(bundle.default_off),
             )
         except ValueError as error:
             # Nothing of this batch was written, so the refusals above are still worth reporting with it.
@@ -494,23 +580,37 @@ def applied(config: ZettCodeConfig, setting: PluginSetting, enabled: bool) -> Ze
     return replace(config, **{setting.field: enabled})  # type: ignore[arg-type]
 
 
-def applied_installed(config: ZettCodeConfig, changes: Mapping[str, bool]) -> ZettCodeConfig:
-    """Return ``config`` with the installed names a switch wrote reflected in ``disabled_plugins``.
+def applied_installed(
+    config: ZettCodeConfig, changes: Mapping[str, bool], *, by_default: set[str] | frozenset[str] = frozenset()
+) -> ZettCodeConfig:
+    """Return ``config`` with the installed names a switch wrote reflected in the two lists a row reads.
 
-    This is what a page reads for its rows in this process: the file has the new list, but the running settings
-    object was built before it, so the row would otherwise still show the old state.
+    A name turned off is taken out of ``[plugins] enable`` and put in ``disable``, except that a plugin which is off
+    by default rests there unnamed. A name turned on is taken out of ``disable`` and named in ``enable`` only when it
+    asks to be off — a plugin that is on unless dropped gains no line, so this must not invent one in memory either.
+    ``by_default`` says which names those are.
     """
-    names = set(config.disabled_plugins)
+    off = set(config.disabled_plugins)
+    on = set(config.enabled_plugins)
+    named_for = set(by_default)
     for name, enabled in changes.items():
-        names.discard(name) if enabled else names.add(name)
-    return replace(config, disabled_plugins=tuple(sorted(names)))
+        if enabled:
+            off.discard(name)
+            if name in named_for:
+                on.add(name)
+        else:
+            on.discard(name)
+            if name not in named_for:
+                off.add(name)
+    return replace(config, disabled_plugins=tuple(sorted(off)), enabled_plugins=tuple(sorted(on)))
 
 
-def set_installed(config: ZettCodeConfig | SwitchState, name: str, *, enabled: bool) -> None:
-    """Write one installed plugin's switch to ``[plugins] disable``, without loading any plugin.
+def set_installed(config: ZettCodeConfig | SwitchState, name: str, *, enabled: bool, by_default: bool = False) -> None:
+    """Write one installed plugin's switch, without loading any plugin.
 
     A management command asks this for a name it has already checked exists (an entry point, a single file in
-    :attr:`ZettCodeConfig.plugins_dir`, or a name the file already holds). Nothing is written while
+    :attr:`ZettCodeConfig.plugins_dir`, or a name the file already holds). ``by_default`` says the plugin is off
+    until ``[plugins] enable`` names it, which is the line turning it on writes. Nothing is written while
     ``[plugins] enabled`` is off; a name in ``[plugins] disable`` is an ordinary switch and can be turned on.
 
     Raises:
@@ -524,7 +624,12 @@ def set_installed(config: ZettCodeConfig | SwitchState, name: str, *, enabled: b
             "[plugins] enabled = false in the configuration file turns every installed plugin off; edit that line "
             "to load them again"
         )
-    _write_off(config, enable={name} if enabled else set(), disable=set() if enabled else {name})
+    _write_switches(
+        config,
+        turn_on={name} if enabled else set(),
+        turn_off=set() if enabled else {name},
+        by_default={name} if by_default else set(),
+    )
 
 
 def forget_installed(config: ZettCodeConfig | SwitchState, name: str) -> bool:
@@ -545,7 +650,7 @@ def forget_installed(config: ZettCodeConfig | SwitchState, name: str) -> bool:
     if not found:
         return False
     try:
-        _write_off(config, enable={name}, disable=set())
+        _write_switches(config, forget={name})
     except ValueError:
         return False
     return True
