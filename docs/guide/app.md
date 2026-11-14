@@ -33,10 +33,11 @@ gateway that serves its page.
 
 It is built for macOS (Apple Silicon), Windows and Linux. The installers are produced by CI on each system; they have
 not been tried on a real Windows or Linux machine yet, so report anything that does not start. Installers for all three
-are attached to the GitHub releases named `desktop-v<version>`. They are signed ad hoc — not with an Apple Developer
-certificate, and not notarized — so macOS refuses the first launch as an unidentified developer: open **System
-Settings → Privacy & Security** and press **Open Anyway** (on macOS 14 and earlier, right-click → Open in Finder works
-too). The `desktop-v0.2.0` installers were built with no signature at all, which macOS 15 and later reports as *the app
+are attached to the GitHub releases named `desktop-v<version>`. The macOS app is signed ad hoc — not with an Apple
+Developer certificate, and not notarized — so macOS refuses its first launch as an unidentified developer. Open it once
+and let that refusal happen: **System Settings → Privacy & Security** then lists it, and **Open Anyway** lets it start
+(on macOS 14 and earlier, right-click → Open in Finder works on the first attempt). The `desktop-v0.2.0` installers
+were built with no signature at all, which macOS 15 and later reports as *the app
 is damaged* rather than as an unidentified developer. For those, or for any copy that still says damaged, copy it to
 Applications and run:
 
