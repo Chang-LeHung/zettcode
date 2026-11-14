@@ -147,6 +147,9 @@ class CliAgent(ExternalSession):
 
     def _start_turn(self, message: Incoming) -> Receipt:
         """Answer the broker now and run one CLI turn on a task."""
+        if message.images:
+            # A headless CLI has nowhere to put a picture, and one dropped without a word would look like it was seen.
+            return Receipt(False, reason=f"{self.title} cannot take pictures")
         if len(self._turns) >= self._limit:
             return Receipt(False, reason=f"{self.title} has {self._limit} turns waiting", busy=True)
         task = asyncio.ensure_future(self._turn(message))
