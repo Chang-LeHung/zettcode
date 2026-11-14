@@ -150,7 +150,7 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
     * what is part of every agent and is not its to share: the framework's own internal-message and steering
       extensions, which an agent adds for itself and refuses to be given;
     * ``task``, so a child cannot start another child;
-    * the just-in-time harness, whose tools are code the model writes and runs in this process;
+    * the just-in-time harness, whose tools are code the model writes and runs in a child process;
     * ``list_sessions`` and ``send_message``, unless ``[harness] subagent_messaging`` asks for them;
     * ``ask_user``: a child works until it has finished and answers the parent, so a question put to the person
       in the middle of it would be a conversation the person never started. What it needs to know has to be in

@@ -24,7 +24,8 @@ def result(name: str, *, ok: bool = True, content: str = "done", ms: float | Non
 
 
 def write(path: Path, *lines: str, newline: bool = True) -> Path:
-    path.write_text("\n".join(lines) + ("\n" if newline else ""), encoding="utf-8")
+    # newline="\n": the window is measured in bytes, and Windows would otherwise write each line break as two.
+    path.write_text("\n".join(lines) + ("\n" if newline else ""), encoding="utf-8", newline="\n")
     return path
 
 
@@ -120,6 +121,19 @@ def test_a_last_line_with_no_newline_is_counted(tmp_path: Path):
     path = write(tmp_path / "data.jsonl", result("bash"), result("bash"), newline=False)
 
     assert scan_tool_calls(path).tools["bash"].calls == 2
+
+
+def test_a_line_of_exactly_the_limit_is_read_and_one_byte_more_is_not(tmp_path: Path):
+    limit = 2_000
+    fits = result("fits", content="x" * (limit - len(result("fits", content=""))))
+    over = result("over", content="x" * (limit + 1 - len(result("over", content=""))))
+    assert len(fits.encode()) == limit and len(over.encode()) == limit + 1
+    path = write(tmp_path / "data.jsonl", fits, over, result("after"))
+
+    scan = scan_tool_calls(path, max_line=limit)
+
+    assert set(scan.tools) == {"fits", "after"}
+    assert scan.skipped == 1
 
 
 @pytest.mark.parametrize("size", [3_000, 40_000])
@@ -243,7 +257,7 @@ class _Toolbox:
 
 def tool_of(extension: SwitchedHarness, session: str = "s"):
     harness = JITHarness(extension._root / session)
-    extension._mounting = session
+    extension._sessions[session] = harness  # as the framework's on_tool records it before asking for the tools
     return {each.name: each for each in extension.management_tools(harness)}
 
 
