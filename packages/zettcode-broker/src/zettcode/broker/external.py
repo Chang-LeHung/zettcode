@@ -59,8 +59,9 @@ class ExternalSession:
 
     The program is an ``external`` session by default: it can exchange one-to-one messages and, when the broker's
     owner adds it, receive and write to groups. It cannot create or manage groups with its own key, read a group's
-    history, or send pictures. It may ask for ``raw`` delivery (see :meth:`send`), which is what the web gateway does;
-    the ``direct`` flag itself stays a reader's chat window's.
+    history, or send pictures. It may ask for ``raw`` delivery (see :meth:`send`), which is what the web gateway does.
+    It may also say it takes a reader's text as its own prompt (``direct``, which a program wrapping a CLI does): the
+    gateway then sends what the reader typed, untouched and with no request to answer by tool.
 
     Args:
         session_id: The stable id this program registers with. It must be a broker session id (letters, digits,
@@ -69,6 +70,8 @@ class ExternalSession:
         workspace: An optional path shown in the roster.
         kind: ``external`` for an ordinary outside program, or ``zettcode`` for a trusted gateway plugin that also
             needs group chats and history. The broker treats the kind as the program's claim.
+        direct: Whether the program runs a reader's text as its own prompt and answers it, so that a sender may ask
+            for ``raw`` delivery of it. Only set it for a handler that does answer every message it is given.
         on_message: How to answer a message; :meth:`on_message` is used when this is ``None``. A sync handler must
             not block the event loop.
         directory: The broker's directory; :func:`~.files.broker_dir` by default.
@@ -92,6 +95,7 @@ class ExternalSession:
         *,
         workspace: str = "",
         kind: str = KIND_EXTERNAL,
+        direct: bool = False,
         on_message: Handler | None = None,
         directory: Path | None = None,
         spawner: Callable[[Path], None] | None = None,
@@ -112,6 +116,7 @@ class ExternalSession:
             raise ValueError("kind is 'external' or 'zettcode'")
         self.workspace = workspace
         self.kind = kind
+        self.direct = direct
         self.inbox: asyncio.Queue[Incoming] = asyncio.Queue(maxsize=inbox_size)
         self._handler = on_message
         self._on_roster = on_roster
@@ -135,6 +140,7 @@ class ExternalSession:
                 workspace=workspace,
                 status="idle",
                 kind=kind,
+                direct=direct,
             )
         )
 
@@ -288,6 +294,7 @@ class ExternalSession:
                 workspace=self.workspace,
                 status=status,
                 kind=self.kind,
+                direct=self.direct,
             )
         )
 
