@@ -107,8 +107,8 @@ the `full` shell level the code it writes has your own access. `/harness reset` 
 ```
 
 The model starts (or reuses) a background session named `code-review`, sends it the diff request, and goes round again
-after each fix. The reviewer runs at your own shell level and is told to read, not change; that is an instruction, not
-a sandbox.
+after each fix. The reviewer runs at your own shell level (at `safe` when yours is `ask`) and is told to read, not
+change; that is an instruction, not a sandbox.
 
 **3. Run an agent in the background and talk to it.**
 

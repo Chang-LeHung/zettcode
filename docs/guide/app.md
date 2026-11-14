@@ -31,9 +31,10 @@ gateway that serves its page.
 
 ## The desktop app
 
-It runs on macOS (Apple Silicon), Windows and Linux. Installers for all three are attached to the GitHub releases named
-`desktop-v<version>`; they are unsigned, so macOS asks you to open the app with right-click → Open and Windows
-SmartScreen with More info → Run anyway. Or build it from the checkout:
+It is built for macOS (Apple Silicon), Windows and Linux. The installers are produced by CI on each system; they have
+not been tried on a real Windows or Linux machine yet, so report anything that does not start. Installers for all three
+are attached to the GitHub releases named `desktop-v<version>`; they are unsigned, so macOS asks you to open the app
+with right-click → Open and Windows SmartScreen with More info → Run anyway. Or build it from the checkout:
 
 ```sh
 make desktop                  # type-check, test and build the window

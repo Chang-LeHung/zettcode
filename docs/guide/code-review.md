@@ -39,7 +39,8 @@ starts a reviewer.
 
 ## Which shell level the reviewer gets
 
-The reviewer runs at **your own shell level**, never above it.
+The reviewer runs at your own shell level, or at `safe` when yours is `ask`: a background process has nobody to ask,
+so it is never given a level that would need an answer.
 
 | Your level | The reviewer |
 | --- | --- |

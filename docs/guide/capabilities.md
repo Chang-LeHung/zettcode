@@ -4,19 +4,19 @@ Most of this guide is about one session in one terminal. ZettCode also does a fe
 agent does not. This page names each one, says what is different about it, and shows the commands that use it. The
 details are on the page each section links to.
 
-| Capability | In one line | Where it runs |
+| Capability | In one line | Needs |
 | --- | --- | --- |
-| [JIT harness](#jit-harness) | The model writes a small Python tool, loads it and calls it in the same turn | A terminal session |
-| [Code review](#code-review) | `/code-review` has a second agent read your uncommitted changes | A terminal session |
-| [Background agents](#background-agents) | A session with nobody at the keyboard, started with `zettcode daemon spawn` | A background process |
-| [Messaging and `@`](#messaging-between-sessions) | Sessions on one machine send each other messages; `@name` points the model at one | Every session |
-| [Groups](#groups) | A named set of sessions; a message to the group reaches every connected member | The broker |
-| [The Graph page](#the-graph-page) | Sessions as nodes, groups as regions, messages as they travel, with replay | The web gateway |
+| [JIT harness](#jit-harness) | The model writes a small Python tool, loads it and calls it in the same turn | `zettcode` (off until you turn it on) |
+| [Code review](#code-review) | `/code-review` has a second agent read your uncommitted changes | `zettcode`, and a git checkout |
+| [Background agents](#background-agents) | A session with nobody at the keyboard, started with `zettcode daemon spawn` | `zettcode` |
+| [Messaging and `@`](#messaging-between-sessions) | Sessions on one machine send each other messages; `@name` points the model at one | `zettcode` |
+| [Groups](#groups) | A named set of sessions; a message to the group reaches every connected member | `zettcode` |
+| [The Graph page](#the-graph-page) | Sessions as nodes, groups as regions, messages as they travel, with replay | `zettcode gateway start` |
 | [The web gateway](#the-web-gateway) | A page for daemons, sessions and groups, also on a phone and in a desktop window | `zettcode gateway start` |
-| [Codex and Claude Code](#codex-and-claude-code) | Both run as members you can message and put in groups | The web gateway |
+| [Codex and Claude Code](#codex-and-claude-code) | Both run as members you can message and put in groups | `zettcode[code-agents]` and the Codex or Claude Code CLI |
 
-Several of these need the plugins in `zettcode[all]`; the [Getting started](/guide/getting-started#install) page says
-which.
+Everything but the last row is in plain `zettcode`; `[all]` adds `/monitor`, `/recap`, the vendor models and the last
+row. See [Getting started](/guide/getting-started#install).
 
 ## JIT harness
 
@@ -56,8 +56,8 @@ and goes round again after each fix until the reviewer has nothing left to chang
 
 **Why it differs.** The review happens in a session of its own, so your conversation does not fill up with the diff, and
 a reviewer that has seen the earlier rounds can say whether a fix worked. The reviewer is told to read and not change
-files. That is an instruction, not a sandbox: it runs at your own shell level, never above it, so at `full` it could
-change things if it chose to.
+files. That is an instruction, not a sandbox: it runs at your own shell level (or at `safe` when yours is `ask`), so at
+`full` it could change things if it chose to.
 
 **How to use it.**
 
@@ -76,8 +76,9 @@ Under the `deny` shell level no reviewer is started; the model reads the files i
 when you close the terminal, and is reached by messages. You start, list, stop and delete daemons from the command line
 or from the web gateway.
 
-**Why it differs.** The work happens beside you: a reviewer reads a diff, an explorer goes through a failing test suite,
-while you keep editing. A daemon is an ordinary stored session, so after it stops you can open it with
+**Why it differs.** A terminal session lives in its terminal: close the window and it ends. A daemon keeps working after
+you close the terminal, so a long job (going through a failing test suite, reviewing a diff) does not tie up your own
+session. A daemon is an ordinary stored session, so after it stops you can open it with
 `zettcode resume <id>`. `daemon stop` keeps its record, and `spawn --resume` starts it again on the same conversation.
 
 ::: warning A daemon asks nobody
@@ -142,8 +143,9 @@ gateway's Chats page. The limits are 64 sessions in a group, 20 groups for one s
 along a line from the sender to the recipient as it is sent. **Replay** redraws a past stretch of time from the stored
 history, up to 20,000 messages.
 
-**Why it differs.** With several agents talking, it shows who is talking to whom and where a conversation stalled.
-Replay only draws what happened; it sends nothing again.
+**What it is for.** It does not change what the agents can do; it shows what they did. With several agents talking, it
+answers who is talking to whom and where a conversation stalled. Replay only draws what happened; it sends nothing
+again.
 
 **How to use it.** Start the gateway and open **Graph** in its navigation:
 
