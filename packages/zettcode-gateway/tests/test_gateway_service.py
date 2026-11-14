@@ -1473,7 +1473,7 @@ async def test_a_message_not_yet_taken_is_not_written_out(tmp_path):
     gateway._inbox[AGENT] = deque([{"kind": "in", "text": "kept"}], maxlen=5)
     pending = {"kind": "out", "text": "on its way"}
     gateway._inbox[AGENT].append(pending)
-    gateway._unsent.add(id(pending))
+    gateway._unsent.append(pending)
 
     gateway._save_inbox()
 

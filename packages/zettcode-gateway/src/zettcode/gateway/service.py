@@ -323,7 +323,7 @@ class Gateway:
         self._meta: dict[str, Meta] = {}
         self._inbox: dict[str, deque[dict[str, Any]]] = {}
         #: Messages of ours in a thread's box that no session has taken yet, by identity: they are not written out.
-        self._unsent: set[int] = set()
+        self._unsent: list[dict[str, Any]] = []
         self._senders: dict[str, str] = {}
         self._seen: dict[str, int] = self._load_seen()
         self._load_inbox()
@@ -844,8 +844,10 @@ class Gateway:
         entry: dict[str, Any] | None = None
         if not view["workspace"]:
             entry = {"kind": "out", "text": text}
-            self._inbox.setdefault(session_id, deque(maxlen=INBOX_LIMIT)).append(entry)
-            self._unsent.add(id(entry))
+            box = self._inbox.pop(session_id, None) or deque(maxlen=INBOX_LIMIT)
+            self._inbox[session_id] = box
+            box.append(entry)
+            self._unsent.append(entry)
             self._publish({"type": "thread", "id": session_id})
         try:
             delivered = await self.backend.send(session_id, body, direct=direct, images=pictures)
@@ -864,13 +866,13 @@ class Gateway:
             ) from error
         self._wake_up()
         if entry is not None:
-            self._unsent.discard(id(entry))
+            self._unsent[:] = [item for item in self._unsent if item is not entry]
             self._save_inbox()
         return {"to": delivered.to, "disposition": delivered.disposition, "direct": delivered.direct}
 
     def _take_back(self, session_id: str, entry: dict[str, Any]) -> None:
         """Remove one item the gateway kept for a thread, by identity: two messages may say exactly the same thing."""
-        self._unsent.discard(id(entry))
+        self._unsent[:] = [item for item in self._unsent if item is not entry]
         box = self._inbox.get(session_id)
         if box is None:
             return
@@ -998,14 +1000,15 @@ class Gateway:
                 }
             )
             return Receipt(True, disposition="delivered")
-        box = self._inbox.setdefault(message.sender_id, deque(maxlen=INBOX_LIMIT))
-        box.append({"kind": "in", "text": message.text, "via": message.via, "sender": message.sender})
         self._senders[message.sender_id] = message.sender
         meta = self._meta.get(message.sender_id)
         if meta is not None and meta.stamp is not None:
             # Its conversation is stored and is what the thread shows: a second copy here would only be written out.
-            box.pop()
+            self._inbox.pop(message.sender_id, None)
         else:
+            box = self._inbox.pop(message.sender_id, None) or deque(maxlen=INBOX_LIMIT)
+            self._inbox[message.sender_id] = box  # last in order is the most recently active, which the cap keeps
+            box.append({"kind": "in", "text": message.text, "via": message.via, "sender": message.sender})
             self._save_inbox()
         # The conversation moved, and only the page with it open can redraw: a thread with a stored conversation is
         # announced by ``refresh``, but one that is only what the gateway kept has no store to see the change in.
@@ -1616,7 +1619,11 @@ class Gateway:
                 self._senders[key] = sender
 
     def _save_inbox(self) -> None:
-        """Write what the gateway kept for those threads; a failure only costs the history, so it is not raised."""
+        """Write what the gateway kept for those threads; a failure only costs the history, so it is not raised.
+
+        At most ``INBOX_THREADS`` x ``INBOX_LIMIT`` items (about a megabyte of JSON at the worst), written in full on the
+        event loop each time a message arrives or is sent: small in practice, and the number to look at if it is not.
+        """
         path = self._inbox_path()
         temporary = path.with_name(f".inbox.{os.getpid()}.tmp")
         # Only what is kept for a thread nobody stores, and only what was delivered: a message still on its way (or
@@ -1624,7 +1631,7 @@ class Gateway:
         threads = {
             key: {
                 "sender": self._senders.get(key, ""),
-                "items": [item for item in box if id(item) not in self._unsent],
+                "items": [item for item in box if not any(item is waiting for waiting in self._unsent)],
             }
             for key, box in list(self._inbox.items())[-INBOX_THREADS:]
             if box
@@ -1633,6 +1640,8 @@ class Gateway:
             path.parent.mkdir(parents=True, exist_ok=True)
             # 0600: this is the one file the gateway keeps that holds what people said.
             descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            if hasattr(os, "fchmod"):  # POSIX only; a leftover temp of an earlier run keeps its old mode otherwise
+                os.fchmod(descriptor, 0o600)
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
                 handle.write(json.dumps({"threads": threads}, ensure_ascii=False))
             os.replace(temporary, path)
