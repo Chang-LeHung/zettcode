@@ -684,8 +684,10 @@ def test_welcome_mark_is_compact_and_readable_in_both_themes():
         source = TranscriptSource(transcript, theme=theme)
         title = source.line(1, 60)
         subtitle = source.line(2, 60)
+        more = source.line(3, 60)
         hint = source.line(4, 60)
-        assert title.text.index("ZettCode") == subtitle.text.index("Writes tools")
+        assert title.text.index("ZettCode") == subtitle.text.index("A coding agent")
+        assert title.text.index("ZettCode") == more.text.index("background daemons")
         assert title.text.index("ZettCode") == hint.text.index("Type a task")
         name = next(span for span in title.spans if span.text.strip() == "ZettCode")
         assert name.style.foreground == theme.text
@@ -731,7 +733,9 @@ def test_welcome_labels_stack_without_overflow_on_narrow_windows(width):
     if width >= 60:
         assert len(rows) == len(LOGO_LINES)
     else:
-        assert len(rows) == len(LOGO_LINES) + 4
+        # The marks, a blank row, then every label under them: one row each, however many lines the banner has.
+        labels = sum(1 for line in WELCOME.splitlines() if line[2 + len(LOGO_LINES[0].text) :].strip())
+        assert len(rows) == len(LOGO_LINES) + 1 + labels
         assert rows[len(LOGO_LINES)].text == ""
         if width >= 40:
             assert rows[-1].text == "  Type a task, or /help for commands."

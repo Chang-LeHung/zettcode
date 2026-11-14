@@ -17,7 +17,8 @@ WELCOME = "\n".join(
     f"  {line.text}"
     + {
         1: f"   ZettCode  v{__version__}",
-        2: "   Writes tools. Loads agents.",
+        2: "   A coding agent with JIT tools,",
+        3: "   background daemons and groups",
         4: "   Type a task, or /help for commands.",
     }.get(index, "")
     for index, line in enumerate(LOGO_LINES)
