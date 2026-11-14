@@ -52,6 +52,8 @@ function pendingFor(id: string): Pending[] {
 async function load(id: string, all: boolean): Promise<void> {
   const mine = ++generation;
   if (all) showAll = true;
+  // The first read of this visit: what was unread when the chat was opened, which is where it stops.
+  const opening = chat.loading;
   try {
     const detail = await gateway.thread(id, showAll);
     if (mine !== generation || chat.id !== id) return;
@@ -62,9 +64,10 @@ async function load(id: string, all: boolean): Promise<void> {
     chat.items = detail.items;
     chat.total = detail.total;
     chat.truncated = detail.truncated;
-    // The unread line stays where this visit found it, so reading clears the badge without moving it. A refresh that
-    // shows something new says where the newer stretch begins; "Show earlier messages" moves every index it holds.
-    if (detail.unread_from != null) chat.unreadFrom = detail.unread_from;
+    // The line is where this visit found the unread stretch and stays there while the chat is open: what arrives later
+    // is counted by the button at the bottom, not folded into the place the reader left off. "Show earlier messages"
+    // prepends, so every index it holds moves with it.
+    if (opening) chat.unreadFrom = detail.unread_from ?? null;
     else if (chat.unreadFrom !== null && all && detail.items.length > before)
       chat.unreadFrom += detail.items.length - before;
     chat.error = "";

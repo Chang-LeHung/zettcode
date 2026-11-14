@@ -16,10 +16,11 @@ from zettcode.gateway.chat import REPLY_REQUEST, strip_reply_request
 from zettcode.gateway.service import Gateway, GatewayError
 from zettcode.gateway.settings import Settings
 from zettcode.sdk.errors import DaemonStartError, SendError, SessionLockedError
-from zettcode.sdk.types import Message, Relay, SendLimits, ToolCallInfo
+from zettcode.sdk.types import IncomingMessage, Message, Relay, SendLimits, ToolCallInfo
 
 PEER = "01peerpeerpeer"
 DAEMON = "01daemondaemon"
+AGENT = "web-agentagent"
 
 
 def settings(tmp_path: Path, **changes: object) -> Settings:
@@ -372,7 +373,7 @@ async def test_a_message_from_a_program_with_no_stored_conversation_is_a_chat_of
     opened = await gateway.thread("external:ci")
     assert opened["items"] == [{"kind": "in", "text": "build 42 is red", "via": "external", "sender": "ci"}]
     kinds = [event["type"] for event in drained(queue)]
-    assert kinds[0] == "inbound" and "threads" in kinds
+    assert kinds[0] == "thread" and "inbound" in kinds and "threads" in kinds
     await gateway.read("external:ci")
     assert gateway.threads()[0]["unread"] == 0
 
@@ -864,6 +865,55 @@ async def test_a_daemon_that_is_working_is_read_when_it_goes_quiet_too(tmp_path)
     await gateway.refresh()
 
     assert [item["preview"] for item in gateway.threads() if item["id"] == DAEMON] == ["partway"]
+
+
+async def test_what_was_written_to_a_session_with_no_store_stays_in_the_conversation_and_is_not_unread(tmp_path):
+    """An external agent has no store: the gateway's own record of the thread is all there is, and it must hold both sides."""
+    gateway, backend = await make(tmp_path)
+    backend.add_peer(AGENT, "claudecode", kind="external")
+    await gateway.refresh()
+
+    await gateway.send(AGENT, "你是谁")
+    gateway._received(IncomingMessage(AGENT, "claudecode", "我是 Claude Code", via="external"))
+    await gateway.refresh()
+
+    opened = await gateway.thread(AGENT)
+    assert [(item["kind"], item["text"]) for item in opened["items"]] == [
+        ("out", "你是谁"),
+        ("in", "我是 Claude Code"),
+    ]
+    assert opened["thread"]["preview"] == "我是 Claude Code", "the list shows what the session said last"
+    assert opened["thread"]["unread"] == 1, "what this page wrote is not something to read"
+    assert opened["unread_from"] == 1
+
+
+async def test_a_message_arriving_in_a_thread_with_no_store_tells_the_open_page_to_redraw_it(tmp_path):
+    """There is no store to notice a change in, so a page with the chat open would otherwise never see the answer."""
+    gateway, backend = await make(tmp_path)
+    backend.add_peer(AGENT, "claudecode", kind="external")
+    queue = gateway.subscribe()
+    await gateway.refresh()
+
+    gateway._received(IncomingMessage(AGENT, "claudecode", "我是 Claude Code", via="external"))
+
+    announced = []
+    while not queue.empty():
+        event = queue.get_nowait()
+        if event["type"] == "thread":
+            announced.append(event["id"])
+    assert announced == [AGENT], "the chat is told it moved, as well as being told a message arrived"
+
+
+async def test_a_message_a_session_with_no_store_never_took_is_taken_back_out_of_the_conversation(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.add_peer(AGENT, "claudecode", kind="external")
+    await gateway.refresh()
+    backend.fail = SendError("lost", "the broker did not answer")
+
+    with pytest.raises(GatewayError):
+        await gateway.send(AGENT, "never mind")
+
+    assert (await gateway.thread(AGENT))["items"] == []
 
 
 async def test_a_session_that_is_working_is_read_when_it_goes_quiet_and_not_at_every_look(tmp_path):
