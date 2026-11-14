@@ -29,13 +29,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import cast
+from typing import BinaryIO, cast
 from weakref import WeakKeyDictionary
 
 from pydantic import ValidationError
@@ -91,6 +92,24 @@ from .records import (
 #: streams (which the ``tool-output`` part moves there) and a result no tool of ours bounded (``long-output``). Both
 #: reach it through :meth:`SessionPersistenceMixin.session_dir`, so the name is stated here, once.
 KEPT_OUTPUT = "tool-output"
+
+#: How many bytes before the end of a read are remembered, to tell an appended file from a replaced one.
+_ANCHOR = 64
+
+
+@dataclass(frozen=True, slots=True)
+class _Reading:
+    """Where the last read of a session file stopped, so the next one can start there.
+
+    Attributes:
+        session: What that read produced.
+        offset: The byte after the last line it took in.
+        anchor: The bytes just before ``offset``. A file that no longer has them there was replaced, not appended to.
+    """
+
+    session: Session
+    offset: int
+    anchor: bytes
 
 
 def message_context(
@@ -174,6 +193,8 @@ class SessionPersistenceMixin:
         # is the hot path — one call per message — so it must not re-parse the
         # whole log; the cache makes a read O(1) and a write a tuple copy.
         self._sessions: dict[str, tuple[tuple[int, int] | None, Session]] = {}
+        #: Where the last full or partial read of each session stopped, so a log that only grew is read from there.
+        self._readings: dict[str, _Reading] = {}
         #: A read now runs on a worker thread for the framework's restore hook,
         #: while appends still fold into the same cache on the loop. The lock
         #: orders only the cache lookups and the publish; the parse itself runs
@@ -253,36 +274,76 @@ class SessionPersistenceMixin:
                 return cached[1]
         if stamp is None:
             session = Session(header=None, messages=(), compactions=(), head_id=None)
+            reading: _Reading | None = None
         else:
-            session = self._parse(path)
+            with self._cache_lock:
+                known = self._readings.get(session_id)
+            session, reading = self._read_from(path, known)
         with self._cache_lock:
             cached = self._sessions.get(session_id)
             if stamp is not None and cached is not None and cached[0] is not None and cached[0] >= stamp:
                 return cached[1]
             self._sessions[session_id] = (stamp, session)
+            if reading is None:
+                self._readings.pop(session_id, None)
+            else:
+                self._readings[session_id] = reading
         return session
 
-    def _parse(self, path: Path) -> Session:
-        """Parse one session file without touching the cache."""
-        # Bytes, not text: the parser takes them as they are, so the file is not
-        # decoded to a string only to be encoded again, and a line is only ever split
-        # where the file's own newline is. ``str.splitlines`` also breaks at U+2028,
-        # U+2029, and U+0085, which JSON writes into a string as they are — a
-        # message that held one was cut in half and the file called corrupt.
-        lines = path.read_bytes().splitlines()
-        header: SessionLine | None = None
-        messages: list[MessageLine] = []
-        compactions: list[CompactionLine] = []
-        head_id: str | None = None
+    def _read_from(self, path: Path, known: _Reading | None) -> tuple[Session, _Reading]:
+        """Parse a session file, taking only what was appended since ``known`` when that is safe.
+
+        The log is append-only, so a file that is longer than it was, with the same bytes where the earlier read
+        stopped, is the earlier file plus new lines: only those are parsed. Anything else (shorter, a different
+        file, other bytes before the offset) is parsed whole, so a replaced file can never be read as an extension.
+        """
+        with path.open("rb") as handle:
+            size = os.fstat(handle.fileno()).st_size
+            if known is not None and self._extends(handle, known, size):
+                handle.seek(known.offset)
+                tail = handle.read(size - known.offset)
+                return self._parse_tail(path, known, tail)
+            handle.seek(0)
+            return self._parse_tail(path, None, handle.read(size))
+
+    @staticmethod
+    def _extends(handle: BinaryIO, known: _Reading, size: int) -> bool:
+        """Return whether the file still starts with the bytes the earlier read ended on, and is longer than it."""
+        if size < known.offset or known.offset == 0:
+            return False
+        anchor = min(known.offset, _ANCHOR)
+        handle.seek(known.offset - anchor)
+        return handle.read(anchor) == known.anchor
+
+    def _parse_tail(self, path: Path, known: _Reading | None, data: bytes) -> tuple[Session, _Reading]:
+        """Parse ``data`` (the whole file, or what follows ``known``) and return the session and where it ended.
+
+        Only whole lines are consumed: a final line with no newline is parsed when it is complete JSON (the writer
+        is between its two writes) and left for the next read when it is not, so a torn line is never skipped.
+        """
+        base = known.offset if known is not None else 0
+        # Bytes, split on b"\n" only: ``str.splitlines`` also breaks at U+2028, U+2029 and U+0085, which JSON writes
+        # into a string as they are, and a message that held one was once cut in half and the file called corrupt.
+        lines = data.split(b"\n")
+        trailing = lines.pop()  # what follows the last newline: usually empty
+        header = known.session.header if known is not None else None
+        messages = list(known.session.messages) if known is not None else []
+        compactions = list(known.session.compactions) if known is not None else []
+        head_id = known.session.head_id if known is not None else None
+        consumed = 0
         for index, line in enumerate(lines):
+            consumed += len(line) + 1
             if not line.strip():
                 continue
             try:
                 parsed = LINES.validate_json(line)
             except ValidationError as error:
-                if index == len(lines) - 1:
-                    break  # A crash can tear the line being appended; the rest is intact.
-                raise ValueError(f"Corrupt session file {path.name} at line {index + 1}") from error
+                if index == len(lines) - 1 and not trailing.strip():
+                    consumed -= len(line) + 1  # a torn last line: leave it for the next read
+                    break
+                raise ValueError(
+                    f"Corrupt session file {path.name} at byte {base + consumed - len(line) - 1}"
+                ) from error
             match parsed:
                 case SessionLine():
                     header = parsed
@@ -293,8 +354,32 @@ class SessionPersistenceMixin:
                     compactions.append(parsed)
                 case other:
                     raise ValueError(f"Unknown session record: {type(other).__name__}")
+        if trailing.strip():
+            try:
+                parsed = LINES.validate_json(trailing)
+            except ValidationError:
+                pass  # half a record: the next read starts at its first byte
+            else:
+                consumed += len(trailing)
+                match parsed:
+                    case SessionLine():
+                        header = parsed
+                    case MessageLine():
+                        messages.append(parsed)
+                        head_id = parsed.id
+                    case CompactionLine():
+                        compactions.append(parsed)
+                    case other:
+                        raise ValueError(f"Unknown session record: {type(other).__name__}")
+        elif trailing:
+            consumed += len(trailing)  # blanks only
         self._check_links(path, messages, compactions)
-        return Session(header=header, messages=tuple(messages), compactions=tuple(compactions), head_id=head_id)
+        session = Session(header=header, messages=tuple(messages), compactions=tuple(compactions), head_id=head_id)
+        end = base + consumed
+        # The anchor comes from the bytes just parsed, never from a second look at the file: a writer could have
+        # appended in between, and the anchor would then describe bytes this read never took in.
+        before = (known.anchor if known is not None else b"") + data[:consumed]
+        return session, _Reading(session, end, before[-_ANCHOR:])
 
     @staticmethod
     def _stamp(path: Path) -> tuple[int, int]:
