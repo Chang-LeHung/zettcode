@@ -34,11 +34,13 @@ class _Bundle:
         builtins: tuple[str, ...] = (),
         failed: tuple[tuple[str, str], ...] = (),
         taken: tuple[tuple[str, str], ...] = (),
+        default_off: tuple[str, ...] = (),
     ) -> None:
         self.plugins = plugins or []
         self.builtins = builtins
         self.failed = failed
         self.taken = taken
+        self.default_off = default_off
         self.failures = tuple(f"{origin}: {why}" for origin, why in failed)
 
 
@@ -62,6 +64,11 @@ def config(tmp_path: Path, monkeypatch) -> tuple[ZettCodeConfig, Path]:
 def disabled_in(path: Path) -> list[str]:
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     return list(data.get("plugins", {}).get("disable", []))
+
+
+def enabled_in(path: Path) -> list[str]:
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    return list(data.get("plugins", {}).get("enable", []))
 
 
 def test_an_installed_plugin_is_switched_in_the_configuration_file(config):
@@ -106,6 +113,42 @@ def test_a_name_the_configuration_disabled_is_switchable_again(config):
 
     assert (written, keys, problems) == ({"greeter": True}, [], [])
     assert disabled_in(path) == []
+
+
+def test_a_plugin_that_is_off_by_default_is_off_and_its_switch_names_it(config):
+    """The loader leaves such a plugin out, so its row must say off; turning it on writes `[plugins] enable`."""
+    settings, path = config
+    point = EntryPoint(name="quiet", value="nowhere:Quiet", group="zettcode.plugin")
+    bundle = _Bundle(default_off=("quiet",))
+
+    row = next(entry for entry in switches.catalog(settings, bundle, entry_points=(point,)) if entry.name == "quiet")
+    assert row.enabled is False and row.switchable and row.failure == ""
+    assert "[plugins] enable" in row.note
+
+    written, keys, problems = switches.set_many(settings, {"quiet": True}, bundle=bundle, entry_points=(point,))
+
+    assert (written, keys, problems) == ({"quiet": True}, [], [])
+    assert enabled_in(path) == ["quiet"] and disabled_in(path) == []
+
+    switches.set_many(settings, {"quiet": False}, bundle=bundle, entry_points=(point,))
+    assert enabled_in(path) == [] and disabled_in(path) == [], "off is where a plugin that asks for it rests"
+
+
+def test_a_switch_updates_both_lists_the_page_reads(config):
+    settings, _path = config
+
+    applied = switches.applied_installed(settings, {"quiet": True}, by_default={"quiet"})
+
+    assert applied.enabled_plugins == ("quiet",) and applied.disabled_plugins == ()
+    back = switches.applied_installed(applied, {"quiet": False}, by_default={"quiet"})
+    assert back.enabled_plugins == () and back.disabled_plugins == (), "turning it off only takes the name away"
+
+    plain = switches.applied_installed(settings, {"loud": False})
+    assert plain.disabled_plugins == ("loud",), "a plugin that is on unless dropped is written to the other list"
+    plain_on = switches.applied_installed(settings, {"loud": True})
+    assert plain_on.disabled_plugins == () and plain_on.enabled_plugins == (), (
+        "the file gains no line for an ordinary plugin turned on, so this must not invent one"
+    )
 
 
 def test_a_builtin_setting_is_written_to_its_configuration_key(config):

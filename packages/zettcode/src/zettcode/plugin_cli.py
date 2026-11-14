@@ -8,7 +8,9 @@ in :attr:`ZettCodeConfig.plugins_dir` (``~/.zettcode/plugins`` by default); inst
   a uv tool install has no pip). A single ``.py`` file is copied into the plugins folder instead — it is not a
   distribution, and nothing needs to be installed for it to load.
 * ``uninstall`` removes a file, or the distribution behind a name.
-* ``enable`` and ``disable`` write ``[plugins] disable`` in the configuration file, which is what the next start reads.
+* ``enable`` and ``disable`` write ``[plugins] disable`` in the configuration file, which is what the next start reads;
+  a plugin that is off until it is named (``Plugin.default_enabled``) is switched the other way round, so turning it
+  on writes ``[plugins] enable``.
 
 It decides nothing about loading: a plugin installed here is picked up at the next start, and one removed or
 disabled is gone then. The command exists so a reader does not have to know which Python owns the environment,
@@ -28,9 +30,13 @@ import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 from zettcode.engine.plugins.switches import SwitchState
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from importlib.metadata import EntryPoint
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -159,20 +165,27 @@ class PluginRow:
 def plugin_rows() -> list[PluginRow]:
     """Return every plugin the program has, installed beside it, or in the plugins folder.
 
-    Nothing is imported from a file or activated: a built-in contributes its own name and setting, an installed one
-    its entry point and distribution, a file its path. The move from "listed" to "loaded" happens at the next start.
+    Nothing is activated: a built-in contributes its own name and setting, an installed one its entry point and
+    distribution, a file its path. An installed plugin's class, and the file of one the next start would run, are
+    imported to ask one question — :meth:`~zettcode.engine.plugins.plugin.Plugin.default_enabled` — which is the only
+    way to know whether a switch turning it on has to name it; the import builds the class and runs module-level code,
+    as a start does, and calls nothing on it. A file either switch list holds back is not imported at all, because a
+    start does not import it either. The move from "listed" to "loaded" happens at the next start.
     """
     state = plugin_state()
 
     from zettcode.config import read_disabled_plugins
     from zettcode.engine.plugins.loader import (
         PLUGIN_ENTRY_POINT_GROUP,
+        file_off_by_default,
         installed_files,
     )
     from zettcode.sdk.builtins import AGENT_PLUGINS
 
     off_switch = set(read_disabled_plugins(state.plugins_file))
     held = set(state.disabled_plugins)
+    # Named in ``[plugins] enable``, or wanting to be on unless it is dropped: the same rule the loader keeps.
+    asked_for = set(state.enabled_plugins)
     rows: list[PluginRow] = []
     seen: set[str] = set()
     for plugin in AGENT_PLUGINS:
@@ -181,33 +194,40 @@ def plugin_rows() -> list[PluginRow]:
         seen.add(plugin.name)
         switch = f"setting {plugin.setting.path}" if plugin.setting is not None else "-"
         rows.append(PluginRow("builtin", plugin.name, plugin.name, "compiled in", switch))
-    for name, origin, location in _installed_plugins(PLUGIN_ENTRY_POINT_GROUP):
+    for name, origin, location, point in _installed_plugins(PLUGIN_ENTRY_POINT_GROUP):
+        # A plugin that cannot be imported has no answer, and a list draws it as on: the start is where its failure
+        # belongs, and a row must not become a traceback.
+        by_default = bool(_off_by_default(point))
         rows.append(
             PluginRow(
                 "installed",
                 name,
                 origin,
                 location,
-                _switch_mechanism(state, name),
-                _enabled(state, off_switch, held, name),
+                _switch_mechanism(state, name, by_default=by_default, held=held, off_switch=off_switch),
+                _enabled(state, off_switch, held, name, asked_for=asked_for, by_default=by_default),
             )
         )
     for path in installed_files(plugins_dir()):
+        # A start never imports a file either switch list holds back, so this must not either: the one instruction a
+        # reader gives to leave a plugin's code alone is the switch, and a list is a look, not a change.
+        held_back = path.stem in held or path.stem in off_switch
+        by_default = False if held_back else bool(file_off_by_default(path))
         rows.append(
             PluginRow(
                 "file",
                 path.stem,
                 path.stem,
                 str(path),
-                _switch_mechanism(state, path.stem),
-                _enabled(state, off_switch, held, path.stem),
+                _switch_mechanism(state, path.stem, by_default=by_default, held=held, off_switch=off_switch),
+                _enabled(state, off_switch, held, path.stem, asked_for=asked_for, by_default=by_default),
             )
         )
     return rows
 
 
-def _installed_plugins(group: str) -> list[tuple[str, str, str]]:
-    """Return ``(entry point, distribution, location)`` for every distribution that publishes a plugin a reader owns.
+def _installed_plugins(group: str) -> list[tuple[str, str, str, EntryPoint]]:
+    """Return ``(entry point, distribution, location, point)`` for every distribution that publishes a plugin a reader owns.
 
     The program's own parts publish in the same group now, and they are not a reader's to install, switch or remove:
     their distribution is in `PROGRAM_DISTRIBUTIONS`, and this leaves them to `/plugins`, which shows them read-only.
@@ -216,7 +236,7 @@ def _installed_plugins(group: str) -> list[tuple[str, str, str]]:
 
     from zettcode.engine.plugins.loader import LEGACY_ENTRY_POINT_GROUP, part_group
 
-    found: list[tuple[str, str, str]] = []
+    found: list[tuple[str, str, str, EntryPoint]] = []
     for distribution in metadata.distributions():
         origin = distribution.metadata["Name"] or distribution.name
         for point in distribution.entry_points:
@@ -226,19 +246,55 @@ def _installed_plugins(group: str) -> list[tuple[str, str, str]]:
                 location = str(distribution.locate_file(""))
             except (AttributeError, OSError):  # pragma: no cover - a metadata object without a path
                 location = "?"
-            found.append((point.name, origin, location))
-    return sorted(found)
+            found.append((point.name, origin, location, point))
+    return sorted(found, key=lambda row: row[:2])
 
 
-def _enabled(state: SwitchState, off_switch: set[str], held: set[str], name: str) -> bool:
-    """Return whether the next start loads ``name``."""
-    return state.plugins_enabled and name not in held and name not in off_switch
+def _off_by_default(point: EntryPoint) -> bool | None:
+    """Return whether the plugin behind ``point`` asks to be off until ``[plugins] enable`` names it.
+
+    The class is what answers, so the plugin is imported here — not activated, and with nothing called on it.
+    ``None`` when it cannot be imported: a list draws that row as on, which the start corrects with the failure, and
+    a switch refuses rather than reporting a state it could not establish.
+    """
+    try:
+        plugin = point.load()
+    except KeyboardInterrupt:
+        raise
+    except BaseException:  # noqa: BLE001 - any import failure is the loader's to report, not this list's
+        return None
+    return not plugin.default_enabled()
 
 
-def _switch_mechanism(state: SwitchState, name: str) -> str:
-    """Return where the switch for ``name`` is kept: a line of the configuration file."""
+def _enabled(
+    state: SwitchState,
+    off_switch: set[str],
+    held: set[str],
+    name: str,
+    *,
+    asked_for: set[str] | frozenset[str] = frozenset(),
+    by_default: bool = False,
+) -> bool:
+    """Return whether the next start loads ``name``.
+
+    The rule is the loader's: nothing loads while ``[plugins] enabled`` is off, or while either switch list holds the
+    name back; a plugin that is off by default loads only when ``[plugins] enable`` names it.
+    """
+    if not state.plugins_enabled or name in held or name in off_switch:
+        return False
+    return name in asked_for or not by_default
+
+
+def _switch_mechanism(state: SwitchState, name: str, *, by_default: bool, held: set[str], off_switch: set[str]) -> str:
+    """Return where the switch for one plugin is kept: a line of the configuration file.
+
+    A plugin held back by ``[plugins] disable`` is described by that line even when it also asks to be off by
+    default: the reader can see the list that is keeping it off now, which is the one a switch turning it on clears.
+    """
     if not state.plugins_enabled:
         return "config ([plugins] enabled)"
+    if by_default and name not in held and name not in off_switch:
+        return "config ([plugins] enable)"
     return "config ([plugins] disable)"
 
 
@@ -445,12 +501,17 @@ def plugin_state() -> SwitchState:
     # (``[plugins.recap]``) is read past here exactly as it is at startup, and a ``[plugins]`` the program refuses is
     # refused here with the same words. That includes a value in a plugin's own table: the program would not start on it
     # either, so a switch that went through would change nothing, and the message names the key to fix.
-    enabled, disable, _enable, _settings = read_plugins_table(data.get("plugins"), path)
-    return SwitchState(plugins_file=DEFAULT_PLUGINS_FILE, plugins_enabled=enabled, disabled_plugins=disable)
+    enabled, disable, enable, _settings = read_plugins_table(data.get("plugins"), path)
+    return SwitchState(
+        plugins_file=DEFAULT_PLUGINS_FILE,
+        plugins_enabled=enabled,
+        disabled_plugins=disable,
+        enabled_plugins=enable,
+    )
 
 
 def switch(name: str, *, enabled: bool) -> int:
-    """Write ``name`` on or off in ``[plugins] disable``, for the next start."""
+    """Write ``name`` on or off in ``[plugins] disable`` (and ``enable`` for a plugin that is off by default)."""
     try:
         name = _safe_name(name)
     except ValueError as error:
@@ -475,13 +536,42 @@ def switch(name: str, *, enabled: bool) -> int:
         return EXIT_FAILED
     from zettcode.engine.plugins.switches import set_installed
 
+    by_default = False
+    if enabled:
+        asked = _off_by_default_named(origin)
+        if asked is None:
+            print(
+                f"zettcode plugin: {origin} cannot be read as a plugin, so there is no way to know what it needs; "
+                "the next start reports why",
+                file=sys.stderr,
+            )
+            return EXIT_FAILED
+        by_default = asked
     try:
-        set_installed(config, origin, enabled=enabled)
+        set_installed(config, origin, enabled=enabled, by_default=by_default)
     except ValueError as error:
         print(f"zettcode plugin: {error}", file=sys.stderr)
         return EXIT_FAILED
     print(f"{'enabled' if enabled else 'disabled'} {origin} for the next start")
     return EXIT_OK
+
+
+def _off_by_default_named(name: str) -> bool | None:
+    """Return whether the plugin called ``name`` is off until ``[plugins] enable`` names it.
+
+    An installed distribution's class and a single-file plugin are imported to ask — the answer is on the class, and
+    nothing is activated — which is what lets the command turn one on with the line it actually reads. ``None`` when
+    neither can be read: the switch would be a guess about a plugin the next start will refuse anyway, so the command
+    says so instead of writing a line that cannot help. A name that is neither a distribution nor a file says
+    ``False``.
+    """
+    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, file_off_by_default
+
+    for entry, _origin, _location, point in _installed_plugins(PLUGIN_ENTRY_POINT_GROUP):
+        if entry == name:
+            return _off_by_default(point)
+    path = plugins_dir() / f"{name}.py"
+    return file_off_by_default(path) if path.is_file() else False
 
 
 def _safe_name(name: str) -> str:

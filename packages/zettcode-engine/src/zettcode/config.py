@@ -490,7 +490,9 @@ class ZettCodeConfig:
             ``[plugins] disable`` list; the names the older switch file adds are merged in by
             :attr:`off_names`, so a switch can tell the two apart.
         enabled_plugins: Entry-point names to load although the plugin itself says it is off by default
-            (``Plugin.default_enabled``); this is the configuration file's ``[plugins] enable`` list.
+            (``Plugin.default_enabled``); this is the configuration file's ``[plugins] enable`` list. A switch that
+            turns a plugin on writes it here as well as taking it out of ``disable``, so one press means the same
+            for a plugin that is off until named and one that is on until dropped.
         plugin_settings: The ``[plugins.<name>]`` tables, by plugin name, exactly as written. A plugin declares
             what its own keys mean and what they default to (``ctx.settings``); the configuration only carries the
             reader's values, so a key no plugin knows is harmless and a plugin that ships later needs no change

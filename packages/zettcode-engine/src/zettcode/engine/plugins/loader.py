@@ -204,6 +204,23 @@ def _file_plugins(path: Path) -> tuple[list[Plugin[Any]], list[tuple[str, BaseEx
     return plugins, failures
 
 
+def file_off_by_default(path: Path) -> bool | None:
+    """Return whether a single-file plugin loads nothing unless ``[plugins] enable`` names it.
+
+    The answer is on the class, so the file is imported here the way a start imports it: its module is executed and
+    its plugin classes are built, but nothing is activated and no command of the plugin runs. ``None`` when the file
+    cannot be read as a plugin at all — a failure the next start reports, and one a list must not turn into a
+    traceback. A file that defines several classes is off by default when every one of them asks to be.
+    """
+    try:
+        plugins, _failures = _file_plugins(path)
+    except KeyboardInterrupt:
+        raise
+    except BaseException:  # noqa: BLE001 - an unreadable plugin file is the loader's to report, not a caller's
+        return None
+    return bool(plugins) and not any(plugin.default_enabled() for plugin in plugins)
+
+
 def load_plugins(
     config: ZettCodeConfig,
     *,
@@ -444,6 +461,19 @@ def run(
         kept.extend(extra)
         kept_ids.update(id(candidate) for candidate in extra)
         needed.update(dep for candidate in extra for dep in candidate.deps)
+    # The plugins dropped for exactly one reason — they say they are off by default — are remembered, so a list can
+    # draw the row as off and a switch knows which line of the configuration file turns one on. An origin that kept
+    # another candidate is not one of them: a single file may define a class that loads and one that does not, and the
+    # file it names did its work, so neither list may call the file off by default.
+    kept_origins = {candidate.origin for candidate in candidates if id(candidate) in kept_ids}
+    loader.off_by_default.extend(
+        candidate.origin
+        for candidate in candidates
+        if id(candidate) not in kept_ids
+        and candidate.origin not in kept_origins
+        and candidate.plugin is not None
+        and not candidate.plugin.default_enabled()
+    )
     candidates = kept
     # Within the program's own groups the stated rank decides, then the name; the stable sort keeps everything else.
     at = [i for i, c in enumerate(candidates) if c.agent]
@@ -552,6 +582,9 @@ class Loader:
         #: One ``(name, why)`` per plugin that lost a name to one loaded before it; the winner did nothing wrong,
         #: so these are notes rather than failures, and a list shows them without a switch.
         self.taken: list[tuple[str, str]] = []
+        #: The origins of the plugins left out only because they say they are off by default, in discovery order; a
+        #: list shows one as off and a switch writes it into ``[plugins] enable``.
+        self.off_by_default: list[str] = []
         #: The origins of the compiled-in plugins, in load order, so a bundle can say which rows are the program's.
         self.builtins: list[str] = []
         #: Whether the plugin being accepted is the program's own (built in, or one of its parts); read by ``merge``.
@@ -652,6 +685,7 @@ class Loader:
             builtins=tuple(self.builtins),
             triggers=tuple(self.triggers),
             taken=tuple(self.taken),
+            default_off=tuple(dict.fromkeys(self.off_by_default)),
         )
 
     # -- the same for every front end --
