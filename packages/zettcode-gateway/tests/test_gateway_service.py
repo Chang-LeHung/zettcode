@@ -181,6 +181,27 @@ async def test_what_a_session_said_before_the_gateway_saw_it_is_read_and_what_it
     assert gateway.threads()[0]["unread"] == 0
 
 
+async def test_the_thread_says_where_the_unread_stretch_begins_so_the_page_can_scroll_to_it(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.add_daemon(DAEMON, "/w", name="d")
+    backend.say(DAEMON, Message("assistant", "old news"))
+    await gateway.refresh()
+
+    opened = await gateway.thread(DAEMON)
+    assert opened["unread_from"] is None, "nothing is unread, so there is nowhere to scroll to"
+
+    backend.say(DAEMON, Message("assistant", "new one"), reply("and another"))
+    await gateway.refresh()
+
+    opened = await gateway.thread(DAEMON)
+    first = opened["items"][opened["unread_from"]]
+    assert (first["kind"], first["text"]) == ("in", "new one"), "the first thing said since the read mark"
+    assert opened["unread_from"] == 1 and opened["thread"]["unread"] == 2
+
+    await gateway.read(DAEMON)
+    assert (await gateway.thread(DAEMON))["unread_from"] is None
+
+
 async def test_a_daemon_started_here_counts_everything_it_says_as_unread(tmp_path):
     gateway, backend = await make(tmp_path)
     answer = await gateway.spawn({"workspace": str(tmp_path / "work"), "name": "fresh"})

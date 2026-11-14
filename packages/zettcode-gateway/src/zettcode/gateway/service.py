@@ -56,7 +56,7 @@ from zettcode.version import __version__
 
 from .agents import AgentError, AgentManager
 from .backend import Backend
-from .chat import items_of, preview, spoken, with_reply_request
+from .chat import first_unread, items_of, preview, spoken, with_reply_request
 from .chat import picture_id as picture_name
 from .settings import Settings
 
@@ -756,8 +756,13 @@ class Gateway:
         if not items:
             items = [dict(item) for item in self._inbox.get(session_id, ())]
         total = len(items)
+        said = meta.spoken if stored else len(self._inbox.get(session_id, ()))
+        unread = max(0, said - self._seen.get(session_id, said if stored else 0))
         if not everything and total > ITEM_LIMIT:
             items = items[-ITEM_LIMIT:]
+        # Where the unread stretch begins, so that opening the chat scrolls to it: the end of the window when more is
+        # unread than the page asked for.
+        unread_from = first_unread(items, unread)
         # A turn that ended without an answer is not in the stored conversation, and the person is told here.
         notes = [{"kind": "note", "text": text} for text in self._notes.get(session_id, ())]
         items.extend(notes)
@@ -767,6 +772,7 @@ class Gateway:
             "items": items,
             "total": total,
             "truncated": total > len(items),
+            "unread_from": unread_from,
             "live": self._live_view(session_id),
         }
 

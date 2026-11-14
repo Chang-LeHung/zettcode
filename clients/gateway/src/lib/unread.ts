@@ -22,3 +22,19 @@ export function seenNow(state: { hidden: boolean; atBottom: boolean; unread: num
 export function unreadChats(threads: readonly { unread: number }[]): number {
   return threads.reduce((count, thread) => count + (thread.unread > 0 ? 1 : 0), 0);
 }
+
+/**
+ * The row the unread line goes above: the first drawn from the item the unread stretch begins at.
+ *
+ * Rows are keyed `m<item>`, `s<item>` and `n<item>` for a bubble, a run of steps and a note, so the item a row was
+ * drawn from is in its key. A message this page has sent and the conversation has not stored yet is keyed `p<n>` and
+ * is never the place: it sits below everything the session said.
+ */
+export function lineRow<R extends { key: string }>(rows: readonly R[], from: number | null): R | undefined {
+  if (from === null) return undefined;
+  return rows.find((row) => {
+    const kind = row.key.charAt(0);
+    if (kind !== "m" && kind !== "s" && kind !== "n") return false;
+    return Number(row.key.slice(1)) >= from;
+  });
+}

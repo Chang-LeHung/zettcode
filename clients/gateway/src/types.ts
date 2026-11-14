@@ -83,6 +83,9 @@ export interface ThreadDetail {
   items: ChatItem[];
   total: number;
   truncated: boolean;
+  /** Where the unread stretch begins, as an index into `items`, or null when nothing is unread: a chat opened on it
+      scrolls there, as a messenger does. */
+  unread_from?: number | null;
   /** What the turn running now has said so far, or null when none is running. */
   live: LiveTurn | null;
 }

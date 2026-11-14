@@ -20,6 +20,9 @@ export const chat = reactive({
   items: [] as ChatItem[],
   total: 0,
   truncated: false,
+  /** Where the unread stretch begins in `items`, or null when there is none: the line an opened chat scrolls to, kept
+      for the visit so that reading clears the badge without moving it. */
+  unreadFrom: null as number | null,
   loading: false,
   /** The whole conversation is being read, after "Show earlier messages". */
   loadingEarlier: false,
@@ -53,11 +56,17 @@ async function load(id: string, all: boolean): Promise<void> {
     const detail = await gateway.thread(id, showAll);
     if (mine !== generation || chat.id !== id) return;
     const grew = detail.items.length !== chat.items.length;
+    const before = chat.items.length;
     chat.thread = detail.thread;
     seedStream(id, detail.live);
     chat.items = detail.items;
     chat.total = detail.total;
     chat.truncated = detail.truncated;
+    // The unread line stays where this visit found it, so reading clears the badge without moving it. A refresh that
+    // shows something new says where the newer stretch begins; "Show earlier messages" moves every index it holds.
+    if (detail.unread_from != null) chat.unreadFrom = detail.unread_from;
+    else if (chat.unreadFrom !== null && all && detail.items.length > before)
+      chat.unreadFrom += detail.items.length - before;
     chat.error = "";
     const list = pendingFor(id);
     const left = settle(list, detail.items);
@@ -81,6 +90,7 @@ export async function openChat(id: string): Promise<void> {
     chat.items = [];
     chat.total = 0;
     chat.truncated = false;
+    chat.unreadFrom = null;
     chat.error = "";
     chat.pending = pendingFor(id);
     chat.loading = true;
@@ -94,6 +104,7 @@ export function closeChat(): void {
   chat.id = "";
   chat.thread = null;
   chat.items = [];
+  chat.unreadFrom = null;
   chat.pending = [];
 }
 
@@ -165,8 +176,11 @@ const mark = debounce((id: string) => {
 /** Say that what the open thread has said has been seen. */
 export function markRead(): void {
   const thread = chat.id ? threadOf(chat.id) : undefined;
+  // Nothing is seen before the conversation is here: a chat that was just opened would otherwise be marked read
+  // before the reader saw what the line points at, and the page would land at the bottom instead of on it.
+  if (!thread || chat.loading || !chat.items.length) return;
   // As in any messenger, what is above the reader's place has not been seen: it stays unread until they come down to it.
-  if (!thread || !seenNow({ hidden: document.hidden, atBottom: chat.atBottom, unread: thread.unread })) return;
+  if (!seenNow({ hidden: document.hidden, atBottom: chat.atBottom, unread: thread.unread })) return;
   thread.unread = 0;
   mark(thread.id);
 }
