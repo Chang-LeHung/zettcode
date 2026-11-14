@@ -685,7 +685,7 @@ def test_welcome_mark_is_compact_and_readable_in_both_themes():
         title = source.line(1, 60)
         subtitle = source.line(2, 60)
         hint = source.line(4, 60)
-        assert title.text.index("ZettCode") == subtitle.text.index("A focused")
+        assert title.text.index("ZettCode") == subtitle.text.index("Writes tools")
         assert title.text.index("ZettCode") == hint.text.index("Type a task")
         name = next(span for span in title.spans if span.text.strip() == "ZettCode")
         assert name.style.foreground == theme.text
