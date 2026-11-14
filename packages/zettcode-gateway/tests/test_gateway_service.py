@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
 import os
+from collections import deque
 from pathlib import Path
 
 import pytest
@@ -1447,3 +1449,33 @@ async def test_what_the_gateway_kept_for_a_thread_with_no_store_survives_a_resta
         ("in", "你好，有什么可以帮你"),
     ]
     assert opened["thread"]["unread"] == 0
+
+
+async def test_a_damaged_inbox_file_is_ignored_and_the_file_written_is_private(tmp_path):
+    (tmp_path / "inbox.json").write_text(
+        '{"threads": {"a": {"items": [{"kind": "x", "text": "t"}, 3]}', encoding="utf-8"
+    )
+    gateway, backend = await make(tmp_path)  # starts although the file is cut off
+    backend.add_peer(AGENT, "claudecode", kind="external")
+    await gateway.refresh()
+
+    await gateway.send(AGENT, "hi")
+
+    path = gateway._inbox_path()
+    assert path.stat().st_mode & 0o777 == 0o600, "what people said is not readable by other accounts"
+    assert [item["text"] for item in json.loads(path.read_text(encoding="utf-8"))["threads"][AGENT]["items"]] == ["hi"]
+
+
+async def test_a_message_not_yet_taken_is_not_written_out(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.add_peer(AGENT, "claudecode", kind="external")
+    await gateway.refresh()
+    gateway._inbox[AGENT] = deque([{"kind": "in", "text": "kept"}], maxlen=5)
+    pending = {"kind": "out", "text": "on its way"}
+    gateway._inbox[AGENT].append(pending)
+    gateway._unsent.add(id(pending))
+
+    gateway._save_inbox()
+
+    saved = json.loads(gateway._inbox_path().read_text(encoding="utf-8"))["threads"][AGENT]["items"]
+    assert [item["text"] for item in saved] == ["kept"]
