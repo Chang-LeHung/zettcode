@@ -105,11 +105,13 @@ class _Reading:
         session: What that read produced.
         offset: The byte after the last line it took in.
         anchor: The bytes just before ``offset``. A file that no longer has them there was replaced, not appended to.
+        lines: How many lines the read took in, so an error further on can name its line number.
     """
 
     session: Session
     offset: int
     anchor: bytes
+    lines: int = 0
 
 
 def message_context(
@@ -285,10 +287,21 @@ class SessionPersistenceMixin:
                 return cached[1]
             self._sessions[session_id] = (stamp, session)
             if reading is None:
-                self._readings.pop(session_id, None)
+                self._forget(session_id, keep_session=True)
             else:
                 self._readings[session_id] = reading
         return session
+
+    def _forget(self, session_id: str, *, keep_session: bool = False) -> None:
+        """Drop what is remembered of a session's file: the parse, and where the last read of it stopped.
+
+        They go together, because a reading kept without its entry would be continued from by the next read, and
+        "dropped" has always meant "read again from the first byte".
+        """
+        with self._cache_lock:
+            if not keep_session:
+                self._sessions.pop(session_id, None)
+            self._readings.pop(session_id, None)
 
     def _read_from(self, path: Path, known: _Reading | None) -> tuple[Session, _Reading]:
         """Parse a session file, taking only what was appended since ``known`` when that is safe.
@@ -308,7 +321,10 @@ class SessionPersistenceMixin:
 
     @staticmethod
     def _extends(handle: BinaryIO, known: _Reading, size: int) -> bool:
-        """Return whether the file still starts with the bytes the earlier read ended on, and is longer than it."""
+        """Return whether the file still has the bytes the earlier read ended on, in the same place.
+
+        An equal-size file with those bytes is an extension of nothing: the parse of its empty tail is the cached one.
+        """
         if size < known.offset or known.offset == 0:
             return False
         anchor = min(known.offset, _ANCHOR)
@@ -322,6 +338,7 @@ class SessionPersistenceMixin:
         is between its two writes) and left for the next read when it is not, so a torn line is never skipped.
         """
         base = known.offset if known is not None else 0
+        first_line = known.lines + 1 if known is not None else 1
         # Bytes, split on b"\n" only: ``str.splitlines`` also breaks at U+2028, U+2029 and U+0085, which JSON writes
         # into a string as they are, and a message that held one was once cut in half and the file called corrupt.
         lines = data.split(b"\n")
@@ -342,7 +359,7 @@ class SessionPersistenceMixin:
                     consumed -= len(line) + 1  # a torn last line: leave it for the next read
                     break
                 raise ValueError(
-                    f"Corrupt session file {path.name} at byte {base + consumed - len(line) - 1}"
+                    f"Corrupt session file {path.name} at line {first_line + index} (byte {base + consumed - len(line) - 1})"
                 ) from error
             match parsed:
                 case SessionLine():
@@ -379,7 +396,8 @@ class SessionPersistenceMixin:
         # The anchor comes from the bytes just parsed, never from a second look at the file: a writer could have
         # appended in between, and the anchor would then describe bytes this read never took in.
         before = (known.anchor if known is not None else b"") + data[:consumed]
-        return session, _Reading(session, end, before[-_ANCHOR:])
+        taken = data[:consumed].count(b"\n") + (1 if consumed and not data[:consumed].endswith(b"\n") else 0)
+        return session, _Reading(session, end, before[-_ANCHOR:], (known.lines if known is not None else 0) + taken)
 
     @staticmethod
     def _stamp(path: Path) -> tuple[int, int]:
@@ -433,7 +451,14 @@ class SessionPersistenceMixin:
         A cache entry that does not know the line's parent is dropped rather
         than extended: a worker may have published an empty session between the
         append's leading read and this call, and a one-line cache would then
-        claim to be the whole history.
+        claim to be the whole history. Its reading is dropped with it, so a
+        dropped entry means the next read parses the file whole, as it always did.
+
+        The reading of a kept entry is deliberately *not* advanced to the spliced
+        session. It stays where the last read of the file stopped, so the first
+        read after another writer appends parses this process's recent lines once
+        more, and that is what keeps them from being counted twice: moving the
+        reading forward here would add each of them to the session a second time.
         """
         with self._cache_lock:
             cached = self._sessions.get(session_id)
@@ -449,7 +474,7 @@ class SessionPersistenceMixin:
                         and line.parent != session.head_id
                         and session.message(line.parent) is None
                     ):
-                        self._sessions.pop(session_id, None)
+                        self._forget(session_id)
                         return
                     # A read on a worker may have parsed the file after this
                     # append wrote it but before it reached this cache update.
@@ -460,7 +485,7 @@ class SessionPersistenceMixin:
                         session = replace(session, messages=(*session.messages, line), head_id=line.id)
                 case CompactionLine():
                     if session.message(line.parent) is None:
-                        self._sessions.pop(session_id, None)
+                        self._forget(session_id)
                         return
                     if not any(item.id == line.id for item in session.compactions):
                         session = replace(session, compactions=(*session.compactions, line))
