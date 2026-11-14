@@ -138,7 +138,7 @@ class CliAgent(ExternalSession):
     def __init__(self, session_id: str, title: str, source: Tool | Command) -> None:
         self._turns: set[asyncio.Task[None]] = set()
         self._limit = max(1, int(os.environ.get("ZETTCODE_CODE_AGENTS_QUEUE", "4")))
-        super().__init__(session_id, title, kind=KIND_EXTERNAL, on_message=self._start_turn)
+        super().__init__(session_id, title, kind=KIND_EXTERNAL, direct=True, on_message=self._start_turn)
         #: A tool's settings are read again for every turn; a bare command (a caller's own) is run as it is given.
         self.source = source
         self.state = state_directory() / f"{session_id}.json"

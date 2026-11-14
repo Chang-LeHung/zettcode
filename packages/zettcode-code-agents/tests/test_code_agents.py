@@ -303,3 +303,10 @@ def test_a_command_template_without_the_permission_word_is_run_exactly_as_writte
     shaped = Command("codex", "exec {permission} {prompt}", "x")
     assert shaped.argv("hi", "", tmp_path, permission=("--a", "b")) == ["codex", "exec", "--a", "b", "hi"]
     assert shaped.argv("hi", "", tmp_path) == ["codex", "exec", "hi"], "no flags: the word leaves nothing behind"
+
+
+def test_a_cli_agent_says_it_takes_a_readers_text_as_its_own_prompt():
+    """A chat's text goes to the CLI untouched, with no request to answer by tool that a headless CLI cannot meet."""
+    from zettcode.code_agents import CLAUDE, CliAgent
+
+    assert CliAgent("claudecode", "Claude Code", CLAUDE).direct is True
