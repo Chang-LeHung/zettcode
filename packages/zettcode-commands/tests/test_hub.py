@@ -1623,6 +1623,33 @@ def test_a_refresh_drops_the_mark_to_the_same_place_only_when_the_row_is_gone():
     assert _labels(opened) == ["one", "two"] and opened.list.selected == 1, "the place stood in, off the last row"
 
 
+def test_a_renamed_session_keeps_its_mark_because_the_row_carries_its_id():
+    """A handle is the slug of a title; a session the model retitles between two readings is the same session."""
+    opened = HubPage(
+        data(
+            peers=(
+                Peer("old-handle", "t", "idle", "/w", session_id="s-1", activity=NOW - 10),
+                Peer("other", "t", "idle", "/w", session_id="s-2", activity=NOW - 20),
+            )
+        ),
+        on_close=lambda: None,
+    )
+    opened._show(SESSIONS)
+    opened.list.selected = 0
+
+    opened.set_data(
+        data(
+            peers=(
+                Peer("other", "t", "idle", "/w", session_id="s-2", activity=NOW - 5),
+                Peer("new-handle", "t", "idle", "/w", session_id="s-1", activity=NOW - 60),
+            )
+        )
+    )
+
+    assert _labels(opened) == ["other", "new-handle"]
+    assert opened.list.selected == 1, "the mark is on s-1, whatever it is called now"
+
+
 def test_a_refresh_keeps_the_search_and_filters_the_new_reading():
     opened = _searchable()
     opened._show(SESSIONS)

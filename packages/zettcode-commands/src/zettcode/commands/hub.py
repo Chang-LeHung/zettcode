@@ -257,10 +257,15 @@ def _table(titles: tuple[str, ...], rows: Sequence[tuple[str, str, str, tuple[st
 
 
 def _session_table(data: HubData) -> Table:
-    """Return the Sessions tab: the running sessions, the one that did something most recently first."""
+    """Return the Sessions tab: the running sessions, the one that did something most recently first.
+
+    A row carries the session's id, not the handle it is called by: the handle is the slug of the title, which a
+    retitled session changes, and the mark follows the value (see :meth:`HubPage._place_of`). A peer the broker has
+    not given an id yet falls back to the handle, which is all there is to know it by.
+    """
     rows = [
         (
-            peer.handle,
+            peer.session_id or peer.handle,
             peer.handle,
             hub_graph.state_of(peer.status, peer.kind),
             (
@@ -609,7 +614,7 @@ class HubPage(ListPage):
         self.marks[self.tab] = max(0, self.list.selected)
         rows, chosen = self.list.items, self.list.selected
         row = rows[chosen] if 0 <= chosen < len(rows) else None
-        self.marked[self.tab] = str(row.value) if row is not None and row.value is not None else None
+        self.marked[self.tab] = str(row.value) if row is not None and row.value else None
 
     def note(self, text: str) -> None:
         """Say one line under the tabs — what a key just did, or why it could not.
@@ -658,10 +663,14 @@ class HubPage(ListPage):
         self._repaint()
 
     def _place_of(self, mark: str | None, rows: Sequence[ListItem]) -> int:
-        """Return the index in ``rows`` of the row ``mark`` names, or the remembered place when that row is gone."""
+        """Return the index in ``rows`` of the row ``mark`` names, or the remembered place when that row is gone.
+
+        The rows are keyed by the session id (the handle only when the broker has not given one), so a session that
+        was renamed between two readings is still the same row to the mark.
+        """
         if mark is not None:
             for index, row in enumerate(rows):
-                if not row.disabled and row.value is not None and str(row.value) == mark:
+                if not row.disabled and row.value and str(row.value) == mark:
                     return index
         return min(self.marks[self.tab], len(rows) - 1)
 
