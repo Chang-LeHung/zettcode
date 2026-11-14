@@ -33,12 +33,12 @@
 ```
 
 `/harness gen` 在本次运行中打开 harness，并让模型为这个工作区造一个工具；`/harness reset` 在本次运行中关闭它，不会删除任何东西。
-想让每次运行都默认开启：
+想让每次运行都默认关闭（harness 默认是开启的）：
 
 ```toml
 # ~/.zettcode/config.toml
 [harness]
-jit = true
+jit = false
 ```
 
 **详情。** [JIT harness](/zh/guide/harness)。

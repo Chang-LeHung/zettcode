@@ -211,7 +211,7 @@ async with zc.Client(".") as client:
 | `client.use_compact_percent(percent)` | Moves the point, as a share of the window (above 0, at most 100), at which the conversation is summarized, from the next request on. Returns the active `ModelInfo` and why the configuration file was not rewritten (`None` when it was): the change then holds for this run only. |
 | `client.permission`, `client.permissions` | The current level, and `("deny", "ask", "safe", "full")`. |
 | `client.use_permission(name)` | Sets the level; it applies from the next shell command, even in a run that is already going. `"auto"` is taken as `"full"`. |
-| `client.harness` | Whether the just-in-time harness is on: the model may write small Python tools of its own and run them. Off by default; `Client(jit_harness=True)` starts a client with it on. |
+| `client.harness` | Whether the just-in-time harness is on: the model may write small Python tools of its own and run them. On by default; `Client(jit_harness=False)` starts a client with it off. |
 | `client.use_harness(on)` | Turns it on or off from the next prompt. Returns the new state. |
 
 A name that does not exist, or a reasoning level the active model does not take, raises `ConfigurationError` with the valid choices in the message.

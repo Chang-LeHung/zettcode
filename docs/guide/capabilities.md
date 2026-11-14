@@ -38,12 +38,13 @@ harness folder and not to edit your project's files; that is an instruction to t
 ```
 
 `/harness gen` turns the harness on for this run and asks the model to build one tool for the workspace.
-`/harness reset` turns it off for this run and deletes nothing. To start every run with it on:
+`/harness reset` turns it off for this run and deletes nothing. The harness is on by default; to start every run with
+it off:
 
 ```toml
 # ~/.zettcode/config.toml
 [harness]
-jit = true
+jit = false
 ```
 
 **Details.** [The JIT harness](/guide/harness).

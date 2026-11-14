@@ -9,7 +9,8 @@ the client.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+import asyncio
+from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,14 +20,16 @@ from zett_agent.extensions.base import ModelRequestNext, ToolCallNext
 from zett_agent.jit_harness import JITHarnessExtension
 from zett_agent.messages import ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelRequest
-from zett_agent.tools.base import ToolResult
+from zett_agent.tools.base import AgentTool, ToolExecutionMode, ToolResult, tool
 
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.mcp_notice import HARNESS_NOTICE_EVENT_NAME, notice_payload
 
 from .selection import HarnessChoices
+from .stats import Scan, UsageReport, build_report, scan_tool_calls
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from zett_agent.jit_harness import JITHarness as JITToolbox
     from zett_agent.jit_harness import JITToolHost
 
 __all__ = ["SwitchedHarness"]
@@ -50,6 +53,7 @@ class SwitchedHarness(JITHarnessExtension):
         unbounded: Callable[[], bool] | None = None,
         legacy_root: str | Path | None = None,
         choices: HarnessChoices | None = None,
+        session_file: Callable[[str], Path | None] | None = None,
     ) -> None:
         """Keep each session's repository under ``root``, and follow ``switch``.
 
@@ -69,6 +73,8 @@ class SwitchedHarness(JITHarnessExtension):
             legacy_root: The root from before the workspace level, whose session directory is moved under ``root``
                 the first time that session asks for it.
             choices: A harness another session borrowed; its directory replaces this session's own until cleared.
+            session_file: Where a session's stored conversation is, or ``None`` when it has none: ``profile_tools``
+                reads how tools have done from it, instead of counting calls while they run.
         """
         super().__init__(root, host_factory=host_factory)
         self._root = Path(root)
@@ -86,6 +92,9 @@ class SwitchedHarness(JITHarnessExtension):
         self._engaged: set[str] = set()
         #: The harness each session borrowed from another session, if any.
         self._choices = choices
+        self._session_file = session_file
+        #: The session whose request is mounting its tools, which ``management_tools`` is not told.
+        self._mounting = ""
         if choices is not None:
             choices.add_listener(self._choice_changed)
 
@@ -115,7 +124,56 @@ class SwitchedHarness(JITHarnessExtension):
         self._follow_boundary(context.session_id)
         self._engaged.add(context.session_id)
         await self._say_unbounded(context)
+        # The framework mounts the tools without awaiting anything before it asks ``management_tools``, so no other
+        # session can change this between the two.
+        self._mounting = context.session_id
         await super().on_tool(context)
+
+    def management_tools(self, harness: JITToolbox) -> Sequence[AgentTool]:
+        """Return the framework's control tools, with ``profile_tools`` reading the stored conversation.
+
+        The framework's own counts what ran while this process was up, in memory, and is gone with it. Every finished
+        call is already a line of the session's conversation file, with its time and what it handed back, so the same
+        answer comes from there: for any tool, from before the last restart as well, and with nothing wrapped around a
+        call to measure it.
+        """
+        session_id = self._mounting
+        return tuple(
+            self._usage_tool(harness, session_id) if each.name == "profile_tools" else each
+            for each in super().management_tools(harness)
+        )
+
+    def _usage_tool(self, harness: JITToolbox, session_id: str) -> AgentTool:
+        """Return ``profile_tools`` for one session: the framework's name and arguments, answered from its file."""
+        session_file = self._session_file
+
+        @tool(execution_mode=ToolExecutionMode.SERIAL)
+        async def profile_tools(names: list[str] | None = None) -> UsageReport:
+            """Show how tools have done in this session: calls, success rate, time, output size, and recent errors.
+
+            Read from this session's stored conversation, so it works for any tool, yours or the application's, and
+            for calls made before the last restart. A tool never called shows zeros.
+
+            Args:
+                names: Up to 10 tool names to inspect, each with its recent errors. Omit it to
+                    see the repository's tools and every tool called so far.
+
+            Snippet:
+                profile_tools()
+                profile_tools(names=["twice"])
+
+            Guidelines:
+                - Read it before building or changing a tool, and when deciding what to unload or delete.
+                - A low success rate or a repeated error means fix the tool; calls of 0 means it may not be needed.
+                - `window` says how much of the conversation was read; a long one is counted from its recent end.
+            """
+            path = session_file(session_id) if session_file is not None else None
+            # A long conversation is tens of megabytes: read it off the event loop.
+            scan = await asyncio.to_thread(scan_tool_calls, path) if path is not None else Scan()
+            catalog = {entry["name"]: entry for entry in harness.list_tools()}
+            return build_report(scan, catalog, names, management=harness.management_names)  # type: ignore[return-value]
+
+        return profile_tools
 
     async def _say_unbounded(self, context: AgentRunContext) -> None:
         """Tell the reader, once per session, that this machine cannot bound the code the model writes.
