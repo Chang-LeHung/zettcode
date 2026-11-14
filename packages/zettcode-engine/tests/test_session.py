@@ -340,13 +340,13 @@ def test_a_session_is_parsed_once_and_then_served_from_the_cache(tmp_path: Path,
     store._append_line("s1", _stored_message("s1", id="m1", parent=None))
     path = store.session_path("s1")
     reads: list[Path] = []
-    original = Path.read_bytes
+    original = Path.open
 
     def spy(self: Path, *args, **kwargs):
         reads.append(self)
         return original(self, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_bytes", spy)
+    monkeypatch.setattr(Path, "open", spy)
 
     first = store.read("s1")
     second = store.read("s1")
@@ -393,13 +393,14 @@ async def test_appending_does_not_reparse_the_whole_file(tmp_path: Path, monkeyp
     store.read("s1")
     path = store.session_path("s1")
     reads: list[Path] = []
-    original = Path.read_bytes
+    original = Path.open
 
-    def spy(self: Path, *args, **kwargs):
-        reads.append(self)
-        return original(self, *args, **kwargs)
+    def spy(self: Path, mode: str = "r", *args, **kwargs):
+        if "r" in mode:  # the append itself opens the file to write; only a read is what this must not do
+            reads.append(self)
+        return original(self, mode, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_bytes", spy)
+    monkeypatch.setattr(Path, "open", spy)
 
     second = await store.append("s1", "req", AssistantMessage(content="hi"))
     session = store.read("s1")
@@ -417,13 +418,13 @@ async def test_a_line_the_cache_already_holds_is_not_folded_in_twice(tmp_path: P
     line = session.messages[-1]
     path = store.session_path("s1")
     reads: list[Path] = []
-    original = Path.read_bytes
+    original = Path.open
 
     def spy(self: Path, *args, **kwargs):
         reads.append(self)
         return original(self, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_bytes", spy)
+    monkeypatch.setattr(Path, "open", spy)
 
     store._sessions["s1"] = ((0, 0), session)
     store._remember("s1", line)
@@ -1142,3 +1143,121 @@ async def test_a_forked_session_keeps_its_parent_when_a_later_append_names_none(
     assert store.read(fork_id).parent_session_id == "s1"
     with pytest.raises(ValueError, match="cannot change after creation"):
         await store.append(fork_id, "r", UserMessage(content="elsewhere"), parent_session_id="some-other-session")
+
+
+# -- reading only what was appended ------------------------------------------------------------------------
+
+
+def _ids(session) -> list[str]:
+    return [line.id for line in session.messages]
+
+
+async def _grown(store: SessionStore, count: int) -> list[str]:
+    return [await store.append("s1", "req", UserMessage(content=f"m{i}")) for i in range(count)]
+
+
+async def test_an_incremental_read_equals_a_full_parse_after_every_append(tmp_path: Path):
+    """A file that only grew is read from where the last read stopped, and the result is the same either way."""
+    store = SessionStore(tmp_path)
+    for index in range(6):
+        await store.append("s1", "req", UserMessage(content=f"m{index}"))
+        store._sessions.clear()  # an external reader: a new stamp, so the log is read again, from the offset
+        incremental = store.read("s1")
+        fresh = SessionStore(tmp_path)  # no reading to continue from: a whole parse
+        whole = fresh.read("s1")
+        assert _ids(incremental) == _ids(whole) and incremental.head_id == whole.head_id
+        assert len(incremental.compactions) == len(whole.compactions)
+
+
+async def test_an_incremental_read_takes_only_the_new_lines(tmp_path: Path, monkeypatch):
+    store = SessionStore(tmp_path)
+    await _grown(store, 3)
+    store._sessions.clear()
+    store.read("s1")
+    await store.append("s1", "req", UserMessage(content="more"))
+    store._sessions.clear()
+    seen: list[int] = []
+    real = SessionStore._parse_tail
+
+    def spy(self, path, known, data):
+        seen.append(len(data))
+        return real(self, path, known, data)
+
+    monkeypatch.setattr(SessionStore, "_parse_tail", spy)
+    session = store.read("s1")
+
+    assert len(session.messages) == 4
+    assert len(seen) == 1 and seen[0] < store.session_path("s1").stat().st_size / 2, "only the new line was parsed"
+
+
+async def test_a_torn_last_line_is_left_for_the_next_read_and_then_counted_once(tmp_path: Path):
+    store = SessionStore(tmp_path)
+    ids = await _grown(store, 2)
+    store._sessions.clear()
+    store.read("s1")
+    path = store.session_path("s1")
+    third = await store.append("s1", "req", UserMessage(content="three"))
+    whole = path.read_bytes()
+    last = whole.rstrip(b"\n").rsplit(b"\n", 1)[1]
+    path.write_bytes(whole[: len(whole) - len(last) // 2 - 1])  # cut the final line in half, no newline
+    store._sessions.clear()
+    assert _ids(store.read("s1")) == ids, "the half line is not a message yet"
+
+    path.write_bytes(whole)  # the writer finishes
+    store._sessions.clear()
+    assert _ids(store.read("s1")) == [*ids, third], "and it is taken in once, not twice"
+
+
+async def test_a_complete_last_line_with_no_newline_is_read_and_the_newline_is_harmless(tmp_path: Path):
+    store = SessionStore(tmp_path)
+    ids = await _grown(store, 2)
+    path = store.session_path("s1")
+    path.write_bytes(path.read_bytes().rstrip(b"\n"))
+    store._sessions.clear()
+    assert _ids(store.read("s1")) == ids
+    path.write_bytes(path.read_bytes() + b"\n")
+    store._sessions.clear()
+    assert _ids(store.read("s1")) == ids
+
+
+async def test_a_corrupt_middle_line_raises_and_leaves_the_earlier_cache_alone(tmp_path: Path):
+    store = SessionStore(tmp_path)
+    ids = await _grown(store, 2)
+    store._sessions.clear()
+    good = store.read("s1")
+    path = store.session_path("s1")
+    path.write_bytes(path.read_bytes() + b"not json\n" + path.read_bytes().splitlines()[-1] + b"\n")
+    store._sessions.clear()
+    with pytest.raises(ValueError, match="Corrupt session file"):
+        store.read("s1")
+    assert _ids(good) == ids, "a session already handed out is not changed by the failed read"
+
+
+async def test_a_shorter_or_replaced_file_is_read_whole_not_as_an_extension(tmp_path: Path):
+    store = SessionStore(tmp_path)
+    await _grown(store, 4)
+    store._sessions.clear()
+    store.read("s1")
+    path = store.session_path("s1")
+
+    other = SessionStore(tmp_path / "other")
+    other_ids = [await other.append("s1", "req", UserMessage(content=f"other {i}")) for i in range(6)]
+    path.write_bytes(other.session_path("s1").read_bytes())  # longer, newer, and a different file
+    store._sessions.clear()
+
+    assert _ids(store.read("s1")) == other_ids
+
+    path.write_bytes(path.read_bytes().splitlines(keepends=True)[0])  # shorter than the offset
+    store._sessions.clear()
+    assert store.read("s1").messages == ()
+
+
+async def test_a_line_separator_inside_a_message_does_not_split_an_incremental_read(tmp_path: Path):
+    store = SessionStore(tmp_path)
+    await store.append("s1", "req", UserMessage(content="first"))
+    store._sessions.clear()
+    store.read("s1")
+    text = "a\u2028b\u2029c\u0085d"
+    await store.append("s1", "req", UserMessage(content=text))
+    store._sessions.clear()
+    assert store.read("s1").messages[-1].message[0].content == text
