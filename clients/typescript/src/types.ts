@@ -239,6 +239,8 @@ export interface PluginEntry {
   why: string;
   /** What else a list should say — a plugin that lost its name to one loaded before it, with no switch and no failure. */
   note: string;
+  /** What the plugin adds, in one line: its own, or the summary its distribution declares. Empty when it says neither. */
+  description: string;
 }
 
 /** Where one trigger a plugin registered is. */

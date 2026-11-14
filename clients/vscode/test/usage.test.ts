@@ -90,7 +90,18 @@ const entries: PluginEntry[] = [
 
 /** One entry with the defaults a fixture does not care about. */
 function base(name: string, origin: string, builtin = false): PluginEntry {
-  return { name, origin, builtin, enabled: true, failure: "", setting: "", switchable: true, why: "", note: "" };
+  return {
+    name,
+    origin,
+    builtin,
+    enabled: true,
+    failure: "",
+    setting: "",
+    switchable: true,
+    why: "",
+    note: "",
+    description: "",
+  };
 }
 
 const plugins: PluginReport = {

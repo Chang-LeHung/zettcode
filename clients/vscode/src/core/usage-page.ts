@@ -345,6 +345,7 @@ function legacy(name: string, why: string): PluginEntry {
     switchable: false,
     why,
     note: "",
+    description: "",
   };
 }
 

@@ -23,6 +23,7 @@ class BuiltinThemes(TuiPlugin):
     """
 
     name = "themes"
+    description = "The palettes that ship with the program"
 
     def activate(self, ctx: PluginContext) -> None:
         """Offer each palette file by name. Nothing is read until one is asked for."""

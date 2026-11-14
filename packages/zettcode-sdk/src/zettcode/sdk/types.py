@@ -552,6 +552,8 @@ class PluginEntry:
         why: Why it cannot be switched, when it cannot; ``""`` otherwise.
         note: What else a list should say — a plugin that lost its name to one loaded before it has no switch and is
             not a failure, and this says why.
+        description: What the plugin adds, in one line: its own, or the summary its distribution declares. Empty when
+            neither says anything.
     """
 
     name: str
@@ -563,6 +565,7 @@ class PluginEntry:
     switchable: bool = True
     why: str = ""
     note: str = ""
+    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)

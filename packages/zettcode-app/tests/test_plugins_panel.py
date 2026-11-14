@@ -73,6 +73,53 @@ def _text(page: PluginsPage) -> str:
     return render_block(page, width=84, height=18).split("-- styles --")[0]
 
 
+def _wide(page: PluginsPage, width: int = 120) -> list[str]:
+    """Return the page's lines at a width that has room for the description column and nothing else."""
+    lines = render_block(page, width=width, height=18).split("-- styles --")[0].splitlines()
+    return lines[:-2]  # the line under the list and the keys are not rows
+
+
+def test_a_row_says_what_the_plugin_does_after_the_place_its_switch_writes():
+    page, _ = _page(
+        (
+            PluginRow("skills", "skills", builtin=True, setting="skills.enabled", description="The slash commands"),
+            PluginRow("monitor", "zettcode-monitor", description="record model calls and export them as HTML"),
+        )
+    )
+
+    lines = _wide(page)
+
+    skill = next(line for line in lines if "skills.enabled" in line)
+    monitor = next(line for line in lines if "zettcode-monitor" in line)
+    assert "The slash commands" in skill and "record model calls and export them as HTML" in monitor
+    assert skill.index("skills.enabled") == monitor.index("zettcode-monitor"), "the setting column lines up"
+    assert skill.index("The slash commands") == monitor.index("record model calls"), "and so does the one after it"
+
+
+def test_a_page_with_no_room_for_both_columns_keeps_the_setting_and_leaves_the_rest_to_the_line_below():
+    page, _ = _page(
+        (PluginRow("skills", "skills", builtin=True, setting="skills.enabled", description="The slash commands"),)
+    )
+
+    text = _text(page)
+
+    assert "skills.enabled" in text
+    assert "The slash commands" not in text, "the row has no room for it; the marked plugin's line still can"
+    page.mark = 0
+    assert "skills (skills.enabled) loads at the next start" in _text(page)
+
+
+def test_a_failed_row_says_why_where_the_description_would_be():
+    page, _ = _page(
+        (PluginRow("search", "zettcode-search", failure="missing binary", why=""),),
+    )
+
+    lines = _wide(page)
+
+    failed = next(line for line in lines if "zettcode-search" in line)
+    assert "could not load: missing binary" in failed
+
+
 def test_a_plugin_that_lost_its_name_says_so_without_a_switch():
     note = "the file fake.py: presenters already has the name 'presenters'"
     page, _ = _page(

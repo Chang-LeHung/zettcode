@@ -57,6 +57,9 @@ class PluginEntry:
         why: Why it cannot be switched, when it cannot; empty otherwise.
         note: What else a list should say about the row — a plugin that lost its name to one loaded before it has no
             switch and is not a failure, and this says so.
+        description: What the plugin adds, in one line: the plugin's own
+            :attr:`~zettcode.engine.plugins.plugin.Plugin.description`, or — for a distribution this process did not
+            load — the summary its package metadata declares. Empty when neither says anything.
     """
 
     name: str
@@ -68,6 +71,7 @@ class PluginEntry:
     switchable: bool = True
     why: str = ""
     note: str = ""
+    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,11 +124,13 @@ def catalog(
                         builtin=True,
                         enabled=bool(getattr(config, setting.field)),
                         setting=setting.path,
+                        description=plugin.description,
                     )
                 )
             continue
-        installed.append(_installed(plugin.name, origin, config, off=off))
+        installed.append(_installed(plugin.name, origin, config, off=off, description=plugin.description))
     points = tuple(entry_points) if entry_points is not None else loader.installed_entry_points()
+    summaries = {point.name: _summary(point) for point in points}
     seen = {entry.origin for entry in installed} | {origin for origin, _why in bundle.failed}
     for point in points:
         # A required plugin has an entry point and is the program's own: it is not a row nobody can move.
@@ -136,7 +142,7 @@ def catalog(
         if loader.part_group(point) is not None:
             if point.name not in off:
                 continue
-        installed.append(_installed(point.name, point.name, config, off=off))
+        installed.append(_installed(point.name, point.name, config, off=off, description=summaries.get(point.name, "")))
     # A single-file plugin that is switched off is not in the bundle (the loader never imported it), so the folder is
     # what says it exists: it stays on the page, off, where it can be switched back on.
     for path in loader.installed_files(config.plugins_dir):
@@ -160,7 +166,14 @@ def catalog(
         if origin in builtins or origin not in loaded_origins:
             failures.setdefault(origin, []).append(why)
     failed = [
-        _failed(origin, "; ".join(whys), config, builtin=origin in builtins, off=off)
+        _failed(
+            origin,
+            "; ".join(whys),
+            config,
+            builtin=origin in builtins,
+            off=off,
+            description=summaries.get(origin, ""),
+        )
         for origin, whys in failures.items()
     ]
     lost = [PluginEntry(name, name, enabled=False, switchable=False, note=note) for name, note in bundle.taken]
@@ -176,7 +189,7 @@ def catalog(
     )
 
 
-def _installed(name: str, origin: str, config: ZettCodeConfig, *, off: set[str]) -> PluginEntry:
+def _installed(name: str, origin: str, config: ZettCodeConfig, *, off: set[str], description: str = "") -> PluginEntry:
     """Return one installed plugin's row: whether the next start loads it, and whether its switch can move."""
     why = (
         "installed plugins are off entirely: [plugins] enabled = false in the configuration file"
@@ -189,10 +202,13 @@ def _installed(name: str, origin: str, config: ZettCodeConfig, *, off: set[str])
         enabled=config.plugins_enabled and origin not in off,
         switchable=why == "",
         why=why,
+        description=description,
     )
 
 
-def _failed(origin: str, why: str, config: ZettCodeConfig, *, builtin: bool, off: set[str]) -> PluginEntry:
+def _failed(
+    origin: str, why: str, config: ZettCodeConfig, *, builtin: bool, off: set[str], description: str = ""
+) -> PluginEntry:
     """Return the row of a plugin that could not load.
 
     A compiled-in one has no switch here: the object that declares its setting never loaded. An installed one keeps
@@ -207,8 +223,9 @@ def _failed(origin: str, why: str, config: ZettCodeConfig, *, builtin: bool, off
             failure=why,
             switchable=False,
             why="it could not load, so there is no switch to move",
+            description=description,
         )
-    row = _installed(origin, origin, config, off=off)
+    row = _installed(origin, origin, config, off=off, description=description)
     return PluginEntry(
         row.name,
         row.origin,
@@ -216,7 +233,25 @@ def _failed(origin: str, why: str, config: ZettCodeConfig, *, builtin: bool, off
         failure=why,
         switchable=row.switchable,
         why=row.why,
+        description=row.description,
     )
+
+
+def _summary(point: EntryPoint) -> str:
+    """Return the one-line summary the distribution behind an entry point declares, or ``""`` when it declares none.
+
+    The plugin says what it does itself once it loads (:attr:`~zettcode.engine.plugins.plugin.Plugin.description`);
+    this is for the rows where it never got that far — the distribution switched off, or a part this process does not
+    load — and for those the package metadata is all there is. A stand-in entry point that has no distribution beside
+    it (a test's own) says nothing rather than failing the page.
+    """
+    try:
+        dist = point.dist
+        metadata = dist.metadata if dist is not None else None
+        summary = metadata["Summary"] if metadata is not None else ""
+    except Exception:  # noqa: BLE001 - a summary is a nicety; a dist that cannot be read costs only the cell
+        return ""
+    return " ".join(str(summary or "").split())
 
 
 def _config_disabled(path: Path) -> list[str]:
