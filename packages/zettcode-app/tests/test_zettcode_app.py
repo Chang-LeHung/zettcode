@@ -735,6 +735,7 @@ def test_welcome_labels_stack_without_overflow_on_narrow_windows(width):
     else:
         # The marks, a blank row, then every label under them: one row each, however many lines the banner has.
         labels = sum(1 for line in WELCOME.splitlines() if line[2 + len(LOGO_LINES[0].text) :].strip())
+        assert labels == 4, "the name and version, the two tagline lines and the hint: a lost line fails here too"
         assert len(rows) == len(LOGO_LINES) + 1 + labels
         assert rows[len(LOGO_LINES)].text == ""
         if width >= 40:
