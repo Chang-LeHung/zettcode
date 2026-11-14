@@ -23,6 +23,7 @@ class SkillResources(Plugin[PluginContext]):
     """
 
     name = "skills"
+    description = "The skills a workspace declares, as @ references"
     setting = PluginSetting("skills_enabled", "skills")
 
     def activate(self, ctx: PluginContext) -> None:

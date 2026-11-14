@@ -272,6 +272,7 @@ async def test_a_plugin_can_be_switched_off_for_the_next_start():
         "switchable": True,
         "why": "",
         "note": "",
+        "description": "",
     }
     assert client.switched == [("zettcode-acme", False)]
 

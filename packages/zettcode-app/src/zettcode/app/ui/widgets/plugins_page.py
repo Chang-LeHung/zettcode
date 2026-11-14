@@ -38,7 +38,16 @@ OFF_IN_CONFIG = "fixed"
 NAME_WIDTH = 24
 WORD_WIDTH = 8
 
-#: The least columns a description is worth drawing in; narrower and the line under the list says it alone.
+#: Columns the setting (a compiled-in plugin's key) or the distribution (an installed one's) takes, so that the
+#: description beside it starts in the same place on every row. It fits the longest the program ships
+#: (``harness.todowrite``), and a longer one is cut rather than moving the column.
+SETTING_WIDTH = 20
+
+#: Columns between the setting column and the description.
+COLUMN_GAP = 2
+
+#: The least columns a description is worth drawing in; narrower and the line under the list says it alone. A page
+#: with no room for the setting *and* a description keeps the setting, which is what this page has always shown.
 MIN_DESCRIPTION = 16
 
 #: Columns kept free at the right of the list, where the marks saying it scrolls go.
@@ -59,6 +68,8 @@ class PluginRow:
         switchable: Whether there is a switch to draw; the catalog decides it, so the editor's panel agrees.
         why: Why there is none, when there is none.
         note: What else the row has to say — a plugin that lost its name to one loaded before it, for instance.
+        description: What the plugin adds, in one line: its own, or the summary its distribution declares. Drawn
+            beside the setting when the page is wide enough for both.
     """
 
     name: str
@@ -70,6 +81,7 @@ class PluginRow:
     switchable: bool = True
     why: str = ""
     note: str = ""
+    description: str = ""
 
 
 class PluginsPage(Widget):
@@ -77,17 +89,17 @@ class PluginsPage(Widget):
 
     Shape::
 
-        Plugins                                              3 of 5 on
+        Plugins                                                      4 of 5 on
 
-          Built in ────────────────────────────────────────────────────────────
-          ▸ skills       ━━━━●  on           skills.enabled
-            mcp          ━━━━●  on           mcp.enabled
-            todos        ●────  off          harness.todowrite
-            coding       failed              could not load: no plugin provides the model
-          Third-party ─────────────────────────────────────────────────────────
-            monitor      ━━━━●  on           zettcode-monitor
-            acme         ●────  off          zettcode-acme
-            held         fixed               zettcode-held
+          Built in ─────────────────────────────────────────────────────────────────
+          ▸ skills       ━━━━●  on     skills.enabled    The slash commands that act on the application
+            mcp          ━━━━●  on     mcp.enabled       MCP servers
+            todos        ●────  off    harness.todowrite Render write and edit calls as a checklist
+            coding       failed                          could not load: no plugin provides the model
+          Third-party ──────────────────────────────────────────────────────────────
+            monitor      ━━━━●  on     zettcode-monitor  record model calls and export them as HTML
+            acme         ●────  off    zettcode-acme     Search results from the acme index
+            held         fixed                          zettcode-held
 
           skills (skills.enabled) loads at the next start
           ↑ ↓ plugin · ← → switch · enter apply · esc cancel
@@ -95,6 +107,11 @@ class PluginsPage(Widget):
     Up and Down move the marker, round from the last row to the first and back; Left, Right and Space move the switch
     of the marked plugin; Enter hands every change to the caller, which writes them down and closes the page; Escape
     writes nothing.
+
+    After the switch a row says where it writes — a compiled-in plugin's setting, or an installed one's distribution —
+    and then, where the page is wide enough for both, what the plugin adds in one line. The two columns are a page
+    narrower than about ninety columns too much for, and there the setting keeps the line to itself, as it always
+    had; the line under the list still says what the marked plugin does.
 
     Every row has a switch but the ones a reader cannot move, and those say why on the line under the list: a
     compiled-in plugin that could not load (its setting is unknown to this process, so the row has none), one whose
@@ -425,6 +442,32 @@ class PluginsPage(Widget):
                 )
             start = word_at + WORD_WIDTH + 1
             room = right - EDGE - start
+            if room >= SETTING_WIDTH + COLUMN_GAP + MIN_DESCRIPTION:
+                # Wide enough for both columns: where the switch writes (or which distribution it came from), then
+                # what the plugin does. The setting is the footnote, so it is the dimmer of the two.
+                if row.builtin:
+                    text, colour = row.setting, blend(theme.muted, surface, 0.35)
+                else:
+                    text, colour = row.origin, blend(theme.muted, surface, 0.35)
+                canvas.draw_text(
+                    start,
+                    y,
+                    truncate(text, SETTING_WIDTH),
+                    Style(foreground=colour, background=surface),
+                    max_width=SETTING_WIDTH,
+                )
+                said_at = start + SETTING_WIDTH + COLUMN_GAP
+                said = f"could not load: {row.failure}" if row.failure else row.description
+                said_room = right - EDGE - said_at
+                if said and said_room > 0:
+                    canvas.draw_text(
+                        said_at,
+                        y,
+                        truncate(said, said_room),
+                        Style(foreground=theme.muted if not row.failure else theme.error, background=surface),
+                        max_width=said_room,
+                    )
+                continue
             if room >= MIN_DESCRIPTION:
                 if row.failure:
                     text, colour = f"could not load: {row.failure}", theme.error

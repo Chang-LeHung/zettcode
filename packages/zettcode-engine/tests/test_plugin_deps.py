@@ -290,6 +290,52 @@ def test_a_file_that_shares_a_name_with_an_entry_point_is_reported_like_one(tmp_
     assert "already has the name" in rows[1].note and not rows[1].switchable
 
 
+def test_a_row_says_what_the_plugin_does_in_one_line(tmp_path: Path):
+    """A row carries the plugin's own description, and nothing invented for a plugin that declares none."""
+    from zettcode.engine.plugins.switches import catalog
+
+    class Talker(Base):
+        description = "Says things out loud"
+
+    points = [Point("talker", Talker()), Point("mute", plugin("mute"))]
+
+    bundle = load_plugins(config(tmp_path), builtins=(), entry_points=points)
+    rows = catalog(config(tmp_path), bundle, entry_points=points)
+
+    assert {row.origin: row.description for row in rows} == {"talker": "Says things out loud", "mute": ""}
+
+
+def test_a_distribution_this_process_never_loaded_is_described_by_its_package_summary(tmp_path: Path):
+    """A part for a screen is listed by a process that has none: only the metadata is left to say what it does."""
+    from zettcode.engine.plugins.switches import catalog
+
+    class Dist:
+        name = "zettcode-elsewhere"
+
+        def __init__(self, summary: str | None) -> None:
+            self.metadata = None if summary is None else {"Summary": summary}
+
+    class Packaged(Point):
+        def __init__(self, name: str, target: Plugin[PluginContext], summary: str | None) -> None:
+            super().__init__(name, target)
+            self.dist = Dist(summary)
+
+    packed = Packaged("elsewhere", plugin("elsewhere"), "  Search results\n from the other index ")
+    bare = Packaged("bare", plugin("bare"), None)
+    points = [packed, bare]
+    off = config(tmp_path, disabled_plugins=("elsewhere", "bare"))
+
+    # Switched off: neither is loaded, so neither object is there to describe itself.
+    bundle = load_plugins(off, builtins=(), entry_points=points)
+    rows = catalog(off, bundle, entry_points=points)
+
+    assert bundle.plugins == ()
+    assert {row.origin: row.description for row in rows} == {
+        "elsewhere": "Search results from the other index",
+        "bare": "",
+    }, "the summary on one line, and nothing at all when the package declares none"
+
+
 def test_a_lost_name_is_a_note_a_list_can_show_not_a_failure(tmp_path: Path):
     from zettcode.engine.plugins import Plugins
     from zettcode.engine.plugins.switches import catalog

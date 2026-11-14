@@ -1087,7 +1087,7 @@ piece; this section is for the exact name, type and default.
 | --- | --- |
 | `name` | identity used by `deps`, diagnostics and `/plugins`. Empty means the entry-point name is used. |
 | `origin` | entry-point name, or the file stem for a single-file plugin; set by the loader. What `[plugins] disable` and the switch file match. |
-| `description` | one line declared for authors and diagnostics; the program does not display it yet. |
+| `description` | one line saying what the plugin adds. `/plugins` shows it beside the switch, and the SDK and the server hand it on; a distribution this process did not load is described by its package summary instead. |
 | `deps` | other plugin **names** this one needs; the loader activates them first. |
 | `priority` | order among plugins inside the host; lower runs first. The host adopts the lowest, so one plugin’s priority moves the whole bundle against other extensions. Default `100`. |
 | `setting` | program-only: the config key that switches a compiled-in plugin; a third-party plugin declares none. |
@@ -1287,6 +1287,12 @@ back on by itself; the next switch written for a name removes it from that file.
 
 A plugin that wanted a name another plugin already had is listed with a note and no switch: the one that loaded keeps
 the name, and the page says which one lost it rather than leaving the loss in a log.
+
+Beside the switch each row says where the switch is written — a compiled-in plugin's setting, or an installed one's
+distribution — and, on a page wide enough for both, what the plugin adds in one line. That line is the plugin's own
+`description` (the same one an author writes on the plugin class); a distribution listed by a process that never
+loaded it is described by its package metadata's one-line summary instead. On a narrower page the setting keeps the
+line to itself, and the line under the list still says what the marked plugin does at the next start.
 
 A name in `[plugins] disable` can be switched back on from the page: it is an ordinary switch now, not a line held back
 for the reader. The question has one answer wherever it is asked: the terminal's `/plugins` page, the editor's

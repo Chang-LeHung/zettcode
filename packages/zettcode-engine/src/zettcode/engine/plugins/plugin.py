@@ -84,7 +84,9 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
             when the entry-point name is not the label you want in
             diagnostics. When it is empty the entry-point name is used, and a
             plugin that declares neither falls back to the class name.
-        description: One-line summary of what the plugin adds, for diagnostics.
+        description: One-line summary of what the plugin adds, shown beside its switch on ``/plugins`` and used in
+            diagnostics. A plugin a reader can switch should say something here: a listed row with nothing to say
+            costs the reader the one line that tells the two plugins called alike apart.
         priority: Hook order against every other extension: lower runs first,
             and equal priorities keep registration order.
         setting: The configuration key that turns its work off, for a plugin compiled into the program; ``None`` when

@@ -21,6 +21,7 @@ class _Plugin:
         self.name = name
         self.origin = origin or name
         self.setting = setting
+        self.description = ""
 
 
 class _Bundle:
