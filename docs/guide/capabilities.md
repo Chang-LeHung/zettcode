@@ -6,7 +6,7 @@ details are on the page each section links to.
 
 | Capability | In one line | Needs |
 | --- | --- | --- |
-| [JIT harness](#jit-harness) | The model writes a small Python tool, loads it and calls it in the same turn | `zettcode` (off until you turn it on) |
+| [JIT harness](#jit-harness) | The model writes a small Python tool, loads it and calls it in the same turn | `zettcode` (on by default) |
 | [Code review](#code-review) | `/code-review` has a second agent read your uncommitted changes | `zettcode`, and a git checkout |
 | [Background agents](#background-agents) | A session with nobody at the keyboard, started with `zettcode daemon spawn` | `zettcode` |
 | [Messaging and `@`](#messaging-between-sessions) | Sessions on one machine send each other messages; `@name` points the model at one | `zettcode` |
@@ -27,7 +27,7 @@ and every step shows as a row you can expand.
 **Why it differs.** A fixed tool set can only do what its authors thought of. Here the model can write the one-off tool
 a task needs, such as "list every `TODO` with its owner from `git blame`". The code runs in a child process, so a crash
 or a hang stays out of your session. Below the `full` shell level it runs inside the boundary `safe` uses. At `full`
-it has your own access. It is off unless you turn it on. `/harness gen` tells the model to keep its writes in the
+it has your own access. It is on by default. `/harness gen` tells the model to keep its writes in the
 harness folder and not to edit your project's files; that is an instruction to the model, not a sandbox.
 
 **How to use it.**
@@ -38,12 +38,13 @@ harness folder and not to edit your project's files; that is an instruction to t
 ```
 
 `/harness gen` turns the harness on for this run and asks the model to build one tool for the workspace.
-`/harness reset` turns it off for this run and deletes nothing. To start every run with it on:
+`/harness reset` turns it off for this run and deletes nothing. The harness is on by default; to start every run with
+it off:
 
 ```toml
 # ~/.zettcode/config.toml
 [harness]
-jit = true
+jit = false
 ```
 
 **Details.** [The JIT harness](/guide/harness).

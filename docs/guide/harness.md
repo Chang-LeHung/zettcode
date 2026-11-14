@@ -1,7 +1,7 @@
 # The JIT harness
 
 With the just-in-time harness on, the model can write a small Python tool of its own, load it and call it in the same
-turn, instead of working only with the tools it shipped with. It is off unless you ask for it.
+turn, instead of working only with the tools it shipped with. It is on by default.
 
 ## What happens
 
@@ -13,19 +13,22 @@ turn, instead of working only with the tools it shipped with. It is off unless y
 
 A session keeps one repository. If it already has one, the model is told to reuse it rather than create a second.
 
-## Turn it on
+## Turn it on or off
+
+The harness is on by default. Every run starts with its four tools, and the model may write a tool of its own whenever
+it decides one is worth keeping. To change that:
 
 | How | Effect |
 | --- | --- |
-| `/harness gen [description]` | Turns the harness on for this run and asks the model, as one turn of this conversation, to build one small tool for this workspace and report it. |
-| `[harness] jit = true` | Starts every run with the harness on. |
+| `[harness] jit = false` | Starts every run with the harness off. |
 | `/plugins` | Switches it on or off for the next start. |
+| `/harness gen [description]` | Turns the harness on for this run and asks the model, as one turn of this conversation, to build one small tool for this workspace and report it. |
 | `/harness reset` | Turns it off for this run. Later requests have none of its tools. Nothing is deleted: what the session wrote stays in the harness folder, and the command names the path. |
 
 ```toml
 # ~/.zettcode/config.toml
 [harness]
-jit = true
+jit = false
 ```
 
 ```text
@@ -74,6 +77,23 @@ the `tools` it declares. A repository is loadable only with one. Declaring the t
 `repo_load` check the model's work.
 
 A `BAN_TOOLS` file beside it names tools the repository may not define.
+
+## How tools have done
+
+`profile_tools` shows the model how its tools have done: for each one the calls, the success rate, how long a call
+takes, how much it hands back, and its most recent distinct errors. It works for every tool the session has run, the
+model's own, the application's and an MCP server's. A tool that was never called shows zeros, which is also an answer.
+Without names it gives an overview of the model's own tools and of every tool called so far, most called first; with
+up to ten names it gives those tools, each with its last three errors.
+
+The numbers are read from the session's stored conversation, not counted while a call runs. That is why they survive a
+restart and why nothing is wrapped around a call to measure it. A session with no stored conversation yet answers with
+zeros and says so.
+
+A conversation can be hundreds of megabytes, so it is never read whole. Only its last 32 MB is read, on a worker thread
+so the window does not stop, and a single result longer than 2 MB is left out and counted. The answer's `window` field
+says what was read: `the whole of this session`, or `the last 32.0 MB of 128.1 MB of this session; older calls are not
+counted`. Reading a conversation of that size takes a fraction of a second.
 
 ## What it cannot do
 

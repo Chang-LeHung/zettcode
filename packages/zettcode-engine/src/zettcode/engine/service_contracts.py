@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from pathlib import Path
+
     from zettcode.engine.extensions.context import ContextReport
     from zettcode.engine.storage.ledger import Ledger
     from zettcode.engine.storage.metadata import SessionInfo
@@ -30,6 +32,14 @@ class SessionStoreService(ABC):
     @abstractmethod
     async def list_sessions(self, *, limit: int = 100, offset: int = 0) -> list[SessionInfo]:
         """Return the workspace's sessions, newest first."""
+
+    @abstractmethod
+    def session_path(self, session_id: str) -> Path:
+        """Return the file one session's conversation is stored in; it may not exist yet.
+
+        Raises:
+            ValueError: For an id that would leave the store.
+        """
 
 
 class UsageLedgerService(ABC):

@@ -5,7 +5,7 @@
 
 | 能力 | 一句话 | 需要 |
 | --- | --- | --- |
-| [JIT harness](#jit-harness) | 模型当场写一个小的 Python 工具，加载并在同一轮里调用 | `zettcode`（默认关闭，需要你打开） |
+| [JIT harness](#jit-harness) | 模型当场写一个小的 Python 工具，加载并在同一轮里调用 | `zettcode`（默认开启） |
 | [代码评审](#代码评审) | `/code-review` 让另一个智能体读你未提交的改动 | `zettcode`，以及一个 git 仓库 |
 | [后台 agent](#后台-agent) | 没人坐在键盘前的会话，用 `zettcode daemon spawn` 启动 | `zettcode` |
 | [会话互发消息与 `@`](#会话之间互发消息) | 同一台机器上的会话互相发消息，`@名字` 让模型找到对方 | `zettcode` |
@@ -23,7 +23,7 @@
 
 **不同在哪。** 固定的工具集只能做作者想到的事；这里模型可以为当前任务写一个一次性的工具，比如"从 `git blame` 里列出每个 `TODO` 的负责人"。
 代码在子进程中运行，崩溃或卡死不会影响你的会话。低于 `full` 的 shell 级别时，它跑在 `safe` 使用的边界里；在 `full` 时它拥有你自己的权限。
-它默认关闭。`/harness gen` 会告诉模型把写入限制在 harness 目录、不要改你项目里的文件，这是对模型的指示，不是沙箱。
+它默认开启。`/harness gen` 会告诉模型把写入限制在 harness 目录、不要改你项目里的文件，这是对模型的指示，不是沙箱。
 
 **怎么用。**
 
@@ -33,12 +33,12 @@
 ```
 
 `/harness gen` 在本次运行中打开 harness，并让模型为这个工作区造一个工具；`/harness reset` 在本次运行中关闭它，不会删除任何东西。
-想让每次运行都默认开启：
+想让每次运行都以关闭启动：
 
 ```toml
 # ~/.zettcode/config.toml
 [harness]
-jit = true
+jit = false
 ```
 
 **详情。** [JIT harness](/zh/guide/harness)。
