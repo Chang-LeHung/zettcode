@@ -516,11 +516,14 @@ class Gateway:
             or sender
         )
         stored = meta.stamp is not None
-        said = meta.spoken if stored else len(self._inbox.get(session_id, ()))
+        box = () if stored else tuple(self._inbox.get(session_id, ()))
+        # What a thread said to us: the conversation's own count, or the part of what the gateway kept that the session
+        # said. What this page wrote is in the box too, and is not something to read.
+        said = meta.spoken if stored else spoken(box)
         # A stored conversation that is new to us is read up to now (see ``_baseline``); what reached us in this run is
         # all newer than the gateway.
         unread = max(0, said - self._seen.get(session_id, said if stored else 0))
-        last = self._inbox[session_id][-1]["text"] if not stored and self._inbox.get(session_id) else ""
+        last = preview(box) if box else ""
         return {
             "id": session_id,
             "kind": kind,
@@ -756,7 +759,7 @@ class Gateway:
         if not items:
             items = [dict(item) for item in self._inbox.get(session_id, ())]
         total = len(items)
-        said = meta.spoken if stored else len(self._inbox.get(session_id, ()))
+        said = meta.spoken if stored else spoken(self._inbox.get(session_id, ()))
         unread = max(0, said - self._seen.get(session_id, said if stored else 0))
         if not everything and total > ITEM_LIMIT:
             items = items[-ITEM_LIMIT:]
@@ -783,7 +786,7 @@ class Gateway:
             raise GatewayError(404, "not_found", "No such session is listed")
         meta = self._meta.setdefault(session_id, Meta())
         stored = meta.stamp is not None
-        self._seen[session_id] = meta.spoken if stored else len(self._inbox.get(session_id, ()))
+        self._seen[session_id] = meta.spoken if stored else spoken(self._inbox.get(session_id, ()))
         self._save_seen()
         await self.refresh()
 
@@ -828,9 +831,21 @@ class Gateway:
             raise GatewayError(413, "too_long", f"A message is limited to {room} characters here", limit=room)
         self._spend(limits.rate_limit, limits.rate_window)
         self._notes.pop(session_id, None)
+        # A thread with no store is only what the gateway kept: what this page said is as much a part of it as what the
+        # session said, or the page's own message would never settle and would stay at the end for good. It goes in
+        # before the message does, so that an answer arriving at once cannot be drawn above its question. A thread with a
+        # store shows what was sent once the session writes it, and the page settles its own copy from that.
+        entry: dict[str, Any] | None = None
+        if not view["workspace"]:
+            entry = {"kind": "out", "text": text}
+            self._inbox.setdefault(session_id, deque(maxlen=INBOX_LIMIT)).append(entry)
+            self._publish({"type": "thread", "id": session_id})
         try:
             delivered = await self.backend.send(session_id, body, direct=direct, images=pictures)
         except SendError as error:
+            if entry is not None:
+                with contextlib.suppress(ValueError):
+                    self._inbox[session_id].remove(entry)
             raise GatewayError(
                 SEND_STATUS.get(error.reason, 400),
                 error.reason,
@@ -961,6 +976,9 @@ class Gateway:
         box = self._inbox.setdefault(message.sender_id, deque(maxlen=INBOX_LIMIT))
         box.append({"kind": "in", "text": message.text, "via": message.via, "sender": message.sender})
         self._senders[message.sender_id] = message.sender
+        # The conversation moved, and only the page with it open can redraw: a thread with a stored conversation is
+        # announced by ``refresh``, but one that is only what the gateway kept has no store to see the change in.
+        self._publish({"type": "thread", "id": message.sender_id})
         self._publish(
             {
                 "type": "inbound",
