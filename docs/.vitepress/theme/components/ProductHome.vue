@@ -9,11 +9,12 @@ const chinese = computed(() => lang.value.startsWith("zh"));
 const copy = computed(() => homeCopy[chinese.value ? "zh" : "en"]);
 const guide = computed(() => `${chinese.value ? "/zh" : ""}/guide/`);
 const status = ref("");
+const installCommand = 'uv tool install "zettcode[all]"';
 let timeout: ReturnType<typeof setTimeout> | undefined;
 
 async function copyInstall() {
   try {
-    await navigator.clipboard.writeText("uv tool install zettcode");
+    await navigator.clipboard.writeText(installCommand);
     status.value = copy.value.copied;
   } catch {
     status.value = copy.value.copyFailed;
@@ -38,7 +39,7 @@ onUnmounted(() => clearTimeout(timeout));
         </div>
         <div class="install-command">
           <span aria-hidden="true">$</span>
-          <code>uv tool install zettcode</code>
+          <code>{{ installCommand }}</code>
           <button type="button" :aria-label="copy.install" @click="copyInstall">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h4" /></svg>
           </button>

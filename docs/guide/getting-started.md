@@ -20,14 +20,32 @@ the diff before accepting the work.
 ::: code-group
 
 ```bash [uv]
-uv tool install zettcode
+uv tool install "zettcode[all]"
 ```
 
 ```bash [pip]
-pip install zettcode
+pip install "zettcode[all]"
 ```
 
 :::
+
+Quote the brackets: `fish` and `zsh` treat an unquoted `[all]` as a pattern.
+
+### What you get with `[all]`
+
+`zettcode` on its own is the smaller install: the terminal, the web gateway, the server and the SDK. `[all]` adds the
+four plugins this repository publishes, each also available as an extra of its own:
+
+| Extra | What it adds |
+| --- | --- |
+| `monitor` | `/monitor`, to read what a session actually sent and received. It records every model request and response unredacted, so it is a debugging tool. |
+| `recap` | `/recap`, which sums up where the session is, and does so on its own when you step away. |
+| `models` | An official model for each vendor API key in your environment (OpenAI, Anthropic, DeepSeek, Z.AI). It stays off until `[plugins] enable = ["models"]` names it; see [Plugins](/guide/plugins#official-models). |
+| `code-agents` | Codex and Claude Code as members of your groups, started from the gateway's New page. They need their own command-line tools installed and signed in; see [Codex & Claude Code](/guide/code-agents). |
+
+For example, `pip install "zettcode[code-agents]"` adds one of them.
+
+### The command line
 
 Either way you get a `zettcode` command. `zettcode --help` lists everything the
 command line takes, which is deliberately short:
@@ -215,5 +233,7 @@ workspace; a successful-looking answer is not a substitute for reviewing files.
 If the first request fails, follow the
 [connection checks](/guide/config#checking-the-connection).
 
-Next: [The interface](/guide/interface) explains every row on the screen, or go
+Next: [What it can do](/guide/capabilities) shows each thing ZettCode does beyond one terminal session — the JIT harness,
+`/code-review`, background agents, groups and the gateway — with a command to try for each. After that,
+[The interface](/guide/interface) explains every row on the screen, or go
 straight to [Keys and mouse](/guide/keys) if you would rather try it first.

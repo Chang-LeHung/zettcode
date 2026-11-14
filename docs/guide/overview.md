@@ -9,9 +9,12 @@ moving, or set up the tools and models that suit your project.
 1. **[Install and connect a model](/guide/getting-started).** You need Python
    3.10+, a terminal, and an OpenAI-compatible API (or Anthropic's Messages
    API). The quickstart takes you from installation to your first task.
-2. **[Get to know the screen](/guide/interface).** Understand thinking, tool
+2. **[See what it can do](/guide/capabilities).** The JIT harness, `/code-review`,
+   background agents, groups, the web gateway, and Codex and Claude Code as members —
+   each with a command to try.
+3. **[Get to know the screen](/guide/interface).** Understand thinking, tool
    output, the composer, and the status line.
-3. **[Keep the essentials handy](/guide/keys).** Enter submits, Ctrl-C stops a
+4. **[Keep the essentials handy](/guide/keys).** Enter submits, Ctrl-C stops a
    request, and Ctrl-D exits when the composer is empty.
 
 ## Working on a project
@@ -22,12 +25,23 @@ moving, or set up the tools and models that suit your project.
 | Select text, paste an image, or scroll back to an answer | [Keys & mouse](/guide/keys) |
 | Continue an earlier session or export it to HTML | [Sessions](/guide/sessions) |
 | Understand context usage, compaction, and caching | [The context window](/guide/context) |
+| Let the model write a small tool for the task | [The JIT harness](/guide/harness) |
 
 Typing while the agent works asks whether the message should **steer** the
 request — picked up at the next tool or model boundary — or **follow up** after it,
 as a message of its own that you can still edit and reorder. Use `/btw <question>`
 instead when you want an answer that will not join the context of later requests.
 See [The interface](/guide/interface) for all three.
+
+## Work with several agents
+
+| I want to… | Go to |
+| --- | --- |
+| Have a second agent review my uncommitted changes | [Code review](/guide/code-review) |
+| Run an agent in the background while I keep working | [Background agents](/guide/daemons) |
+| Send a message to another session, or put sessions in a group | [Talking between sessions](/guide/messaging) |
+| Watch and steer daemons from a browser or a phone | [Web gateway](/guide/gateway), [Desktop & phone apps](/guide/app) |
+| Run Codex or Claude Code beside my own sessions | [Codex & Claude Code](/guide/code-agents) |
 
 ## Make it yours
 

@@ -7,8 +7,10 @@ ZettCode 在终端里工作，操作当前工作区中的文件。这份指南�
 
 1. **[安装并连接模型](/zh/guide/getting-started)。** 需要 Python 3.10+、一个终端和
    OpenAI 兼容接口（或 Anthropic 的 Messages API）。快速开始带你从安装走到第一个任务。
-2. **[认识界面](/zh/guide/interface)。** 看懂思考、工具输出、输入框和状态行。
-3. **[记住常用操作](/zh/guide/keys)。** Enter 发送，Ctrl-C 停止请求，输入框为空时
+2. **[看它能做什么](/zh/guide/capabilities)。** JIT harness、`/code-review`、后台 agent、群、
+   网页网关，以及作为成员的 Codex 和 Claude Code，每一项都附有一条可以试的命令。
+3. **[认识界面](/zh/guide/interface)。** 看懂思考、工具输出、输入框和状态行。
+4. **[记住常用操作](/zh/guide/keys)。** Enter 发送，Ctrl-C 停止请求，输入框为空时
    Ctrl-D 退出。
 
 ## 在项目里工作
@@ -19,11 +21,22 @@ ZettCode 在终端里工作，操作当前工作区中的文件。这份指南�
 | 选中文字、粘贴图片、翻回之前的回答 | [快捷键与鼠标](/zh/guide/keys) |
 | 继续之前的会话、导出 HTML | [会话管理](/zh/guide/sessions) |
 | 了解上下文占用、压缩与缓存 | [上下文窗口](/zh/guide/context) |
+| 让模型为当前任务写一个小工具 | [JIT harness](/zh/guide/harness) |
 
 智能体工作时继续输入，会问你这条消息是要 **steer（引导）** 当前请求 —— 在下一个工具或模型边界采用 ——
 还是作为 **follow up（后续）** 在请求结束后单独发出，后者还可以继续编辑和调整顺序。
 如果你只想顺便问一句，不让答案进入后续请求的上下文，使用 `/btw <问题>`。
 三者的用法都在[界面说明](/zh/guide/interface)中。
+
+## 和多个智能体一起工作
+
+| 我想…… | 去哪里看 |
+| --- | --- |
+| 让另一个智能体评审我未提交的改动 | [代码评审](/zh/guide/code-review) |
+| 让一个智能体在后台跑，我继续干活 | [后台 agent](/zh/guide/daemons) |
+| 给另一个会话发消息，或把几个会话放进一个群 | [会话之间互发消息](/zh/guide/messaging) |
+| 在浏览器或手机上查看、引导 daemon | [网页网关](/zh/guide/gateway)、[桌面端与手机端](/zh/guide/app) |
+| 在我自己的会话旁边运行 Codex 或 Claude Code | [Codex 与 Claude Code](/zh/guide/code-agents) |
 
 ## 按你的方式配置
 

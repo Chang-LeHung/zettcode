@@ -2,17 +2,21 @@ const REPO = "https://github.com/Chang-LeHung/zettcode";
 
 const translations = {
   en: {
-    groups: ["Start here", "Everyday use", "Configuration & extensions", "Help"],
+    groups: ["Start", "Use it alone", "Work with several agents", "Configure & extend", "Help"],
     pages: {
       overview: "Guide overview",
+      capabilities: "What it can do",
       "getting-started": "Getting started",
       interface: "The interface",
       keys: "Keys & mouse",
       commands: "Commands",
       sessions: "Sessions",
+      "code-review": "Code review",
+      harness: "The JIT harness",
       messaging: "Talking between sessions",
       daemons: "Background agents",
       gateway: "Web gateway",
+      "code-agents": "Codex & Claude Code",
       app: "Desktop & phone apps",
       context: "The context window",
       usage: "Token usage",
@@ -55,24 +59,28 @@ const translations = {
       group: "In the editor",
       clientGroup: "Client library",
     },
-    guide: "Guide", reference: "Reference", setup: "Configure", install: "Get started",
+    guide: "Guide", reference: "Use it alone", agents: "Several agents", setup: "Configure", install: "Get started",
     edit: "Edit this page on GitHub", license: "Released under the MIT license.", footer: "ZettCode — your terminal, your coding partner.",
     prev: "Previous", next: "Next", outline: "On this page", updated: "Last updated", top: "Back to top", menu: "Guide menu",
     appearance: "Appearance", light: "Switch to light theme", dark: "Switch to dark theme", language: "Change language",
     notFound: "Page not found", quote: "This page may have moved. Let’s find your next step.", back: "Back to the guide",
   },
   zh: {
-    groups: ["第一次使用", "日常使用", "配置与扩展", "帮助"],
+    groups: ["开始", "单个会话", "多智能体协作", "配置与扩展", "帮助"],
     pages: {
       overview: "指南导览",
+      capabilities: "它能做什么",
       "getting-started": "快速开始",
       interface: "认识界面",
       keys: "快捷键与鼠标",
       commands: "命令参考",
       sessions: "会话管理",
+      "code-review": "代码评审",
+      harness: "JIT harness",
       messaging: "会话之间互发消息",
       daemons: "后台 agent",
       gateway: "网页网关",
+      "code-agents": "Codex 与 Claude Code",
       app: "桌面端与手机端",
       context: "上下文窗口",
       usage: "Token 用量",
@@ -115,7 +123,7 @@ const translations = {
       group: "在编辑器里",
       clientGroup: "客户端库",
     },
-    guide: "使用指南", reference: "操作参考", setup: "配置与扩展", install: "快速开始",
+    guide: "使用指南", reference: "单个会话", agents: "多智能体", setup: "配置与扩展", install: "快速开始",
     edit: "在 GitHub 上编辑此页", license: "以 MIT 许可证发布。", footer: "ZettCode —— 你的终端，你的编码伙伴。",
     prev: "上一篇", next: "下一篇", outline: "本页目录", updated: "最近更新", top: "回到顶部", menu: "指南目录",
     appearance: "外观", light: "切换到浅色主题", dark: "切换到深色主题", language: "切换语言",
@@ -127,10 +135,11 @@ const translations = {
 // are one subject -- how much the model can read, what it spent, and where that is reported -- so they are listed
 // nested under it rather than as three siblings that a reader has to guess belong together.
 const layout = [
-  { group: 0, pages: ["overview", "getting-started"] },
-  { group: 1, pages: ["interface", "keys", "commands", "sessions", "messaging", "daemons", "gateway", "app"] },
+  { group: 0, pages: ["overview", "capabilities", "getting-started"] },
+  { group: 1, pages: ["interface", "keys", "commands", "sessions", "code-review", "harness"] },
+  { group: 2, pages: ["messaging", "daemons", "gateway", "code-agents", "app"] },
   {
-    group: 2,
+    group: 3,
     pages: [
       { subgroup: true, pages: ["models", "context", "usage"] },
       "config",
@@ -140,7 +149,7 @@ const layout = [
       "plugins",
     ],
   },
-  { group: 3, pages: ["faq"] },
+  { group: 4, pages: ["faq"] },
 ];
 
 // The SDK is documented apart from the user guide: it is read by a different person, for a different reason, and has
@@ -208,9 +217,10 @@ export function navigation(language: keyof typeof translations) {
       // "Get started" leads the bar: it is what a first-time reader wants, and the last place a nav item is looked for
       // is the far right.
       { text: text.install, link: prefix + "getting-started" },
-      { text: text.guide, link: prefix + "overview", activeMatch: `${prefix}(overview|getting-started|interface)` },
+      { text: text.guide, link: prefix + "overview", activeMatch: `${prefix}(overview|capabilities|getting-started)` },
       { text: text.reference, activeMatch: `${prefix}(${pageSlugs(1).join("|")})`, items: byGroup(1) },
-      { text: text.setup, activeMatch: `${prefix}(${pageSlugs(2).join("|")})`, items: byGroup(2) },
+      { text: text.agents, activeMatch: `${prefix}(${pageSlugs(2).join("|")})`, items: byGroup(2) },
+      { text: text.setup, activeMatch: `${prefix}(${pageSlugs(3).join("|")})`, items: byGroup(3) },
       { text: sdkText.menu, link: sdkPrefix, activeMatch: sdkPrefix },
       { text: serverText.menu, link: serverPrefix, activeMatch: serverPrefix },
       {

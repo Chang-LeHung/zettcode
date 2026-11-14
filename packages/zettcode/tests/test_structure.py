@@ -446,10 +446,17 @@ def test_each_extra_names_a_plugin_this_workspace_builds_in_a_range_that_admits_
     """
     project = tomllib.loads((PROJECT / "pyproject.toml").read_text(encoding="utf-8"))
     extras = project["project"]["optional-dependencies"]
-    assert set(extras) == {"all", "models", "monitor", "recap"}, "one extra per plugin this repository publishes"
+    assert set(extras) == {"all", "code-agents", "models", "monitor", "recap"}, (
+        "one extra per plugin this repository publishes"
+    )
 
     built = {path.name for path in (ROOT / "packages").iterdir() if (path / "pyproject.toml").is_file()}
-    plugins = {"models": "zettcode-models", "monitor": "zettcode-monitor", "recap": "zettcode-recap"}
+    plugins = {
+        "code-agents": "zettcode-code-agents",
+        "models": "zettcode-models",
+        "monitor": "zettcode-monitor",
+        "recap": "zettcode-recap",
+    }
     for extra, distribution in plugins.items():
         assert distribution in built, f"packages/{distribution} is what the {extra!r} extra names"
     carried = {Requirement(line) for extra in plugins for line in extras[extra]}
