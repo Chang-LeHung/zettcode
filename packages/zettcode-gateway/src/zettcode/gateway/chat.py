@@ -127,6 +127,27 @@ def spoken(items: Iterable[dict[str, object]]) -> int:
     return sum(1 for item in items if item["kind"] in SPOKEN)
 
 
+def first_unread(items: Sequence[dict[str, object]], unread: int) -> int | None:
+    """Return where the unread stretch begins, as an index into ``items``, or ``None`` when nothing is unread.
+
+    The newest ``unread`` things the session said are the unread ones, so counting back from the end finds the first.
+    A page scrolls to it when a chat is opened, as any messenger does. When more is unread than the items hold (the
+    page asked for the end of a long conversation) the answer is the oldest thing it holds: the rest is older still.
+    """
+    if unread <= 0:
+        return None
+    left = unread
+    for at in range(len(items) - 1, -1, -1):
+        if items[at]["kind"] in SPOKEN:
+            left -= 1
+            if left == 0:
+                return at
+    for at, item in enumerate(items):
+        if item["kind"] in SPOKEN:
+            return at
+    return None
+
+
 def preview(items: Sequence[dict[str, object]], limit: int = 90) -> str:
     """Return the line a chat list shows under a name: the last thing said, with ``You:`` before what we said."""
     for item in reversed(items):

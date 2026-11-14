@@ -291,6 +291,7 @@ export const ZH: Record<string, string> = {
   "Choose a session on the left, or start a new one.": "在左侧选择一个会话,或新建一个。",
   "No messages yet. Say something.": "还没有消息,说点什么吧。",
   "Scroll to the newest message": "滚动到最新消息",
+  "New messages": "新消息",
   "Show earlier messages": "显示更早的消息",
   "Show message source": "显示消息原文",
   "Earlier conversation summarized": "更早的对话已被摘要",

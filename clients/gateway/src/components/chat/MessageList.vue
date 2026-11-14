@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { t } from "../../i18n";
 import Skeleton from "../common/Skeleton.vue";
 import { buildRows } from "../../lib/rows";
+import { lineRow } from "../../lib/unread";
 import { chat, loadEarlier, markRead } from "../../stores/chat";
 import { currentKey, find, search } from "../../stores/chatSearch";
 import Icon from "../common/Icon.vue";
@@ -20,6 +21,8 @@ const unseen = ref(0);
 const rows = computed(() => buildRows(chat.items, chat.pending, streams[chat.id]));
 const live = computed(() => streams[chat.id]);
 const typing = computed(() => chat.thread?.status === "working" && !live.value);
+/** The row the unread line goes above: the first row drawn from the item the unread stretch begins at. */
+const unreadRow = computed(() => lineRow(rows.value, chat.unreadFrom));
 
 let seen = 0;
 let first = true;
@@ -32,6 +35,28 @@ function nearBottom(): boolean {
 
 function toBottom(smooth: boolean): void {
   void nextTick(() => scroller.value?.scrollTo({ top: scroller.value.scrollHeight, behavior: smooth ? "smooth" : "auto" }));
+}
+
+/** Put the unread line eight pixels below the top edge, so the reader sees at once what is new and where it begins. */
+function placeLine(): void {
+  const el = scroller.value;
+  if (!el) return;
+  const line = el.querySelector<HTMLElement>(".messages-line");
+  if (!line) return;
+  const top = el.scrollTop + line.getBoundingClientRect().top - el.getBoundingClientRect().top - 8;
+  el.scrollTo({ top: Math.max(0, top), behavior: "auto" });
+}
+
+/** Stop on the unread line, as a messenger does, rather than at the newest message. */
+function toUnread(): void {
+  void nextTick(() => {
+    following.value = false;
+    chat.atBottom = false;
+    placeLine();
+    // What is above the line is still being drawn (a message growing as it is laid out), and the list keeps the
+    // reader where they are only while this says so: it is what a browser's own scroll anchoring would do.
+    aligning = Date.now();
+  });
 }
 
 function onScroll(): void {
@@ -61,7 +86,11 @@ watch(
     const last = rows.value[count - 1];
     const mine = last?.type === "bubble" && last.pending && last.key !== lastKey;
     lastKey = last?.key ?? "";
-    if (first || following.value || mine) {
+    if (first && count > 0 && chat.unreadFrom !== null) {
+      // Opened on a conversation with something unread: stop where the reader left off, not at the newest message.
+      toUnread();
+      first = false;
+    } else if (first || following.value || mine) {
       toBottom(!first);
       following.value = true;
       chat.atBottom = true;
@@ -109,12 +138,16 @@ function onViewport(): void {
 // the list then: stay at the newest message for as long as the reader is following it, and leave a reader who scrolled
 // up alone. Each step is instant, so there is nothing to chase.
 let watcher: ResizeObserver | undefined;
+/** When the reader was put on the unread line, and how long growing content keeps them there. */
+let aligning = 0;
+const ALIGNING_MS = 1200;
 onMounted(() => {
   toBottom(false);
   window.visualViewport?.addEventListener("resize", onViewport);
   if (body.value && typeof ResizeObserver !== "undefined") {
     watcher = new ResizeObserver(() => {
-      if (following.value) toBottom(false);
+      if (aligning && Date.now() - aligning < ALIGNING_MS) placeLine();
+      else if (following.value) toBottom(false);
     });
     watcher.observe(body.value);
   }
@@ -135,6 +168,7 @@ onBeforeUnmount(() => {
           <span v-if="chat.loadingEarlier" class="spin" />{{ t("Show earlier messages") }}
         </button>
         <template v-for="row in rows" :key="row.key">
+          <div v-if="row === unreadRow" class="messages-line">{{ t("New messages") }}</div>
           <MessageBubble v-if="row.type === 'bubble'" :row="row" :thread="chat.id" />
           <StepsGroup v-else-if="row.type === 'steps'" :tools="row.tools" />
           <NoteBubble v-else :text="row.text" />
@@ -164,6 +198,10 @@ onBeforeUnmount(() => {
 .messages-body { display: flex; flex-direction: column; flex: none; }
 .messages-note { align-self: center; margin: 12px 0; padding: 4px 14px; border-radius: 14px; background: var(--chip-bg); color: #fff; font-size: 0.85rem; }
 .messages-more { align-self: center; margin: 4px 0 10px; }
+.messages-line {
+  align-self: center; margin: 8px 0 4px; padding: 3px 12px; border-radius: 12px;
+  background: var(--chip-bg); color: #fff; font-size: 0.78rem; letter-spacing: 0.02em;
+}
 .fab {
   position: absolute; right: calc(var(--safe-right) + 14px); bottom: 12px; width: 44px; height: 44px; border-radius: 50%;
   display: grid; place-items: center; background: var(--surface); color: var(--muted); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);

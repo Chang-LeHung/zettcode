@@ -123,7 +123,9 @@ nearer, a quote of only a couple of letters is too small to point at anything, a
 loaded (use **Show earlier messages**) or was never said here answers "The quoted message is not on this page."
 **Ctrl/Cmd+F** searches the conversation, and typing `@` in a group lists the members you can address; an `@member` in a message is drawn in colour (yours, if you have a handle in the group, with a tint behind it). Backspace right after an `@member` you picked, or after a quote typed into the input, erases the whole thing at once. A group shows
 a divider where the day changes (Today, Yesterday, the weekday, then the date). Scrolled up, a round button takes you
-back to the newest message, with a count of what arrived meanwhile. A single conversation's history carries no times,
+back to the newest message, with a count of what arrived meanwhile. A conversation with something unread opens where
+you left off, under a **New messages** line, instead of at its newest message; what is below that line stays unread
+until you come down to it, as in any messenger. A single conversation's history carries no times,
 so it has no day dividers.
 
 **Pictures.** A chat with a daemon has an attach button, and a picture can also be pasted or dropped on the

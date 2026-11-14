@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BADGE_LIMIT, badge, seenNow, unreadChats } from "../src/lib/unread";
+import { BADGE_LIMIT, badge, lineRow, seenNow, unreadChats } from "../src/lib/unread";
 import { applyThreads, chatsWithUnread, totalUnread } from "../src/stores/threads";
 import type { Thread } from "../src/types";
 
@@ -24,6 +24,17 @@ test("new messages are seen only when the page is in front and the reader is at 
 test("the tab counts the conversations with something unread, not the messages", () => {
   assert.equal(unreadChats([]), 0);
   assert.equal(unreadChats([{ unread: 0 }, { unread: 500 }, { unread: 1 }, { unread: 0 }]), 2);
+});
+
+test("the unread line goes above the first row drawn from the first thing not read", () => {
+  const rows = [{ key: "m0" }, { key: "s1" }, { key: "m3" }, { key: "n4" }, { key: "p5" }];
+
+  assert.equal(lineRow(rows, 3)?.key, "m3");
+  assert.equal(lineRow(rows, 2)?.key, "m3", "an index between rows lands on the next one");
+  assert.equal(lineRow(rows, 0)?.key, "m0");
+  assert.equal(lineRow(rows, null), undefined, "nothing unread, no line");
+  assert.equal(lineRow(rows, 99), undefined);
+  assert.equal(lineRow([{ key: "p5" }], 0), undefined, "a message not stored yet is never the place");
 });
 
 test("an archived conversation does not call for attention in the tab or the total", () => {

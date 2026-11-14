@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from zettcode.gateway.chat import (
     OUTPUT_LIMIT,
+    first_unread,
     items_of,
     preview,
     spoken,
@@ -108,6 +109,22 @@ def test_unread_counts_what_the_session_said_to_us_and_not_what_it_did():
     ]
 
     assert spoken(items) == 2
+
+
+def test_the_unread_stretch_begins_at_the_oldest_thing_not_read():
+    items = [
+        {"kind": "out", "text": "a"},
+        {"kind": "in", "text": "b"},
+        {"kind": "tool", "name": "x", "brief": ""},
+        {"kind": "in", "text": "c"},
+        {"kind": "note", "text": "d"},
+        {"kind": "reply", "text": "e"},
+    ]
+
+    assert first_unread(items, 2) == 3, "the two newest said things, past the tool row and the note"
+    assert first_unread(items, 3) == 1
+    assert first_unread(items, 0) is None and first_unread([], 1) is None
+    assert first_unread(items, 9) == 1, "more unread than there is: the oldest said thing it holds"
 
 
 def test_the_preview_is_the_last_thing_said_with_you_before_ours_and_is_cut_to_a_line():
