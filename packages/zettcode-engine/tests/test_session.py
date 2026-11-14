@@ -1261,3 +1261,16 @@ async def test_a_line_separator_inside_a_message_does_not_split_an_incremental_r
     await store.append("s1", "req", UserMessage(content=text))
     store._sessions.clear()
     assert store.read("s1").messages[-1].message[0].content == text
+
+
+async def test_lines_this_process_appended_are_not_lost_or_doubled_by_a_later_incremental_read(tmp_path: Path):
+    """``_remember`` folds an append into the cached session only; a later read continues from its own offset."""
+    store = SessionStore(tmp_path)
+    first = await store.append("s1", "req", UserMessage(content="a"))
+    store._sessions.clear()
+    store.read("s1")  # a reading now stops after the first message
+    second = await store.append("s1", "req", UserMessage(content="b"))
+    third = await store.append("s1", "req", UserMessage(content="c"))
+    store._sessions.clear()
+
+    assert _ids(store.read("s1")) == [first, second, third]
