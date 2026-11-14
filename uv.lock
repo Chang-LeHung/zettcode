@@ -2998,9 +2998,13 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "zettcode-code-agents" },
     { name = "zettcode-models" },
     { name = "zettcode-monitor" },
     { name = "zettcode-recap" },
+]
+code-agents = [
+    { name = "zettcode-code-agents" },
 ]
 models = [
     { name = "zettcode-models" },
@@ -3018,6 +3022,8 @@ requires-dist = [
     { name = "zettcode-app", editable = "packages/zettcode-app" },
     { name = "zettcode-ask-user", editable = "packages/zettcode-ask-user" },
     { name = "zettcode-broker", editable = "packages/zettcode-broker" },
+    { name = "zettcode-code-agents", marker = "extra == 'all'", editable = "packages/zettcode-code-agents" },
+    { name = "zettcode-code-agents", marker = "extra == 'code-agents'", editable = "packages/zettcode-code-agents" },
     { name = "zettcode-commands", editable = "packages/zettcode-commands" },
     { name = "zettcode-engine", extras = ["tiktoken"], editable = "packages/zettcode-engine" },
     { name = "zettcode-files", editable = "packages/zettcode-files" },
@@ -3046,7 +3052,7 @@ requires-dist = [
     { name = "zettcode-truncation", editable = "packages/zettcode-truncation" },
     { name = "zettcode-tui", editable = "packages/zettcode-tui" },
 ]
-provides-extras = ["all", "models", "monitor", "recap"]
+provides-extras = ["all", "code-agents", "models", "monitor", "recap"]
 
 [[package]]
 name = "zettcode-app"

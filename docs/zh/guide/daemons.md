@@ -141,17 +141,5 @@ daemon 不会自己退出，闲置几个小时也不会：不用了就用 `daemo
 
 ## 从一次评审开始
 
-大多数人用 daemon 的第一件事是找个“第二双眼睛”，`/code-review` 做的就是这件事：它写一段提示 —— 收集 diff、让另一个 reviewer 读、点名具体问题 —— 然后当成一轮对话跑起来，等同于你亲手打的。
-
-```
-/code-review
-/code-review src/api.py 里的错误处理
-```
-
-接下来是模型的事：它先看 `<daemon> list`，这个工作区里已经有这个命令起过的 reviewer（名字是 `code-review`）就直接用那一个，没有才 `<daemon> spawn --name code-review` 起新的；然后用 `send_message` 告诉那个会话读什么，等回答作为一条消息回来再汇报。用过几轮的 reviewer 已经熟悉这批改动，所以比新建一个更合适；`list` 上能看到的是名字和工作区，所以同一个工作区里另一个终端起的 reviewer 也会被复用。
-
-修的时候 reviewer 一直留着：主 agent 把它指出的地方改掉，再把改动的新状态发给它看，这样一轮一轮走到它没什么可说的为止。发给它的每条消息都要说明它**必须回答** —— 有问题就报，没问题也要说一句 —— 因为一个不出声的 reviewer，和一次什么都没看出来的评审没办法区分。某一轮没有回答就再发一次；还是没有回音，就去读它自己的会话 —— `~/.zettcode/sessions/*/<session id>/data.jsonl`，里面最后一条 assistant 消息就是它的评审 —— 把它贴回来，然后停掉（`<daemon> kill <session id>`），不要让它一直跑着；`<daemon> list` 能看到还在跑什么。
-
-`<daemon>` 是终端自己运行所在的那套安装的命令 —— 同一个解释器下的 `python -m zettcode.daemon` —— 而不是去 PATH 上找一个 `zettcode`，所以为一份代码检出、或一个外人看不到的虚拟环境起的终端，也能起 daemon。
-
-reviewer 跑在**你自己那个 shell 级别**上，不会更高：`full` 给它 `full`，`safe` 给它 `safe`，而 `ask`（意思是“问读者”）在后台进程里没法问，所以给它 `safe`。`deny` 下既没有 shell 收集 diff，也就不会起 reviewer，模型改为读文件评审。提示里会告诉 reviewer 它只读不改 —— 改动由主 agent 拿到意见后自己做 —— 但那只是一句指令，不是沙箱：`full` 下的 reviewer 如果真去改，是有权限的。
+大多数人用 daemon 的第一件事是找个“第二双眼睛”。`/code-review` 会为此启动（或复用）一个名为 `code-review` 的 daemon。
+这条命令一步一步怎么工作、评审者拿到什么 shell 级别，见[代码评审](/zh/guide/code-review)。

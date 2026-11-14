@@ -219,36 +219,6 @@ store does. Removing a session's folder under `daemon/` is all `kill` does, besi
 
 ## A review to start with
 
-The first thing most people want from a daemon is a second pair of eyes, and `/code-review` does the setup: it writes
-a brief — collect the diff, have it read by a reviewer of its own, name concrete problems — and runs it as a turn of
-the conversation, as if you had typed it.
-
-```
-/code-review
-/code-review the error handling in src/api.py
-```
-
-What happens next is the model's: it looks at `<daemon> list` for a reviewer of this workspace — the one this
-command names `code-review` — reuses it if there is one, and only otherwise starts a new one with `<daemon> spawn
---name code-review`. It sends that session what to read with `send_message`, and reports the answer when it arrives
-as a message. A reviewer that has already read the earlier rounds knows the change, which is why it is preferred to
-a fresh one; the name and the workspace are what `list` says, so a reviewer from another terminal on the same
-workspace is the one reused.
-
-The reviewer stays up while the fixes are made: the main agent changes what it found, sends it the new state of the
-change, and goes round again until the reviewer has nothing left to say. Every message to it says that it must
-answer — findings, or a word that there is nothing to change — because a reviewer that goes quiet cannot be told
-apart from one whose review found nothing. A round that brings no answer is sent once more; if that is unanswered
-too, the reviewer's own conversation is read instead — `~/.zettcode/sessions/*/<session id>/data.jsonl`, whose last
-assistant message is its review — that is reported, and the reviewer is stopped with `<daemon> kill <session id>` so
-that it is not left running; `<daemon> list` shows what is.
-
-`<daemon>` is the command of the installation the terminal itself runs on — `python -m zettcode.daemon` under the
-same interpreter — not a `zettcode` looked up on the `PATH`, so a checkout or a virtualenv that nothing else can see
-still starts one.
-
-The reviewer runs at **your own shell level**, never above it: `full` gives it `full`, `safe` gives it `safe`, and a
-session at `ask` — a level that means "ask the reader", which a background process cannot do — gives it `safe`. Under
-`deny` there is no shell to gather a diff with, so no reviewer is started and the model reviews by reading. The
-reviewer is told that it reads and does not change — the edits are the main agent's, made after the findings are in —
-but that is an instruction, not a sandbox: a reviewer at `full` could change things if it chose to.
+The first thing most people want from a daemon is a second pair of eyes. `/code-review` starts (or reuses) a daemon
+named `code-review` for it. How the command works, step by step, and the shell level the reviewer gets, are on
+[Code review](/guide/code-review).

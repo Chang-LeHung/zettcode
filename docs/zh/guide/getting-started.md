@@ -15,14 +15,31 @@ ZettCode 是一个终端程序：它读写一个**工作区**里的文件，在�
 ::: code-group
 
 ```bash [uv]
-uv tool install zettcode
+uv tool install "zettcode[all]"
 ```
 
 ```bash [pip]
-pip install zettcode
+pip install "zettcode[all]"
 ```
 
 :::
+
+方括号要加引号：`fish` 和 `zsh` 会把没加引号的 `[all]` 当作通配符。
+
+### `[all]` 带来什么
+
+单独的 `zettcode` 是更小的安装：终端、网页网关、服务器和 SDK。`[all]` 再加上本仓库发布的四个插件，每个也可以单独作为 extra 安装：
+
+| Extra | 带来什么 |
+| --- | --- |
+| `monitor` | `/monitor`，查看会话实际发出和收到了什么。它会不加脱敏地记录每一次模型请求和响应，所以是调试工具。 |
+| `recap` | `/recap`，总结会话进行到哪里；你离开时它也会自己总结。 |
+| `models` | 为环境里每个厂商 API key（OpenAI、Anthropic、DeepSeek、Z.AI）提供一个官方模型。要在 `[plugins] enable = ["models"]` 里点名它才会启用，见[插件](/zh/guide/plugins#official-models)。 |
+| `code-agents` | 让 Codex 和 Claude Code 成为群的成员，从网关的 New 页面启动。它们需要自己的命令行工具已安装并登录，见 [Codex 与 Claude Code](/zh/guide/code-agents)。 |
+
+例如 `pip install "zettcode[code-agents]"` 只装其中一个。
+
+### 命令行
 
 两种方式都会得到 `zettcode` 命令。`zettcode --help` 会列出命令行参数，我们刻意让它们保持很少：
 
@@ -185,5 +202,6 @@ git diff
 保留改动前，运行项目自己的测试。ZettCode 操作的是本地工作区，回答看起来正确不代表文件已经
 验证过。如果第一条请求失败，按照[连接检查步骤](/zh/guide/config#checking-the-connection)排查。
 
-接下来看[界面](/zh/guide/interface)，它会解释屏幕上每一行的含义；如果你更想先动手，直接看
+接下来看[它能做什么](/zh/guide/capabilities)：JIT harness、`/code-review`、后台 agent、群和网关，每一项都附有一条可以试的命令。
+之后看[界面](/zh/guide/interface)，它会解释屏幕上每一行的含义；如果你更想先动手，直接看
 [快捷键与鼠标](/zh/guide/keys)。

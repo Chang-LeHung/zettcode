@@ -21,7 +21,7 @@ export const homeCopy = {
     pathEyebrow: "A guide that meets you where you are",
     pathTitle: "Less searching. More making.",
     paths: [
-      { title: "Start here", text: "Install, connect a model, and send your first task.", links: [{ label: "Getting started", path: "getting-started" }, { label: "The interface", path: "interface" }] },
+      { title: "Start here", text: "Install, connect a model, and send your first task.", links: [{ label: "Getting started", path: "getting-started" }, { label: "What it can do", path: "capabilities" }, { label: "The interface", path: "interface" }] },
       { title: "Make it a daily tool", text: "Learn the shortcuts and keep conversations moving.", links: [{ label: "Keys & mouse", path: "keys" }, { label: "Commands", path: "commands" }, { label: "Sessions", path: "sessions" }] },
       { title: "Make it yours", text: "Choose models, teach it your project, and connect tools.", links: [{ label: "Configuration", path: "config" }, { label: "Models & context", path: "models" }, { label: "Project instructions", path: "instructions" }, { label: "Skills & MCP", path: "skills-and-mcp" }, { label: "Plugins", path: "plugins" }] },
     ],
@@ -51,7 +51,7 @@ export const homeCopy = {
     pathEyebrow: "按你的使用阶段，找到下一步",
     pathTitle: "少一点查找，多一点创造。",
     paths: [
-      { title: "第一次使用", text: "安装、连接模型，发出第一个任务。", links: [{ label: "快速开始", path: "getting-started" }, { label: "认识界面", path: "interface" }] },
+      { title: "第一次使用", text: "安装、连接模型，发出第一个任务。", links: [{ label: "快速开始", path: "getting-started" }, { label: "它能做什么", path: "capabilities" }, { label: "认识界面", path: "interface" }] },
       { title: "日常使用", text: "掌握快捷键，让对话与工作顺畅衔接。", links: [{ label: "快捷键与鼠标", path: "keys" }, { label: "命令参考", path: "commands" }, { label: "会话管理", path: "sessions" }] },
       { title: "按你的方式配置", text: "选择模型、说明项目约定、连接工具。", links: [{ label: "配置参考", path: "config" }, { label: "模型与上下文", path: "models" }, { label: "项目指令", path: "instructions" }, { label: "Skills 与 MCP", path: "skills-and-mcp" }, { label: "插件", path: "plugins" }] },
     ],

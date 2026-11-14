@@ -67,8 +67,16 @@ recap = ["zettcode-recap>=0.4.7,<0.5"]
 # An official model for each vendor API key in the environment. Off until `[plugins] enable = ["models"]`
 # names it: ambient keys should not change a model list by themselves.
 models = ["zettcode-models>=0.4.7,<0.5"]
+# Codex and Claude Code as members of your sessions, groups and the gateway's page. A gateway plugin: it adds nothing to
+# the terminal, and needs the Codex or Claude Code command line installed and signed in to do anything.
+code-agents = ["zettcode-code-agents>=0.4.7,<0.5"]
 # Every plugin this repository publishes, for a reader who wants the lot: `pip install "zettcode[all]"`.
-all = ["zettcode-monitor>=0.4.7,<0.5", "zettcode-recap>=0.4.7,<0.5", "zettcode-models>=0.4.7,<0.5"]
+all = [
+  "zettcode-monitor>=0.4.7,<0.5",
+  "zettcode-recap>=0.4.7,<0.5",
+  "zettcode-models>=0.4.7,<0.5",
+  "zettcode-code-agents>=0.4.7,<0.5",
+]
 
 [project.scripts]
 zettcode = "zettcode.cli:main"
