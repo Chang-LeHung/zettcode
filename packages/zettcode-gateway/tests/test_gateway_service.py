@@ -916,6 +916,40 @@ async def test_a_message_a_session_with_no_store_never_took_is_taken_back_out_of
     assert (await gateway.thread(AGENT))["items"] == []
 
 
+async def test_a_send_stopped_before_it_could_arrive_leaves_the_thread_as_it_was(tmp_path):
+    """The page closed, or the gateway is shutting down: nothing was delivered, and nothing may look as if it was."""
+    gateway, backend = await make(tmp_path)
+    backend.add_peer(AGENT, "claudecode", kind="external")
+    await gateway.refresh()
+
+    async def stopped(*args: object, **kwargs: object) -> object:
+        raise asyncio.CancelledError
+
+    backend.send = stopped  # type: ignore[method-assign]
+    with pytest.raises(asyncio.CancelledError):
+        await gateway.send(AGENT, "hello")
+
+    assert (await gateway.thread(AGENT))["items"] == []
+
+
+async def test_of_two_identical_messages_the_one_that_failed_is_the_one_taken_back(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.add_peer(AGENT, "claudecode", kind="external")
+    await gateway.refresh()
+    await gateway.send(AGENT, "hello")
+    gateway._received(IncomingMessage(AGENT, "claudecode", "an answer", via="external"))
+
+    backend.fail = SendError("lost", "the broker did not answer")
+    with pytest.raises(GatewayError):
+        await gateway.send(AGENT, "hello")
+
+    opened = await gateway.thread(AGENT)
+    assert [(item["kind"], item["text"]) for item in opened["items"]] == [
+        ("out", "hello"),
+        ("in", "an answer"),
+    ], "the first copy stays where it was, not the one that never went"
+
+
 async def test_a_session_that_is_working_is_read_when_it_goes_quiet_and_not_at_every_look(tmp_path):
     gateway, backend = await make(tmp_path)
     backend.add_peer(PEER, "fix-parser", workspace="/w/p")
