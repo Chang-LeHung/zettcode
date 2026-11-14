@@ -48,7 +48,16 @@ jobs:
           # There is no Apple Developer ID here, so `mac.identity: "-"` signs the app ad hoc: the bundle gets a valid
           # `_CodeSignature`, which is what keeps macOS from calling it "damaged" (an unsigned bundle does). It is still
           # not notarized, so the first launch is refused as an unidentified developer until it is allowed by hand.
+          # A machine with a Developer ID signs by overriding that setting: --config.mac.identity="Developer ID Application: …".
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # The bundle is never unsigned again: a run that skipped signing shipped installers macOS calls damaged.
+      - name: Check the macOS bundle is signed
+        if: runner.os == 'macOS'
+        run: |
+          app=$(find release -maxdepth 3 -name ZettCode.app -print -quit)
+          test -n "$app" || { echo "no ZettCode.app in release/"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$app"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -80,4 +89,4 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" installers/* --repo "${GITHUB_REPOSITORY}" --latest=false \
             --title "${GITHUB_REF_NAME}" \
-            --notes "Desktop app for macOS (Apple Silicon), Windows and Linux. Signed ad hoc, not notarized: macOS refuses the first launch as an unidentified developer — allow it under System Settings → Privacy & Security, or (if it says the app is damaged) copy it to Applications and run: xattr -dr com.apple.quarantine /Applications/ZettCode.app. Windows SmartScreen asks for More info → Run anyway. It only needs a gateway to connect to; the page itself comes from the gateway, so a gateway update changes the app without a new installer."
+            --notes "Desktop app for macOS (Apple Silicon), Windows and Linux. Not signed with an Apple Developer certificate (ad hoc, not notarized), so macOS refuses the first launch as an unidentified developer — open System Settings → Privacy & Security and press Open Anyway. The 0.2.0 installers had no signature at all, which macOS 15 and later reports as *the app is damaged*; for those, copy it to Applications and run: xattr -dr com.apple.quarantine /Applications/ZettCode.app. Windows SmartScreen asks for More info → Run anyway. It only needs a gateway to connect to; the page itself comes from the gateway, so a gateway update changes the app without a new installer."
