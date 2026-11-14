@@ -95,7 +95,7 @@ class RecapPlugin(TuiPlugin):
     """Summarise the session when the reader has been away, and on ``/recap``."""
 
     name = "recap"
-    description = "summarise where the session is when you step away"
+    description = "A summary of where the session is, when you step away"
 
     def __init__(self) -> None:
         """Start with nothing counted and no recap on its way."""

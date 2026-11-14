@@ -68,8 +68,8 @@ class PluginRow:
         switchable: Whether there is a switch to draw; the catalog decides it, so the editor's panel agrees.
         why: Why there is none, when there is none.
         note: What else the row has to say — a plugin that lost its name to one loaded before it, for instance.
-        description: What the plugin adds, in one line: its own, or the summary its distribution declares. Drawn
-            beside the setting when the page is wide enough for both.
+        description: What the plugin adds, in one line: its own, or the summary its distribution declares when this
+            process never loaded it. Drawn beside the setting when the page is wide enough for both columns.
     """
 
     name: str
@@ -97,7 +97,7 @@ class PluginsPage(Widget):
             todos        ●────  off    harness.todowrite Render write and edit calls as a checklist
             coding       failed                          could not load: no plugin provides the model
           Third-party ──────────────────────────────────────────────────────────────
-            monitor      ━━━━●  on     zettcode-monitor  record model calls and export them as HTML
+            monitor      ━━━━●  on     zettcode-monitor  Every model call, exported as HTML
             acme         ●────  off    zettcode-acme     Search results from the acme index
             held         fixed                          zettcode-held
 
@@ -444,19 +444,20 @@ class PluginsPage(Widget):
             room = right - EDGE - start
             if room >= SETTING_WIDTH + COLUMN_GAP + MIN_DESCRIPTION:
                 # Wide enough for both columns: where the switch writes (or which distribution it came from), then
-                # what the plugin does. The setting is the footnote, so it is the dimmer of the two.
-                if row.builtin:
-                    text, colour = row.setting, blend(theme.muted, surface, 0.35)
-                else:
-                    text, colour = row.origin, blend(theme.muted, surface, 0.35)
-                canvas.draw_text(
-                    start,
-                    y,
-                    truncate(text, SETTING_WIDTH),
-                    Style(foreground=colour, background=surface),
-                    max_width=SETTING_WIDTH,
-                )
-                said_at = start + SETTING_WIDTH + COLUMN_GAP
+                # what the plugin does. The setting is the footnote, so it is the dimmer of the two. A row nothing
+                # writes from — a compiled-in plugin that failed, whose setting never loaded — has no second column
+                # to line up with, so what it has to say starts where the first one would have.
+                setting = row.setting if row.builtin else row.origin
+                said_at = start
+                if setting:
+                    canvas.draw_text(
+                        start,
+                        y,
+                        truncate(setting, SETTING_WIDTH),
+                        Style(foreground=blend(theme.muted, surface, 0.35), background=surface),
+                        max_width=SETTING_WIDTH,
+                    )
+                    said_at = start + SETTING_WIDTH + COLUMN_GAP
                 said = f"could not load: {row.failure}" if row.failure else row.description
                 said_room = right - EDGE - said_at
                 if said and said_room > 0:

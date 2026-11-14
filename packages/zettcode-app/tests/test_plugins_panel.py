@@ -83,7 +83,7 @@ def test_a_row_says_what_the_plugin_does_after_the_place_its_switch_writes():
     page, _ = _page(
         (
             PluginRow("skills", "skills", builtin=True, setting="skills.enabled", description="The slash commands"),
-            PluginRow("monitor", "zettcode-monitor", description="record model calls and export them as HTML"),
+            PluginRow("monitor", "zettcode-monitor", description="Every model call, exported as HTML"),
         )
     )
 
@@ -91,9 +91,9 @@ def test_a_row_says_what_the_plugin_does_after_the_place_its_switch_writes():
 
     skill = next(line for line in lines if "skills.enabled" in line)
     monitor = next(line for line in lines if "zettcode-monitor" in line)
-    assert "The slash commands" in skill and "record model calls and export them as HTML" in monitor
+    assert "The slash commands" in skill and "Every model call, exported as HTML" in monitor
     assert skill.index("skills.enabled") == monitor.index("zettcode-monitor"), "the setting column lines up"
-    assert skill.index("The slash commands") == monitor.index("record model calls"), "and so does the one after it"
+    assert skill.index("The slash commands") == monitor.index("Every model call"), "and so does the one after it"
 
 
 def test_a_page_with_no_room_for_both_columns_keeps_the_setting_and_leaves_the_rest_to_the_line_below():

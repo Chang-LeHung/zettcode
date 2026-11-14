@@ -282,7 +282,7 @@ class SelfCompaction(Plugin[PluginContext]):
     """
 
     name = "self-compaction"
-    description = "Let the model compact its own context"
+    description = "The model's own compaction of a full context"
     setting = PluginSetting("self_compaction", "compaction", "self")
 
     def activate(self, ctx: PluginContext) -> None:

@@ -30,7 +30,7 @@ class MonitorPlugin(TuiPlugin):
     """Registers the recorder as an agent extension and the ``/monitor`` command."""
 
     name = "monitor"
-    description = "record model calls and export them as HTML"
+    description = "Every model call, exported as HTML"
 
     def __init__(self, root: Path | None = None) -> None:
         self.extension = MonitorExtension(root if root is not None else default_root())
