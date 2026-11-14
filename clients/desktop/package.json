@@ -2,7 +2,7 @@
   "name": "zettcode-desktop",
   "version": "0.1.1",
   "private": true,
-  "description": "The ZettCode desktop app: the gateway's page in a window, with a list of servers",
+  "description": "The ZettCode desktop app: a window on the gateway you choose, with a list of servers",
   "author": "Chang-LeHung",
   "type": "module",
   "license": "MIT",
@@ -34,7 +34,7 @@
     },
     "files": [
       "dist/**/*",
-      "renderer/**/*",
+      "web/**/*",
       "assets/icon.png",
       "package.json"
     ],
@@ -43,11 +43,11 @@
       "target": ["dmg", "zip"]
     },
     "win": {
-      "target": ["nsis"]
+      "target": ["nsis", "zip"]
     },
     "linux": {
       "category": "Development",
-      "target": ["AppImage", "deb"]
+      "target": ["AppImage", "deb", "tar.gz"]
     }
   }
 }

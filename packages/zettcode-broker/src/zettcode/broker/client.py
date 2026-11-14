@@ -373,6 +373,7 @@ class BrokerClient:
         direct: bool = False,
         mode: str = MODE_STEER,
         images: Sequence[ImageData] = (),
+        raw: bool = False,
     ) -> Delivered:
         """Send a message to another session and return once it has taken it.
 
@@ -386,6 +387,9 @@ class BrokerClient:
                 ``"followup"`` waits until that request ends.
             images: Pictures to send with it. Only a ``direct`` message from a reader may carry them, and the broker
                 refuses them for any other.
+            raw: Hand the text over untouched as the recipient's own prompt, answered by its final message. Only
+                a registered session may ask, and only of a recipient that takes direct prompts; otherwise the
+                message arrives the ordinary way and the returned ``direct`` is ``False``.
 
         Raises:
             SendError: There is no broker, or the broker or the recipient refused, or nobody answered in time, or
@@ -397,6 +401,8 @@ class BrokerClient:
         body: dict[str, Any] = {"to": to, "text": cleaned, "via": via, "hops": hops, "mode": mode}
         if direct:
             body["direct"] = True
+        if raw:
+            body["raw"] = True
         if images:
             body["images"] = [picture.to_wire() for picture in images]
         return self._delivered(await self._request("POST", "/messages", json=body, send=True))
@@ -738,8 +744,10 @@ class BrokerClient:
             mode = MODE_STEER  # a peer that does not say: the protocol's default
         elif mode not in MODES:
             mode = MODE_FOLLOWUP  # one this version does not know: the safe half, not the disruptive one
+        # ``raw`` is a registered session's own prompt for the recipient, which the hub already checked.
+        direct = line.get("direct") is True and (via == VIA_USER or line.get("raw") is True)
         try:
-            pictures = parse_images(line.get("images")) if line.get("direct") is True and via == VIA_USER else ()
+            pictures = parse_images(line.get("images")) if direct else ()
         except Refused:
             return _ack(Receipt(False, "the message's pictures were malformed"))
         incoming = Incoming(
@@ -747,7 +755,7 @@ class BrokerClient:
             clean_text(text),
             hops,
             via if via in VIAS else VIA_AGENT,
-            line.get("direct") is True and via == VIA_USER,
+            direct,
             mode,
             line["group"] if isinstance(line.get("group"), str) else "",
             pictures,

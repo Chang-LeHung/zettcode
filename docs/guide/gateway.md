@@ -41,10 +41,9 @@ gateway.
 - `-r`/`--root` limits where a daemon may be started; by default any directory may be chosen.
   `--no-full` refuses to start daemons at the full shell level (no sandbox and no approval); `--full`
   allows it again after a recorded `--no-full`.
-- The [desktop app](app.md) connects from an origin of its own. A gateway with a token lets it in; without one it is
-  refused, because an origin is not a credential. `--client-origin https://client.example` adds another origin, for a
-  page of your own, and also needs a token. The Android app loads the gateway's page at its own origin and needs no
-  entry here.
+- The [desktop and Android apps](app.md) load the gateway's own page at its own origin, so they need nothing here.
+  A page of your own at another origin can be let in with `--client-origin https://client.example`; an origin is not a
+  credential, so that needs a token too.
 
 ### A read-only token
 

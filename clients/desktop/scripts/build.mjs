@@ -1,29 +1,17 @@
-// Builds the window's program, then the page it shows. The page is the gateway's own Vue application, built in its
-// app mode, so a component changed for the browser is changed for the desktop in the same commit.
+// Builds the window's program. The page the window shows is the gateway's own, loaded from the gateway at run time,
+// so nothing about it is built here: a change to the page ships with the gateway, not with an installer.
 
-import { spawnSync } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const desktop = resolve(here, "..");
-const gateway = resolve(desktop, "..", "gateway");
-
-const page = spawnSync(process.execPath, ["scripts/build.mjs", "--app", "--out", resolve(desktop, "renderer")], {
-  cwd: gateway,
-  stdio: "inherit",
-});
-if (page.status !== 0) process.exit(page.status ?? 1);
+const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 await rm(resolve(desktop, "dist"), { recursive: true, force: true });
 await mkdir(resolve(desktop, "dist"), { recursive: true });
 await build({
-  entryPoints: {
-    main: resolve(desktop, "src/main.ts"),
-    preload: resolve(desktop, "src/preload.ts"),
-  },
+  entryPoints: { main: resolve(desktop, "src/main.ts") },
   outdir: resolve(desktop, "dist"),
   outExtension: { ".js": ".cjs" },
   bundle: true,

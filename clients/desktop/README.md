@@ -1,41 +1,40 @@
 # ZettCode desktop
 
-The gateway's page in an Electron window. The window is the same Vue application the gateway serves, built in its app
-mode; this folder adds the server list, the key-store-backed token storage and `app://` serving. It holds no agent and
-no second HTTP client.
+A window on the gateway you choose. The app holds a server list and nothing else: choosing a server loads **the
+gateway's own page** at the gateway's origin, exactly as a browser would, so the sign-in cookie, the fetches and the
+socket are the page's ordinary same-origin ones. There is no token store, no bridge into the page, no CORS or
+WebSocket change on the gateway.
+
+Because the page comes from the gateway, **a change to the Vue/TS/CSS ships with the gateway, never with an installer.**
+A new installer is only for a change in this folder: the list (`web/index.html`), the window or menu (`src/main.ts`),
+the navigation rules (`src/navigation.ts`) or the icon.
 
 ## Run it
 
-From the repository root, `make desktop` installs the page's build toolchain, checks this folder, and builds both
-halves. Then:
-
 ```sh
 cd clients/desktop
-npm start          # builds the page and the main process, then opens the window
+npm ci
+npm start          # builds the main process and opens the window
 ```
 
-Start a gateway with a token first (`zettcode gateway start --token …`), then add its address in the app. A bare
-`npm install` here is not enough on a fresh clone: `scripts/build.mjs` calls `../gateway/scripts/build.mjs`, which
-needs the gateway's own `node_modules`.
+Start a gateway (`zettcode gateway start --token …`), then add its address in the app. It reopens the last server on
+the next launch; **Server → Switch server…** (Ctrl/Cmd+Shift+S) returns to the list, and so does a server that cannot
+be reached, with the reason.
 
-## Build the installers
+## Installers
 
 ```sh
-npm run package    # electron-builder: dmg/zip, NSIS, AppImage/deb under release/
+npm run package    # for the system you run it on: dmg+zip, NSIS+zip, AppImage+deb+tar.gz under release/
 ```
 
-`npm run build` alone writes `dist/` (main and preload) and `renderer/` (the page). The renderer comes from
-`../gateway/scripts/build.mjs --app`, so a component change in the browser is in the desktop in the same commit. The
-app icon is `assets/icon.png`, the ZettCode mark rendered at 1024px from `../gateway/public/logo.svg`; it is set in
-`build.icon` and used for the window and the macOS dock.
+Each system builds its own, which `.github/workflows/desktop.yml` does on all three: push a tag `desktop-v<version>`
+(equal to `package.json`'s version) and it attaches the installers to a GitHub release. They are unsigned.
 
 ## Checks
 
 ```sh
 npm run check      # tsc, no emit
-npm test           # the profile store, without Electron
+npm test           # the navigation rules, without Electron
 ```
 
-`src/servers.ts` is plain Node: `safeStorage` encryption where the platform has it, a `0600` file, and a damaged file
-read as an empty list. `src/main.ts` is the window and the protocol handler; `src/preload.ts` is the only bridge the
-page may call. `docs/internal/clients-app.md` has the full map and the security rules.
+`docs/internal/clients-app.md` has the map and the security rules.

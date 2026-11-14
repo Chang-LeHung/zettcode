@@ -235,8 +235,15 @@ class ExternalSession:
             raise ExternalNotConnected("this external session was closed; make a new one")
         return await self.inbox.get()
 
-    async def send(self, to: str, text: str, *, mode: str = MODE_FOLLOWUP) -> Delivered:
+    async def send(self, to: str, text: str, *, mode: str = MODE_FOLLOWUP, raw: bool = False) -> Delivered:
         """Send one message to a session, by handle, id, or a prefix of its id.
+
+        Args:
+            to: The session's handle or id.
+            text: What to say.
+            mode: What a busy recipient does with it.
+            raw: Give the text to the recipient untouched, as its own prompt (no "message from …" frame). It only
+                takes effect for a recipient that runs direct prompts; ``Delivered.direct`` says whether it did.
 
         Raises:
             ExternalNotConnected: This session is not connected.
@@ -249,7 +256,7 @@ class ExternalSession:
         if not self._client.connected:
             raise ExternalNotConnected("the external session is not connected")
         via = VIA_EXTERNAL if self.kind == KIND_EXTERNAL else VIA_AGENT
-        return await self._client.send(to, text, via=via, mode=mode)
+        return await self._client.send(to, text, via=via, mode=mode, raw=raw)
 
     async def reply(self, message: Incoming, text: str, *, mode: str = MODE_FOLLOWUP) -> Delivered:
         """Answer the sender of ``message``; the stable sender id is used, not its handle."""
