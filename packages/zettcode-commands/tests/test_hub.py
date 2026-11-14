@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ import pytest
 from zettcode.commands.hub import (
     DAEMONS,
     GRAPH,
+    NEVER,
     SESSIONS,
     TABLE_TITLE_WIDTH,
     TABS,
@@ -23,12 +25,24 @@ from zettcode.commands.hub import (
 from zettcode.commands.hub_graph import Link, Node
 from zettcode.tui import KeyEvent, Rect, Theme
 
+#: The clock a page is read at in a test, so an age is a number and not whatever today is.
+NOW = 1_800_000_000.0
+
+#: The other end of a reading: a session nothing is known to have happened to.
+EPOCH = datetime(2020, 1, 1, tzinfo=timezone.utc)
+
+
+def at(seconds_ago: float) -> datetime:
+    """Return the moment ``seconds_ago`` before :data:`NOW`, as a stored session's times are: UTC."""
+    return datetime.fromtimestamp(NOW - seconds_ago, tz=timezone.utc)
+
 
 def data(**changes: object) -> HubData:
-    """A reading with one session and one daemon."""
+    """A reading with one session and one daemon, read at :data:`NOW`."""
     base = HubData(
         peers=(Peer("main", "the parser", "working", "/work"),),
         daemons=(Daemon("d-1", "watcher", "idle", model="m", workspace="/work"),),
+        now=NOW,
     )
     return dataclasses.replace(base, **changes)  # type: ignore[arg-type]
 
@@ -427,27 +441,35 @@ def test_a_note_does_not_hide_the_summary_on_the_graph_tab():
 
 
 class _Info:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, updated_at: datetime) -> None:
         self.id = name
         self.title = "" if name.startswith("old") else name
+        self.created_at = updated_at
+        self.updated_at = updated_at
 
 
 class _FakeSessions:
     """The store as the page reads it: a few records, the reader's own among them."""
 
-    def __init__(self, ids: list[str]) -> None:
+    def __init__(self, ids: list[str], moments: dict[str, datetime] | None = None) -> None:
         self._ids = ids
+        self._moments = moments or {}
 
     async def list(self, *, limit: int | None = None) -> list[object]:
-        return [_Info(name) for name in self._ids][:limit]
+        return [_Info(name, self._moments.get(name, at(365 * 86_400))) for name in self._ids][:limit]
 
 
 class _FakeClient:
     """The slice of the SDK the reading uses."""
 
-    def __init__(self, workspace: Path, graph: dict[str, object] | Exception | None = None) -> None:
+    def __init__(
+        self,
+        workspace: Path,
+        graph: dict[str, object] | Exception | None = None,
+        moments: dict[str, datetime] | None = None,
+    ) -> None:
         self.session = type("Session", (), {"id": "self-1"})()
-        self.sessions = _FakeSessions(["self-1", "p-1", "old-9", "run-1"])
+        self.sessions = _FakeSessions(["self-1", "p-1", "old-9", "run-1"], moments)
         self.workspace = workspace
         # The broker's roster agrees with the client's cached peers unless one has just disconnected.
         self._graph = (
@@ -478,8 +500,14 @@ class _FakeClient:
         return self._graph
 
 
-def _daemon_info(session_id: str, status: str, workspace: str, name: str = "") -> object:
-    """A record as `list_daemons` returns it: every field of `DaemonInfo` the page reads."""
+def _daemon_info(
+    session_id: str, status: str, workspace: str, name: str = "", *, started: float = NOW - 3600, wrote: float = 0.0
+) -> object:
+    """A record as `list_daemons` returns it: every field of `DaemonInfo` the page reads.
+
+    ``started`` is when it started and ``wrote`` when its state file was last written; a record that never wrote one
+    says ``0.0``, as the SDK does.
+    """
     return type(
         "Info",
         (),
@@ -492,6 +520,8 @@ def _daemon_info(session_id: str, status: str, workspace: str, name: str = "") -
             "model": "m",
             "effort": None,
             "permission": "safe",
+            "started_at": started,
+            "updated_at": wrote,
         },
     )()
 
@@ -523,9 +553,10 @@ def test_the_sessions_tab_is_the_roster_and_no_stored_session_is_added_to_it(tmp
     assert not hasattr(reading, "offline")
 
 
-def test_the_daemons_tab_lists_running_daemons_then_every_one_with_no_process(tmp_path, daemons_on_disk):
+def test_the_daemons_tab_lists_every_record_and_the_stored_sessions_nothing_runs(tmp_path, daemons_on_disk):
     """Offline: stored in this workspace, and nothing runs it. The reader's own session, a registered peer and the
-    session of a daemon record (`run-1`, `dead-1`, whatever its status) are each accounted for already."""
+    session of a daemon record (`run-1`, `dead-1`, whatever its status) are each accounted for already. They are
+    listed by the same clock as everything else on the tab, so a year-old session comes after the daemons."""
     reading = _read(_FakeClient(tmp_path))
 
     by_id = {daemon.session_id: daemon.status for daemon in reading.daemons}
@@ -535,8 +566,8 @@ def test_the_daemons_tab_lists_running_daemons_then_every_one_with_no_process(tm
         "dead-1": "dead",
         "dead-9": "dead",
         "old-9": "offline",
-    }, "running and stopped (every workspace), then the stored session nothing runs"
-    assert list(by_id)[-1] == "old-9", "offline ones follow the daemons"
+    }, "every record of the machine, and the stored session nothing runs"
+    assert list(by_id)[-1] == "old-9", "the oldest thing on the tab is last"
     assert [daemon.workspace for daemon in reading.daemons if daemon.status == "offline"] == [str(tmp_path.resolve())]
 
 
@@ -779,7 +810,7 @@ def test_only_this_workspaces_dead_daemons_are_in_the_picture_and_a_title_beats_
 
 
 async def _titled(*, limit: int | None = None) -> list[object]:
-    info = _Info("dead-1")
+    info = _Info("dead-1", at(60))
     info.title = "the stored title"
     return [info]
 
@@ -1072,7 +1103,10 @@ def test_a_slow_roster_is_blamed_on_the_roster_not_on_the_daemons(tmp_path, daem
 def test_the_tables_have_titles_lined_up_with_their_columns():
     opened = HubPage(
         data(
-            peers=(Peer("main", "the parser", "working", "/work"), Peer("a-longer-handle", "t", "idle", "/elsewhere")),
+            peers=(
+                Peer("main", "the parser", "working", "/work", activity=NOW - 120),
+                Peer("a-longer-handle", "t", "idle", "/elsewhere", activity=NOW - 7200),
+            ),
             daemons=(
                 Daemon(
                     "d-1",
@@ -1081,6 +1115,7 @@ def test_the_tables_have_titles_lined_up_with_their_columns():
                     model="the-model",
                     workspace="/work",
                     title="the-daemon-title",
+                    activity=NOW - 60,
                 ),
             ),
         ),
@@ -1090,18 +1125,102 @@ def test_the_tables_have_titles_lined_up_with_their_columns():
     opened._show(SESSIONS)
     rows = _rendered(opened, 110, 24)
     head, first = rows[3], rows[4]
-    assert head.split() == ["NAME", "STATE", "TITLE", "WORKSPACE"]
+    assert head.split() == ["NAME", "STATE", "LAST", "TITLE", "WORKSPACE"]
     assert head.index("STATE") == first.index("\u25cf"), "STATE sits over the dot"
+    assert head.index("LAST") == first.index("2m ago"), "LAST sits over the age it says"
     assert head.index("TITLE") == first.index("the parser")
     assert head.index("WORKSPACE") == first.index("/work")
     assert head.index("NAME") == first.index("main")
 
     opened._show(DAEMONS)
     rows = _rendered(opened, 110, 24)
-    assert rows[3].split() == ["NAME", "STATE", "TITLE", "MODEL", "WORKSPACE"]
+    assert rows[3].split() == ["NAME", "STATE", "LAST", "TITLE", "MODEL", "WORKSPACE"]
+    assert rows[3].index("LAST") == rows[4].index("1m ago")
     assert rows[3].index("TITLE") == rows[4].index("the-daemon-title")
     assert rows[3].index("MODEL") == rows[4].index("the-model")
     assert rows[3].index("WORKSPACE") == rows[4].index("/work")
+
+
+def test_the_sessions_tab_is_newest_first_and_says_how_long_ago_each_one_was():
+    opened = HubPage(
+        data(
+            peers=(
+                Peer("quiet", "t", "idle", "/work"),
+                Peer("recent", "t", "working", "/work", activity=NOW - 30),
+                Peer("older", "t", "idle", "/work", activity=NOW - 3 * 3600),
+            )
+        ),
+        on_close=lambda: None,
+    )
+    opened._show(SESSIONS)
+
+    rows = _rendered(opened, 110, 24)
+
+    assert [item.label for item in opened.list.items] == ["recent", "older", "quiet"]
+    assert "just now" in rows[4], "the newest session is first and says so"
+    assert "3h ago" in rows[5]
+    assert NEVER in rows[6], "a session nothing is known about says so and goes last"
+
+
+def test_the_daemons_tab_is_newest_first_across_running_stopped_and_stored_rows():
+    """The order is one order: a stored session is not pushed to the bottom for being stored, it is placed by its
+    own last change, and only a row nothing says anything about falls to the end."""
+    opened = HubPage(
+        data(
+            daemons=(
+                Daemon("stored", "stored", "offline", activity=NOW - 10 * 86_400),
+                Daemon("run", "run", "working", activity=NOW - 5),
+                Daemon("dead", "dead", "dead", activity=NOW - 600),
+                Daemon("unknown", "unknown", "idle"),
+            )
+        ),
+        on_close=lambda: None,
+    )
+    opened._show(DAEMONS)
+
+    rows = _rendered(opened, 110, 24)
+
+    assert [item.label for item in opened.list.items] == ["run", "dead", "stored", "unknown"]
+    assert "just now" in rows[4] and "10m ago" in rows[5] and "10d ago" in rows[6]
+    assert NEVER in rows[7]
+
+
+def test_a_reading_dates_a_session_by_the_brokers_messages_or_its_own_conversation_whichever_is_newer(
+    tmp_path, daemons_on_disk
+):
+    graph = {
+        "sessions": [{"session_id": "p-1", "handle": "p-1", "status": "idle"}],
+        "edges": [],
+        "recent": [{"from": {"session_id": "p-1"}, "to": {"kind": "group", "name": "g"}, "ts": NOW - 300}],
+    }
+
+    sent = _read(_FakeClient(tmp_path, graph))
+    wrote = _read(_FakeClient(tmp_path, graph, {"p-1": at(30)}))
+
+    assert sent.peers[0].activity == NOW - 300, "a message the broker remembers is when it last did something"
+    assert wrote.peers[0].activity == NOW - 30, "its conversation changing here is newer, and is the answer"
+    assert sent.now and wrote.now, "a reading carries the clock its ages are counted from"
+
+
+def test_a_reading_dates_a_daemon_by_its_record_or_its_sessions_conversation(monkeypatch, tmp_path):
+    from zettcode.sdk import daemons
+
+    here = str(tmp_path)
+    records = [
+        _daemon_info("run-1", "idle", here, "runner", wrote=NOW - 600),
+        _daemon_info("run-2", "idle", here, "other", wrote=NOW - 9000),
+        _daemon_info("run-3", "idle", here, "quiet", wrote=NOW - 20),
+    ]
+    monkeypatch.setattr(daemons, "list_daemons", lambda: records)
+    client = _FakeClient(tmp_path, {"sessions": [], "edges": []})
+    client.sessions = _FakeSessions(["run-1", "run-2"], {"run-1": at(60), "run-2": at(30)})
+
+    reading = _read(client)
+
+    activity = {daemon.session_id: daemon.activity for daemon in reading.daemons}
+    assert activity["run-1"] == NOW - 60, "the conversation is newer than the record"
+    assert activity["run-2"] == NOW - 30, "and so is this one"
+    assert activity["run-3"] == NOW - 20, "a daemon with no conversation here is dated by its own last write"
 
 
 def test_a_long_title_is_cut_so_the_other_columns_keep_their_room():
@@ -1122,13 +1241,13 @@ def test_a_long_title_is_cut_so_the_other_columns_keep_their_room():
     )
     opened._show(DAEMONS)
 
-    for width in (80, 110):
+    for width in (90, 110):
         rows = _rendered(opened, width, 24)
         assert rows[3].index("MODEL") == rows[4].index("the-model")
         assert rows[3].index("WORKSPACE") == rows[4].index("/work")
         assert "\u2026" in rows[4]
 
-    assert opened.table.widths[1] <= TABLE_TITLE_WIDTH, "the title column itself is capped"
+    assert opened.table.widths[3] <= TABLE_TITLE_WIDTH, "the title column itself is capped"
     for width in (40, 60):
         rows = _rendered(opened, width, 24)
         assert "NAME" in rows[3] and "STATE" in rows[3], "the first columns survive a narrow page"

@@ -485,6 +485,8 @@ class DaemonInfo:
         permission: The shell level: ``deny``, ``safe`` or ``full``.
         pid: Its process id, or ``0`` when it never recorded one.
         started_at: Seconds since the epoch when it started, or ``0.0``.
+        updated_at: Seconds since the epoch when its record was last written — a status as a turn began or ended, a
+            label a reader set, the counters while it works — or ``0.0`` when it never was.
         input_tokens: Everything its session has sent to the model, or ``None`` when it has recorded none.
         output_tokens: Everything the model has generated for it, or ``None``.
         context_tokens: How full its context was on the newest call, or ``None``.
@@ -505,6 +507,7 @@ class DaemonInfo:
     permission: str | None = None
     pid: int = 0
     started_at: float = 0.0
+    updated_at: float = 0.0
     input_tokens: int | None = None
     output_tokens: int | None = None
     context_tokens: int | None = None
