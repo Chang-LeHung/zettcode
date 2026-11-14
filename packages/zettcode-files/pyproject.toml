@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   # The plugin base classes and the shape of an @ reference.
-  "zettcode-engine>=0.4.6,<0.5",
+  "zettcode-engine>=0.4.7,<0.5",
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for.

@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   # The plugin base classes, the notice the transcript recognises, and how an error is worded.
-  "zettcode-engine>=0.4.6,<0.5",
+  "zettcode-engine>=0.4.7,<0.5",
   # The MCP extension this subclasses.
   "zett-agent>=0.2.10,<0.3",
 ]
