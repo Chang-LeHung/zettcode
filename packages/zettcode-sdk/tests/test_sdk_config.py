@@ -304,17 +304,20 @@ def test_a_config_file_with_an_unknown_key_is_reported(workspace, tmp_path):
         build(workspace, path=path)
 
 
-def test_a_config_file_with_no_model_is_reported(workspace, tmp_path):
+def test_a_config_file_with_no_model_is_not_an_error(workspace, tmp_path):
+    """A file with no `[[models]]` is not a machine with no model: a plugin can offer one."""
     path = tmp_path / "empty.toml"
     path.write_text("[transcript]\ntips = false\n", encoding="utf-8")
 
-    with pytest.raises(ConfigurationError):
-        build(workspace, path=path)
+    config = build(workspace, path=path)
+
+    assert config.models == ()
 
 
-def test_a_missing_config_file_with_no_models_is_reported_as_missing_models(workspace, tmp_path):
-    with pytest.raises(ConfigurationError):
-        build(workspace, path=tmp_path / "absent.toml")
+def test_a_missing_config_file_with_no_models_is_not_an_error(workspace, tmp_path):
+    config = build(workspace, path=tmp_path / "absent.toml")
+
+    assert config.models == ()
 
 
 def test_every_configuration_error_is_a_zettcode_error_and_a_value_error(workspace):

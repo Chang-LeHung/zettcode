@@ -22,8 +22,9 @@ def _context(tmp_path) -> PluginContext:
     return PluginContext(config)
 
 
-def test_the_plugin_stays_off_until_the_reader_enables_it():
-    assert ModelsPlugin.default_enabled() is False
+def test_the_plugin_is_on_until_the_reader_turns_it_off():
+    """A key in the environment is enough for the vendor to be offered: the first run needs no enabling."""
+    assert ModelsPlugin.default_enabled() is True
 
 
 def test_a_key_registers_its_host_and_its_official_model(tmp_path, monkeypatch):
@@ -93,7 +94,8 @@ def test_the_deepseek_id_is_the_one_its_endpoint_accepts():
     assert deepseek.multimodal is True
 
 
-def test_a_shown_name_clash_is_reported_rather_than_silently_skipped(tmp_path, monkeypatch):
+def test_a_name_the_reader_already_uses_leaves_that_vendor_out(tmp_path, monkeypatch):
+    """The plugin is on by default, so a conflict is the reader's entry winning, not a plugin that failed."""
     _clear(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     config = ZettCodeConfig(
@@ -104,30 +106,26 @@ def test_a_shown_name_clash_is_reported_rather_than_silently_skipped(tmp_path, m
     )
     ctx = PluginContext(config)
 
-    with pytest.raises(ValueError, match="already shown as 'GPT-6.1 Sol'"):
-        ModelsPlugin().activate(ctx)
+    ModelsPlugin().activate(ctx)
+
+    assert ctx.providers == ()
 
 
-def test_every_clash_is_named_in_one_refusal(tmp_path, monkeypatch):
+def test_a_conflicting_vendor_does_not_cost_the_others(tmp_path, monkeypatch):
     _clear(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     config = ZettCodeConfig(
         workspace=tmp_path,
         store=tmp_path / "sessions",
-        models=(
-            ModelConfig(model="one", display_model="GPT-6.1 Sol"),
-            ModelConfig(model="two", display_model="Claude Opus 5.5"),
-        ),
+        models=(ModelConfig(model="one", display_model="GPT-6.1 Sol"),),
         harness_dir=tmp_path / "harness",
     )
+    ctx = PluginContext(config)
 
-    with pytest.raises(ValueError) as caught:
-        ModelsPlugin().activate(PluginContext(config))
+    ModelsPlugin().activate(ctx)
 
-    message = str(caught.value)
-    assert "OpenAI" in message and "GPT-6.1 Sol" in message
-    assert "Anthropic" in message and "Claude Opus 5.5" in message
+    assert [provider.name for provider in ctx.providers] == ["anthropic"]
 
 
 def test_the_table_is_internally_consistent():

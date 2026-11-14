@@ -6,16 +6,22 @@ registers it as one :class:`~zettcode.plugin_api.ProvidedModel`, and leaves the 
 from the variable named here and never writes it to the configuration.
 
 The list is deliberately static: a start asks no vendor for anything, so a key in the environment costs no network
-round trip. It is off by default — ambient keys should not change a model list unless the reader enables the plugin
-with ``[plugins] enable = ["models"]``.
+round trip. It is on by default: a key in the environment is enough for the host to be offered, and a machine whose
+own configuration lists no model starts on the first one a plugin offers, so the first run is a prompt box rather
+than an instruction. ``[plugins] disable = ["models"]`` is the way back out. A vendor whose host or shown name the
+reader's own configuration already has is left out rather than failing the plugin, because one conflict must not
+cost the vendors that do not conflict.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 
 from zettcode.plugin_api import Plugin, PluginContext, ProvidedModel, Provider
+
+logger = logging.getLogger("zettcode.models")
 
 #: The one place the version is written; ``pyproject.toml`` reads it from here.
 __version__ = "0.5.0"
@@ -135,14 +141,8 @@ class ModelsPlugin(Plugin[PluginContext]):
     name = "models"
     description = "An official model for each vendor API key in the environment"
 
-    @classmethod
-    def default_enabled(cls) -> bool:
-        """Stay off until the reader asks for it: ambient keys should not change a model list by themselves."""
-        return False
-
     def activate(self, ctx: PluginContext) -> None:
         """Register the host of every key that is set, with its current official model."""
-        clashes: list[str] = []
         for vendor in VENDORS:
             key = vendor.key()
             if key is None:
@@ -150,11 +150,10 @@ class ModelsPlugin(Plugin[PluginContext]):
             try:
                 ctx.agent.register_provider(_provider(vendor, key[0]))
             except ValueError as error:
-                # A clash is not swallowed: the loader reports this plugin failed, so the reader sees why the host
-                # is absent instead of finding it missing with no word. Every clash is named, not only the first.
-                clashes.append(f"{vendor.label}: {error}")
-        if clashes:
-            raise ValueError("; ".join(clashes))
+                # A name the reader's own entries (or an earlier plugin) already have is theirs, not this plugin's:
+                # it is on by default, so a conflict leaves that vendor out and costs the others nothing, rather
+                # than failing a plugin nobody asked for.
+                logger.info("models.skipped", extra={"vendor": vendor.name, "reason": str(error)})
 
 
 __all__ = ["ModelsPlugin", "Vendor", "VENDORS", "__version__"]

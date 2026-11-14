@@ -153,8 +153,9 @@ def test_a_model_whose_key_is_present_carries_no_such_note(monkeypatch):
     assert entry.token == "sk-acme" and entry.token_env is None
 
 
-def test_a_runtime_with_only_provided_models_asks_the_reader_to_pick_one(tmp_path):
-    from zettcode.config import NO_MODEL_CHOSEN, ZettCodeConfig
+def test_a_runtime_with_only_provided_models_starts_on_the_first_one(tmp_path):
+    """A key in the environment is enough to type at once: no `/model` press before the first prompt."""
+    from zettcode.config import ZettCodeConfig
     from zettcode.engine.core import ZettCodeEngine
     from zettcode.engine.extensions.compaction import OnDemandCompaction
     from zettcode.engine.plugins import Plugins
@@ -175,21 +176,49 @@ def test_a_runtime_with_only_provided_models_asks_the_reader_to_pick_one(tmp_pat
 
     runtime = ZettCodeEngine.preview(config, load)
 
-    assert runtime.active_model is None and [model.model for model in runtime.models] == ["m"]
-    assert runtime.no_model_refusal == NO_MODEL_CHOSEN
+    assert runtime.active_model is not None and runtime.active_model.model == "m"
+    assert [model.model for model in runtime.models] == ["m"]
+    assert runtime.required_model.model == "m", "a turn can run without a `/model` press"
+    assert runtime.compaction.max_tokens == runtime.active_model.compaction_max_tokens, (
+        "the policy was sized for the model the run started on"
+    )
     assert [model.model for model in seen[LLM].models] == ["m"]
-    with pytest.raises(ValueError, match="pick one with /model"):
-        _ = runtime.required_model
 
     before = runtime.provided_models
     with pytest.raises(ValueError, match="stay available"):
         runtime.replace_provided(())
-    assert runtime.provided_models == before and runtime.active_model is None
+    assert runtime.provided_models == before and runtime.active_model.model == "m"
 
     second = _provider(models=(ProvidedModel("m2"),))
     runtime.replace_provided(entries((second,)))
 
     assert [model.model for model in seen[LLM].models] == ["m2"]
+    assert runtime.active_model is not None and runtime.active_model.model == "m2"
+
+
+def test_a_file_model_is_the_one_the_run_starts_on_when_a_plugin_offers_one_too(tmp_path):
+    """The reader's own order wins; a provided model takes the first place only when the file has none."""
+    from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine.core import ZettCodeEngine
+    from zettcode.engine.extensions.compaction import OnDemandCompaction
+    from zettcode.engine.plugins import Plugins
+    from zettcode.engine.plugins.services import COMPACTION
+
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        store=tmp_path / "sessions",
+        models=(ModelConfig(model="file", token="t"),),
+        harness_dir=tmp_path / "harness",
+    )
+    provider = _provider(models=(ProvidedModel("provided"),))
+
+    def load(config, shared):
+        return Plugins(services={**shared, COMPACTION: OnDemandCompaction(None)}, providers=(provider,))
+
+    runtime = ZettCodeEngine.preview(config, load)
+
+    assert runtime.active_model is not None and runtime.active_model.model == "file"
+    assert [model.model for model in runtime.models] == ["file", "provided"]
 
 
 # -- discovery -----------------------------------------------------------------------------------------

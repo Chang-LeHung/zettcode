@@ -698,22 +698,22 @@ provider 继续添加模型。
 ### 从环境变量得到官方模型 {#official-models}
 
 `zettcode-models` 为四个大多数读者已经有 key 的厂商做这件事：OpenAI、Anthropic、DeepSeek 和 Z.AI。
-作为 extra 安装一次，再启用一次：
+作为 extra 安装一次：
 
 ```bash
 pip install "zettcode[models]"
-```
-
-```toml
-[plugins]
-enable = ["models"]
 ```
 
 设置了 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY` 或 `ZAI_API_KEY`（也接受
 `ZHIPUAI_API_KEY` 和 `ZHIPU_API_KEY` 两个别名）时，它会注册该 host 和它当前的官方模型：`GPT-6.1 Sol`、
 `Claude Opus 5.5`、`DeepSeek V4.1 Flash` 或 `GLM-5.3`。启动时不请求任何端点，这份列表是静态的，所以环境里的 key
 不会带来网络往返。模型会出现在 `/model` 里，标着 `from the openai plugin`（或 `anthropic`、`deepseek`、`zai`）；
-token 从环境读取，不会写进配置文件。插件默认关闭：环境里碰巧存在的 key 不应该自己改动模型列表。厂商更新模型时，只需改 `zettcode/models/__init__.py` 里的那张表。
+token 从环境读取，不会写进配置文件。
+
+插件**默认开启**：环境里有 key 就够了。配置里自己没有模型时，ZettCode 会直接用插件提供的第一条启动，所以首次运行
+就是一个可以输入的提示框，不需要先做 `/model` 选择。`[plugins] disable = ["models"]` 可以把它关掉；如果某个厂商的
+host 名或显示名已经被你自己的条目占用，那个厂商会被跳过，而不是让插件整体失败。厂商更新模型时，只需改
+`zettcode/models/__init__.py` 里的那张表。
 
 ## 提供配色 {#themes}
 

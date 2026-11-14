@@ -428,8 +428,9 @@ class ZettCodeEngine:
         os.chdir(config.workspace)
         file_models = config.models
         # A machine that has never been set up has no model to start on; the shell opens anyway and says so (see
-        # the invariant S23), and `use_model` sizes this runtime the moment `/config` writes the first entry. A
-        # model a plugin offers is not made active on its own: `/model` is where a reader chooses it.
+        # the invariant S23), and `use_model` sizes this runtime the moment `/config` writes the first entry. The
+        # first entry is also the one a run starts on: the file's, or — when it has none — the first model a plugin
+        # offers, chosen below once the plugins have been loaded.
         selected = file_models[0] if file_models else None
         effort = config.reasoning_effort if selected is None else selected.accepted_effort(config.reasoning_effort)
         # One policy, read by everything that decides whether a command is asked
@@ -471,6 +472,15 @@ class ZettCodeEngine:
         if shared:
             provided.update(shared)
         plugins = (load or _load_engine_plugins)(config, provided)
+        offered = entries(plugins.providers)
+        # The file is the reader's own order, so its first entry is the one a run starts on. With no entry there, the
+        # first model a plugin offers takes that place: a key in the environment is then enough to type at once,
+        # instead of the shell asking for a `/model` choice before it will do anything.
+        first_offered: ModelConfig | None = None
+        if selected is None and offered:
+            first_offered = offered[0]
+            selected = first_offered
+            effort = selected.accepted_effort(config.reasoning_effort)
         runtime = cls(
             config=config,
             persistence=persistence,
@@ -486,8 +496,14 @@ class ZettCodeEngine:
             plugins=plugins,
             _models=models,
             file_models=file_models,
-            provided_models=entries(plugins.providers),
+            provided_models=offered,
         )
+        if first_offered is not None:
+            # The compaction policy asked for the selected model while it activated and was given none: this is the
+            # same sizing a switch does. A runtime whose plugins provide no policy (an engine preview with no agent
+            # parts) has nothing to size, and `use_model` would look it up in vain.
+            if runtime.plugins.find(COMPACTION, OnDemandCompaction) is not None:
+                runtime.use_model(first_offered)
         context_reports.bind(runtime)
         context_page.bind(runtime)
         # The plugins are loaded, so the models they offered are known: a plugin that lists the models sees its own.

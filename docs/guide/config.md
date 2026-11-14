@@ -472,7 +472,8 @@ multimodal = true
 DeepSeek's current Flash model accepts images; Pro does not. If your gateway
 does not expose Flash's vision capability, keep `multimodal = false` there too.
 
-The first entry is selected at startup. Inside ZettCode, run `/model` and choose
+The first entry is selected at startup; when the file lists none, the first model a plugin offers is used instead,
+so a vendor API key in the environment is enough for the first run. Inside ZettCode, run `/model` and choose
 an entry, or type `/model DeepSeek Flash`. Switching changes later requests;
 it does not start a new session or interrupt a request already running. Entries
 added with [`/config`](#adding-models-with-config) are available at once; after editing the
@@ -792,7 +793,7 @@ or your shell history in an issue.
 
 | Symptom | What to check |
 | --- | --- |
-| `No models configured` | Add a `[[models]]` entry. The terminal starts without one and `/config` writes the first; `zettcode prompt` and `zettcode doctor` refuse until the file has it. |
+| `No models configured` | Add a `[[models]]` entry, or set a vendor key the `models` plugin can use (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `ZAI_API_KEY`). The terminal starts either way and `/config` writes the first; a machine with neither refuses a request with this sentence. |
 | `Missing token for model ...` | Supply `token`, or set the variable of that API in the launching terminal: `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY` for an `anthropic` entry. A placeholder is non-empty and only fails later at the API. |
 | `Unknown config keys ...` | Use only the keys listed here. For example, `model_name` should be `model`. |
 | `must be bool` / `must be int` | Use `true`, not `"true"`; use `1000000`, not `"1000000"`. |
