@@ -9,11 +9,14 @@ from zettcode.engine.permission import ShellPolicy
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.plugin import Plugin, PluginSetting
 from zettcode.engine.plugins.services import HARNESS, POLICY
+from zettcode.engine.service_contracts import SESSION_STORE, SessionStoreService
 from zettcode.plugin_api.host import HOST_LINK, HostLink
 
 from .selection import HARNESS_CHOICES, HarnessChoices
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from pathlib import Path
+
     from zett_agent.extensions.base import AgentExtension
     from zett_agent.jit_harness import JITToolHost
 
@@ -66,6 +69,16 @@ class Harness(Plugin[PluginContext]):
             sandbox = policy.jit_sandbox()
             return "none" if sandbox is None else type(sandbox).__name__ + str(id(sandbox))
 
+        def session_file(session_id: str) -> Path | None:
+            """Where a session's conversation is stored, for ``profile_tools`` to read; ``None`` when nothing is."""
+            store = ctx.find(SESSION_STORE, SessionStoreService)  # type: ignore[type-abstract]
+            if store is None:
+                return None
+            try:
+                return store.session_path(session_id)
+            except ValueError:
+                return None
+
         def build(_: AgentBuild) -> AgentExtension:
             from .extension import SwitchedHarness
 
@@ -77,6 +90,7 @@ class Harness(Plugin[PluginContext]):
                 unbounded=policy.sandbox_missing,
                 legacy_root=ctx.config.harness_dir,
                 choices=choices,
+                session_file=session_file,
             )
 
         ctx.agent.register_extension_factory("SwitchedHarness", build)

@@ -141,17 +141,17 @@ async def test_an_effort_that_does_not_exist_or_is_not_taken_is_refused_with_the
         assert client.efforts == ("low", "medium")
 
 
-async def test_the_harness_starts_off_and_is_switched_on_and_off_for_the_next_prompt(tmp_path):
+async def test_the_harness_starts_on_and_is_switched_off_and_on_for_the_next_prompt(tmp_path):
     async with client_for(tmp_path) as client:
-        assert client.harness is False, "off unless asked for"
-        assert client.use_harness(True) is True and client.harness is True
+        assert client.harness is True, "on unless asked not to"
         assert client.use_harness(False) is False and client.harness is False
+        assert client.use_harness(True) is True and client.harness is True
 
-    async with client_for(tmp_path, jit_harness=True) as started_on:
-        assert started_on.harness is True, "the config can start a run with it on"
+    async with client_for(tmp_path, jit_harness=False) as started_off:
+        assert started_off.harness is False, "the config can start a run with it off"
 
     with pytest.raises(ClientClosedError):
-        started_on.use_harness(True)
+        started_off.use_harness(True)
 
 
 async def test_a_models_search_is_listed_with_the_models(tmp_path):

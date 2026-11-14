@@ -62,15 +62,15 @@ async def _agent(tmp_path: Path, switch: HarnessSwitch, model: _Model, probe: _P
     )
 
 
-def test_a_run_starts_with_the_harness_off_and_the_config_can_start_it_on(tmp_path: Path):
+def test_a_run_starts_with_the_harness_on_and_the_config_can_start_it_off(tmp_path: Path):
     path = tmp_path / "config.toml"
     body = '[[models]]\nmodel = "a"\ntoken = "t"\n'
 
     path.write_text(body, encoding="utf-8")
-    assert load_config(tmp_path, path=path).jit_harness is False
-
-    path.write_text(body + "\n[harness]\njit = true\n", encoding="utf-8")
     assert load_config(tmp_path, path=path).jit_harness is True
+
+    path.write_text(body + "\n[harness]\njit = false\n", encoding="utf-8")
+    assert load_config(tmp_path, path=path).jit_harness is False
 
     path.write_text(body + "\n[harness]\njit = 1\n", encoding="utf-8")
     with pytest.raises(ValueError, match="jit"):
@@ -103,6 +103,18 @@ async def test_with_the_switch_off_a_request_has_none_of_the_harness(tmp_path: P
         for message in model.requests[0].messages
     ), "no guidance about a tool that is not offered"
     assert not (tmp_path / "harness").exists(), "nothing is created on disk for a harness nobody asked for"
+
+
+async def test_a_session_that_never_writes_a_tool_leaves_nothing_on_disk_even_with_the_harness_on(tmp_path: Path):
+    """The harness is on by default, so every session carries it: only a repository the model makes may cost a folder."""
+    model, probe, switch = _Model(), _Probe(), HarnessSwitch(on=True)
+    agent = await _agent(tmp_path, switch, model, probe)
+
+    await _turn(agent)
+    await _turn(agent, "another")
+
+    assert HARNESS_TOOLS <= probe.offered[0]
+    assert not (tmp_path / "harness").exists(), "no folder for a session that wrote no tool"
 
 
 async def test_with_the_switch_on_a_request_has_the_four_tools_and_their_guidance(tmp_path: Path):
@@ -353,7 +365,11 @@ def test_the_default_harness_folder_is_not_inside_the_default_session_store():
 
 def test_the_plugin_registers_the_harness_even_when_off_so_the_command_can_turn_it_on(tmp_path: Path):
     config = ZettCodeConfig(
-        workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "sessions", mcp_enabled=False
+        workspace=tmp_path,
+        models=(ModelConfig(model="m", token="t"),),
+        store=tmp_path / "sessions",
+        mcp_enabled=False,
+        jit_harness=False,
     )
 
     found = [e for e in agent_extensions(config) if isinstance(e, SwitchedHarness)]
@@ -377,8 +393,8 @@ async def test_the_runtime_turns_the_harness_on_and_off_and_starts_from_the_conf
         )
         return runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
 
-    off, on = runtime(), runtime(jit_harness=True)
-    assert off.harness.on is False and on.harness.on is True
+    on, off = runtime(), runtime(jit_harness=False)
+    assert on.harness.on is True and off.harness.on is False, "a run starts with it on unless the config says not"
 
     assert off.use_harness(True) is True and off.harness.on is True
     assert off.use_harness(False) is False and off.harness.on is False

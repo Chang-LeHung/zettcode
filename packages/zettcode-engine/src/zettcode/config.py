@@ -504,8 +504,9 @@ class ZettCodeConfig:
             shows in its plan panel. Off by default: a plan is a turn spent
             updating it, and not every session wants one.
         jit_harness: Start with the just-in-time harness on: the model may write small Python tools of its own
-            and run them. Off by default, because what it writes runs in this process, outside the shell's
-            permission; the terminal's ``/plugins`` switch writes it for the next start.
+            and run them. On by default; what it writes runs in a child process of its own, and inside the shell's
+            sandbox at every level below ``full``. ``[harness] jit = false`` (or the terminal's ``/plugins`` switch)
+            turns it off for the next start.
         shell_network: Let a command that runs in the ``safe`` sandbox use the network. Off by default; ``[shell]
             network = true`` turns it on. ``full`` always has the network, and so does a machine with no sandbox.
         sessions_enabled: Register with the background session broker, so this session can be
@@ -558,7 +559,7 @@ class ZettCodeConfig:
     subagent_max_iterations: int = DEFAULT_SUBAGENT_MAX_ITERATIONS
     subagent_messaging: bool = False
     todowrite_enabled: bool = False
-    jit_harness: bool = False
+    jit_harness: bool = True
     shell_network: bool = False
     sessions_enabled: bool = True
     update_enabled: bool = True
@@ -1132,7 +1133,7 @@ def load_config(
         ),
         subagent_messaging=bool(_setting(harness, "subagent_messaging", bool, False)),
         todowrite_enabled=bool(_setting(harness, "todowrite", bool, False)),
-        jit_harness=bool(_setting(harness, "jit", bool, False)),
+        jit_harness=bool(_setting(harness, "jit", bool, True)),
         shell_network=bool(_setting(shell, "network", bool, False)),
         sessions_enabled=bool(_setting(sessions, "enabled", bool, True)),
         update_enabled=bool(_setting(update, "enabled", bool, True)),

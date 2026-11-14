@@ -529,7 +529,22 @@ async def test_the_tools_the_model_is_offered_are_in_the_order_the_extensions_re
 
     [event async for event in agent.stream("hi", config=AgentRunConfig(session_id="s"))]
 
-    assert model.offered == [["ask_user", "read", "write_file", "edit", "bash", "todo_write", "task"]]
+    assert model.offered == [
+        [
+            "ask_user",
+            "read",
+            "write_file",
+            "edit",
+            "bash",
+            "todo_write",
+            "task",
+            # The harness is on by default, so its four control tools come last, after every other extension's.
+            "repo_create",
+            "repo_load",
+            "repo_unload",
+            "profile_tools",
+        ]
+    ]
 
 
 def test_switching_the_optional_extensions_off_leaves_them_out(tmp_path):
