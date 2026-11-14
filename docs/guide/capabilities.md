@@ -174,7 +174,8 @@ zettcode gateway stop
 
 To reach it from a phone, listening beyond this machine needs a token; see [Web gateway](/guide/gateway#signing-in-and-who-may-use-it).
 The page is plain HTTP, so put it behind TLS if it leaves a network you trust. The desktop (Electron) and Android
-shells are windows on the same page; their desktop installers are unsigned. See [Desktop & phone apps](/guide/app).
+shells are windows on the same page; the macOS app is signed ad hoc and the Windows and Linux ones are not signed at
+all. See [Desktop & phone apps](/guide/app).
 
 **Details.** [Web gateway](/guide/gateway), [Desktop & phone apps](/guide/app).
 
