@@ -28,7 +28,11 @@ npm run package    # for the system you run it on: dmg+zip, NSIS+zip, AppImage+d
 ```
 
 Each system builds its own, which `.github/workflows/desktop.yml` does on all three: push a tag `desktop-v<version>`
-(equal to `package.json`'s version) and it attaches the installers to a GitHub release. They are unsigned.
+(equal to `package.json`'s version) and it attaches the installers to a GitHub release. `build.mac.identity` is `"-"`,
+so the macOS app is signed ad hoc: it gets a valid `_CodeSignature` (macOS then refuses the first launch as an
+unidentified developer rather than as a damaged app) but it is not notarized. A machine with a Developer ID signs
+properly by overriding the setting — `npm run package -- --config.mac.identity="Developer ID Application: …"` — because
+the pinned identity wins over `CSC_NAME`; notarizing needs `notarize` options on top of that.
 
 ## Checks
 

@@ -33,10 +33,12 @@ gateway that serves its page.
 
 It is built for macOS (Apple Silicon), Windows and Linux. The installers are produced by CI on each system; they have
 not been tried on a real Windows or Linux machine yet, so report anything that does not start. Installers for all three
-are attached to the GitHub releases named `desktop-v<version>`. They are not signed with an Apple Developer ID, so
-macOS refuses the first launch as an unidentified developer: allow it under **System Settings → Privacy & Security**,
-or press **Open** in the dialog that offers it. On macOS 15 and later the same refusal can read as *the app is
-damaged* — that is what an unsigned bundle is called there. Copy it to Applications first, then:
+are attached to the GitHub releases named `desktop-v<version>`. They are signed ad hoc — not with an Apple Developer
+certificate, and not notarized — so macOS refuses the first launch as an unidentified developer: open **System
+Settings → Privacy & Security** and press **Open Anyway** (on macOS 14 and earlier, right-click → Open in Finder works
+too). The `desktop-v0.2.0` installers were built with no signature at all, which macOS 15 and later reports as *the app
+is damaged* rather than as an unidentified developer. For those, or for any copy that still says damaged, copy it to
+Applications and run:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/ZettCode.app
