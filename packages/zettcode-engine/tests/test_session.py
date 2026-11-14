@@ -1274,3 +1274,47 @@ async def test_lines_this_process_appended_are_not_lost_or_doubled_by_a_later_in
     store._sessions.clear()
 
     assert _ids(store.read("s1")) == [first, second, third]
+
+
+async def test_an_error_after_an_incremental_read_names_the_line_in_the_whole_file(tmp_path: Path):
+    store = SessionStore(tmp_path)
+    await _grown(store, 3)  # a header and three messages: four lines
+    store._sessions.clear()
+    store.read("s1")
+    path = store.session_path("s1")
+    good = path.read_bytes().splitlines()[-1]
+    path.write_bytes(path.read_bytes() + good.replace(b'"id": "', b'"id": "x') + b"\nnot json\n" + good + b"\n")
+    store._sessions.clear()
+
+    with pytest.raises(ValueError, match=r"at line 6 "):
+        store.read("s1")
+
+
+async def test_a_corrupt_final_line_that_has_its_newline_is_left_for_every_read_and_never_raises(tmp_path: Path):
+    """Same as the old whole-file parse: the last line is the one a crash could have torn."""
+    store = SessionStore(tmp_path)
+    ids = await _grown(store, 2)
+    path = store.session_path("s1")
+    path.write_bytes(path.read_bytes() + b"{broken\n")
+    for _ in range(2):
+        store._sessions.clear()
+        assert _ids(store.read("s1")) == ids
+
+
+async def test_a_dropped_cache_entry_means_the_next_read_parses_the_file_whole(tmp_path: Path, monkeypatch):
+    store = SessionStore(tmp_path)
+    await _grown(store, 3)
+    store._sessions.clear()
+    store.read("s1")
+    assert "s1" in store._readings
+    store._forget("s1")
+    seen: list[bool] = []
+    real = SessionStore._parse_tail
+    monkeypatch.setattr(
+        SessionStore,
+        "_parse_tail",
+        lambda self, path, known, data: (seen.append(known is None), real(self, path, known, data))[1],
+    )
+
+    assert len(store.read("s1").messages) == 3
+    assert seen == [True], "no reading survived, so nothing was continued from"
