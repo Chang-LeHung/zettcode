@@ -1426,3 +1426,24 @@ async def test_pinned_and_archived_exclude_each_other_and_outlive_the_name_ttl(t
 
     assert "01b" not in gateway._profiles
     assert gateway._profiles["01a"] == {"pinned": "1"}
+
+
+async def test_what_the_gateway_kept_for_a_thread_with_no_store_survives_a_restart(tmp_path):
+    """The history of an external agent is only the gateway's own record, so a restart must not empty it."""
+    gateway, backend = await make(tmp_path)
+    backend.add_peer(AGENT, "claudecode", kind="external")
+    await gateway.refresh()
+    await gateway.send(AGENT, "你好")
+    gateway._received(IncomingMessage(AGENT, "claudecode", "你好，有什么可以帮你", via="external"))
+    await gateway.read(AGENT)  # read: nothing unread across the restart
+
+    again, other = await make(tmp_path)
+    other.add_peer(AGENT, "claudecode", kind="external")
+    await again.refresh()
+
+    opened = await again.thread(AGENT)
+    assert [(item["kind"], item["text"]) for item in opened["items"]] == [
+        ("out", "你好"),
+        ("in", "你好，有什么可以帮你"),
+    ]
+    assert opened["thread"]["unread"] == 0

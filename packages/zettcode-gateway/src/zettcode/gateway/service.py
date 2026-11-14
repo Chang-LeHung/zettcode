@@ -321,6 +321,7 @@ class Gateway:
         self._inbox: dict[str, deque[dict[str, Any]]] = {}
         self._senders: dict[str, str] = {}
         self._seen: dict[str, int] = self._load_seen()
+        self._load_inbox()
         self._created: set[str] = set()
         #: Daemons a restart is starting right now, so a second press is told so rather than racing the first.
         self._restarting: set[str] = set()
@@ -839,6 +840,7 @@ class Gateway:
         if not view["workspace"]:
             entry = {"kind": "out", "text": text}
             self._inbox.setdefault(session_id, deque(maxlen=INBOX_LIMIT)).append(entry)
+            self._save_inbox()
             self._publish({"type": "thread", "id": session_id})
         try:
             delivered = await self.backend.send(session_id, body, direct=direct, images=pictures)
@@ -866,6 +868,7 @@ class Gateway:
         for at, item in enumerate(box):
             if item is entry:
                 del box[at]
+                self._save_inbox()
                 return
 
     def _check_pictures(self, view: Mapping[str, Any], direct: bool) -> None:
@@ -989,6 +992,7 @@ class Gateway:
         box = self._inbox.setdefault(message.sender_id, deque(maxlen=INBOX_LIMIT))
         box.append({"kind": "in", "text": message.text, "via": message.via, "sender": message.sender})
         self._senders[message.sender_id] = message.sender
+        self._save_inbox()
         # The conversation moved, and only the page with it open can redraw: a thread with a stored conversation is
         # announced by ``refresh``, but one that is only what the gateway kept has no store to see the change in.
         self._publish({"type": "thread", "id": message.sender_id})
@@ -1143,7 +1147,8 @@ class Gateway:
 
     def _forget(self, session_id: str) -> None:
         """Drop what the gateway holds about a session that was deleted, so it is not listed again."""
-        self._inbox.pop(session_id, None)
+        if self._inbox.pop(session_id, None):
+            self._save_inbox()
         self._senders.pop(session_id, None)
         self._pictures.pop(session_id, None)
         self._notes.pop(session_id, None)
@@ -1567,6 +1572,44 @@ class Gateway:
     # -- what the page remembers ------------------------------------------------------------------
     def _seen_path(self) -> Path:
         return self.settings.directory / "ui.json"
+
+    def _inbox_path(self) -> Path:
+        return self.settings.directory / "inbox.json"
+
+    def _load_inbox(self) -> None:
+        """Take back what was kept for threads with no stored conversation, so a restart does not empty them."""
+        try:
+            data = json.loads(self._inbox_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        threads = data.get("threads") if isinstance(data, dict) else None
+        if not isinstance(threads, dict):
+            return
+        for key, thread in threads.items():
+            items = thread.get("items") if isinstance(thread, dict) else None
+            if not isinstance(key, str) or not isinstance(items, list):
+                continue
+            kept = [dict(item) for item in items if isinstance(item, dict) and isinstance(item.get("text"), str)]
+            if not kept:
+                continue
+            self._inbox[key] = deque(kept, maxlen=INBOX_LIMIT)
+            sender = thread.get("sender")
+            if isinstance(sender, str):
+                self._senders[key] = sender
+
+    def _save_inbox(self) -> None:
+        """Write what the gateway kept for those threads; a failure only costs the history, so it is not raised."""
+        path = self._inbox_path()
+        temporary = path.with_name(f".inbox.{os.getpid()}.tmp")
+        threads = {
+            key: {"sender": self._senders.get(key, ""), "items": list(box)} for key, box in self._inbox.items() if box
+        }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(json.dumps({"threads": threads}, ensure_ascii=False), encoding="utf-8")
+            os.replace(temporary, path)
+        except OSError:
+            pass
 
     def _load_seen(self) -> dict[str, int]:
         try:
