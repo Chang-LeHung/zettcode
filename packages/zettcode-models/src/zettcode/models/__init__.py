@@ -58,6 +58,9 @@ class Vendor:
 
 #: The official model offered for each host, checked against the vendors' model pages on 2026-11-10. The ids and
 #: windows are the whole of this plugin's knowledge: when a vendor moves on, this table is the one place to edit.
+#: DeepSeek's entry is what its own ``/models`` answers (2026-11-15): the vendor page gave the display name
+#: (``DeepSeek-V4.1-Flash``), and the id a request takes is ``deepseek-flash`` — ``deepseek-v4.1-flash`` was refused
+#: with "the supported API model names are deepseek-flash, deepseek-v4-pro".
 VENDORS: tuple[Vendor, ...] = (
     Vendor(
         "openai",
@@ -87,9 +90,10 @@ VENDORS: tuple[Vendor, ...] = (
         ("DEEPSEEK_API_KEY",),
         "https://api.deepseek.com",
         "chat",
-        "deepseek-v4.1-flash",
+        "deepseek-flash",
         "DeepSeek V4.1 Flash",
-        1_000_000,
+        1_048_576,
+        multimodal=True,
     ),
     Vendor(
         "zai",

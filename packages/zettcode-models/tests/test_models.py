@@ -80,6 +80,19 @@ def test_each_vendor_names_a_model_and_an_address():
     assert all(vendor.model and vendor.base_url.startswith("https://") for vendor in VENDORS)
 
 
+def test_the_deepseek_id_is_the_one_its_endpoint_accepts():
+    """``deepseek-v4.1-flash`` was the display name, and a request on it answered 400.
+
+    The vendor's own ``/models`` lists ``deepseek-flash`` (named ``DeepSeek-V4.1-Flash``) with a 1,048,576-token
+    window and image input, so the table says that rather than the name a page shows.
+    """
+    (deepseek,) = [vendor for vendor in VENDORS if vendor.name == "deepseek"]
+
+    assert (deepseek.model, deepseek.display) == ("deepseek-flash", "DeepSeek V4.1 Flash")
+    assert deepseek.context_window == 1_048_576
+    assert deepseek.multimodal is True
+
+
 def test_a_shown_name_clash_is_reported_rather_than_silently_skipped(tmp_path, monkeypatch):
     _clear(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
