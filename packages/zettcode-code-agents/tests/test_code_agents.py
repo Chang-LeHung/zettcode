@@ -310,3 +310,20 @@ def test_a_cli_agent_says_it_takes_a_readers_text_as_its_own_prompt():
     from zettcode.code_agents import CLAUDE, CliAgent
 
     assert CliAgent("claudecode", "Claude Code", CLAUDE).direct is True
+
+
+async def test_a_picture_sent_to_a_cli_agent_is_refused_in_words_and_no_turn_starts():
+    """A headless CLI has nowhere to put a picture: it must not look as though it was seen."""
+    from zettcode.broker.models import Incoming
+    from zettcode.broker.protocol import PeerInfo
+    from zettcode.code_agents import CLAUDE, CliAgent
+
+    agent = CliAgent("claudecode", "Claude Code", CLAUDE)
+    sender = PeerInfo("web-1", "web-gateway", "Web", "", "idle", "external", False)
+    started: list[object] = []
+    agent._turn = lambda message: started.append(message)  # type: ignore[method-assign]
+
+    receipt = agent._start_turn(Incoming(sender, "look", 1, "external", True, images=(object(),)))  # type: ignore[arg-type]
+
+    assert receipt.accepted is False and "cannot take pictures" in receipt.reason
+    assert not started and not agent._turns
