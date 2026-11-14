@@ -17,8 +17,8 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "zettcode-engine>=0.4.6,<0.5",
-  "zettcode-sdk>=0.4.6,<0.5",
+  "zettcode-engine>=0.4.7,<0.5",
+  "zettcode-sdk>=0.4.7,<0.5",
   "fastapi>=0.115,<1",
   "starlette>=0.51,<2",
   "uvicorn>=0.35,<1",

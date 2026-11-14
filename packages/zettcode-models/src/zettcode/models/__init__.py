@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from zettcode.plugin_api import Plugin, PluginContext, ProvidedModel, Provider
 
 #: The one place the version is written; ``pyproject.toml`` reads it from here.
-__version__ = "0.4.6"
+__version__ = "0.4.7"
 
 
 @dataclass(frozen=True, slots=True)

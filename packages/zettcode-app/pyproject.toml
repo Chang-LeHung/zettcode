@@ -17,14 +17,14 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "zettcode-engine>=0.4.6,<0.5",
-  "zettcode-tui>=0.4.6,<0.5",
-  "zettcode-sdk>=0.4.6,<0.5",
-  "zettcode-broker>=0.4.6,<0.5",
+  "zettcode-engine>=0.4.7,<0.5",
+  "zettcode-tui>=0.4.7,<0.5",
+  "zettcode-sdk>=0.4.7,<0.5",
+  "zettcode-broker>=0.4.7,<0.5",
   # The line to the other sessions, which the shell's agent carries and matches messages against.
-  "zettcode-messaging>=0.4.6,<0.5",
-  "zettcode-plugin-api>=0.4.6,<0.5",
-  "zettcode-presenters>=0.4.6,<0.5",
+  "zettcode-messaging>=0.4.7,<0.5",
+  "zettcode-plugin-api>=0.4.7,<0.5",
+  "zettcode-presenters>=0.4.7,<0.5",
   "zett-agent>=0.2.10,<0.3",
   # The release check verifies the index against the system trust store; imported by `update.py` with a
   # fallback, so it is a hint rather than a requirement.

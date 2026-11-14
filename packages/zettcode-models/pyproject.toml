@@ -23,7 +23,7 @@ classifiers = [
 dependencies = [
   # The plugin contract only: the Provider and ProvidedModel the plugin registers, and the PluginContext it activates
   # with. The API this release uses is the one that lets a plugin offer models, new in 0.4.
-  "zettcode-plugin-api>=0.4.6,<0.5",
+  "zettcode-plugin-api>=0.4.7,<0.5",
 ]
 
 [project.urls]

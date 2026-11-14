@@ -18,9 +18,9 @@ classifiers = [
 ]
 dependencies = [
   # The plugin base classes, the service names, and the modes a message is sent with.
-  "zettcode-engine>=0.4.6,<0.5",
+  "zettcode-engine>=0.4.7,<0.5",
   # The protocol, the client and the errors the tools speak.
-  "zettcode-broker>=0.4.6,<0.5",
+  "zettcode-broker>=0.4.7,<0.5",
   # The tools this subclasses.
   "zett-agent>=0.2.10,<0.3",
 ]

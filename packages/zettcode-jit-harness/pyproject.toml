@@ -18,10 +18,10 @@ classifiers = [
 ]
 dependencies = [
   # The plugin base classes, the switch the runtime provides, the shell policy and the notice the transcript knows.
-  "zettcode-engine>=0.4.6,<0.5",
+  "zettcode-engine>=0.4.7,<0.5",
   # The widget framework the `/harness` page is drawn with, and the contract the command is written against.
-  "zettcode-tui>=0.4.6,<0.5",
-  "zettcode-plugin-api>=0.4.6,<0.5",
+  "zettcode-tui>=0.4.7,<0.5",
+  "zettcode-plugin-api>=0.4.7,<0.5",
   # The harness this subclasses.
   "zett-agent>=0.2.10,<0.3",
 ]
