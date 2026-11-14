@@ -39,6 +39,12 @@ let sequence = 0;
 let generation = 0;
 /** Whether the whole conversation was asked for, so that a refresh does not go back to its end. */
 let showAll = false;
+/**
+ * Whether this visit has not yet read where the unread stretch began. One flag for the visit rather than "is a load in
+ * flight": a `thread` event arriving before the opening read answers starts a second read, and both would otherwise
+ * count as opening reads — the newer one would place the line above a message that arrived after the chat was opened.
+ */
+let readingLine = true;
 
 function pendingFor(id: string): Pending[] {
   let list = waiting.get(id);
@@ -52,8 +58,11 @@ function pendingFor(id: string): Pending[] {
 async function load(id: string, all: boolean): Promise<void> {
   const mine = ++generation;
   if (all) showAll = true;
-  // The first read of this visit: what was unread when the chat was opened, which is where it stops.
-  const opening = chat.loading;
+  // The first read of this visit: what was unread when the chat was opened, which is where it stops. The flag is used
+  // up here, before the answer is awaited: a `thread` event arriving meanwhile starts a second read, and that one must
+  // neither place the line nor move it to a message that arrived after the chat was opened.
+  const opening = readingLine;
+  if (opening) readingLine = false;
   try {
     const detail = await gateway.thread(id, showAll);
     if (mine !== generation || chat.id !== id) return;
@@ -77,6 +86,8 @@ async function load(id: string, all: boolean): Promise<void> {
     if (settled) list.splice(0, list.length, ...left);
     if (grew || settled) chat.revision += 1;
   } catch (error) {
+    // Nothing was read, so the next attempt is still the first one and may place the line after all.
+    if (opening) readingLine = true;
     if (mine !== generation || chat.id !== id) return;
     chat.error = error instanceof ApiError ? error.message : String(error);
   } finally {
@@ -94,6 +105,7 @@ export async function openChat(id: string): Promise<void> {
     chat.total = 0;
     chat.truncated = false;
     chat.unreadFrom = null;
+    readingLine = true;
     chat.error = "";
     chat.pending = pendingFor(id);
     chat.loading = true;
@@ -108,6 +120,7 @@ export function closeChat(): void {
   chat.thread = null;
   chat.items = [];
   chat.unreadFrom = null;
+  readingLine = true;
   chat.pending = [];
 }
 
@@ -180,7 +193,9 @@ const mark = debounce((id: string) => {
 export function markRead(): void {
   const thread = chat.id ? threadOf(chat.id) : undefined;
   // Nothing is seen before the conversation is here: a chat that was just opened would otherwise be marked read
-  // before the reader saw what the line points at, and the page would land at the bottom instead of on it.
+  // before the reader saw what the line points at, and the page would land at the bottom instead of on it. This holds
+  // because a refresh is asked for from a watcher, which runs after `load` cleared the flag: a `flush: "sync"` watcher
+  // would mark a chat read that is still being read and leave the badge up.
   if (!thread || chat.loading || !chat.items.length) return;
   // As in any messenger, what is above the reader's place has not been seen: it stays unread until they come down to it.
   if (!seenNow({ hidden: document.hidden, atBottom: chat.atBottom, unread: thread.unread })) return;

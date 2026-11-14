@@ -45,6 +45,8 @@ function placeLine(): void {
   if (!line) return;
   const top = el.scrollTop + line.getBoundingClientRect().top - el.getBoundingClientRect().top - 8;
   el.scrollTo({ top: Math.max(0, top), behavior: "auto" });
+  // Where the reader now is, so that a scroll of theirs is told from this one.
+  placedAt = el.scrollTop;
 }
 
 /** Stop on the unread line, as a messenger does, rather than at the newest message. */
@@ -60,6 +62,9 @@ function toUnread(): void {
 }
 
 function onScroll(): void {
+  // A reader who has started moving the list themselves is not to be pulled back to the line while the content above
+  // it settles: the realign is for growth nobody asked for.
+  if (aligning && Math.abs((scroller.value?.scrollTop ?? 0) - placedAt) > 2) aligning = 0;
   following.value = nearBottom();
   chat.atBottom = following.value;
   if (following.value) {
@@ -140,6 +145,8 @@ function onViewport(): void {
 let watcher: ResizeObserver | undefined;
 /** When the reader was put on the unread line, and how long growing content keeps them there. */
 let aligning = 0;
+/** Where the line was last placed, so that a scroll of the reader's is told apart from one of ours. */
+let placedAt = 0;
 const ALIGNING_MS = 1200;
 onMounted(() => {
   toBottom(false);

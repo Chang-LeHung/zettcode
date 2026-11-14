@@ -842,10 +842,13 @@ class Gateway:
             self._publish({"type": "thread", "id": session_id})
         try:
             delivered = await self.backend.send(session_id, body, direct=direct, images=pictures)
-        except SendError as error:
+        except BaseException as error:  # noqa: BLE001 - whatever went wrong, the message is not in the thread
+            # A refusal, a lost broker, a page that closed mid-send, the gateway shutting down: what was never delivered
+            # must not be left looking sent, since the page settles its own copy by finding this one.
             if entry is not None:
-                with contextlib.suppress(ValueError):
-                    self._inbox[session_id].remove(entry)
+                self._take_back(session_id, entry)
+            if not isinstance(error, SendError):
+                raise
             raise GatewayError(
                 SEND_STATUS.get(error.reason, 400),
                 error.reason,
@@ -854,6 +857,16 @@ class Gateway:
             ) from error
         self._wake_up()
         return {"to": delivered.to, "disposition": delivered.disposition, "direct": delivered.direct}
+
+    def _take_back(self, session_id: str, entry: dict[str, Any]) -> None:
+        """Remove one item the gateway kept for a thread, by identity: two messages may say exactly the same thing."""
+        box = self._inbox.get(session_id)
+        if box is None:
+            return
+        for at, item in enumerate(box):
+            if item is entry:
+                del box[at]
+                return
 
     def _check_pictures(self, view: Mapping[str, Any], direct: bool) -> None:
         """Refuse pictures for a session that cannot use them, in words a person can act on, before anything is sent."""
