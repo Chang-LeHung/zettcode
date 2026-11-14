@@ -183,7 +183,10 @@ def test_the_same_entry_is_described_the_same_way_in_every_layer():
     )
     body = re.search(r"export interface PluginEntry \{(.*?)\n\}", typescript, re.S)
     assert body is not None, "clients/typescript/src/types.ts has no PluginEntry"
-    scripted = set(re.findall(r"^  ([a-z][A-Za-z0-9]*):", body.group(1), re.M))
+    # A field may be optional there (`description?: string`): a client is handed rows by a server of any age, so a
+    # field added later is absent from one older than it. What is compared is which fields the value has, not whether
+    # the client may find one missing.
+    scripted = set(re.findall(r"^  ([a-z][A-Za-z0-9]*)\??:", body.group(1), re.M))
 
     engine = set(EngineEntry.__dataclass_fields__)
     sdk = set(SdkEntry.__dataclass_fields__)

@@ -57,9 +57,10 @@ class PluginEntry:
         why: Why it cannot be switched, when it cannot; empty otherwise.
         note: What else a list should say about the row — a plugin that lost its name to one loaded before it has no
             switch and is not a failure, and this says so.
-        description: What the plugin adds, in one line: the plugin's own
-            :attr:`~zettcode.engine.plugins.plugin.Plugin.description`, or — for a distribution this process did not
-            load — the summary its package metadata declares. Empty when neither says anything.
+        description: What the plugin adds, in one line. It is derived, not stored: the plugin's own
+            :attr:`~zettcode.engine.plugins.plugin.Plugin.description` once it has loaded, and otherwise the summary
+            its distribution declares — which is a sentence about the distribution the row's second column names,
+            not about one plugin inside it. Empty when neither says anything.
     """
 
     name: str
@@ -130,7 +131,6 @@ def catalog(
             continue
         installed.append(_installed(plugin.name, origin, config, off=off, description=plugin.description))
     points = tuple(entry_points) if entry_points is not None else loader.installed_entry_points()
-    summaries = {point.name: _summary(point) for point in points}
     seen = {entry.origin for entry in installed} | {origin for origin, _why in bundle.failed}
     for point in points:
         # A required plugin has an entry point and is the program's own: it is not a row nobody can move.
@@ -142,7 +142,9 @@ def catalog(
         if loader.part_group(point) is not None:
             if point.name not in off:
                 continue
-        installed.append(_installed(point.name, point.name, config, off=off, description=summaries.get(point.name, "")))
+        # This one never loaded, so there is no object to ask: its distribution's summary is what it has to say. The
+        # metadata is read here and not for every entry point, because a row that loaded speaks for itself.
+        installed.append(_installed(point.name, point.name, config, off=off, description=_summary(point)))
     # A single-file plugin that is switched off is not in the bundle (the loader never imported it), so the folder is
     # what says it exists: it stays on the page, off, where it can be switched back on.
     for path in loader.installed_files(config.plugins_dir):
@@ -165,6 +167,7 @@ def catalog(
     for origin, why in bundle.failed:
         if origin in builtins or origin not in loaded_origins:
             failures.setdefault(origin, []).append(why)
+    by_name = {point.name: point for point in points}
     failed = [
         _failed(
             origin,
@@ -172,7 +175,8 @@ def catalog(
             config,
             builtin=origin in builtins,
             off=off,
-            description=summaries.get(origin, ""),
+            # A row that failed has no object either: the summary of the point it came from is all there is.
+            description=_summary(by_name[origin]) if origin in by_name else "",
         )
         for origin, whys in failures.items()
     ]
@@ -242,14 +246,18 @@ def _summary(point: EntryPoint) -> str:
 
     The plugin says what it does itself once it loads (:attr:`~zettcode.engine.plugins.plugin.Plugin.description`);
     this is for the rows where it never got that far — the distribution switched off, or a part this process does not
-    load — and for those the package metadata is all there is. A stand-in entry point that has no distribution beside
-    it (a test's own) says nothing rather than failing the page.
+    load — and for those the package metadata is all there is. The summary describes the *distribution*, which is what
+    the row's second column names; for a distribution carrying several plugins it is one sentence about all of them.
+    A stand-in entry point that has no distribution beside it (a test's own) says nothing rather than failing the page,
+    and so does a metadata file that cannot be opened or parsed: a nicety costs its cell, never the page.
     """
     try:
-        dist = point.dist
-        metadata = dist.metadata if dist is not None else None
+        # `getattr` for the same reason the loader asks a point for its distribution that way: a stand-in that has
+        # none is a point with nothing to say, not a page that cannot open.
+        dist = getattr(point, "dist", None)
+        metadata = getattr(dist, "metadata", None)
         summary = metadata["Summary"] if metadata is not None else ""
-    except Exception:  # noqa: BLE001 - a summary is a nicety; a dist that cannot be read costs only the cell
+    except (OSError, TypeError, ValueError):
         return ""
     return " ".join(str(summary or "").split())
 

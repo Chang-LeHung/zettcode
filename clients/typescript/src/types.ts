@@ -239,8 +239,12 @@ export interface PluginEntry {
   why: string;
   /** What else a list should say — a plugin that lost its name to one loaded before it, with no switch and no failure. */
   note: string;
-  /** What the plugin adds, in one line: its own, or the summary its distribution declares. Empty when it says neither. */
-  description: string;
+  /**
+   * What the plugin adds, in one line: its own, or the summary its distribution declares. Empty when it says neither.
+   * Optional because the field is young: a server older than it hands over rows without one, and a panel that draws
+   * it has to take an absent line for "says nothing" rather than printing `undefined`.
+   */
+  description?: string;
 }
 
 /** Where one trigger a plugin registered is. */

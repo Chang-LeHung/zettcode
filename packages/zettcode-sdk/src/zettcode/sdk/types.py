@@ -552,7 +552,8 @@ class PluginEntry:
         why: Why it cannot be switched, when it cannot; ``""`` otherwise.
         note: What else a list should say — a plugin that lost its name to one loaded before it has no switch and is
             not a failure, and this says why.
-        description: What the plugin adds, in one line: its own, or the summary its distribution declares. Empty when
+        description: What the plugin adds, in one line. Derived, not stored: its own once the plugin has loaded, the
+            summary its distribution declares otherwise (a sentence about the distribution the row names). Empty when
             neither says anything.
     """
 
