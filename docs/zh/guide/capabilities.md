@@ -150,7 +150,8 @@ zettcode gateway stop
 ```
 
 要从手机访问，监听本机以外的地址必须设 token，见[网页网关](/zh/guide/gateway#登录与权限)。
-页面是明文 HTTP，离开可信网络时请放在 TLS 后面。桌面端（Electron）和 Android 外壳只是同一个页面的窗口；桌面安装包没有签名。
+页面是明文 HTTP，离开可信网络时请放在 TLS 后面。桌面端（Electron）和 Android 外壳只是同一个页面的窗口；
+macOS 那个只做了 ad-hoc 签名，Windows 和 Linux 的则完全没有签名。
 见[桌面端与手机端](/zh/guide/app)。
 
 **详情。** [网页网关](/zh/guide/gateway)、[桌面端与手机端](/zh/guide/app)。
