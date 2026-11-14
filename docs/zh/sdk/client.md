@@ -204,7 +204,7 @@ async with zc.Client(".") as client:
 | `client.use_effort(name)` | 设置级别并返回。 |
 | `client.use_compact_percent(percent)` | 从下一次请求起,改变对话在窗口的多大比例(大于 0、至多 100)时被总结。返回当前的 `ModelInfo`,以及配置文件没有被改写的原因(改写了就是 `None`):那样这次改动只在本次运行有效。 |
 | `client.permission`、`client.permissions` | 当前级别，以及 `("deny", "ask", "safe", "full")`。 |
-| `client.harness` | just-in-time harness 是否开启：模型可以自己写小的 Python 工具并运行。默认关闭；`Client(jit_harness=True)` 让客户端一开始就开启。 |
+| `client.harness` | just-in-time harness 是否开启：模型可以自己写小的 Python 工具并运行。默认开启；`Client(jit_harness=False)` 让客户端一开始就关闭。 |
 | `client.use_harness(on)` | 从下一次 prompt 起开启或关闭，返回新状态。 |
 | `client.use_permission(name)` | 设置级别；从下一条 shell 命令起生效，正在进行的 run 里也一样。 |
 
