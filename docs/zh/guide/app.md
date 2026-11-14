@@ -25,8 +25,15 @@ zettcode gateway start --host 0.0.0.0 --token "$(python3 -c 'import secrets; pri
 ## 桌面端
 
 已为 macOS（Apple Silicon）、Windows 和 Linux 构建。安装包由 CI 在各自的系统上生成，目前还没有在真实的 Windows 或 Linux 机器上试过，
-如果打不开请反馈。三个系统的安装包都挂在名为 `desktop-v<版本>` 的 GitHub release 上；它们没有签名，
-所以 macOS 要用右键 → 打开，Windows SmartScreen 要点“更多信息 → 仍要运行”。也可以从仓库构建：
+如果打不开请反馈。三个系统的安装包都挂在名为 `desktop-v<版本>` 的 GitHub release 上；它们没有用 Apple 开发者证书签名，
+所以 macOS 第一次会以"无法验证开发者"为由拒绝：在**系统设置 → 隐私与安全性**里允许，或在弹窗里点**打开**。
+macOS 15 及以后，同一个拒绝可能显示成"App 已损坏"——那正是未签名包在这里的叫法。先把它拷到"应用程序"，然后执行：
+
+```sh
+xattr -dr com.apple.quarantine /Applications/ZettCode.app
+```
+
+Windows SmartScreen 要点"更多信息 → 仍要运行"。也可以从仓库构建：
 
 ```sh
 make desktop                  # 类型检查、测试并构建窗口

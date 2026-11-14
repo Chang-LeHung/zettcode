@@ -33,8 +33,16 @@ gateway that serves its page.
 
 It is built for macOS (Apple Silicon), Windows and Linux. The installers are produced by CI on each system; they have
 not been tried on a real Windows or Linux machine yet, so report anything that does not start. Installers for all three
-are attached to the GitHub releases named `desktop-v<version>`; they are unsigned, so macOS asks you to open the app
-with right-click → Open and Windows SmartScreen with More info → Run anyway. Or build it from the checkout:
+are attached to the GitHub releases named `desktop-v<version>`. They are not signed with an Apple Developer ID, so
+macOS refuses the first launch as an unidentified developer: allow it under **System Settings → Privacy & Security**,
+or press **Open** in the dialog that offers it. On macOS 15 and later the same refusal can read as *the app is
+damaged* — that is what an unsigned bundle is called there. Copy it to Applications first, then:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/ZettCode.app
+```
+
+Windows SmartScreen asks for More info → Run anyway. Or build it from the checkout:
 
 ```sh
 make desktop                  # type-check, test and build the window
