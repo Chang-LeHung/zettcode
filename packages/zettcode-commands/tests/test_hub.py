@@ -1574,6 +1574,55 @@ def test_a_note_and_the_search_share_the_row_and_nothing_matching_is_said_in_wor
     assert any("nothing matches" in row and "zzz" in row for row in rows)
 
 
+def test_a_refresh_keeps_the_mark_on_the_row_it_was_on_when_the_order_changes():
+    """The rows move as things happen: stopping a daemon writes its record, which puts it at the top. The mark is on
+    the daemon the reader chose, not on the place it happened to occupy in the reading before."""
+    opened = HubPage(
+        data(
+            daemons=(
+                Daemon("busy", "busy", "working", activity=NOW - 10),
+                Daemon("quiet", "quiet", "idle", activity=NOW - 900),
+            )
+        ),
+        on_close=lambda: None,
+    )
+    opened._show(DAEMONS)
+    opened.list.selected = 1
+    assert opened.list.items[1].label == "quiet"
+
+    opened.set_data(
+        data(
+            daemons=(
+                Daemon("quiet", "quiet", "idle", activity=NOW),
+                Daemon("busy", "busy", "idle", activity=NOW - 600),
+            )
+        )
+    )
+
+    assert _labels(opened) == ["quiet", "busy"], "its own write put it first"
+    assert opened.list.selected == 0 and opened.list.items[0].label == "quiet", "and the mark went with it"
+
+
+def test_a_refresh_drops_the_mark_to_the_same_place_only_when_the_row_is_gone():
+    opened = HubPage(
+        data(
+            peers=(
+                Peer("one", "t", "idle", "/w", activity=NOW - 10),
+                Peer("two", "t", "idle", "/w", activity=NOW - 20),
+                Peer("three", "t", "idle", "/w", activity=NOW - 30),
+            )
+        ),
+        on_close=lambda: None,
+    )
+    opened._show(SESSIONS)
+    opened.list.selected = 2
+    assert opened.list.items[2].label == "three"
+
+    opened.set_data(data(peers=(Peer("one", "t", "idle", "/w", activity=NOW - 10), Peer("two", "t", "idle", "/w"))))
+
+    assert _labels(opened) == ["one", "two"] and opened.list.selected == 1, "the place stood in, off the last row"
+
+
 def test_a_refresh_keeps_the_search_and_filters_the_new_reading():
     opened = _searchable()
     opened._show(SESSIONS)

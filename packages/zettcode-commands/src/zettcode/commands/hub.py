@@ -200,8 +200,10 @@ NEVER = "\u2014"
 def _ago(when: float, now: float) -> str:
     """Return how long ago ``when`` was, in the coarsest unit that fits, or :data:`NEVER` when nothing says.
 
-    The same words the sessions list uses — ``just now``, ``5m ago``, ``2h ago``, ``3d ago`` — counted from the
-    reading's own clock, so every row of a reading is aged by the same moment.
+    The words are the session list's own — ``just now``, ``5m ago``, ``2h ago``, ``3d ago`` — and the copy is on
+    purpose: that formatter takes a datetime and lives in the app, which this distribution may not import. Keep the
+    two in step by hand, or move one formatter down to a package both can see. The age is counted from the reading's
+    own clock, so every row of a reading is aged by the same moment.
     """
     if when <= 0 or now <= 0:
         return NEVER
@@ -331,7 +333,13 @@ class HubPage(ListPage):
         """Start on the graph, with the first row of each list marked and no node selected."""
         self.data = data
         self.tab = GRAPH
+        #: Where the mark was on each tab, by place: what a tab is put back where it was with when the row it was on
+        #: is gone (see :attr:`marked`, which is tried first).
         self.marks = [0] * len(TABS)
+        #: The id of the row under the mark on each tab, or ``None`` when nothing was marked there. The rows are
+        #: ordered by when each last changed, so a reading can move the one under the mark; the mark follows this id,
+        #: and what the reader chose stays what is marked. ``str`` because a row's value is a session id or a handle.
+        self.marked: list[str | None] = [None] * len(TABS)
         #: What was typed after ``/`` on each tab, and whether the reader is still typing it (on the tab in front).
         self.queries = [""] * len(TABS)
         self.searching = False
@@ -582,15 +590,26 @@ class HubPage(ListPage):
                     x += display_width(text)
 
     def set_data(self, data: HubData) -> None:
-        """Take a fresh reading, and keep the mark where it was on the tab in front.
+        """Take a fresh reading, and keep the mark on the row it was on, by its id, on the tab in front.
+
+        A reading is sorted by when each row last changed, so the row under the mark can be somewhere else in the new
+        table — the row a stop or a start just touched is the likeliest to jump. Where it went is found by the id it
+        carries, and only when that row is gone does the place stand in.
 
         It is called from a task, not from an input event, so it asks for a frame itself (:meth:`_repaint`).
         """
-        self.marks[self.tab] = max(0, self.list.selected)
+        self._hold_mark()
         self.data = data
         self.subtitle = self.data.note or None
         self._show(self.tab)
         self._repaint()
+
+    def _hold_mark(self) -> None:
+        """Remember what the mark on the tab in front is on: the row's id, and its place as the fallback."""
+        self.marks[self.tab] = max(0, self.list.selected)
+        rows, chosen = self.list.items, self.list.selected
+        row = rows[chosen] if 0 <= chosen < len(rows) else None
+        self.marked[self.tab] = str(row.value) if row is not None and row.value is not None else None
 
     def note(self, text: str) -> None:
         """Say one line under the tabs — what a key just did, or why it could not.
@@ -626,15 +645,25 @@ class HubPage(ListPage):
         self.table = whole.filtered(self.queries[tab])
         rows = self.table.items
         self.list.set_items(rows)
-        # The mark the tab had, kept off a row nothing can act on: the one that says older sessions were left out can
-        # take its index when a refresh leaves fewer rows, so the nearest row before it that can be marked is used,
-        # and none is marked when that row is all there is.
-        wanted = min(self.marks[tab], len(rows) - 1)
+        # The mark the tab had, kept on the row the reader chose. The rows are ordered by when each last changed, so
+        # that row can be somewhere else now: it is found by the id it carries, and its old place is only what is
+        # left when the row itself is gone. Either way the mark is kept off a row nothing can act on: the one that
+        # says older sessions were left out can take an index when a refresh leaves fewer rows, so the nearest row
+        # before it that can be marked is used, and none is marked when that row is all there is.
+        wanted = self._place_of(self.marked[tab], rows) if rows else -1
         while wanted > 0 and rows[wanted].disabled:
             wanted -= 1
-        self.list.selected = wanted if rows and not rows[wanted].disabled else -1
+        self.list.selected = wanted if rows and 0 <= wanted < len(rows) and not rows[wanted].disabled else -1
         self.footer = self._footer()
         self._repaint()
+
+    def _place_of(self, mark: str | None, rows: Sequence[ListItem]) -> int:
+        """Return the index in ``rows`` of the row ``mark`` names, or the remembered place when that row is gone."""
+        if mark is not None:
+            for index, row in enumerate(rows):
+                if not row.disabled and row.value is not None and str(row.value) == mark:
+                    return index
+        return min(self.marks[self.tab], len(rows) - 1)
 
     # -- the keys ---------------------------------------------------------------------------------------
     def capture_event(self, event, host) -> bool:
@@ -644,11 +673,11 @@ class HubPage(ListPage):
             # What is typed is the query, whatever it spells: `s` and `r` are letters here, not stop and refresh.
             return self._type(event, key) or super().capture_event(event, host)
         if key == "tab":
-            self.marks[self.tab] = max(0, self.list.selected)
+            self._hold_mark()
             self._show((self.tab + 1) % len(TABS))
             return True
         if key == "backtab":
-            self.marks[self.tab] = max(0, self.list.selected)
+            self._hold_mark()
             self._show((self.tab - 1) % len(TABS))
             return True
         if key == "/" and self.tab != GRAPH:
@@ -723,6 +752,7 @@ class HubPage(ListPage):
         """Make ``text`` this tab's search, and show the rows that match it from the first."""
         self.queries[self.tab] = text
         self.marks[self.tab] = 0
+        self.marked[self.tab] = None
         self._show(self.tab)
 
     def _move(self, key: str) -> None:
@@ -998,9 +1028,12 @@ class HubCommand(TuiPlugin):
         except Exception:  # noqa: BLE001 - a store that cannot be read costs only the names of sessions that are gone
             listed = ()
         cut = len(listed) > OFFLINE_LIMIT
-        listed = listed[:OFFLINE_LIMIT]
-        # When each stored session of this workspace last changed, by id: its conversation's newest write.
+        # When each stored session of this workspace last changed, by id: its conversation's newest write. Taken from
+        # the whole listing, before the table's own cut, because the limit is about how many offline rows are shown
+        # and not about what a roster or a daemon row may be dated by: a session older than the newest two hundred
+        # still has a conversation, and would otherwise look as stale as its broker traffic alone.
         moments = {info.id: info.updated_at.timestamp() for info in listed}
+        listed = listed[:OFFLINE_LIMIT]
         lap("sessions")
         graph_ok = True
         try:
@@ -1150,9 +1183,10 @@ def _traffic(graph: Mapping[str, Any]) -> dict[str, float]:
 
     Two places say it and both are used: ``recent``, the newest messages, and ``edges``, whose ``last`` is the newest
     message of each pair — so a session that has talked a lot recently is dated even when it is not in ``recent``.
-    A group's message names the group in ``to`` and no session, so a group recipient is dated by nothing; its sender
-    is. Anything that is not the shape the broker's protocol describes is skipped rather than believed: this reads a
-    page, and a page is not a reason to fail one.
+    A group's message names the group in ``to`` and no session, so the sessions that took it are read from
+    ``recipients``; without that, every member of a busy group would look quieter than it is. Anything that is not the
+    shape the broker's protocol describes is skipped rather than believed: this reads a page, and a page is not a
+    reason to fail one.
     """
     newest: dict[str, float] = {}
 
@@ -1167,10 +1201,15 @@ def _traffic(graph: Mapping[str, Any]) -> dict[str, float]:
     for message in messages if isinstance(messages, (list, tuple)) else ():
         if not isinstance(message, Mapping):
             continue
+        when = message.get("ts")
         sender = message.get("from")
-        note(sender.get("session_id") if isinstance(sender, Mapping) else None, message.get("ts"))
+        note(sender.get("session_id") if isinstance(sender, Mapping) else None, when)
         recipient = message.get("to")
-        note(recipient.get("session_id") if isinstance(recipient, Mapping) else None, message.get("ts"))
+        note(recipient.get("session_id") if isinstance(recipient, Mapping) else None, when)
+        # A group's message names the group rather than a session in `to`; the sessions that took it are here.
+        takers = message.get("recipients")
+        for taker in takers if isinstance(takers, (list, tuple)) else ():
+            note(taker, when)
     edges = graph.get("edges", ())
     for edge in edges if isinstance(edges, (list, tuple)) else ():
         if not isinstance(edge, Mapping):
