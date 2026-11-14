@@ -18,7 +18,7 @@ from zettcode.broker.external import (
     ExternalSession,
 )
 from zettcode.broker.files import read_note
-from zettcode.broker.models import Incoming, Receipt, SendError
+from zettcode.broker.models import Incoming, Receipt, SendError, SessionInfo
 
 A = "01a10b75-aaaa-7000-8000-000000000001"
 B = "02b20c86-bbbb-7000-8000-000000000002"
@@ -208,3 +208,23 @@ async def test_the_publisher_sends_without_registering(host):
     await eventually(lambda: inbox.messages)
     assert inbox.messages[0].text == "one way"
     assert inbox.messages[0].via == "external"
+
+
+async def test_a_raw_message_reaches_a_direct_session_as_its_own_prompt_through_the_real_client(host):
+    """The whole path: the page's external session -> the broker -> a real client that takes direct prompts."""
+    got: list = []
+
+    def take(message):
+        got.append(message)
+        return Receipt(True, disposition="started")
+
+    daemon = host.track(client_for(host.directory, on_message=take))  # type: ignore[attr-defined]
+    daemon.set_session(SessionInfo(session_id=B, title="daemon", workspace="/w", status="idle", direct=True))
+    await daemon.start()
+    assert await daemon.wait_connected(3)
+    async with ExternalSession(A, "web", directory=host.directory) as web:
+        await eventually(lambda: any(e.session_id == B for e in web.roster))
+        sent = await web.send(B, "list the files", raw=True)
+        await eventually(lambda: got)
+        assert sent.direct is True
+        assert got[0].direct is True and got[0].text == "list the files", "no frame, no wrapper"
