@@ -18,7 +18,7 @@ class ToolOutput(Plugin[PluginContext]):
     """
 
     name = "tool-output"
-    description = "Keeps long tool output in the session folder"
+    description = "The bash output a session keeps, moved into its folder"
 
     def activate(self, ctx: PluginContext) -> None:
         """Register the extension over the session store."""

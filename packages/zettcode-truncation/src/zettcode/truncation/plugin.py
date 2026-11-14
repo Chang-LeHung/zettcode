@@ -20,7 +20,7 @@ class LongOutput(Plugin[PluginContext]):
     """
 
     name = "long-output"
-    description = "Keeps over-long tool results in the session folder"
+    description = "Over-long foreign tool results, cut to their start and end"
 
     def activate(self, ctx: PluginContext) -> None:
         """Register the extension over the session store."""

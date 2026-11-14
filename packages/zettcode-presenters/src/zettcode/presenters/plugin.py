@@ -25,7 +25,7 @@ class PresentersPlugin(TuiPlugin):
     """
 
     name = "presenters"
-    description = "Draws the conversation: messages, tool calls, results and the rest"
+    description = "The conversation's rows: messages, tool calls, results and the rest"
 
     def activate(self, ctx: PluginContext) -> None:
         """Register every built-in presenter at the priority its class declares."""

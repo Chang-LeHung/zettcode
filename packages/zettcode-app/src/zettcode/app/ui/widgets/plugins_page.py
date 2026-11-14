@@ -89,12 +89,12 @@ class PluginsPage(Widget):
 
     Shape::
 
-        Plugins                                                      4 of 5 on
+        Plugins                                                      3 of 5 on
 
           Built in ─────────────────────────────────────────────────────────────────
-          ▸ skills       ━━━━●  on     skills.enabled    The slash commands that act on the application
+          ▸ skills       ━━━━●  on     skills.enabled    The skills a workspace declares, as @ references
             mcp          ━━━━●  on     mcp.enabled       MCP servers
-            todos        ●────  off    harness.todowrite Render write and edit calls as a checklist
+            todos        ●────  off    harness.todowrite The todo_write tool and the plan it keeps
             coding       failed                          could not load: no plugin provides the model
           Third-party ──────────────────────────────────────────────────────────────
             monitor      ━━━━●  on     zettcode-monitor  Every model call, exported as HTML
