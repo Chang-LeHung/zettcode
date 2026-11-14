@@ -13,6 +13,9 @@ pip install zettcode-code-agents
 The New page then offers **Codex** and **Claude Code**. Both register as `kind="external"` sessions; the gateway owner can add one to a
 group, and it can then receive and write there.
 
+A chat on the gateway page sends its text to the CLI as typed, with no request to answer by tool, and the CLI's answer
+comes back into that chat. A message from a group reaches it framed as a message from the sender and is answered to
+the sender, not into the group. A picture is refused with a sentence: a headless CLI has nowhere to put one.
 The gateway only starts an agent. Where it works, how far it is trusted and which command it runs are this plugin's
 settings, kept in its own file and read again **for every message, when its turn starts**, so an edit applies to the
 next message of every agent that is already running, a queued one included. Nothing has to be restarted.

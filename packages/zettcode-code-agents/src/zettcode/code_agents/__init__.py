@@ -138,7 +138,7 @@ class CliAgent(ExternalSession):
     def __init__(self, session_id: str, title: str, source: Tool | Command) -> None:
         self._turns: set[asyncio.Task[None]] = set()
         self._limit = max(1, int(os.environ.get("ZETTCODE_CODE_AGENTS_QUEUE", "4")))
-        super().__init__(session_id, title, kind=KIND_EXTERNAL, on_message=self._start_turn)
+        super().__init__(session_id, title, kind=KIND_EXTERNAL, direct=True, on_message=self._start_turn)
         #: A tool's settings are read again for every turn; a bare command (a caller's own) is run as it is given.
         self.source = source
         self.state = state_directory() / f"{session_id}.json"
@@ -147,6 +147,9 @@ class CliAgent(ExternalSession):
 
     def _start_turn(self, message: Incoming) -> Receipt:
         """Answer the broker now and run one CLI turn on a task."""
+        if message.images:
+            # A headless CLI has nowhere to put a picture, and one dropped without a word would look like it was seen.
+            return Receipt(False, reason=f"{self.title} cannot take pictures")
         if len(self._turns) >= self._limit:
             return Receipt(False, reason=f"{self.title} has {self._limit} turns waiting", busy=True)
         task = asyncio.ensure_future(self._turn(message))

@@ -228,3 +228,36 @@ async def test_a_raw_message_reaches_a_direct_session_as_its_own_prompt_through_
         await eventually(lambda: got)
         assert sent.direct is True
         assert got[0].direct is True and got[0].text == "list the files", "no frame, no wrapper"
+
+
+async def test_an_external_session_that_takes_direct_prompts_is_sent_a_readers_text_untouched(host):
+    seen: list[Incoming] = []
+
+    def handle(message: Incoming) -> Receipt:
+        seen.append(message)
+        return Receipt(True, disposition="started")
+
+    async with (
+        ExternalSession(A, "Wrapped CLI", directory=host.directory, on_message=handle, direct=True) as cli,
+        ExternalSession(B, "Page", directory=host.directory) as page,
+    ):
+        await eventually(lambda: cli.handle and page.handle)
+        await eventually(lambda: any(peer.direct for peer in page.roster))
+
+        delivered = await page.send(cli.handle, "你好", raw=True)
+
+        assert delivered.direct is True, "the recipient said it runs a reader's text as its own prompt"
+        await eventually(lambda: seen)
+        assert seen[0].direct is True and seen[0].text == "你好"
+
+
+async def test_an_ordinary_external_session_is_not_sent_raw_text(host):
+    async with (
+        ExternalSession(A, "Plain", directory=host.directory) as plain,
+        ExternalSession(B, "Page", directory=host.directory) as page,
+    ):
+        await eventually(lambda: plain.handle and page.handle)
+
+        delivered = await page.send(plain.handle, "hi", raw=True)
+
+        assert delivered.direct is False
