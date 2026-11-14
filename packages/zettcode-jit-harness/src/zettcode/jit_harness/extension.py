@@ -93,8 +93,6 @@ class SwitchedHarness(JITHarnessExtension):
         #: The harness each session borrowed from another session, if any.
         self._choices = choices
         self._session_file = session_file
-        #: The session whose request is mounting its tools, which ``management_tools`` is not told.
-        self._mounting = ""
         if choices is not None:
             choices.add_listener(self._choice_changed)
 
@@ -124,9 +122,6 @@ class SwitchedHarness(JITHarnessExtension):
         self._follow_boundary(context.session_id)
         self._engaged.add(context.session_id)
         await self._say_unbounded(context)
-        # The framework mounts the tools without awaiting anything before it asks ``management_tools``, so no other
-        # session can change this between the two.
-        self._mounting = context.session_id
         await super().on_tool(context)
 
     def management_tools(self, harness: JITToolbox) -> Sequence[AgentTool]:
@@ -135,9 +130,10 @@ class SwitchedHarness(JITHarnessExtension):
         The framework's own counts what ran while this process was up, in memory, and is gone with it. Every finished
         call is already a line of the session's conversation file, with its time and what it handed back, so the same
         answer comes from there: for any tool, from before the last restart as well, and with nothing wrapped around a
-        call to measure it.
+        call to measure it. The session is found from the harness it is handed, which the framework keeps by session.
         """
-        session_id = self._mounting
+        with self._lock:
+            session_id = next((sid for sid, held in self._sessions.items() if held is harness), "")
         return tuple(
             self._usage_tool(harness, session_id) if each.name == "profile_tools" else each
             for each in super().management_tools(harness)
@@ -171,7 +167,7 @@ class SwitchedHarness(JITHarnessExtension):
             # A long conversation is tens of megabytes: read it off the event loop.
             scan = await asyncio.to_thread(scan_tool_calls, path) if path is not None else Scan()
             catalog = {entry["name"]: entry for entry in harness.list_tools()}
-            return build_report(scan, catalog, names, management=harness.management_names)  # type: ignore[return-value]
+            return build_report(scan, catalog, names, management=harness.management_names)
 
         return profile_tools
 

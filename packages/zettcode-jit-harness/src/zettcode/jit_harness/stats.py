@@ -14,6 +14,9 @@ The file can be very large (a long session is hundreds of megabytes), so nothing
 * a line longer than :data:`MAX_LINE` is skipped unparsed (a tool result that large would cost more to read than the
   number is worth) and counted, so the answer can say so;
 * what is kept is a handful of numbers and at most :data:`ERRORS_KEPT` short messages per tool, never a message.
+
+The store writes one tool result to a message, and the time it records is that message's. A message that ever carried
+two results would have its time counted for each, so this is the place to look if the framework starts batching them.
 """
 
 from __future__ import annotations
@@ -23,9 +26,9 @@ import os
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, cast
 
-from zett_agent.jit_harness import ToolStatsReport
+from zett_agent.jit_harness import ToolStatsReport, ToolStatsRow
 
 __all__ = [
     "ERRORS_KEPT",
@@ -136,7 +139,8 @@ def scan_tool_calls(path: Path, *, max_bytes: int = SCAN_BYTES, max_line: int = 
     Args:
         path: The session's ``data.jsonl``.
         max_bytes: How much of the end of the file may be read.
-        max_line: The longest line that is parsed.
+        max_line: The longest line that is parsed, in bytes, its line break not counted: one of exactly this length is
+            read and one byte more is skipped.
     """
     scan = Scan()
     try:
@@ -228,7 +232,7 @@ def build_report(
     names: Sequence[str] | None,
     *,
     management: Collection[str] = (),
-) -> dict[str, Any]:
+) -> UsageReport:
     """Return what the model is shown: a row per tool, shaped like the framework's own ``ToolStatsReport``.
 
     Args:
@@ -261,9 +265,13 @@ def build_report(
             continue
         rows.append(_row(name, entry, tally, 3 if explicit else 1))
     if explicit:
-        return {"tools": rows, "omitted": 0, "window": scan.describe()}
+        return UsageReport(tools=cast("list[ToolStatsRow]", rows), omitted=0, window=scan.describe())
     rows.sort(key=lambda row: (-row["calls"], row["name"]))
-    return {"tools": rows[:MAX_ROWS], "omitted": max(0, len(rows) - MAX_ROWS), "window": scan.describe()}
+    return UsageReport(
+        tools=cast("list[ToolStatsRow]", rows[:MAX_ROWS]),
+        omitted=max(0, len(rows) - MAX_ROWS),
+        window=scan.describe(),
+    )
 
 
 def _row(name: str, entry: Mapping[str, Any], tally: Tally, errors: int) -> dict[str, Any]:
