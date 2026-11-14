@@ -1,75 +1,49 @@
-// The Electron shell: it serves the app bundle from `app://-/` (so the page has a stable, secure origin), keeps the
-// server list in the operating system's key store, and opens links outside the window. It holds no agent and no
-// gateway: everything in the page is the same HTTP client the gateway's own page uses.
+// The Electron shell. It holds no page of its own beyond a server list: choosing a server loads the gateway's page at
+// the gateway's origin, so a change to the page ships with the gateway and never needs a new installer. There is no
+// bridge into the page and no token here; the gateway's sign-in page keeps its cookie in this window's session.
 
-import { app, BrowserWindow, ipcMain, Notification, protocol, safeStorage, session, shell } from "electron";
+import { app, BrowserWindow, Menu, protocol, session, shell } from "electron";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
-import { ServerStore, type Vault } from "./servers";
+import { decide, opensExternally, ORIGIN } from "./navigation";
 
 const SCHEME = "app";
-const ORIGIN = `${SCHEME}://-/`;
-const RENDERER = join(__dirname, "..", "renderer");
+const WEB = join(__dirname, "..", "web");
 const ICON = join(__dirname, "..", "assets", "icon.png");
+const LIST = `${ORIGIN}index.html`;
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json",
-  ".map": "application/json",
-  ".png": "image/png",
   ".svg": "image/svg+xml",
-  ".woff2": "font/woff2",
-  ".webmanifest": "application/manifest+json",
-  ".ico": "image/x-icon",
+  ".png": "image/png",
 };
 
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: SCHEME,
-    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
-  },
-]);
+protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true } }]);
 
 let window: BrowserWindow | null = null;
 
-function store(): ServerStore {
-  const vault: Vault = {
-    isEncryptionAvailable: () => safeStorage.isAsyncEncryptionAvailable(),
-    // `basic_text` is a Linux backend with a hard-coded key; the other platforms have no such fallback.
-    storageBackend: process.platform === "linux" ? () => safeStorage.getSelectedStorageBackend() : undefined,
-    encrypt: (plain) => safeStorage.encryptStringAsync(plain),
-    decrypt: (encrypted) => safeStorage.decryptStringAsync(encrypted),
-  };
-  return new ServerStore(join(app.getPath("userData"), "servers.json"), vault);
-}
-
-/** The bundle's files, with the page at the root and everything it asks for under /static. */
+/** The list's files: a handful of static ones, and nothing outside their folder. */
 async function serve(request: Request): Promise<Response> {
-  let url: URL;
   let path: string;
   try {
-    url = new URL(request.url);
+    const url = new URL(request.url);
+    if (url.host !== "-") return new Response("Not found", { status: 404 });
     path = decodeURIComponent(url.pathname);
   } catch {
     return new Response("Bad request", { status: 400 });
   }
-  if (url.host !== "-") return new Response("Not found", { status: 404 });
-  const relative = path === "/" ? "index.html" : path.replace(/^\/+/, "");
-  const file = normalize(join(RENDERER, relative));
-  if (file !== RENDERER && !file.startsWith(RENDERER + sep)) {
-    return new Response("Not found", { status: 404 });
-  }
+  const file = normalize(join(WEB, path === "/" ? "index.html" : path.replace(/^\/+/, "")));
+  if (!file.startsWith(WEB + sep)) return new Response("Not found", { status: 404 });
   try {
     return new Response(await readFile(file), {
-      headers: {
-        "content-type": TYPES[extname(file).toLowerCase()] ?? "application/octet-stream",
-        "cache-control": "no-store",
-      },
+      headers: { "content-type": TYPES[extname(file).toLowerCase()] ?? "application/octet-stream" },
     });
   } catch {
     return new Response("Not found", { status: 404 });
   }
+}
+
+function showList(error = ""): void {
+  void window?.loadURL(`${LIST}#choose${error ? `:${encodeURIComponent(error)}` : ""}`);
 }
 
 function createWindow(): void {
@@ -82,29 +56,60 @@ function createWindow(): void {
     backgroundColor: "#17212b",
     autoHideMenuBar: true,
     show: false,
-    webPreferences: {
-      preload: join(__dirname, "preload.cjs"),
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false,
-      webSecurity: true,
-    },
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true },
   });
-
+  const contents = window.webContents;
   window.once("ready-to-show", () => window?.show());
   window.on("closed", () => {
     window = null;
   });
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/i.test(url)) void shell.openExternal(url);
+  contents.setWindowOpenHandler(({ url }) => {
+    if (opensExternally(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
-  window.webContents.on("will-navigate", (event, url) => {
-    if (url.startsWith(ORIGIN)) return;
+  contents.on("will-navigate", (event, url) => {
+    const verdict = decide(contents.getURL(), url);
+    if (verdict === "allow") return;
     event.preventDefault();
-    if (/^https?:/i.test(url)) void shell.openExternal(url);
+    if (verdict === "external") void shell.openExternal(url);
   });
-  void window.loadURL(`${ORIGIN}index.html`);
+  // A server that cannot be reached leaves the window blank; the list, with the reason, is the way out.
+  contents.on("did-fail-load", (_event, code, description, _url, isMainFrame) => {
+    if (isMainFrame && code !== -3) showList(`${description} (${code})`);
+  });
+  void window.loadURL(LIST);
+}
+
+function menu(): void {
+  const mac = process.platform === "darwin";
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      ...(mac ? [{ role: "appMenu" as const }] : []),
+      {
+        label: "Server",
+        submenu: [
+          { label: "Switch server…", accelerator: "CmdOrCtrl+Shift+S", click: () => showList() },
+          { type: "separator" },
+          mac ? { role: "close" } : { role: "quit" },
+        ],
+      },
+      { role: "editMenu" },
+      {
+        label: "View",
+        submenu: [
+          { role: "reload" },
+          { role: "forceReload" },
+          { type: "separator" },
+          { role: "resetZoom" },
+          { role: "zoomIn" },
+          { role: "zoomOut" },
+          { type: "separator" },
+          { role: "togglefullscreen" },
+        ],
+      },
+      { role: "windowMenu" },
+    ]),
+  );
 }
 
 function ready(): void {
@@ -121,27 +126,13 @@ function ready(): void {
   app.whenReady().then(() => {
     app.setAppUserModelId("dev.zettcode.desktop");
     if (process.platform === "darwin") app.dock?.setIcon(ICON);
+    // The gateway page asks for notifications and nothing else.
     session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
       callback(permission === "notifications");
     });
     session.defaultSession.setPermissionCheckHandler((_contents, permission) => permission === "notifications");
     protocol.handle(SCHEME, serve);
-    ipcMain.handle("servers:load", () => store().load());
-    ipcMain.handle("servers:save", async (_event, state: unknown) => {
-      if (typeof state !== "object" || state === null) throw new Error("The server list is not an object");
-      await store().save(state);
-    });
-    ipcMain.handle("notice:show", (_event, title: unknown, body: unknown) => {
-      if (typeof title !== "string" || typeof body !== "string" || !Notification.isSupported()) return;
-      const notice = new Notification({ title: title.slice(0, 120), body: body.slice(0, 500) });
-      notice.on("click", () => {
-        if (!window) return;
-        if (window.isMinimized()) window.restore();
-        window.show();
-        window.focus();
-      });
-      notice.show();
-    });
+    menu();
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

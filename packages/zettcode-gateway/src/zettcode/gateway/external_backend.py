@@ -185,11 +185,11 @@ class ExternalBackend(Backend):
 
     # -- what the page says -----------------------------------------------------------------------
     async def send(self, to: str, text: str, *, direct: bool = False, images: Sequence[Image] = ()) -> Delivered:
-        if direct or images:
-            raise SendError(
-                "invalid", "the web gateway is an external session; pictures and direct prompts need a session"
-            )
-        sent = await self.session.send(to, text, mode=MODE_FOLLOWUP)
+        if images:
+            raise SendError("invalid", "the web gateway is an external session; pictures need a session")
+        # A session that takes direct prompts is given the text untouched as its own prompt (the broker's ``raw``), and
+        # what it answers comes back to this inbox as its final message.
+        sent = await self.session.send(to, text, mode=MODE_FOLLOWUP, raw=direct)
         return Delivered(sent.to.handle, sent.disposition, sent.direct)
 
     async def send_group(self, group: str, text: str) -> list[Delivered]:

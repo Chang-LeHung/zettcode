@@ -250,3 +250,26 @@ def test_pictures_a_session_never_reads_count_after_their_acks_time_out_and_are_
             await session.deliver(big, 0.01)  # there is room again
 
     asyncio.run(scenario())
+
+
+# -- ``raw``: a registered session's text, untouched, as the recipient's own prompt ---------------------------------
+async def test_raw_is_honoured_only_for_a_registered_sender_and_a_recipient_that_takes_direct_prompts(tmp_path: Path):
+    run = await started(store=Store(tmp_path / "broker.db"))
+    try:
+        web = await run.peer(A, "web")
+        assert "error" not in await web.register(A, "web", kind="external")
+        daemon = await run.peer(B, "daemon")
+        assert "error" not in await daemon.register(B, "daemon", direct=True)
+        plain = await run.peer("c" * 8, "plain")
+
+        task = asyncio.ensure_future(web.post("daemon", "ls -la", via="external", raw=True))
+        delivery = await daemon.accept("started")
+        reply = await task
+        assert reply["direct"] is True and delivery["direct"] is True and delivery["raw"] is True
+        assert delivery["text"] == "ls -la"
+
+        task = asyncio.ensure_future(web.post("plain", "ls -la", via="external", raw=True))
+        delivery = await plain.accept("started")
+        assert (await task)["direct"] is False and not delivery.get("direct")
+    finally:
+        await run.aclose()

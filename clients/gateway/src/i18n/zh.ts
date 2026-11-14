@@ -392,8 +392,6 @@ export const ZH: Record<string, string> = {
     "你的文字会作为该会话自己的提示词运行,它的回答会回到这里。",
   "Delivered as a message from another session. An older window does not run it as its own prompt.":
     "已作为来自另一个会话的消息送达。较旧的窗口不会把它当作自己的提示词运行。",
-  "Delivered as a relayed message. The session did not run it as its own prompt.":
-    "已作为转述消息送达。该会话没有把它当作自己的提示词运行。",
   "A session other than a daemon may have a person at it. Your message starts a turn there and spends that session's tokens.":
     "非守护进程的会话可能有人在使用。你的消息会在那里开始一轮对话,并消耗该会话的 token。",
   "This session may have a person at it. Your message starts a turn there and uses that session's tokens.":

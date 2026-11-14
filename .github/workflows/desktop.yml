@@ -1,0 +1,81 @@
+name: Desktop installers
+
+# The desktop app is a shell around the gateway's own page, so it changes rarely: a new installer is only for a change
+# under clients/desktop (the server list, the window, the menu). Each system builds its own installer, because
+# electron-builder cannot make a Windows or Linux one from a Mac without extra tools. Push a tag named
+# `desktop-v<version>` (it must equal clients/desktop/package.json), or run this by hand to only build and keep them.
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Installers (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: clients/desktop
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: clients/desktop/package-lock.json
+
+      - name: The tag is the version
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "desktop-v$version" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} but package.json says $version"; exit 1; }
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check && npm test
+
+      - name: Build the installers
+        run: npm run package -- --publish never
+        env:
+          # No signing identity is configured: the installers are unsigned, and say so in the release notes.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            clients/desktop/release/*.dmg
+            clients/desktop/release/*.zip
+            clients/desktop/release/*.exe
+            clients/desktop/release/*.AppImage
+            clients/desktop/release/*.deb
+            clients/desktop/release/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: installers
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" installers/* --repo "${GITHUB_REPOSITORY}" --latest=false \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "Desktop app for macOS (Apple Silicon), Windows and Linux. Unsigned and not notarized: macOS asks you to open it with right-click → Open, and Windows SmartScreen asks for More info → Run anyway. It only needs a gateway to connect to; the page itself comes from the gateway, so a gateway update changes the app without a new installer."

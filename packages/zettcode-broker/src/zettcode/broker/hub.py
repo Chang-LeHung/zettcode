@@ -387,6 +387,11 @@ class Hub:
         # that said it can; for any other the flag is dropped and the message is delivered the ordinary way.
         if body.get("direct") is True and via == VIA_USER and not sender.external and target.direct:
             message["direct"] = True
+        # A registered session (it holds a key) may ask for ``raw``: the text, untouched, as the recipient's own prompt.
+        # The recipient still has to have said it takes direct prompts; an anonymous HTTP sender never gets this.
+        elif body.get("raw") is True and sender.connection is not None and target.direct:
+            message["direct"] = True
+            message["raw"] = True
         pictures: tuple[ImageData, ...] = ()
         if offered:
             # Only a session that runs the message as its reader's own prompt has anywhere to put a picture: for any

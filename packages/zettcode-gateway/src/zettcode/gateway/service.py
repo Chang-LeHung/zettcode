@@ -811,7 +811,7 @@ class Gateway:
             raise GatewayError(409, "offline", f"{view['name']} is not connected, so it cannot be written to")
         # A session that runs the text as its own prompt answers by itself, and the broker brings the answer back; one that
         # does not is a colleague to be asked, and a daemon has nobody to answer to otherwise.
-        direct = bool(view["direct"]) and not self.backend.external
+        direct = bool(view["direct"])
         if pictures:
             self._check_pictures(view, direct)
         asked = False if direct else (view["kind"] == "daemon" if reply is None else reply)

@@ -168,17 +168,16 @@ gateway-deps: $(GATEWAY_DEPS)
 gateway-page: gateway-deps
 	cd clients/gateway && npm run build
 
-# `build:app` checks that the page still compiles in app mode; its output under clients/gateway/dist is not consumed
-# here (the desktop builds its own renderer).
+# `build:app` checks that the page still compiles in app mode; its output under clients/gateway/dist is not consumed.
 gateway-ui: gateway-page
 	cd clients/gateway && npm run check && npm test && npm run build:app
 
-# The desktop app is the gateway page in an Electron shell. Its build makes the page's app bundle first, so a change
-# to a Vue component is checked here in the same run. `make desktop-package` also writes the installers.
+# The desktop app is a shell: a server list and a window on the gateway's own page, which the gateway serves. A change
+# to the page is therefore never a desktop change. `make desktop-package` writes the installers for this system.
 $(DESKTOP_DEPS): clients/desktop/package-lock.json clients/desktop/package.json
 	cd clients/desktop && npm ci --no-audit --no-fund
 
-desktop: gateway-deps $(DESKTOP_DEPS)
+desktop: $(DESKTOP_DEPS)
 	cd clients/desktop && npm run check && npm test && npm run build
 
 desktop-package: desktop

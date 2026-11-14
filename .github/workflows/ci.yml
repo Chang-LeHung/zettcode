@@ -75,7 +75,7 @@ jobs:
           typescript=false; matches '^clients/typescript/' && typescript=true
           vscode=false;     [ "$typescript" = true ] && vscode=true;  matches '^clients/vscode/' && vscode=true
           gateway=false;    matches '^clients/gateway/' && gateway=true
-          desktop=false;    matches '^clients/(desktop|gateway)/' && desktop=true
+          desktop=false;    matches '^clients/desktop/|^\.github/workflows/desktop\.yml' && desktop=true
           mobile=false;     matches '^clients/mobile/' && mobile=true
           package=false;    [ "$python" = true ] && package=true;  [ "$gateway" = true ] && package=true
 
@@ -252,13 +252,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: |
-            clients/gateway/package-lock.json
-            clients/desktop/package-lock.json
-
-      - name: Install the page's build toolchain
-        working-directory: clients/gateway
-        run: npm ci --no-audit --no-fund
+          cache-dependency-path: clients/desktop/package-lock.json
 
       - name: Install
         working-directory: clients/desktop

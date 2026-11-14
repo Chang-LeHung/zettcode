@@ -13,7 +13,6 @@ import type { ChatItem, Pending, Picture, Thread } from "../types";
 import { prefs } from "./prefs";
 import { seedStream } from "./stream";
 import { lobby, threadOf } from "./threads";
-import { toast } from "./ui";
 
 export const chat = reactive({
   id: "",
@@ -133,9 +132,6 @@ async function deliver(id: string, entry: Pending, reply: boolean): Promise<void
     // follow-ups, so that word only reaches a page from a server newer than it.
     entry.state = sent.disposition === "queued" ? "queued" : "started";
     lobby.status = sent.status;
-    // The session was listed as taking direct prompts and the broker did not hand it over as one (its roster was a moment
-    // out of date): it arrived as a message from another session, and no answer is on its way back.
-    if (threadOf(id)?.direct && !sent.direct) toast(t("Delivered as a relayed message. The session did not run it as its own prompt."));
   } catch (error) {
     entry.state = "failed";
     const failure = error instanceof ApiError ? error : new ApiError(0, { message: String(error) });

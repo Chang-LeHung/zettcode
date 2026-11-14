@@ -58,7 +58,13 @@ async def test_the_backend_registers_receives_and_replies(host, tmp_path):
         assert [peer.session_id for peer in backend.peers()] == [sender.session.session_id]
 
         with pytest.raises(SendError):
-            await backend.send(sender.session.session_id, "x", direct=True)
+            await backend.send(sender.session.session_id, "x", images=[object()])  # type: ignore[list-item]
+
+        # The peer does not take direct prompts, so a raw ask arrives the ordinary way and says so.
+        asked = await backend.send(sender.session.session_id, "raw", direct=True)
+        assert asked.direct is False
+        await eventually(lambda: inbox.messages)
+        inbox.messages.clear()
 
         await backend.send(sender.session.session_id, "back")
         await eventually(lambda: inbox.messages)
