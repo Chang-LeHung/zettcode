@@ -478,7 +478,7 @@ def report_resume(agent: TerminalAgent) -> None:
         print(f"\nresume this session: {hint}\n")
 
 
-def resolve_config(argv: list[str] | None = None, *, require_models: bool = True) -> ZettCodeConfig:
+def resolve_config(argv: list[str] | None = None, *, require_models: bool = False) -> ZettCodeConfig:
     """Build the settings from the config file, reporting a bad file as a clean exit.
 
     The workspace is parsed first: ``--help`` exits inside ``argparse``, and it
@@ -487,8 +487,9 @@ def resolve_config(argv: list[str] | None = None, *, require_models: bool = True
 
     Args:
         argv: Arguments to read the workspace from; ``sys.argv`` by default.
-        require_models: Refuse a file that lists no models. The terminal passes ``False``: a machine that has
-            never been set up reaches the shell and its ``/config``, and only a request insists on a model.
+        require_models: Refuse a file that lists no models. Off by default, because a file with no entry is not a
+            machine with no model: a plugin can offer one, and the runtime starts on the first it finds. A process
+            that really has none refuses the request with one sentence naming ``/config``.
     """
     workspace = parse_args(argv).workspace
     from zettcode.config import load_config

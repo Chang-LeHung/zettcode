@@ -334,7 +334,9 @@ def build_config(
             base = ZettCodeConfig(workspace=root, models=_models(models))
             embedded = dict(EMBEDDED_DEFAULTS)
         else:
-            base = load_config(root, path=config_path)
+            # A file with no `[[models]]` is not a machine with no model: a plugin can offer one, and the runtime
+            # starts on the first it finds. Nothing available at all refuses the first request, with one sentence.
+            base = load_config(root, path=config_path, require_models=False)
             embedded = dict(EMBEDDED_DEFAULTS)
         return replace(base, **cast("dict[str, Any]", {**embedded, **_coerced(settings)}))
     except ConfigurationError:

@@ -429,7 +429,8 @@ multimodal = true
 DeepSeek 当前的 Flash 模型接受图片，Pro 不接受。如果网关没有开放 Flash 的图片能力，
 那一项也应该保持 `multimodal = false`。
 
-启动时选择第一项。运行中输入 `/model` 从列表选择，或者直接输入 `/model DeepSeek Flash`。
+启动时选择第一项；文件里一项都没有时，使用插件提供的第一条模型，所以环境里有厂商的 key 就足够完成第一次运行。
+运行中输入 `/model` 从列表选择，或者直接输入 `/model DeepSeek Flash`。
 切换只影响后续请求，不创建新会话，也不打断正在执行的请求。用 [`/config`](#adding-models-with-config)
 添加的模型立刻可用；手动编辑文件之后需要重启才能读到新增项。
 
@@ -726,7 +727,7 @@ Invoke-RestMethod -Uri "https://api.deepseek.com/chat/completions" `
 
 | 现象 | 检查什么 |
 | --- | --- |
-| `No models configured` | 添加一项 `[[models]]`。终端没有模型也能启动，`/config` 会写下第一项；`zettcode prompt` 与 `zettcode doctor` 在文件里还没有时会拒绝。 |
+| `No models configured` | 添加一项 `[[models]]`，或者设置 `models` 插件能用的厂商 key（`OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY`、`ZAI_API_KEY`）。终端两种情况都能启动，`/config` 会写下第一项；两者都没有时，请求会带着这句话被拒绝。 |
 | `Missing token for model ...` | 填写 `token`，或在启动终端中设置该 API 对应的变量：`OPENAI_API_KEY`，`anthropic` 项则是 `ANTHROPIC_API_KEY`。占位符是非空字符串，通常要到 API 调用时才会报错。 |
 | `Unknown config keys ...` | 只使用本页列出的键，例如 `model_name` 应该改成 `model`。 |
 | `must be bool` / `must be int` | 用 `true` 而不是 `"true"`；用 `1000000` 而不是 `"1000000"`。 |
