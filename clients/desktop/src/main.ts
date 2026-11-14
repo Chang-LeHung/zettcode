@@ -35,7 +35,10 @@ async function serve(request: Request): Promise<Response> {
   if (!file.startsWith(WEB + sep)) return new Response("Not found", { status: 404 });
   try {
     return new Response(await readFile(file), {
-      headers: { "content-type": TYPES[extname(file).toLowerCase()] ?? "application/octet-stream" },
+      headers: {
+        "content-type": TYPES[extname(file).toLowerCase()] ?? "application/octet-stream",
+        "cache-control": "no-store",
+      },
     });
   } catch {
     return new Response("Not found", { status: 404 });
@@ -68,6 +71,14 @@ function createWindow(): void {
     return { action: "deny" };
   });
   contents.on("will-navigate", (event, url) => {
+    const verdict = decide(contents.getURL(), url);
+    if (verdict === "allow") return;
+    event.preventDefault();
+    if (verdict === "external") void shell.openExternal(url);
+  });
+  // `will-navigate` is for navigations the page starts; a redirect the server answers with is a different event, and
+  // without this a gateway could move the window to another origin that every later navigation would then trust.
+  contents.on("will-redirect", (event, url) => {
     const verdict = decide(contents.getURL(), url);
     if (verdict === "allow") return;
     event.preventDefault();

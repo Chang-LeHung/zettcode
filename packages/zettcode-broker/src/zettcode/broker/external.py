@@ -59,8 +59,8 @@ class ExternalSession:
 
     The program is an ``external`` session by default: it can exchange one-to-one messages and, when the broker's
     owner adds it, receive and write to groups. It cannot create or manage groups with its own key, read a group's
-    history, or use the ``direct`` chat-window semantics; those are limits of the broker's permission model, not
-    this wrapper.
+    history, or send pictures. It may ask for ``raw`` delivery (see :meth:`send`), which is what the web gateway does;
+    the ``direct`` flag itself stays a reader's chat window's.
 
     Args:
         session_id: The stable id this program registers with. It must be a broker session id (letters, digits,
