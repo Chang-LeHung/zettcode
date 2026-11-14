@@ -1462,7 +1462,8 @@ async def test_a_damaged_inbox_file_is_ignored_and_the_file_written_is_private(t
     await gateway.send(AGENT, "hi")
 
     path = gateway._inbox_path()
-    assert path.stat().st_mode & 0o777 == 0o600, "what people said is not readable by other accounts"
+    if os.name == "posix":  # Windows has no such mode bits
+        assert path.stat().st_mode & 0o777 == 0o600, "what people said is not readable by other accounts"
     assert [item["text"] for item in json.loads(path.read_text(encoding="utf-8"))["threads"][AGENT]["items"]] == ["hi"]
 
 
