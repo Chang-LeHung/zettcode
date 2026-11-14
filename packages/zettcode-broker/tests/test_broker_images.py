@@ -273,3 +273,22 @@ async def test_raw_is_honoured_only_for_a_registered_sender_and_a_recipient_that
         assert (await task)["direct"] is False and not delivery.get("direct")
     finally:
         await run.aclose()
+
+
+async def test_raw_is_refused_for_a_zettcode_session_and_for_pictures(tmp_path: Path):
+    run = await started(store=Store(tmp_path / "broker.db"))
+    try:
+        web = await run.peer(A, "web")
+        assert "error" not in await web.register(A, "web", kind="external")
+        agent = await run.peer("d" * 8, "agent")  # a ZettCode session: its agent can be steered by what it reads
+        daemon = await run.peer(B, "daemon")
+        assert "error" not in await daemon.register(B, "daemon", direct=True)
+
+        task = asyncio.ensure_future(agent.post("daemon", "rm -rf x", raw=True))
+        delivery = await daemon.accept("started")
+        assert (await task)["direct"] is False and not delivery.get("direct") and not delivery.get("raw")
+
+        refused = await web.post("daemon", "look", via="external", raw=True, images=[wire(PNG)])
+        assert refused["status"] == 400 and "no pictures" in refused["error"]["message"]
+    finally:
+        await run.aclose()

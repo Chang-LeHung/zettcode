@@ -387,9 +387,15 @@ class Hub:
         # that said it can; for any other the flag is dropped and the message is delivered the ordinary way.
         if body.get("direct") is True and via == VIA_USER and not sender.external and target.direct:
             message["direct"] = True
-        # A registered session (it holds a key) may ask for ``raw``: the text, untouched, as the recipient's own prompt.
-        # The recipient still has to have said it takes direct prompts; an anonymous HTTP sender never gets this.
-        elif body.get("raw") is True and sender.connection is not None and target.direct:
+        # ``raw`` is for a program that stands in for a reader, such as the web gateway: a *registered external*
+        # session (it holds a key and said it is not a ZettCode session) may ask for its text to be run untouched as the
+        # recipient's own prompt. A ZettCode session never may, since its agent can be steered by what it reads and the
+        # "message from ..." frame is the model's only sign of who is speaking. The recipient still has to have said it
+        # takes direct prompts. Nothing here proves who the sender is: any process with the broker's token can register,
+        # so this narrows who may ask, it is not an authentication.
+        elif body.get("raw") is True and sender.external and sender.connection is not None and target.direct:
+            if offered:
+                raise Refused("invalid", "a raw message carries no pictures")
             message["direct"] = True
             message["raw"] = True
         pictures: tuple[ImageData, ...] = ()

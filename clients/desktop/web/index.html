@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#17212b">
 <title>ZettCode</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'unsafe-inline'">
 <style>
   :root {
     color-scheme: light dark;
@@ -165,7 +165,8 @@
 
   // Opened by the app: go to the server used last. Opened with #choose (Server → Switch server, or a server that could
   // not be reached, with the reason after the colon): stay here.
-  const hash = decodeURIComponent(location.hash.slice(1));
+  let hash = location.hash.slice(1);
+  try { hash = decodeURIComponent(hash); } catch { /* a malformed hash is read as typed: the list must still draw */ }
   if (hash.startsWith("choose:")) $("err").textContent = "Could not reach the server: " + hash.slice(7);
   let last = "";
   try { last = localStorage.getItem(LAST) || ""; } catch { /* no last server */ }

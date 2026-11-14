@@ -836,6 +836,8 @@ class Gateway:
 
     def _check_pictures(self, view: Mapping[str, Any], direct: bool) -> None:
         """Refuse pictures for a session that cannot use them, in words a person can act on, before anything is sent."""
+        if self.backend.external:
+            raise GatewayError(400, "no_pictures", "This gateway is an external session, which cannot send pictures")
         if not direct:
             raise GatewayError(
                 400,
