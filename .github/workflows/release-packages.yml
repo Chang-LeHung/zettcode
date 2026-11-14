@@ -10,8 +10,9 @@ name: Release packages
 on:
   push:
     # `monitor-v0.2.0`: the plugin name its entry point declares, or the directory name, then `-v` and the version.
-    # ZettCode's own `v0.3.3` tag does not match this, and `release.yml` owns it.
-    tags: ["*-v*"]
+    # ZettCode's own `v0.3.3` tag does not match this, and `release.yml` owns it. Neither does `desktop-v0.2.0`, which
+    # `desktop.yml` owns: it is the desktop app's installers, not a package on PyPI.
+    tags: ["*-v*", "!desktop-v*"]
   workflow_dispatch:
     inputs:
       package:

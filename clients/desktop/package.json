@@ -3,7 +3,11 @@
   "version": "0.2.0",
   "private": true,
   "description": "The ZettCode desktop app: a window on the gateway you choose, with a list of servers",
-  "author": "Chang-LeHung",
+  "author": {
+    "name": "Chang LeHung",
+    "email": "changlehung@gmail.com"
+  },
+  "homepage": "https://github.com/Chang-LeHung/zettcode/tree/main/clients/desktop#readme",
   "type": "module",
   "license": "MIT",
   "main": "dist/main.cjs",
