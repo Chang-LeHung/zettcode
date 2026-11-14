@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import time
 from pathlib import Path
@@ -11,7 +12,7 @@ import pytest
 from sdk_helpers import ScriptedModel, config_for, wire
 from zettcode.broker.protocol import PeerInfo
 from zettcode.daemon.process import Daemons, SpawnFailed
-from zettcode.daemon.state import Registry, State
+from zettcode.daemon.state import STATE_FILE, Registry, State
 from zettcode.sdk import daemons
 from zettcode.sdk.client import Client
 from zettcode.sdk.errors import ConfigurationError, DaemonStartError, SessionNotFoundError
@@ -155,7 +156,8 @@ def test_the_daemons_are_listed_newest_first_with_what_each_recorded_and_a_gone_
     found = daemons.list_daemons()
 
     assert [item.session_id for item in found] == ["01new", "01old"]
-    assert found[0] == DaemonInfo(
+    # `updated_at` is the state file's own time, which is this test's clock: it is asserted on its own below.
+    assert dataclasses.replace(found[0], updated_at=0.0) == DaemonInfo(
         session_id="01new",
         workspace=str(project),
         status="idle",
@@ -168,6 +170,19 @@ def test_the_daemons_are_listed_newest_first_with_what_each_recorded_and_a_gone_
         started_at=2_000_000_000.0,
     )
     assert found[1].status == "dead" and found[1].title == "Old one"
+
+
+def test_a_record_says_when_its_state_was_last_written(folders):
+    """The hub orders its daemons by this, so it has to be the record's own last change and not when it started."""
+    project = folders / "project"
+    project.mkdir()
+    record(project, "01a", started_at=1.0)
+
+    (found,) = daemons.list_daemons()
+    entry = Registry().record(project, "01a")
+
+    assert found.updated_at == (entry.folder / STATE_FILE).stat().st_mtime
+    assert found.updated_at > found.started_at, "it was started in 1970 and its state was written just now"
 
 
 def test_a_daemon_with_no_state_is_still_listed_by_the_name_of_its_folder(folders):

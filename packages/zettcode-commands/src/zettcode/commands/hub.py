@@ -14,6 +14,12 @@ through :mod:`zettcode.sdk.daemons`, so nothing new is listened to and nothing i
   stopped keeps its record and stays listed until it is deleted, and a stored session has none. ``s`` stops the one
   under the mark and keeps its record; ``Enter`` starts an offline one, resuming its session.
 
+Both lists are ordered by their ``LAST`` column, newest first, and the column says how long ago that was. What it
+counts differs by what the row is, because that is what there is to know: a running session's newest message through
+the broker, or — for a session of this workspace — its conversation changing; a daemon's own record, written when its
+status changes and while it works; and a stored session's conversation. A row nothing says anything about shows a
+dash and goes last, which is what a session that has only just connected is.
+
 ``/`` searches the table in front (Sessions or Daemons): what is typed after it keeps the rows whose name, title or id
 contain every word of it, ignoring case. ``Enter`` stops typing and keeps the filter (``s`` and ``r`` act again),
 ``Esc`` clears it and only then closes the page. Each tab has its own search.
@@ -28,7 +34,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import time
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -89,6 +95,10 @@ class Peer:
     workspace: str
     kind: str = "session"
     session_id: str = ""
+    #: Seconds since the epoch of the newest thing known to have happened to this session — a message it sent or
+    #: was sent, or its conversation changing in this workspace's store — or ``0.0`` when nothing is known. The
+    #: Sessions tab is sorted by it, newest first, and shows it as an age.
+    activity: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +108,8 @@ class Daemon:
     ``label`` is what the row is called; ``name`` and ``title`` are the two things it may be called after, kept apart
     because a search finds either. ``effort`` and ``permission`` are what the record says the daemon ran at, so that
     starting it again does not change them: a daemon that was denied a shell is not given one by pressing Enter.
+    ``activity`` is when the daemon's record was last written, or for an ``offline`` row when its conversation last
+    changed; the tab is sorted by it, newest first.
     """
 
     session_id: str
@@ -109,6 +121,7 @@ class Daemon:
     title: str = ""
     effort: str = ""
     permission: str = ""
+    activity: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +141,9 @@ class HubData:
     me_title: str = ""
     #: Whether stored sessions older than the :data:`OFFLINE_LIMIT` newest were left out, which the table says.
     offline_cut: bool = False
+    #: The reading's own clock, in seconds since the epoch: every LAST cell is an age counted from it, so the ages
+    #: are those of the moment the page was read and not of the moment a row happened to be drawn.
+    now: float = 0.0
     #: When the reading began (``12:34:56``), how long it took in milliseconds, and each step's share of that: elapsed
     #: time on the event loop, so a step is also slow when the loop was busy with something else meanwhile. The page
     #: composes the fullest line of it that fits (:meth:`HubPage._stamp`): the steps need about 85 columns, by their
@@ -176,6 +192,29 @@ TABLE_TITLE_WIDTH = 32
 ME_NAME_WIDTH = 20
 ME_TITLE_WIDTH = 40
 
+#: What the LAST cell says about a row nothing is known about: it is there, so the column never moves, and it is not
+#: "just now", which would claim the row was touched a moment ago.
+NEVER = "\u2014"
+
+
+def _ago(when: float, now: float) -> str:
+    """Return how long ago ``when`` was, in the coarsest unit that fits, or :data:`NEVER` when nothing says.
+
+    The same words the sessions list uses — ``just now``, ``5m ago``, ``2h ago``, ``3d ago`` — counted from the
+    reading's own clock, so every row of a reading is aged by the same moment.
+    """
+    if when <= 0 or now <= 0:
+        return NEVER
+    seconds = max(0, int(now - when))
+    if seconds < 60:
+        return "just now"
+    if seconds < 3600:
+        return f"{seconds // 60}m ago"
+    if seconds < 86_400:
+        return f"{seconds // 3600}h ago"
+    return f"{seconds // 86_400}d ago"
+
+
 #: The steps of a reading, in the order :meth:`HubCommand._read` takes them. A new step is added here, which is a
 #: decision to make where it can be seen: ``lap`` refuses a name that is not in it, and the letters below go with it.
 #: ``build`` is the picture's title dictionary only; routing the lines needs the page's size, so it runs in the first
@@ -216,6 +255,7 @@ def _table(titles: tuple[str, ...], rows: Sequence[tuple[str, str, str, tuple[st
 
 
 def _session_table(data: HubData) -> Table:
+    """Return the Sessions tab: the running sessions, the one that did something most recently first."""
     rows = [
         (
             peer.handle,
@@ -223,19 +263,21 @@ def _session_table(data: HubData) -> Table:
             hub_graph.state_of(peer.status, peer.kind),
             (
                 hub_graph.state_of(peer.status, peer.kind),
+                _ago(peer.activity, data.now),
                 truncate(peer.title or "untitled", TABLE_TITLE_WIDTH),
                 peer.workspace,
             ),
             f"{peer.handle} {peer.title} {peer.session_id}",
         )
-        for peer in data.peers
+        for peer in sorted(data.peers, key=lambda peer: peer.activity, reverse=True)
     ]
-    return _table(("NAME", "STATE", "TITLE", "WORKSPACE"), rows)
+    return _table(("NAME", "STATE", "LAST", "TITLE", "WORKSPACE"), rows)
 
 
 def _daemon_table(data: HubData) -> Table:
+    """Return the Daemons tab: every record and every stored session nothing runs, most recently touched first."""
     rows = []
-    for daemon in data.daemons:
+    for daemon in sorted(data.daemons, key=lambda daemon: daemon.activity, reverse=True):
         # No process is one word, whether it was a daemon that was stopped or a session that was only stored: the
         # reader sees the same thing and `Enter` does the same thing, which is what STARTABLE says.
         state = OFFLINE if daemon.status in STARTABLE else hub_graph.state_of(daemon.status, "")
@@ -248,6 +290,7 @@ def _daemon_table(data: HubData) -> Table:
                 state,
                 (
                     said,
+                    _ago(daemon.activity, data.now),
                     truncate(daemon.title or "untitled", TABLE_TITLE_WIDTH),
                     daemon.model or "no model",
                     daemon.workspace,
@@ -255,7 +298,7 @@ def _daemon_table(data: HubData) -> Table:
                 f"{daemon.label} {daemon.name} {daemon.title} {daemon.session_id}",
             )
         )
-    table = _table(("NAME", "STATE", "TITLE", "MODEL", "WORKSPACE"), rows)
+    table = _table(("NAME", "STATE", "LAST", "TITLE", "MODEL", "WORKSPACE"), rows)
     if data.offline_cut:
         # A row of words, not a session: it cannot be marked, so no key acts on it, and it has no `find`, so no search
         # keeps it. The two lists stay the same length.
@@ -902,6 +945,7 @@ class HubCommand(TuiPlugin):
         from zettcode.sdk.daemons import list_daemons
 
         clock = time.strftime("%H:%M:%S")
+        now = time.time()
         began = last = time.perf_counter()
         steps: list[tuple[str, int]] = []
 
@@ -936,6 +980,9 @@ class HubCommand(TuiPlugin):
                 title=info.title or "",
                 effort=info.effort or "",
                 permission=info.permission or "",
+                # The record's own last write; a record that never wrote one has nothing, and `started_at` is the
+                # record's birth, not a change to it.
+                activity=info.updated_at,
             )
             for info in await asyncio.to_thread(list_daemons)
         )
@@ -952,6 +999,8 @@ class HubCommand(TuiPlugin):
             listed = ()
         cut = len(listed) > OFFLINE_LIMIT
         listed = listed[:OFFLINE_LIMIT]
+        # When each stored session of this workspace last changed, by id: its conversation's newest write.
+        moments = {info.id: info.updated_at.timestamp() for info in listed}
         lap("sessions")
         graph_ok = True
         try:
@@ -988,9 +1037,16 @@ class HubCommand(TuiPlugin):
         if not graph_ok:
             # Nothing to say about who talks to whom, so the picture is empty and says why, not a lone stopped box.
             nodes, links = (), ()
+        # When each daemon's row last changed: the record's newest write, or its session's conversation when that is
+        # newer (a turn writes the state at its start and end, and the conversation keeps changing in between).
+        daemons = tuple(
+            dataclasses.replace(daemon, activity=max(daemon.activity, moments.get(daemon.session_id, 0.0)))
+            for daemon in daemons
+        )
         # Offline: the stored sessions of this workspace that nothing accounts for — not the reader's own, not in the
-        # roster, and not the session of any daemon record (which has its row already, running or stopped). They follow
-        # the daemons, newest first, and are what a daemon can be started on.
+        # roster, and not the session of any daemon record (which has its row already, running or stopped). They are
+        # listed with the daemons, and the tab sorts the whole of it by the same clock, so where they land is where
+        # their conversation last changed put them.
         # Who is in the roster is the live graph's word, and the Sessions tab, the picture and the offline rows all take
         # it from there: a peer that has just disconnected lingers in the client's cache, and one tab would call a
         # session idle while another called it offline. The cached peers stand in only when the graph could not be read.
@@ -1007,6 +1063,16 @@ class HubCommand(TuiPlugin):
                 for entry in graph.get("sessions", ())
                 if str(entry.get("session_id", "")) != me
             )
+        # What a running session last did, by id: a message it sent or was sent through the broker, or its
+        # conversation changing in this workspace's store. A session of another workspace has only the broker's word,
+        # and one that has done neither is left without a time, which the table shows as such.
+        traffic = _traffic(graph)
+        peers = tuple(
+            dataclasses.replace(
+                peer, activity=max(moments.get(peer.session_id, 0.0), traffic.get(peer.session_id, 0.0))
+            )
+            for peer in peers
+        )
         roster = {peer.session_id for peer in peers}
         accounted = {me, *roster, *(daemon.session_id for daemon in daemons)}
         offline = tuple(
@@ -1016,6 +1082,7 @@ class HubCommand(TuiPlugin):
                 status=OFFLINE,
                 workspace=str(here),
                 title=info.title or "",
+                activity=moments.get(info.id, 0.0),
             )
             for info in listed
             if info.id not in accounted
@@ -1031,6 +1098,7 @@ class HubCommand(TuiPlugin):
             me_name=me_name,
             me_title=me_title,
             offline_cut=cut,
+            now=now,
             began=clock,
             took=round((time.perf_counter() - began) * 1000),
             steps=tuple(steps),
@@ -1075,3 +1143,38 @@ def _is_in(workspace: str, here: Path) -> bool:
         return bool(workspace) and Path(workspace).expanduser().resolve() == here
     except (OSError, RuntimeError):
         return False
+
+
+def _traffic(graph: Mapping[str, Any]) -> dict[str, float]:
+    """Return, by session id, the newest moment each session took part in a message the broker remembers.
+
+    Two places say it and both are used: ``recent``, the newest messages, and ``edges``, whose ``last`` is the newest
+    message of each pair — so a session that has talked a lot recently is dated even when it is not in ``recent``.
+    A group's message names the group in ``to`` and no session, so a group recipient is dated by nothing; its sender
+    is. Anything that is not the shape the broker's protocol describes is skipped rather than believed: this reads a
+    page, and a page is not a reason to fail one.
+    """
+    newest: dict[str, float] = {}
+
+    def note(session_id: object, when: object) -> None:
+        if not isinstance(session_id, str) or not session_id:
+            return
+        if not isinstance(when, (int, float)) or isinstance(when, bool):
+            return
+        newest[session_id] = max(newest.get(session_id, 0.0), float(when))
+
+    messages = graph.get("recent", ())
+    for message in messages if isinstance(messages, (list, tuple)) else ():
+        if not isinstance(message, Mapping):
+            continue
+        sender = message.get("from")
+        note(sender.get("session_id") if isinstance(sender, Mapping) else None, message.get("ts"))
+        recipient = message.get("to")
+        note(recipient.get("session_id") if isinstance(recipient, Mapping) else None, message.get("ts"))
+    edges = graph.get("edges", ())
+    for edge in edges if isinstance(edges, (list, tuple)) else ():
+        if not isinstance(edge, Mapping):
+            continue
+        note(edge.get("a"), edge.get("last"))
+        note(edge.get("b"), edge.get("last"))
+    return newest

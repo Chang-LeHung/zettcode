@@ -85,7 +85,7 @@ def _info(record: Record) -> DaemonInfo:
     """Return the SDK's value for a daemon's record."""
     state = record.state
     if state is None:
-        return DaemonInfo(session_id=record.session_id, status=record.status)
+        return DaemonInfo(session_id=record.session_id, status=record.status, updated_at=record.updated())
     return DaemonInfo(
         session_id=record.session_id,
         workspace=state.workspace,
@@ -97,6 +97,7 @@ def _info(record: Record) -> DaemonInfo:
         permission=state.permission,
         pid=state.pid,
         started_at=state.started_at,
+        updated_at=record.updated(),
         input_tokens=state.input_tokens,
         output_tokens=state.output_tokens,
         context_tokens=state.context_tokens,

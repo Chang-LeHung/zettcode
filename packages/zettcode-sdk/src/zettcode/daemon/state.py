@@ -234,6 +234,19 @@ class Record:
             return 0.0
         return max(0.0, (now if now is not None else time.time()) - self.state.started_at)
 
+    def updated(self) -> float:
+        """Return when this record's state was last written, or zero when it never was.
+
+        That is the daemon's own last change — a status as a turn began or ended, a label a reader set, the counters
+        while it works — and unlike the heartbeat, which says the process is alive every few seconds, it moves only
+        when something about the daemon changed. A dead daemon keeps the time of its last write, which is what a list
+        sorted by activity wants for it.
+        """
+        try:
+            return (self.folder / STATE_FILE).stat().st_mtime
+        except OSError:
+            return 0.0
+
     def _alive(self) -> bool:
         """Return whether the process the state names is running and keeping its heartbeat.
 
