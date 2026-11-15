@@ -58,9 +58,6 @@ def write_json(
             "w",
             encoding="utf-8",
         ) as handle:
-            if private and hasattr(os, "fchmod"):  # POSIX only
-                with contextlib.suppress(OSError):
-                    os.fchmod(handle.fileno(), 0o600)
             handle.write(text)
         os.replace(temporary, path)
     except BaseException:
