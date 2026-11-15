@@ -82,9 +82,9 @@ planner, a reviewer and a tester must hear the same thing. Ask a session's model
 
 ## The Graph page
 
-A page of the web gateway: sessions as nodes, groups as regions, each message a line to its recipient. Use it when
-several agents talk and you want to know who is talking to whom. **Replay** redraws a past period, up to 20,000
-messages, and sends nothing again.
+A page of the web gateway: sessions as nodes, groups as regions, each message a packet to its recipients. Use it when
+several agents talk and you want to know who is talking to whom. **Replay** redraws a past period and sends nothing
+again.
 
 ```bash
 zettcode gateway start
@@ -92,7 +92,7 @@ zettcode gateway start
 
 Open **Graph**.
 
-**Details.** [Talking between sessions: the graph](/guide/messaging#the-graph).
+**Details.** [The graph on the web gateway page](/guide/gateway#the-graph).
 
 ## The web gateway
 

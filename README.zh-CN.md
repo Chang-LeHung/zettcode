@@ -28,7 +28,7 @@ ZettCode 在你的终端里处理一个目录。它把思考和每次工具调�
 | **代码评审** | 另一个智能体读你未提交的改动，你的对话不被打断。 | `/code-review` |
 | **后台智能体** | 没人坐在键盘前的会话；关掉终端它还在跑。 | `zettcode daemon spawn` |
 | **消息与群** | 同一台机器上的会话互发消息；`@名字` 找到某个会话，群消息送达所有成员。 | 输入框里 `@名字` |
-| **网页网关** | 管理 daemon、会话和群的网页，带关系图和回放，手机也能用。 | `zettcode gateway start` |
+| **网页网关** | 管理 daemon、会话和群的网页，手机也能用。 | `zettcode gateway start` |
 | **Codex 与 Claude Code** | 两者都能作为成员收消息、进群。 | New → External agent |
 
 每一项的完整说明见[用户指南](https://chang-lehung.github.io/zettcode/zh/guide/capabilities)。
@@ -85,6 +85,12 @@ zettcode gateway start
 
 <p align="center">
   <img src="docs/public/demo/group.gif" width="800" alt="新建群、@builder 智能体并读到它的回复" />
+</p>
+
+这个页面里的 **Graph** 把会话、群和它们之间飞过的消息画出来。
+
+<p align="center">
+  <img src="docs/public/demo/graph.gif" width="720" alt="Graph 页面：上面是一个三个会话的群组，下面是一个两个会话的群组，四个会话在群外，消息在它们之间飞" />
 </p>
 
 ## 文档与开发

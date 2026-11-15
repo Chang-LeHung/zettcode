@@ -41,9 +41,25 @@ page at its own origin, so they need no extra setting.
 - **Config → Models** adds, edits and removes the models in `~/.zettcode/config.toml`, like `/config`. The API key is
   write-only: the page never shows a saved one.
 - **Logs** reads a daemon's log as a list of turns and tools, with filters for tools and problems.
-- **Graph** draws sessions as nodes, groups as regions, and each message as a packet to its recipient. Hover for
-  details; **Replay** redraws a past period from the stored history and sends nothing again. It reads up to 20,000
-  messages of the period you choose.
+- **Graph** draws sessions as nodes, groups as regions, and each message as a packet to its recipients. See
+  [the graph](#the-graph).
+
+## The graph
+
+![The Graph page: one group of three sessions at the top, another of two at the bottom, four sessions outside both, and packets flying between them](/demo/graph.gif)
+
+A group's members stand inside its outline, and its `#name` pill sits on the outside of that outline; a session in no
+group stands alone on the ring.
+
+Hover a node for its title, workspace, counts and groups, an edge for the messages the two sessions exchanged, or a
+packet for the message it carries. Tab reaches the nodes too, and shows the same card. A group's card lists its
+members.
+
+**Live messages** beside the drawing lists the same traffic; select a message to play it again.
+
+**Replay** redraws a period you pick from stored traffic and sends nothing again. It skips the quiet stretches unless
+you turn that off, and **Back to live** returns to the running graph. A window holding more than 20,000 messages keeps
+its newest part and says so.
 
 ## Monitor it
 

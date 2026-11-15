@@ -97,9 +97,8 @@ enabled = false
 
 ## The graph {#the-graph}
 
-The gateway's **Graph** page draws every session as a node, each group as a region, and each message as a packet to
-its recipient. **Replay** redraws a past period from the stored history and sends nothing again. See
-[Web gateway](/guide/gateway#what-the-page-does).
+The gateway's **Graph** page pictures the traffic between sessions, and **Replay** redraws a past period from the
+stored history. [Web gateway: the graph](/guide/gateway#the-graph) shows how to read it.
 
 ## Next steps
 
