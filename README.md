@@ -74,6 +74,24 @@ Get a key from the [DeepSeek platform](https://platform.deepseek.com/), not from
 selected at startup. See the [configuration reference](https://chang-lehung.github.io/zettcode/guide/config) for
 complete examples, defaults, and troubleshooting.
 
+You do not have to edit the file at all. `/config` opens a panel over the conversation, and one line does the same:
+
+```text
+/config add --model deepseek-v4-pro --token sk-... --url https://api.deepseek.com --context 1m --name "DeepSeek Pro"
+/config list                          # every entry, numbered, with the current one marked
+/config remove 2                      # by number, or by name: /config remove "DeepSeek Pro"
+```
+
+Only `--model` is required: whatever the line leaves out is asked in the form, and a line without `--api` means chat
+completions (`--api responses` or `--api anthropic` for those two). The other flags are `--name` (what `/model` shows),
+`--multimodal`, `--context 200k`/`1m`, `--compact 70`, `--temperature 0.7`, and `--web-search` with `--search-tool`.
+The first model you add becomes the one requests use; anything that cannot be saved writes nothing and says why.
+
+`/model` alone opens a picker; `/model <name>` switches directly, and the name is what `/config list` shows, spaces
+included. The switch applies from the next request (the running one keeps its model); the point the conversation is
+compacted at moves with the new model's window. `zettcode doctor` checks that every configured model answers, from a
+shell.
+
 ### 3. Start a task
 
 ```bash
@@ -95,9 +113,9 @@ Each step stands on its own. Run them from a project directory, in a git checkou
 /harness gen list the TODO comments in this repository, grouped by file
 ```
 
-The model writes a tool under `~/.zettcode/harness/`, loads it with `repo_load` and runs it, and reports the result. Or
-start every run with it on by putting `jit = true` under `[harness]` in `config.toml`. It is off by default, and at
-the `full` shell level the code it writes has your own access. `/harness reset` turns it off again.
+The model writes a tool under `~/.zettcode/harness/`, loads it with `repo_load` and runs it, and reports the result. It
+is on by default since 0.5.0 — `jit = false` under `[harness]` in `config.toml`, or `/plugins`, turns it off — and at
+the `full` shell level the code it writes has your own access. `/harness reset` turns it off again for this run.
 
 **2. Have the change reviewed.** With uncommitted changes in the workspace:
 

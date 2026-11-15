@@ -164,6 +164,38 @@ enter run · tab complete · pgup scroll · esc close
 切换模型、主题或推理档位会重新布局：头部和状态行读的就是面板写入的同一份状态，所以在你发下一条
 消息之前，它们就已经显示新值了。
 
+## 配置模型：`/config` 与 `/model`
+
+`/config` 本身就是一条命令。后面什么都不写时，它在对话上方打开模型面板：`~/.zettcode/config.toml` 里的条目按编号排开，
+当前那个带标记，每行旁边是它的窗口和压缩点，最后一行是**添加模型**。面板能做的每件事都有一行式写法，适合你已经知道要什么的时候：
+
+```text
+/config                          # 面板：列表，外加添加一项的入口
+/config list                     # 只把列表写进对话
+/config add                      # 面板的添加流程：先问 API，再填表
+/config add --model gpt-4o --token sk-... --url https://api.openai.com/v1 --name "GPT-4o"
+/config add --model claude-sonnet-4-5 --api anthropic --context 200k --temperature 0.7
+/config remove 2                 # 用 /config list 里的编号
+/config remove "DeepSeek Pro"    # 或它显示的名字
+```
+
+`add` 后面唯一必填的是 `--model`；这一行没给的，表单会接着问。没写 `--api` 就是 chat completions。可用参数有
+`--api chat|responses|anthropic`、`--token`、`--url`、`--name`（`/model` 显示的名字）、`--multimodal`、
+`--context 128000`/`128k`/`1m`、`--compact 70`、`--temperature 0.7`，以及 `--web-search` 配 `--search-tool`。
+第一个加进来的模型就是请求要用的那个；一个模型都没有时，`/model` 会让你先来这里。存不下的条目不会写入——地址不对、
+温度超出范围——报错会点名那个参数或那个输入框。
+
+`/model` 用来在条目之间切换。单独输入打开选择器；带名字就直接切换，名字就是 `/config list` 显示的那个，带空格也行：
+
+```text
+/model DeepSeek Pro
+/model                        # 选择器
+```
+
+切换从下一个请求开始生效：正在跑的那个仍用它原来的模型，而下一轮、旁路问题和压缩都用新的。选模型也会移动对话的压缩点，
+因为那是新模型的窗口。两个条目重名的会被当成有歧义而拒绝，这种情况在选择器里挑。`/effort` 和 `/permission` 就在旁边，
+用法一样：带一个词就切过去，不带就打开一个短菜单。
+
 ## 日常操作例子
 
 下面这些命令都输入在 **ZettCode 输入框**中，不是在系统 shell 里执行。
