@@ -182,10 +182,11 @@ class SessionCommands(TuiPlugin):
 def model_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
     """Offer the configured models by the name ``/model`` accepts.
 
-    A name two entries share is left out (``/model`` refuses it as ambiguous), and so is one with a space in it,
-    which would not stay one word. The line beside it says where the model came from and which protocol it speaks,
-    because two entries can share a model id and the name alone tells neither. Before there is a shell there is
-    nothing to offer.
+    A name two entries share is left out (``/model`` refuses it as ambiguous). A name with a space in it stays: the
+    command takes everything after it as the name, so ``/model DeepSeek V4.1 Flash`` runs, and a plugin's model is
+    named that way as often as not — leaving it out hid it from the menu while the picker showed it. The line beside
+    it says where the model came from and which protocol it speaks, because two entries can share a model id and
+    the name alone tells neither. Before there is a shell there is nothing to offer.
     """
     if host is None:
         return ()
@@ -197,7 +198,7 @@ def model_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
             f"{'plugin ' + model.provider if model.provider is not None else 'file'} · {model.api} · {model.model}",
         )
         for name, model in zip(shown, models, strict=True)
-        if shown.count(name) == 1 and not any(character.isspace() for character in name)
+        if shown.count(name) == 1
     )
 
 
