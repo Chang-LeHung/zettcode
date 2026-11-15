@@ -193,13 +193,13 @@ the new value before you send the next message.
 ## Configuring models: `/config` and `/model`
 
 `/config` is a command on its own. Typed with nothing after it, it opens the model panel over the conversation: the
-entries in `~/.zettcode/config.toml`, numbered, with the current one marked, the window and compaction point beside
-each, and an **Add a model** row at the end. Everything the panel does has a one-line form, for when you know what you
-want:
+entries in `~/.zettcode/config.toml`, numbered, with the current one marked and its model id, API and address on the
+line below it, and an **Add a model** row at the end. Everything the panel does has a one-line form, for when you know
+what you want:
 
 ```text
 /config                          # the panel: the list, plus an entry to add one
-/config list                     # the list only, in the transcript
+/config list                     # the list only, in the transcript: window and compaction point included
 /config add                      # the panel's add flow: the API first, then the form
 /config add --model gpt-4o --token sk-... --url https://api.openai.com/v1 --name "GPT-4o"
 /config add --model claude-sonnet-4-5 --api anthropic --context 200k --temperature 0.7
@@ -207,8 +207,9 @@ want:
 /config remove "DeepSeek Pro"    # or by the name it shows
 ```
 
-`--model` is the only thing `add` requires; whatever the line leaves out, the form asks for. A line with no `--api` is
-chat completions. The flags are `--api chat|responses|anthropic`, `--token`, `--url`, `--name` (what `/model` shows),
+`add` takes any flag, and asks for the ones the line left out; the form will not save without the model id, so that is
+the one thing `--model` must give now or you will type into the box. A line with no `--api` is chat completions. The
+flags are `--api chat|responses|anthropic`, `--token`, `--url`, `--name` (what `/model` shows),
 `--multimodal`, `--context 128000`/`128k`/`1m`, `--compact 70`, `--temperature 0.7`, and `--web-search` with
 `--search-tool`. The first model added becomes the one requests use; when there is no model at all, `/model` says to
 start here. Nothing is written when an entry cannot be saved — a bad address, a temperature out of range — and the
@@ -222,11 +223,10 @@ reason names the flag or the box.
 /model                        # the picker
 ```
 
-The switch applies from the next request: the running one keeps the model it started on, while the next turn, a side
-question and a compaction are built from the new one. Choosing a model also moves the point the conversation is
-compacted at, because that is the new model's window. A name two entries share is refused as ambiguous — pick it in the
-picker instead. `/effort` and `/permission` sit beside it and work the same way: a word switches, no word opens a short
-menu of the levels.
+A name two entries share is refused as ambiguous — pick it in the picker instead. A switch lands on the next request;
+the row for `/model` in *While a request is running* above says what the turn in flight and the compaction point do.
+`/effort` and `/permission` sit beside it: a word switches, and with no word `/effort` opens its rail and `/permission`
+the menu of the levels.
 
 ## Everyday examples
 
