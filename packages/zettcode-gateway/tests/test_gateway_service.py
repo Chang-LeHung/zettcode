@@ -1427,7 +1427,25 @@ async def test_pinned_and_archived_exclude_each_other_and_outlive_the_name_ttl(t
     await gateway.refresh()
 
     assert "01b" not in gateway._profiles
-    assert gateway._profiles.get("01a") == {"pinned": "1"}
+    assert gateway._profiles.read("01a") == {"pinned": "1"}
+
+
+async def test_the_profile_ttl_follows_a_clock_that_was_replaced_after_the_gateway_was_built(tmp_path):
+    now = [1000.0]
+    backend = FakeBackend()
+    backend.add_daemon("01b", str(tmp_path), name="b", started_at=200.0)
+    gateway = Gateway(backend, settings(tmp_path), clock=lambda: 5.0)
+    gateway.clock = lambda: now[0]
+    await gateway.start(watch=False)
+    await gateway.update_profile("01b", {"name": "Bee"})
+    del backend.daemon_list["01b"]
+    backend.peer_list.clear()
+    await gateway.refresh()
+
+    now[0] += 3 * 24 * 3600
+    await gateway.refresh()
+
+    assert "01b" not in gateway._profiles
 
 
 async def test_what_the_gateway_kept_for_a_thread_with_no_store_survives_a_restart(tmp_path):

@@ -305,6 +305,8 @@ class Gateway:
         self._watching: set[str] = set()
         self.roots = tuple(root.expanduser().resolve() for root in settings.roots)
         self._views: dict[str, dict[str, Any]] = {}
+        #: What a person made of each thread (name, picture, pin, archive). It reads the clock through ``self.clock`` each
+        #: time, so a clock replaced after construction is the one its one-day expiry uses.
         self._profiles = Profiles(settings.directory, lambda: self.clock())
         self._meta: dict[str, Meta] = {}
         self._inbox: dict[str, deque[dict[str, Any]]] = {}
@@ -479,7 +481,7 @@ class Gateway:
             kind = "external" if peer.kind == "external" else "session"
         else:
             kind = "external" if session_id.startswith("external:") else "session"
-        profiled = self._profiles.get(session_id)
+        profiled = self._profiles.read(session_id)
         title = (
             profiled.get("name")
             or (daemon.title if daemon is not None else None)
