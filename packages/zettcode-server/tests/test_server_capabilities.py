@@ -9,7 +9,9 @@ from pathlib import Path
 import httpx
 
 from server_fakes import FakeClient
+from zettcode.sdk.types import Usage
 from zettcode.server.app import create_app
+from zettcode.server.serialize import usage_out
 from zettcode.server.settings import Settings
 
 
@@ -45,6 +47,12 @@ async def test_the_limit_is_validated():
         zero = await http.get("/mentions", params={"limit": 0})
 
     assert too_many.status_code == 422 and zero.status_code == 422
+
+
+def test_a_usage_carries_whether_its_cache_was_measured():
+    """The HTTP face keeps the flag the terminal and the webview decide a dash by."""
+    assert usage_out(Usage(input_tokens=10, cache_read_tokens=4)).cache_reported is True
+    assert usage_out(Usage(input_tokens=10, cache_read_tokens=4, cache_reported=False)).cache_reported is False
 
 
 async def test_the_workspace_usage_ledger_is_the_usage_pages_data():

@@ -354,7 +354,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 ### `Usage`
 
-`input_tokens`、`output_tokens`、`cache_read_tokens`、`cache_write_tokens`、`reasoning_tokens`（都是 `int`，默认 `0`）、`seconds: float`、`requests: int`、`context_tokens: int`。
+`input_tokens`、`output_tokens`、`cache_read_tokens`、`cache_write_tokens`、`reasoning_tokens`（都是 `int`，默认 `0`）、`seconds: float`、`requests: int`、`context_tokens: int`、`cache_reported: bool`（默认 `True`；放在最后，位置参数的顺序不变）。
 
 | 成员 | 含义 |
 | --- | --- |
