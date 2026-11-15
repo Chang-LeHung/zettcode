@@ -1492,6 +1492,7 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
         "zettcode-tool-output",
         "zettcode-truncation",
         "zettcode-guidance",
+        "zettcode-one-system",
     }, "the agent is composed in these places"
     assert not set(listed) & set(outside), "a part has one owner"
 

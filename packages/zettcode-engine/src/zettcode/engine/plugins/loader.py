@@ -95,6 +95,7 @@ PROGRAM_DISTRIBUTIONS: dict[str, frozenset[str]] = {
             "zettcode-tool-output",
             "zettcode-truncation",
             "zettcode-guidance",
+            "zettcode-one-system",
         }
     ),
     TERMINAL_ROLE: frozenset({"zettcode-app", "zettcode-commands", "zettcode-pets", "zettcode-presenters"}),
