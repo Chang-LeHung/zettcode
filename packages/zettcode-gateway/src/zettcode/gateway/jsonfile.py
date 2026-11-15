@@ -42,8 +42,9 @@ def write_json(
 
     The text goes to a hidden file beside it, named for this process and this write (so neither another gateway of the
     same user nor a second write of the same file shares it), which then replaces ``path``; a failure leaves nothing
-    behind. ``private`` asks for a file readable by this account only, for what holds a token or what people said; a
-    filesystem that cannot hold modes keeps the write and loses only the mode.
+    behind. ``private`` asks for a file readable by this account only, for what holds a token or what people said: the
+    temporary is created with that mode, so the document is never wider than it, and a filesystem that holds no modes
+    simply has none.
 
     Raises:
         OSError: The folder cannot be made or the file cannot be written; the caller says whether that matters.
