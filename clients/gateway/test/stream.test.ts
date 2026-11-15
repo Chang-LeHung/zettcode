@@ -46,3 +46,34 @@ test("a turn read from the gateway does not replace pieces that have already arr
   assert.equal(streams.a?.text, "from a read");
   assert.equal(streams.b?.text, "newer");
 });
+
+test("a snapshot of a numbered turn whose end was heard is refused, whenever the read was asked", () => {
+  resetStreams();
+  applyStream("n", { kind: "begin", turn: 4 });
+  applyStream("n", { kind: "end", turn: 4 });
+  seedStream("n", { turn: 4, text: "done", thinking: false, tools: [] });
+  assert.equal("n" in streams, false);
+
+  seedStream("n", { turn: 5, text: "next", thinking: false, tools: [] });
+  assert.equal(streams.n?.text, "next");
+});
+
+test("the end of an older turn leaves a newer one running, and a late piece does not start the old one again", () => {
+  resetStreams();
+  applyStream("m", { kind: "begin", turn: 7 });
+  applyStream("m", { kind: "end", turn: 6 });
+  assert.equal(streams.m?.turn, 7);
+
+  applyStream("m", { kind: "end", turn: 7 });
+  applyStream("m", { kind: "text", text: "late", turn: 7 });
+  assert.equal("m" in streams, false);
+});
+
+test("a gateway that starts counting again is heard after the socket reconnects", () => {
+  resetStreams();
+  applyStream("r", { kind: "begin", turn: 9 });
+  applyStream("r", { kind: "end", turn: 9 });
+  resetStreams();
+  applyStream("r", { kind: "begin", turn: 1 });
+  assert.equal(streams.r?.turn, 1);
+});

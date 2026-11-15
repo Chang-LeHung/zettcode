@@ -99,17 +99,20 @@ export interface LiveTool {
 
 /** A turn as it happens: the answer so far, whether the model is reasoning, and the tools it has called. */
 export interface LiveTurn {
+  /** The number the gateway gave the turn, which its pieces and its end carry; absent from an older gateway. */
+  turn?: number;
   text: string;
   thinking: boolean;
   tools: LiveTool[];
 }
 
-/** One piece of a turn, as the socket delivers it. */
-export type StreamPiece =
+/** One piece of a turn, as the socket delivers it; `turn` says which turn it belongs to (absent from an older gateway). */
+export type StreamPiece = { turn?: number } & (
   | { kind: "begin" | "thinking" | "end" }
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; brief: string }
-  | { kind: "tool_end"; id: string; ok: boolean };
+  | { kind: "tool_end"; id: string; ok: boolean }
+);
 
 export interface ModelOption {
   name: string;

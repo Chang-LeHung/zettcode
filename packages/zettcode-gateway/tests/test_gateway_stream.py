@@ -219,3 +219,26 @@ async def test_a_failure_note_is_told_to_the_pages_like_a_message_so_it_is_notic
     assert [item["type"] for item in drained(queue)] == ["thread", "inbound"]
     await gateway.refresh()
     assert "external:tool" not in gateway._notes, "an id that is not listed keeps nothing"
+
+
+async def test_every_piece_and_the_end_carry_the_number_of_their_turn_and_so_does_the_snapshot(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.add_daemon(DAEMON, "/w", name="d")
+    await gateway.refresh()
+    queue = gateway.subscribe()
+    drained(queue)
+
+    backend.stream(DAEMON, "begin")
+    backend.stream(DAEMON, "text", text="a")
+    number = (await gateway.thread(DAEMON))["live"]["turn"]
+    backend.stream(DAEMON, "end")
+    await asyncio.sleep(0.05)
+    backend.stream(DAEMON, "begin")
+
+    events = [item["event"] for item in drained(queue) if item["type"] == "stream"]
+    assert [(event["kind"], event["turn"]) for event in events] == [
+        ("begin", number),
+        ("text", number),
+        ("end", number),
+        ("begin", number + 1),
+    ]

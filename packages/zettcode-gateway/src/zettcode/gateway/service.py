@@ -459,16 +459,16 @@ class Gateway:
                 # Pieces of every turn were missed while the broker was away: a bubble resumed mid-answer would be a
                 # truncated one, so what is shown live is dropped and the next ``begin`` starts it again.
                 for lost in list(self._live):
-                    del self._live[lost]
-                    self._publish({"type": "stream", "id": lost, "event": {"kind": "end"}})
+                    dropped = self._live.pop(lost)
+                    self._publish({"type": "stream", "id": lost, "event": {"kind": "end", "turn": dropped["turn"]}})
             self._reachable = reachable
             self._publish({"type": "threads", "threads": self.threads(), "status": self.status()})
         for session_id in moved:
             self._publish({"type": "thread", "id": session_id})
         # After what was stored has been announced, as at the end of a turn that was heard: the page has the message
         # before the live one goes.
-        for session_id in expired:
-            self._publish({"type": "stream", "id": session_id, "event": {"kind": "end"}})
+        for session_id, turn in expired:
+            self._publish({"type": "stream", "id": session_id, "event": {"kind": "end", "turn": turn}})
 
     @staticmethod
     def _workspace_of(daemon: DaemonInfo | None, peer: Peer | None) -> str:
@@ -1275,7 +1275,7 @@ class Gateway:
         elif live is None:
             live = self._live[session_id] = self._new_turn()
         live["at"] = self.clock()
-        wire: dict[str, Any] = {"kind": kind}
+        wire: dict[str, Any] = {"kind": kind, "turn": live["turn"]}
         if kind == "text":
             live["thinking"] = False
             live["text"] = (live["text"] + event.text)[-LIVE_TEXT_LIMIT:]
@@ -1301,9 +1301,13 @@ class Gateway:
         return {"turn": next(self._turns), "text": "", "thinking": False, "tools": [], "at": self.clock()}
 
     def _live_view(self, session_id: str) -> dict[str, Any] | None:
-        """Return the turn running in a session as a page reads it (without the gateway's own bookkeeping)."""
+        """Return the turn running in a session as a page reads it (without the gateway's own bookkeeping).
+
+        ``turn`` stays: it is the number the pieces and the end of the same turn carry, so a page can tell a snapshot of
+        a turn that has since ended from one that is still running.
+        """
         live = self._live.get(session_id)
-        return None if live is None else {key: value for key, value in live.items() if key not in ("at", "turn")}
+        return None if live is None else {key: value for key, value in live.items() if key != "at"}
 
     def _finish_later(self, session_id: str, turn: int | None) -> None:
         task = asyncio.ensure_future(self._finish(session_id, turn))
@@ -1321,21 +1325,22 @@ class Gateway:
         live = self._live.get(session_id)
         if live is not None and live["turn"] == turn:
             del self._live[session_id]
-            self._publish({"type": "stream", "id": session_id, "event": {"kind": "end"}})
+            self._publish({"type": "stream", "id": session_id, "event": {"kind": "end", "turn": turn}})
         self._publish({"type": "thread", "id": session_id})
 
-    def _expire_live(self, peers: dict[str, Peer]) -> list[str]:
+    def _expire_live(self, peers: dict[str, Peer]) -> list[tuple[str, int]]:
         """Drop a live turn whose session has gone, or has been idle and silent: its end was never heard.
 
-        Returns the sessions it dropped, for the caller to tell the pages once what was stored has been announced.
+        Returns the sessions it dropped with the turn each was running, for the caller to tell the pages once what was
+        stored has been announced.
         """
         now = self.clock()
-        expired: list[str] = []
+        expired: list[tuple[str, int]] = []
         for session_id, live in list(self._live.items()):
             peer = peers.get(session_id)
             if peer is None or (peer.status != "working" and now - float(live["at"]) > LIVE_STALE_SECONDS):
                 del self._live[session_id]
-                expired.append(session_id)
+                expired.append((session_id, int(live["turn"])))
         return expired
 
     # -- the graph --------------------------------------------------------------------------------
