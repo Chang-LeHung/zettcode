@@ -71,6 +71,24 @@ multimodal = false                    # 这个模型接受文本，不接受图�
 添加更多 `[[models]]`，就能用 `/model` 切换；启动时默认选择第一项。
 完整示例、默认值和排错步骤见[配置参考](https://chang-lehung.github.io/zettcode/zh/guide/config)。
 
+`/config` 本身就是一条命令：不带参数时，它在对话上方打开模型面板，一处一处地问；下面的写法是同样的活儿，只不过一行做完：
+
+```text
+/config                               # 打开面板：列出模型，还能加一个
+/config add                           # 面板里先问 API（chat / responses / anthropic），再填表
+/config list                          # 只列表：编号、当前是哪个、窗口和压缩点
+/config remove 2                      # 按编号删，也可以按名字：/config remove "DeepSeek Pro"
+/config add --model deepseek-v4-pro --token sk-... --url https://api.deepseek.com --context 1m --name "DeepSeek Pro"
+```
+
+`add` 后面只有 `--model` 是必填的：这一行没给的，面板接着问；没写 `--api` 就是 chat completions。其余参数是
+`--name`（`/model` 显示的名字）、`--multimodal`、`--context 200k`/`1m`、`--compact 70`、`--temperature 0.7`，
+以及 `--web-search` 配 `--search-tool`。第一个加进来的模型就是请求要用的那个；存不下的内容不会写入，并会说明原因。
+
+`/model` 单独输入会打开选择器；`/model <名字>` 直接切换，名字就是 `/config list` 里显示的那个，带空格也算。
+切换从下一个请求开始生效（正在跑的那个仍用它原来的模型）；压缩点会跟着新模型的窗口一起移动。
+`zettcode doctor` 在 shell 里检查每个配置好的模型是否真的能应答。
+
 ### 3. 发出任务
 
 ```bash
@@ -92,8 +110,9 @@ zettcode
 /harness gen 列出这个仓库里的 TODO 注释，按文件分组
 ```
 
-模型会在 `~/.zettcode/harness/` 下写一个工具，用 `repo_load` 加载并运行，然后汇报结果。也可以在 `config.toml` 的 `[harness]`
-下写 `jit = true`，让每次运行都默认开启。它默认关闭；在 `full` shell 级别下，它写的代码拥有你自己的权限。`/harness reset` 可以再把它关掉。
+模型会在 `~/.zettcode/harness/` 下写一个工具，用 `repo_load` 加载并运行，然后汇报结果。从 0.5.0 起它默认开启——
+在 `config.toml` 的 `[harness]` 下写 `jit = false`，或者用 `/plugins`，就能关掉；在 `full` shell 级别下，它写的代码拥有你自己的权限。
+`/harness reset` 为本次运行再把它关掉。
 
 **2. 让第二个智能体评审改动。** 工作区里有未提交的改动时：
 

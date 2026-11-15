@@ -190,6 +190,44 @@ Switching the model, the theme, or the effort re-lays out the screen: the header
 and the status line read from the same state the panels write to, so they show
 the new value before you send the next message.
 
+## Configuring models: `/config` and `/model`
+
+`/config` is a command on its own. Typed with nothing after it, it opens the model panel over the conversation: the
+entries in `~/.zettcode/config.toml`, numbered, with the current one marked, the window and compaction point beside
+each, and an **Add a model** row at the end. Everything the panel does has a one-line form, for when you know what you
+want:
+
+```text
+/config                          # the panel: the list, plus an entry to add one
+/config list                     # the list only, in the transcript
+/config add                      # the panel's add flow: the API first, then the form
+/config add --model gpt-4o --token sk-... --url https://api.openai.com/v1 --name "GPT-4o"
+/config add --model claude-sonnet-4-5 --api anthropic --context 200k --temperature 0.7
+/config remove 2                 # by number from /config list
+/config remove "DeepSeek Pro"    # or by the name it shows
+```
+
+`--model` is the only thing `add` requires; whatever the line leaves out, the form asks for. A line with no `--api` is
+chat completions. The flags are `--api chat|responses|anthropic`, `--token`, `--url`, `--name` (what `/model` shows),
+`--multimodal`, `--context 128000`/`128k`/`1m`, `--compact 70`, `--temperature 0.7`, and `--web-search` with
+`--search-tool`. The first model added becomes the one requests use; when there is no model at all, `/model` says to
+start here. Nothing is written when an entry cannot be saved — a bad address, a temperature out of range — and the
+reason names the flag or the box.
+
+`/model` switches between entries. On its own it opens a picker; with a name it switches directly, and the name is what
+`/config list` shows, spaces included:
+
+```text
+/model DeepSeek Pro
+/model                        # the picker
+```
+
+The switch applies from the next request: the running one keeps the model it started on, while the next turn, a side
+question and a compaction are built from the new one. Choosing a model also moves the point the conversation is
+compacted at, because that is the new model's window. A name two entries share is refused as ambiguous — pick it in the
+picker instead. `/effort` and `/permission` sit beside it and work the same way: a word switches, no word opens a short
+menu of the levels.
+
 ## Everyday examples
 
 These are commands to type **inside ZettCode**, not in your system shell.
