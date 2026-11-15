@@ -75,6 +75,7 @@ def read(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> ReadRes
         - A trailing hint says how to go on: the next offset when more lines remain, or the shell when one line is
           longer than the output limit.
         - An image comes back as an image with a one-line description; the range arguments do not apply to it.
+        - The line numbers are for reference; do not copy them into an edit or a write.
         - PDF and SVG files are not supported.
     """
     located = Located.of(file_path)
