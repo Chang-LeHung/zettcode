@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EventSocket, STALE_AFTER } from "../src/api/events";
 import { attachPull, MAX_PULL, pullOf, THRESHOLD } from "../src/lib/pull";
-import { connect, disconnect, registerWorker, setWorker, showNotice } from "../src/stores/live";
+import { connect, disconnect } from "../src/stores/live";
+import { registerWorker, setWorker, showNotice } from "../src/stores/notify";
 
 // -- pull to refresh ----------------------------------------------------------------------------
 

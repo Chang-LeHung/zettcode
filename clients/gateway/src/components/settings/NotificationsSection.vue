@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { t } from "../../i18n";
-import { enableNotifications, notificationState } from "../../stores/live";
+import { enableNotifications, notificationState } from "../../stores/notify";
 import { prefs } from "../../stores/prefs";
 import { toast } from "../../stores/ui";
 import SwitchRow from "../common/SwitchRow.vue";
