@@ -81,7 +81,7 @@ multimodal = false                    # 这个模型接受文本，不接受图�
 /config add --model deepseek-v4-pro --token sk-... --url https://api.deepseek.com --context 1m --name "DeepSeek Pro"
 ```
 
-`add` 后面只有 `--model` 是必填的：这一行没给的，面板接着问；没写 `--api` 就是 chat completions。其余参数是
+`add` 后面什么参数都能省：省掉的面板接着问；但没有 model id 它就不保存。没写 `--api` 就是 chat completions。其余参数是
 `--name`（`/model` 显示的名字）、`--multimodal`、`--context 200k`/`1m`、`--compact 70`、`--temperature 0.7`，
 以及 `--web-search` 配 `--search-tool`。第一个加进来的模型就是请求要用的那个；存不下的内容不会写入，并会说明原因。
 

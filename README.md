@@ -82,7 +82,8 @@ You do not have to edit the file at all. `/config` opens a panel over the conver
 /config remove 2                      # by number, or by name: /config remove "DeepSeek Pro"
 ```
 
-Only `--model` is required: whatever the line leaves out is asked in the form, and a line without `--api` means chat
+Any flag may be left out — the form asks for the rest — but it will not save without the model id, and a line without
+`--api` means chat
 completions (`--api responses` or `--api anthropic` for those two). The other flags are `--name` (what `/model` shows),
 `--multimodal`, `--context 200k`/`1m`, `--compact 70`, `--temperature 0.7`, and `--web-search` with `--search-tool`.
 The first model you add becomes the one requests use; anything that cannot be saved writes nothing and says why.
