@@ -44,8 +44,20 @@ __all__ = [
 ]
 
 
+class UsageRow(ToolStatsRow):
+    """A row of the framework's report, and the size of what the call was given: its arguments as JSON."""
+
+    #: Mean characters of arguments per call, over the calls whose own line was inside the window: a call whose
+    #: arguments fell outside it still counts in ``calls`` but not here, so this can be None where ``calls`` is not.
+    avg_input_chars: int | None
+
+
 class UsageReport(ToolStatsReport):
-    """The framework's report, and a sentence saying how much of the conversation it was counted from."""
+    """The framework's report, and a sentence saying how much of the conversation it was counted from.
+
+    Its rows are :class:`UsageRow`, which the framework's ``ToolStatsReport`` cannot say: a TypedDict may not narrow an
+    inherited field, so the rows are cast where the report is built.
+    """
 
     window: str
 
@@ -62,8 +74,13 @@ ERRORS_KEPT = 5
 #: How much of an error message is kept.
 ERROR_CHARS = 200
 
-#: Only a tool result carries this key, which is what makes the byte search a safe first filter.
-_MARK = b'"tool_call_id"'
+#: A call's arguments and a call's result both carry a key with this prefix (`tool_calls`, `tool_call_id`), which is
+#: what makes the byte search a safe first filter: a line without one is not read as JSON at all.
+_MARK = b'"tool_c'
+
+#: How many calls' arguments may be remembered while waiting for their results; a window cut mid-turn leaves entries
+#: behind, and the oldest goes first.
+PENDING_CAP = 20_000
 
 #: How much of an oversized line is read at once while the rest of it is thrown away.
 _DRAIN = 1024 * 1024
@@ -80,6 +97,10 @@ class Tally:
     timed: int = 0
     #: Characters handed back, over all calls.
     total_chars: int = 0
+    #: Characters of arguments sent, and over how many calls those were known: a call whose own line fell outside the
+    #: window has a result but no measured input.
+    total_input_chars: int = 0
+    sized: int = 0
     #: Distinct recent error messages, oldest first.
     errors: list[str] = field(default_factory=list)
 
@@ -159,6 +180,8 @@ def scan_tool_calls(path: Path, *, max_bytes: int = SCAN_BYTES, max_line: int = 
                     if first and not first.endswith(b"\n"):
                         _drain(handle)
             scan.scanned = scan.size - handle.tell()
+            # The arguments of a call are on the line before its result, so they are remembered until it arrives.
+            pending: dict[str, int] = {}
             while True:
                 line = handle.readline(max_line + 1)
                 if not line:
@@ -168,7 +191,7 @@ def scan_tool_calls(path: Path, *, max_bytes: int = SCAN_BYTES, max_line: int = 
                     _drain(handle)
                     continue
                 if _MARK in line:
-                    _count(scan, line)
+                    _count(scan, line, pending)
         except OSError:
             pass
     return scan
@@ -188,8 +211,8 @@ def _drain(handle: BinaryIO) -> None:
             return
 
 
-def _count(scan: Scan, line: bytes) -> None:
-    """Add the tool result a line holds, when it holds one."""
+def _count(scan: Scan, line: bytes, pending: dict[str, int]) -> None:
+    """Add the tool calls a line records: what a call was given, and what it handed back."""
     try:
         record = json.loads(line)
     except ValueError:
@@ -203,7 +226,10 @@ def _count(scan: Scan, line: bytes) -> None:
     nanoseconds = timing.get("duration_ns") if isinstance(timing, dict) else None
     for part in parts:
         data = part.get("data") if isinstance(part, dict) else None
-        if not isinstance(data, dict) or "tool_call_id" not in data:
+        if not isinstance(data, dict):
+            continue
+        _remember_arguments(data, pending)
+        if "tool_call_id" not in data:
             continue
         name, success = data.get("name"), data.get("success")
         if not isinstance(name, str) or not isinstance(success, bool):
@@ -213,12 +239,42 @@ def _count(scan: Scan, line: bytes) -> None:
         tally = scan.tools.setdefault(name, Tally())
         tally.calls += 1
         tally.total_chars += len(text)
+        given = pending.pop(data["tool_call_id"], None) if isinstance(data["tool_call_id"], str) else None
+        if given is not None:
+            tally.total_input_chars += given
+            tally.sized += 1
         if isinstance(nanoseconds, (int, float)) and not isinstance(nanoseconds, bool):
             tally.total_ms += nanoseconds / 1_000_000
             tally.timed += 1
         if not success:
             tally.failed += 1
             tally.remember(" ".join(text.split())[:ERROR_CHARS] or "failed with no message")
+
+
+def _remember_arguments(data: dict[str, Any], pending: dict[str, int]) -> None:
+    """Keep the size of each call's arguments until the line that holds its result arrives.
+
+    The store writes them as a mapping; a replay block, which this does not read, would carry the same text as a
+    string. A conversation whose calls have no results in the window leaves entries behind, so the map is capped: the
+    oldest is dropped, and the call it belonged to then counts in ``calls`` without a measured input.
+    """
+    calls = data.get("tool_calls")
+    if not isinstance(calls, list):
+        return
+    for call in calls:
+        if not isinstance(call, dict):
+            continue
+        identifier, arguments = call.get("id"), call.get("arguments")
+        if not isinstance(identifier, str):
+            continue
+        if isinstance(arguments, str):
+            pending[identifier] = len(arguments)
+        elif arguments is not None:
+            pending[identifier] = len(json.dumps(arguments, ensure_ascii=False))
+        else:
+            pending[identifier] = 0
+        while len(pending) > PENDING_CAP:
+            pending.pop(next(iter(pending)))
 
 
 #: The most rows an overview holds, and the most tools that may be asked for by name.
@@ -255,7 +311,7 @@ def build_report(
         unknown = [name for name in wanted if name not in catalog]
         if unknown:
             raise ValueError(f"Unknown tool: {', '.join(unknown)} (the control tools are not measured)")
-    rows: list[dict[str, Any]] = []
+    rows: list[UsageRow] = []
     for name in wanted:
         if name in management:
             continue
@@ -274,8 +330,10 @@ def build_report(
     )
 
 
-def _row(name: str, entry: Mapping[str, Any], tally: Tally, errors: int) -> dict[str, Any]:
-    return {
+def _row(name: str, entry: Mapping[str, Any], tally: Tally, errors: int) -> UsageRow:
+    # The catalog is the framework's own: `list_tools()` returns its `ToolCatalogEntry`, so the origin and status are
+    # its literals, not the `Any` a mapping hands back.
+    row: dict[str, Any] = {
         "name": name,
         "origin": entry.get("origin"),
         "status": entry.get("status"),
@@ -283,6 +341,8 @@ def _row(name: str, entry: Mapping[str, Any], tally: Tally, errors: int) -> dict
         "success_rate": round(tally.completed / tally.calls, 3) if tally.calls else None,
         "failed": tally.failed,
         "avg_ms": round(tally.total_ms / tally.timed, 1) if tally.timed else None,
+        "avg_input_chars": round(tally.total_input_chars / tally.sized) if tally.sized else None,
         "avg_output_chars": round(tally.total_chars / tally.calls) if tally.calls else None,
         "recent_errors": list(reversed(tally.errors))[:errors],
     }
+    return cast("UsageRow", row)

@@ -81,8 +81,9 @@ A `BAN_TOOLS` file beside it names tools the repository may not define.
 ## How tools have done
 
 `profile_tools` shows the model how its tools have done: for each one the calls, the success rate, how long a call
-takes, how much it hands back, and its most recent distinct errors. It works for every tool the session has run, the
-model's own, the application's and an MCP server's. A tool that was never called shows zeros, which is also an answer.
+takes, how much it was given and how much it hands back, and its most recent distinct errors. It works for every tool
+the session has run, the model's own, the application's and an MCP server's. A tool that was never called shows zeros,
+which is also an answer.
 Without names it gives an overview of the model's own tools and of every tool called so far, most called first; with
 up to ten names it gives those tools, each with its last three errors.
 
@@ -94,6 +95,10 @@ A conversation can be hundreds of megabytes, so it is never read whole. Only its
 so the window does not stop, and a single result longer than 2 MB is left out and counted. The answer's `window` field
 says what was read: `the whole of this session`, or `the last 32.0 MB of 128.1 MB of this session; older calls are not
 counted`. Reading a conversation of that size takes a fraction of a second.
+
+The input size is measured from the arguments of each call, which the conversation records on the line before the
+result. A call whose own line fell outside the window still counts as a call but is not measured, so `avg_input_chars`
+can be `null` where `calls` is not.
 
 ## What it cannot do
 

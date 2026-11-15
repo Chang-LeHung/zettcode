@@ -388,3 +388,74 @@ async def test_a_model_calls_profile_tools_and_is_handed_the_counts_with_the_win
     assert report["tools"][0]["name"] == "twice" and report["tools"][0]["calls"] == 2
     assert report["tools"][0]["recent_errors"] == ["bad input"]
     assert isinstance(twice, AgentTool)
+
+
+def call(name: str, arguments: object, *, call_id: str = "c") -> str:
+    """One stored line: the assistant asking for a tool, with the arguments it was given."""
+    part = {"kind": 3, "data": {"tool_calls": [{"id": call_id, "name": name, "arguments": arguments}]}}
+    return json.dumps({"kind": "message", "message": [part]}, ensure_ascii=False)
+
+
+def test_the_size_of_what_a_call_was_given_is_measured_from_its_arguments(tmp_path: Path):
+    path = write(
+        tmp_path / "data.jsonl",
+        call("bash", {"command": "ls"}, call_id="a"),
+        result("bash", call="a"),
+        call("bash", {"command": "ls -la"}, call_id="b"),
+        result("bash", call="b"),
+    )
+
+    tally = scan_tool_calls(path).tools["bash"]
+
+    first, second = len('{"command": "ls"}'), len('{"command": "ls -la"}')
+    assert tally.calls == 2 and tally.sized == 2
+    assert tally.total_input_chars == first + second
+
+
+def test_arguments_written_as_a_string_count_their_own_length(tmp_path: Path):
+    path = write(tmp_path / "data.jsonl", call("bash", '{"command": "x"}'), result("bash"))
+
+    assert scan_tool_calls(path).tools["bash"].total_input_chars == len('{"command": "x"}')
+
+
+def test_a_call_whose_own_line_fell_outside_the_window_still_counts_but_is_not_measured(tmp_path: Path):
+    given = call("bash", {"command": "ls -la"}, call_id="a")
+    answered = result("bash", call="a")
+    path = write(tmp_path / "data.jsonl", given, answered)
+
+    # A window that starts after the arguments line and before the result: the result is counted, the input is not.
+    scan = scan_tool_calls(path, max_bytes=len(answered) + 1)
+
+    assert scan.tools["bash"].calls == 1 and scan.tools["bash"].sized == 0
+
+
+def test_a_call_with_no_arguments_counts_as_zero_and_not_as_unknown(tmp_path: Path):
+    path = write(tmp_path / "data.jsonl", call("bash", None), result("bash"))
+
+    tally = scan_tool_calls(path).tools["bash"]
+
+    assert tally.sized == 1 and tally.total_input_chars == 0
+
+
+def test_the_report_row_carries_the_mean_size_of_the_arguments(tmp_path: Path):
+    path = write(
+        tmp_path / "data.jsonl",
+        call("bash", {"command": "x" * 98}, call_id="a"),
+        result("bash", call="a"),
+        call("bash", {"command": "y" * 8}, call_id="b"),
+        result("bash", call="b"),
+    )
+
+    row = build_report(scan_tool_calls(path), CATALOG, ["bash"])["tools"][0]
+
+    sizes = [
+        len(json.dumps(arguments, ensure_ascii=False)) for arguments in ({"command": "x" * 98}, {"command": "y" * 8})
+    ]
+    assert row["avg_input_chars"] == round(sum(sizes) / 2), "the mean over the two measured calls"
+    assert row["calls"] == 2
+
+
+def test_a_tool_whose_calls_were_never_measured_says_none_rather_than_zero(tmp_path: Path):
+    row = build_report(scan_tool_calls(write(tmp_path / "data.jsonl", result("bash"))), CATALOG, ["bash"])["tools"][0]
+
+    assert row["calls"] == 1 and row["avg_input_chars"] is None
