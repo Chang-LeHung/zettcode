@@ -145,7 +145,7 @@ class SwitchedHarness(JITHarnessExtension):
 
         @tool(execution_mode=ToolExecutionMode.SERIAL)
         async def profile_tools(names: list[str] | None = None) -> UsageReport:
-            """Show how tools have done in this session: calls, success rate, time, output size, and recent errors.
+            """Show how tools have done in this session: calls, success rate, time, input and output size, errors.
 
             Read from this session's stored conversation, so it works for any tool, yours or the application's, and
             for calls made before the last restart. A tool never called shows zeros.
