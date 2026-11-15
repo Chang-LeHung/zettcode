@@ -357,6 +357,7 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_in_reg
         "DaemonGuideExtension",
         "SwitchedHarness",
         "LongOutputExtension",
+        "OneSystemMessage",
         "AgentsMdExtension",
         "ToolGuidelinesExtension",
         "ToolOutputExtension",
@@ -393,6 +394,7 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_in_reg
         "ModelCapabilities",
         "SideQuestions",
         "SwitchedHarness",
+        "OneSystemMessage",
     ]
 
 
@@ -414,6 +416,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
         "CodingBundle",
         "DaemonGuideExtension",
         "LongOutputExtension",
+        "OneSystemMessage",
         "SkillExtension",
         "ToolOutputExtension",
         "ShellDenyExtension",
@@ -442,6 +445,7 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
         "SwitchedHarness",
         "LongOutputExtension",
         "SessionMessagingExtension",
+        "OneSystemMessage",
         "AgentsMdExtension",
         "SkillExtension",
         "TodoWriteExtension",
@@ -493,6 +497,7 @@ def test_the_order_the_agent_runs_them_in_is_the_priority_of_each(tmp_path):
         "ModelCapabilities",
         "SideQuestions",
         "SwitchedHarness",
+        "OneSystemMessage",
     ]
 
 

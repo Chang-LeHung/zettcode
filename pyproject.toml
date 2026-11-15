@@ -76,6 +76,7 @@ zettcode-todos = { workspace = true }
 zettcode-tool-output = { workspace = true }
 zettcode-truncation = { workspace = true }
 zettcode-guidance = { workspace = true }
+zettcode-one-system = { workspace = true }
 zettcode-monitor = { workspace = true }
 zettcode-recap = { workspace = true }
 zettcode-models = { workspace = true }
@@ -112,6 +113,7 @@ mypy_path = [
   "packages/zettcode-tool-output/src",
   "packages/zettcode-truncation/src",
   "packages/zettcode-guidance/src",
+  "packages/zettcode-one-system/src",
   "packages/zettcode-im/src",
   "packages/zettcode-models/src",
   "packages/zettcode-code-agents/src",
@@ -144,6 +146,7 @@ files = [
   "packages/zettcode-tool-output/src",
   "packages/zettcode-truncation/src",
   "packages/zettcode-guidance/src",
+  "packages/zettcode-one-system/src",
   "packages/zettcode-im/src",
   "packages/zettcode/src",
   "packages/zettcode/perf",
