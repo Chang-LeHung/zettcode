@@ -354,6 +354,13 @@ def test_a_coding_child_with_a_shell_is_told_it_works_under_the_users_permission
     assert "permission level" in profile.description and "cannot run commands" not in profile.description
 
 
+def test_a_coding_child_without_a_shell_is_told_the_numbering_rule(tmp_path):
+    profile = _profiles(tmp_path)["coding"]
+
+    assert "prefix is not in the file" in profile.system_prompt
+    assert "leave it out of old_string and write_file content" in profile.system_prompt
+
+
 def test_a_coding_child_with_a_shell_gets_its_file_tools_from_the_parent_and_not_from_its_own_list(tmp_path):
     with_shell = _profiles(tmp_path, shell=True)["coding"]
     without = _profiles(tmp_path)["coding"]
