@@ -82,7 +82,7 @@ The *current* session is the conversation the next prompt continues. A server st
 | `GET` | `/sessions/current/export` | — | The conversation as a standalone HTML page (`text/html`, as a download). |
 | `POST` | `/sessions/current/ask` | `{"question","timeout"?}` | `{"answer"}`; answered beside the conversation, never added to it. 409 while a run is going. |
 | `POST` | `/sessions/current/ask/stream` | `{"question","timeout"?}` | The same side question with the answer streamed, in the frames `/prompts` uses: `text_delta` events, then `result` (or `error`, or `cancelled` when `/runs/cancel` stops it). The question holds the run slot while it is answered. 409 while a run is going. |
-| `GET` | `/sessions/current/stats` | — | `{"id","entries","requests","input_tokens","output_tokens","cache_read_tokens","reasoning_tokens","total_tokens","cache_share"}`, or `null` before anything is stored: one row of `/resume`. |
+| `GET` | `/sessions/current/stats` | — | `{"id","entries","requests","input_tokens","output_tokens","cache_read_tokens","reasoning_tokens","total_tokens","cache_share","cache_reported"}`, or `null` before anything is stored: one row of `/resume`. |
 | `GET` | `/sessions/stats?ids=a,b` | — | `{"stats": [...]}` for the named sessions, same shape; at most 200 ids. |
 | `GET` | `/sessions/current/self-compaction` | — | `{"choice": true\|false\|null, "effective": bool}` |
 | `PUT` | `/sessions/current/self-compaction` | `{"choice": true\|false\|null}` | The same, after the choice is saved in the session; applies from the next request. |
@@ -93,8 +93,12 @@ The *current* session is the conversation the next prompt continues. A server st
 
 ```json
 {"input_tokens": 1200, "output_tokens": 340, "cache_read_tokens": 800, "cache_write_tokens": 0,
- "reasoning_tokens": 0, "seconds": 4.2, "requests": 3, "context_tokens": 1540}
+ "reasoning_tokens": 0, "seconds": 4.2, "requests": 3, "context_tokens": 1540, "cache_reported": true}
 ```
+
+`cache_share` is `null` when there is no input yet or when the provider reported no cache read; `cache_reported` tells
+the two apart, and is `false` in the second case. A client that divides the counters itself should stop when it is
+`false`, the way the terminal leaves the item out.
 
 ## Running
 

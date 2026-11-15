@@ -483,7 +483,7 @@ const stats = computed(() => {
     { text: `↑ ${formatTokens(usage.input_tokens)}`, title: "Input tokens, this session" },
     { text: `↓ ${formatTokens(usage.output_tokens)}`, title: "Output tokens, this session" },
   ];
-  if (usage.cache_read_tokens > 0 && usage.input_tokens > 0) {
+  if (usage.cache_reported !== false && usage.cache_read_tokens > 0 && usage.input_tokens > 0) {
     const share = (usage.cache_read_tokens / usage.input_tokens) * 100;
     facts.push({ text: `${share.toFixed(1)}% cached`, title: "Input served from the provider's cache" });
   }

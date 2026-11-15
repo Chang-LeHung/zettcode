@@ -11,7 +11,7 @@ from zett_agent.model import ModelUsage
 
 from zettcode.engine.storage import SessionStats, SessionStore
 from zettcode.engine.storage import ledger as ledger_module
-from zettcode.engine.storage.ledger import SUMMARY_FILE, LedgerReader
+from zettcode.engine.storage.ledger import SUMMARY_FILE, SUMMARY_VERSION, LedgerReader
 
 WORK = "work"
 
@@ -41,6 +41,11 @@ def reader(tmp_path: Path, **options) -> LedgerReader:
 
 def summary_of(tmp_path: Path) -> Path:
     return reader(tmp_path).summary_path
+
+
+def summary_json(sessions: str) -> str:
+    """A stored summary of the current version, holding whatever ``sessions`` says."""
+    return f'{{"version": {SUMMARY_VERSION}, "sessions": {sessions}}}'
 
 
 def scans(monkeypatch) -> list[Path]:
@@ -150,6 +155,16 @@ async def test_a_session_that_did_not_report_its_cache_has_no_share(tmp_path: Pa
     assert stats.cache_share is None, "a provider that said nothing has not measured a miss"
 
 
+async def test_the_cache_flag_survives_the_summary_and_the_index(tmp_path: Path):
+    store = SessionStore(tmp_path, tmp_path / WORK)
+    await answer(store, "a", "r1", spent(1000, 100, cache=600, reported=False))
+
+    assert reader(tmp_path).stats(["a"])["a"].cache_share is None, "read from the conversation"
+    assert reader(tmp_path).stats(["a"])["a"].cache_share is None, "answered from sessions.json"
+    summary_of(tmp_path).unlink()
+    assert reader(tmp_path).stats(["a"])["a"].cache_share is None, "answered from usage.json"
+
+
 async def test_the_summary_is_written_beside_the_sessions_and_is_small(tmp_path: Path):
     await two_sessions(tmp_path)
     ledger = reader(tmp_path)
@@ -249,11 +264,13 @@ async def test_an_id_that_could_leave_the_store_is_not_looked_up(tmp_path: Path,
         "not json",
         "[]",
         '{"version": 99, "sessions": {}}',
-        '{"version": 1, "sessions": []}',
-        '{"version": 1, "sessions": {"a": [1, 2, 3]}}',
-        '{"version": 1, "sessions": {"a": ["x", 1, 1, 1, 1, 1, 1, 1]}}',
-        '{"version": 1, "sessions": {"a": [-1, 1, 1, 1, 1, 1, 1, 1]}}',
-        '{"version": 1, "sessions": {"a": [true, 1, 1, 1, 1, 1, 1, 1]}}',
+        summary_json("[]"),
+        summary_json('{"a": [1, 2, 3]}'),
+        summary_json('{"a": ["x", 1, 1, 1, 1, 1, 1, 1]}'),
+        summary_json('{"a": [-1, 1, 1, 1, 1, 1, 1, 1]}'),
+        summary_json('{"a": [true, 1, 1, 1, 1, 1, 1, 1]}'),
+        # Nine numbers, but the cache flag is neither 0 nor 1.
+        summary_json('{"a": [1, 1, 1, 1, 1, 1, 1, 1, 2]}'),
     ],
 )
 async def test_a_summary_that_cannot_be_trusted_is_ignored_and_rewritten(tmp_path: Path, damage: str):

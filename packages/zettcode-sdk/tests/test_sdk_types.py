@@ -53,12 +53,14 @@ def test_the_cache_hit_rate_is_none_when_the_calls_did_not_report_it():
     assert Usage(input_tokens=200, cache_read_tokens=0).cache_hit_rate == 0.0, "a reported zero is a measured miss"
 
 
-def test_a_delta_keeps_the_cache_measured_only_when_both_readings_were():
+def test_a_delta_answers_with_the_flag_of_the_reading_it_went_to():
     before = Usage(input_tokens=100, cache_read_tokens=50)
     after = Usage(input_tokens=300, cache_read_tokens=150)
 
     assert after.since(before).cache_hit_rate == pytest.approx(100 / 200)
-    assert after.since(Usage(input_tokens=100, cache_reported=False)).cache_hit_rate is None
+    # An unreported call stays in the accumulator, so the reading is unknown from then on, and so is
+    # every delta taken from it.
+    assert Usage(input_tokens=300, cache_reported=False).since(before).cache_hit_rate is None
 
 
 def test_stored_totals_report_no_share_when_the_cache_was_not_measured():

@@ -78,7 +78,7 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 | `GET` | `/sessions/current/export` | — | 对话导出成独立的 HTML 页面(`text/html`,按下载处理)。 |
 | `POST` | `/sessions/current/ask` | `{"question","timeout"?}` | `{"answer"}`;在旁边回答,不进入对话。运行进行中返回 409。 |
 | `POST` | `/sessions/current/ask/stream` | `{"question","timeout"?}` | 同样的旁路提问,答案以流的形式返回,帧的格式与 `/prompts` 相同:先是 `text_delta` 事件,再是 `result`(出错是 `error`,被 `/runs/cancel` 停止是 `cancelled`)。回答期间这个提问占用运行位。运行进行中返回 409。 |
-| `GET` | `/sessions/current/stats` | — | `{"id","entries","requests","input_tokens","output_tokens","cache_read_tokens","reasoning_tokens","total_tokens","cache_share"}`,还没存任何东西时为 `null`:即 `/resume` 的一行。 |
+| `GET` | `/sessions/current/stats` | — | `{"id","entries","requests","input_tokens","output_tokens","cache_read_tokens","reasoning_tokens","total_tokens","cache_share","cache_reported"}`,还没存任何东西时为 `null`:即 `/resume` 的一行。 |
 | `GET` | `/sessions/stats?ids=a,b` | — | 指定会话的 `{"stats": [...]}`,形状相同;最多 200 个 id。 |
 | `GET` | `/sessions/current/self-compaction` | — | `{"choice": true\|false\|null, "effective": bool}` |
 | `PUT` | `/sessions/current/self-compaction` | `{"choice": true\|false\|null}` | 保存到会话后的同样结构;从下一次请求起生效。 |
@@ -89,8 +89,10 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 
 ```json
 {"input_tokens": 1200, "output_tokens": 340, "cache_read_tokens": 800, "cache_write_tokens": 0,
- "reasoning_tokens": 0, "seconds": 4.2, "requests": 3, "context_tokens": 1540}
+ "reasoning_tokens": 0, "seconds": 4.2, "requests": 3, "context_tokens": 1540, "cache_reported": true}
 ```
+
+`cache_share` 在没有输入、或 provider 没报告缓存读取时为 `null`；`cache_reported` 区分这两种情况，后者为 `false`。客户端若自己用计数相除，应在它为 `false` 时停下，像终端那样干脆不显示这一项。
 
 ## 运行
 

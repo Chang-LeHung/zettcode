@@ -95,7 +95,7 @@ TAIL_BYTES = 2 * FIRST_CHUNK_LIMIT * 4 + 1024
 BUCKET_SECONDS = 900
 
 #: One reply as the index keeps it: request id, stored timestamp, UTC seconds, model, then the
-#: input, output, cache-read and reasoning counters.
+#: input, output, cache-read and reasoning counters, and whether its call reported the cache.
 Row = tuple[str, str, int, str, int, int, int, int, bool]
 
 
@@ -602,6 +602,8 @@ class LedgerReader:
                 continue
             size, mtime_ns, *counters = item
             entries, requests, sent, received, cache, reasoning, reported = counters
+            if reported not in (0, 1):
+                continue
             found[session_id] = (
                 (size, mtime_ns),
                 SessionStats(

@@ -130,6 +130,7 @@ def usage_out(usage: Usage) -> UsageOut:
         seconds=usage.seconds,
         requests=usage.requests,
         context_tokens=usage.context_tokens,
+        cache_reported=usage.cache_reported,
     )
 
 

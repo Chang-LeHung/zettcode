@@ -34,7 +34,7 @@ const facts = computed(() => {
   if (usage) {
     out.push({ text: `↑ ${formatTokens(usage.input_tokens)}`, title: "Input tokens" });
     out.push({ text: `↓ ${formatTokens(usage.output_tokens)}`, title: "Output tokens" });
-    if (usage.cache_read_tokens > 0 && usage.input_tokens > 0) {
+    if (usage.cache_reported !== false && usage.cache_read_tokens > 0 && usage.input_tokens > 0) {
       const share = (usage.cache_read_tokens / usage.input_tokens) * 100;
       out.push({ text: `${share.toFixed(1)}% cached`, title: "Input served from the cache" });
     }

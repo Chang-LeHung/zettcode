@@ -110,7 +110,7 @@ occupancy is a snapshot, not an accumulated percentage.
 | Field | How to read it |
 | --- | --- |
 | `↑` / `↓` | Cumulative input and output tokens reported by the provider. Repeated context counts as input each time it is sent. |
-| `cached` | Cumulative cache-hit input tokens ÷ cumulative input tokens. 60,000 hits out of 100,000 input tokens is `60.0%`. |
+| `cached` | Cumulative cache-hit input tokens ÷ cumulative input tokens. 60,000 hits out of 100,000 input tokens is `60.0%`. Left out when the provider reported no cache read, which is not the same as a miss. |
 | `tok/s` | The provider's output tokens divided by the time from the first token of the reply to its end; not the wait for the first token, nor the time spent on tools, approvals, or reading the answer. The tokens that arrived with the first token are counted, so the figure reads a little high. |
 | `ctx` | Latest context occupancy relative to the selected model's configured window. When a provider reports no input tokens, the last figure it did report plus everything appended since is measured instead. |
 

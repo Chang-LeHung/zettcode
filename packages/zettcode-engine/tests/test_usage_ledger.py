@@ -12,18 +12,21 @@ from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ModelUsage
 
 from zettcode.engine.storage import SessionStore
-from zettcode.engine.storage.ledger import UNKNOWN_MODEL, LedgerReader, Tally, parse_time
+from zettcode.engine.storage.ledger import INDEX_VERSION, UNKNOWN_MODEL, LedgerReader, Tally, parse_time
 
 WORK = "work"
 
 
-def spent(input_tokens: int, output_tokens: int, cache: int = 0, reasoning: int = 0) -> ModelUsage:
+def spent(
+    input_tokens: int, output_tokens: int, cache: int = 0, reasoning: int = 0, *, reported: bool = True
+) -> ModelUsage:
     return ModelUsage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cache_read_tokens=cache,
         cache_write_tokens=0,
         reasoning_tokens=reasoning,
+        cache_reported=reported,
     )
 
 
@@ -178,6 +181,11 @@ def index_of(tmp_path: Path) -> Path:
     return reader(tmp_path).index_path
 
 
+def index_json(sessions: str) -> str:
+    """A stored index of the current version, holding whatever ``sessions`` says."""
+    return f'{{"version": {INDEX_VERSION}, "sessions": {sessions}}}'
+
+
 def counting_scans(monkeypatch) -> list[int]:
     """Record how many lines each parse of a conversation looked at."""
     from zettcode.engine.storage import ledger as module
@@ -301,12 +309,21 @@ async def test_an_edit_in_the_part_already_read_is_noticed(tmp_path: Path):
         "not json",
         "[]",
         '{"version": 99, "sessions": {}}',
-        '{"version": 2, "sessions": []}',
-        '{"version": 2, "sessions": {"a": {"size": "big"}}}',
-        '{"version": 2, "sessions": {"a": {"size": 1, "mtime_ns": 1, "offset": 1, "head": 1, "tail": 1, '
-        '"started": null, "counted": true, "rows": [["r", "t", 1, "m", 1, 1, 1]]}}}',
-        '{"version": 2, "sessions": {"a": {"size": true, "mtime_ns": 1, "offset": 1, "head": 1, "tail": 1, '
-        '"started": null, "counted": true, "rows": []}}}',
+        index_json("[]"),
+        index_json('{"a": {"size": "big"}}'),
+        index_json(
+            '{"a": {"size": 1, "mtime_ns": 1, "offset": 1, "head": 1, "tail": 1, "started": null, '
+            '"counted": true, "rows": [["r", "t", 1, "m", 1, 1, 1]]}}'
+        ),
+        index_json(
+            '{"a": {"size": true, "mtime_ns": 1, "offset": 1, "head": 1, "tail": 1, "started": null, '
+            '"counted": true, "rows": []}}'
+        ),
+        # Nine fields, but the cache flag is a number rather than a boolean.
+        index_json(
+            '{"a": {"size": 1, "mtime_ns": 1, "offset": 1, "head": 1, "tail": 1, "started": null, '
+            '"counted": true, "rows": [["r", "t", 1, "m", 1, 1, 1, 1, 1]]}}'
+        ),
     ],
 )
 async def test_an_index_that_cannot_be_trusted_is_ignored_and_rewritten(tmp_path: Path, damage: str):

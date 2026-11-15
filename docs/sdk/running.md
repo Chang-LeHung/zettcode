@@ -132,11 +132,13 @@ print(f"{result.usage.output_rate:.0f} tokens/s")
 | `seconds` | Time from the first token of each reply to that reply's end, summed: the window the output rate divides by. A call that streamed nothing contributes none. |
 | `requests` | How many model calls were made. |
 | `context_tokens` | How full the context was on the newest call. |
+| `cache_reported` | Whether the counted calls reported how much input came from the cache; `false` leaves the share unknown. |
 | `total_tokens` | `input_tokens + output_tokens`; nothing is counted twice. |
-| `cache_hit_rate` | The cached share of the input, or `None` before any input. |
+| `cache_hit_rate` | The cached share of the input, or `None` before any input or when a counted call did not report its cache read. |
 | `output_rate` | Tokens per second of model time, or `None`. |
 
-`usage.since(earlier)` subtracts two readings, never going below zero.
+`usage.since(earlier)` subtracts two readings, never going below zero; the result keeps the later reading's
+`cache_reported`, because a call that reported nothing stays in the accumulator.
 
 ## Images
 

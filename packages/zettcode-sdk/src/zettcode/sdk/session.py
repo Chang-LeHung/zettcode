@@ -1181,6 +1181,7 @@ def _message_of(item: object, usage: Any = None, seconds: float = 0.0) -> Messag
                 reasoning_tokens=usage.reasoning_tokens,
                 seconds=seconds,
                 requests=1,
+                cache_reported=usage.cache_reported,
             )
         )
         return Message(
