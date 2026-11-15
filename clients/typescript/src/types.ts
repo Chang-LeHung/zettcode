@@ -42,6 +42,9 @@ export interface Usage {
   seconds: number;
   requests: number;
   context_tokens: number;
+  /** Whether the counted calls reported how much input they read from the cache; false means unknown, not zero.
+   *  Absent from a server older than the field, which is treated as reported. */
+  cache_reported?: boolean;
 }
 
 export interface ModelInfo {

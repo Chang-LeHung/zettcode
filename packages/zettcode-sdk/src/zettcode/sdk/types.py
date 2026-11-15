@@ -83,24 +83,24 @@ class Usage:
         output_tokens: Everything the model generated.
         cache_read_tokens: Input the provider served from its cache.
         cache_write_tokens: Input written into the provider's cache.
-        cache_reported: Whether the counted calls reported their cache reads; False leaves the share unknown
-            rather than zero.
         reasoning_tokens: The reasoning part of ``output_tokens``.
         seconds: Time from the first token of each call to that call's terminal response, summed: the window output
             was generated in, the rate's denominator.
         requests: How many model calls were made.
         context_tokens: How full the context was on the newest call; for a delta, the value after the run.
+        cache_reported: Whether the counted calls reported their cache reads; False leaves the share unknown
+            rather than zero. Last, so the order every positional caller was built with stays.
     """
 
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
-    cache_reported: bool = True
     reasoning_tokens: int = 0
     seconds: float = 0.0
     requests: int = 0
     context_tokens: int = 0
+    cache_reported: bool = True
 
     @property
     def total_tokens(self) -> int:
@@ -144,8 +144,10 @@ class Usage:
             **values,
             seconds=max(0.0, self.seconds - earlier.seconds),
             context_tokens=self.context_tokens,
-            # A delta is only measured if the readings it is the difference of both were.
-            cache_reported=self.cache_reported and earlier.cache_reported,
+            # A reading's flag says whether its own counted calls reported. An unreported call stays in
+            # the accumulator, so a delta of two such readings inherits it; hand-built values with
+            # ``earlier`` alone unreported keep this reading's answer.
+            cache_reported=self.cache_reported,
         )
 
 

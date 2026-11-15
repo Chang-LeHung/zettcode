@@ -176,6 +176,7 @@ class UsageOut(BaseModel):
     seconds: float = 0.0
     requests: int = 0
     context_tokens: int = 0
+    cache_reported: bool = True
 
     @property
     def total_tokens(self) -> int:

@@ -142,7 +142,7 @@ class _Column(NamedTuple):
 
 
 def _share(stats: SessionStatsInfo) -> str:
-    """Return the cached share of a session's input as a percent to two places, or a dash before any input."""
+    """Return the cached share as a percent to two places, or a dash before any input or when it was not measured."""
     share = stats.cache_share
     return NONE if share is None else f"{share * 100:.2f}%"
 

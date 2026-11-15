@@ -132,11 +132,12 @@ print(f"{result.usage.output_rate:.0f} tokens/s")
 | `seconds` | 每次回复从第一个 token 到结束的时间，累加；也就是输出速率的分母。没有流式输出的调用不计。 |
 | `requests` | 发起了多少次模型调用。 |
 | `context_tokens` | 最近一次调用时上下文有多满。 |
+| `cache_reported` | 计入的调用是否报告了从缓存读了多少输入；`false` 表示该比例未知。 |
 | `total_tokens` | `input_tokens + output_tokens`；没有重复计算。 |
-| `cache_hit_rate` | 输入中来自缓存的比例，没有输入时为 `None`。 |
+| `cache_hit_rate` | 输入中来自缓存的比例；没有输入时为 `None`，有调用没报缓存读取时也是 `None`。 |
 | `output_rate` | 每秒模型时间生成的 token 数，或 `None`。 |
 
-`usage.since(earlier)` 把两次读数相减，结果不会低于零。
+`usage.since(earlier)` 把两次读数相减，结果不会低于零；结果沿用后一次读数的 `cache_reported`，因为没报告的那个调用仍然留在累计值里。
 
 ## 图片
 

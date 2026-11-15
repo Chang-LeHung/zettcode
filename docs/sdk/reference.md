@@ -367,9 +367,9 @@ control, so `"read"` and `"read_write"` behave the same there, and `"off"` only 
 | Member | Meaning |
 | --- | --- |
 | `total_tokens` | Input plus output. |
-| `cache_hit_rate` | Cached share of the input, or `None`. |
+| `cache_hit_rate` | Cached share of the input, or `None` before any input or when the cache was not measured. |
 | `output_rate` | Tokens per second of model time, or `None`. |
-| `since(earlier)` | What was spent after `earlier`; counters never below zero. |
+| `since(earlier)` | What was spent after `earlier`; counters never below zero, and the later reading's `cache_reported`. |
 
 ### `RunResult`
 
@@ -433,7 +433,7 @@ Background agents are run and listed from `zettcode.sdk.daemons`: `list_daemons(
 
 ### `Totals`
 
-What a tally in the usage ledger holds: `requests`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `reasoning_tokens` (all `int`), with `total_tokens` and `cache_share` (`None` with no input) worked out.
+What a tally in the usage ledger holds: `requests`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `reasoning_tokens` (all `int`), and `cache_reported` (`False` when a counted reply did not report its cache read), with `total_tokens` and `cache_share` (`None` with no input or when it was not measured) worked out.
 
 ### `SessionTotals`, `ModelTotals`, `DayTotals`, `WorkspaceUsage`
 
@@ -441,7 +441,7 @@ What a tally in the usage ledger holds: `requests`, `input_tokens`, `output_toke
 
 ### `SessionStatsInfo`
 
-`id`, `entries`, `requests`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `reasoning_tokens`, with `total_tokens` and `cache_share` worked out. One row of the terminal's `/resume` panel.
+`id`, `entries`, `requests`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `reasoning_tokens`, `cache_reported`, with `total_tokens` and `cache_share` (`None` with no input or when it was not measured) worked out. One row of the terminal's `/resume` panel.
 
 ### `ModelCheck`
 

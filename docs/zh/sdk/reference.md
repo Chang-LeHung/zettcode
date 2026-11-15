@@ -359,9 +359,9 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | 成员 | 含义 |
 | --- | --- |
 | `total_tokens` | 输入加输出。 |
-| `cache_hit_rate` | 输入中来自缓存的比例，或 `None`。 |
+| `cache_hit_rate` | 输入中来自缓存的比例；没有输入或未测量时为 `None`。 |
 | `output_rate` | 每秒模型时间生成的 token 数，或 `None`。 |
-| `since(earlier)` | `earlier` 之后花的用量；计数不会低于零。 |
+| `since(earlier)` | `earlier` 之后花的用量；计数不会低于零，并沿用后一次读数的 `cache_reported`。 |
 
 ### `RunResult`
 
@@ -427,7 +427,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 ### `Totals`
 
-用量账本里一份计数:`requests`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`reasoning_tokens`（都是 `int`），并提供算好的 `total_tokens` 与 `cache_share`（没有输入时为 `None`）。
+用量账本里一份计数:`requests`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`reasoning_tokens`（都是 `int`），以及 `cache_reported`（有计入的回复没报告缓存读取时为 `False`），并提供算好的 `total_tokens` 与 `cache_share`（没有输入或未测量时为 `None`）。
 
 ### `SessionTotals`、`ModelTotals`、`DayTotals`、`WorkspaceUsage`
 
@@ -435,7 +435,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 ### `SessionStatsInfo`
 
-`id`、`entries`、`requests`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`reasoning_tokens`,并提供算好的 `total_tokens` 与 `cache_share`。终端 `/resume` 面板的一行。
+`id`、`entries`、`requests`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`reasoning_tokens`、`cache_reported`,并提供算好的 `total_tokens` 与 `cache_share`（没有输入或未测量时为 `None`）。终端 `/resume` 面板的一行。
 
 ### `ModelCheck`
 
