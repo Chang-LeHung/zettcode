@@ -26,6 +26,7 @@ class ContextPagePlugin(TuiPlugin):
 
     def activate(self, ctx: PluginContext) -> None:
         tui = require_tui(ctx)
+        workspace = ctx.workspace
 
         async def show(context: CommandContext) -> CommandResult:
             """Open the context page, or say why there is nothing to measure yet."""
@@ -91,6 +92,7 @@ class ContextPagePlugin(TuiPlugin):
                 widget=ContextPage(
                     report,
                     path=path,
+                    workspace=workspace,
                     model=model_name,
                     trigger=trigger,
                     compact_percent=compact,

@@ -439,6 +439,7 @@ def context_scene(env: Env, theme: Theme) -> Canvas:
     widget = ContextPage(
         report,
         path=Path("~/.zettcode/sessions/-Users-me-api/01a1/data.jsonl"),
+        workspace=Path("~/projects/api"),
         model="claude-opus-4-5",
         trigger=160000,
     )

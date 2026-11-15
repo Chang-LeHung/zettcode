@@ -21,6 +21,11 @@ If the page says `No request yet`, this session has not sent one. Send a message
 
 ![ZettCode's /context page: a gauge of the window, three numbers, and the sources of the request](/screens/context.svg)
 
+The two lines under the title say which session this picture belongs to. `Workspace` is the directory the session
+works in, and the one both the tools that read or write a file and the shell start from; `Session` is the file the
+conversation is stored in. On macOS and Linux a path inside your home directory starts with `~`; either way, a path
+too long for the terminal keeps its end, which names the project or the file.
+
 ### The window
 
 ```text

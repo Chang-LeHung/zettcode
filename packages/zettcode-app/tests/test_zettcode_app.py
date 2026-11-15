@@ -2731,10 +2731,10 @@ async def test_the_context_command_reports_what_the_request_carries():
     assert page.title.startswith("Context  ") and page.title.endswith(" / 128,000 tokens")
     # Under it, the file this session is stored in: the reader's way from the
     # numbers to the conversation on disk.
-    assert page.path.endswith(STORE_FILE)
-    # The fragment comes from the fake's own root, which is what keeps this assertion
-    # true wherever the platform puts its path separators.
-    assert str(FakePersistence.root / "workspace") in text
+    assert str(page.path).endswith(STORE_FILE)
+    # The tail comes from the fake's own store, and the page keeps a path's end, so
+    # this assertion holds wherever the platform puts its path separators.
+    assert str(Path("workspace") / "session-0001" / STORE_FILE) in text
     # The window share is not repeated in the title; the rows carry the context shares,
     # which add up to the whole of what the next request would send.
     assert "%" not in page.title

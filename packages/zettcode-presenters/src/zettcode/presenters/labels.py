@@ -11,7 +11,7 @@ before the application's imports happen.
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from zettcode.tui import ARROW_DOWN, ARROW_UP, ELLIPSIS, HEADER, STATUS
 from zettcode.tui.render import display_width
@@ -28,7 +28,7 @@ KEY_HINTS = f"{STOP_HINT}  ^D exit"
 DEFAULT_EFFORT = "medium"
 
 
-def compact_path(path: Path, *, limit: int | None = 38) -> str:
+def compact_path(path: PurePath, *, limit: int | None = 38) -> str:
     """Shorten a workspace path for the header.
 
     Args:

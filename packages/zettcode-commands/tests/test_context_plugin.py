@@ -63,4 +63,5 @@ async def test_the_page_is_drawn_from_the_context_report_service(tmp_path: Path)
     assert result.widget is not None and result.widget.report.window == 4_242
     assert isinstance(result.widget.report, ContextReport)
     assert result.widget.report.used == 100, "converted by context_report_from, not the client's own report"
+    assert result.widget.workspace == workspace, "the page names the directory the session works in"
     assert result.widget.title == "Context  100 / 4,242 tokens"
