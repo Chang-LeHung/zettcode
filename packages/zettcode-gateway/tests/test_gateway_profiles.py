@@ -203,6 +203,17 @@ def test_a_profile_made_again_after_it_expired_starts_its_day_afresh(tmp_path: p
     assert "a" in profiles, "no stale timestamp from the first one expires the second at once"
 
 
+def test_reading_a_session_with_no_profile_does_not_start_a_day_for_a_profile_made_later(tmp_path: pathlib.Path):
+    profiles, clock = make(tmp_path)
+    profiles.read("nobody")
+    profiles.change("nobody", {"name": "n"})
+    clock[0] += PROFILE_TTL + 1
+
+    profiles.forget_vanished(set())
+
+    assert "nobody" in profiles, "a day is counted from a read of a profile, not of its absence"
+
+
 def test_nothing_is_written_when_nothing_expired(tmp_path: pathlib.Path):
     profiles, _ = make(tmp_path)
     profiles.change("a", {"name": "n"})

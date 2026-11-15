@@ -1325,6 +1325,7 @@ async def test_an_external_agent_started_for_a_group_is_listed_with_its_type(tmp
         name = "echo"
         title = "Echo"
         description = "Answers with what it hears"
+        avatar = "data:image/png;base64,AAAA"
 
         def create(self, session_id: str, title: str) -> Session:  # type: ignore[override]
             return Session()
@@ -1339,6 +1340,8 @@ async def test_an_external_agent_started_for_a_group_is_listed_with_its_type(tmp
 
     assert made["thread"]["agent"] == "echo"
     assert made["thread"]["name"] == "Scribe"
+    assert made["thread"]["avatar"] == "data:image/png;base64,AAAA", "the type's picture is kept as the profile's"
+    assert gateway._profiles.read("agent-1") == {"avatar": "data:image/png;base64,AAAA"}
     assert manager.kind_of("agent-1") == "echo"
     assert Session.joined == ["review"]
 
