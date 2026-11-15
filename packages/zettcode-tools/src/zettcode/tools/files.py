@@ -220,13 +220,12 @@ def grep(
 
 
 @tool
-def write_file(file_path: FilePath, content: str, overwrite: bool = True) -> str:
+def write_file(file_path: FilePath, content: str) -> str:
     """Atomically write a UTF-8 text file.
 
     Args:
         file_path: Absolute path or a path relative to the current working directory.
         content: Complete UTF-8 text to write.
-        overwrite: Whether an existing file may be replaced.
 
     Returns:
         One line saying whether the file was created or replaced, and its path.
@@ -242,8 +241,6 @@ def write_file(file_path: FilePath, content: str, overwrite: bool = True) -> str
     exists = located.path.exists()
     if exists and not located.path.is_file():
         raise ValueError(f"Path is not a file: {file_path}")
-    if exists and not overwrite:
-        raise ValueError(f"File already exists: {file_path}")
     write_text(located.path, content)
     return f"{'Wrote' if exists else 'Created'} {located.shown}"
 
