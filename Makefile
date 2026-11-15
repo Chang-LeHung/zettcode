@@ -198,6 +198,17 @@ mobile-apk: mobile
 	@if [ -n "$(ANDROID_SDK)" ]; then export ANDROID_HOME="$(ANDROID_SDK)"; fi; \
 		cd clients/mobile/android && ./gradlew assembleDebug
 	@echo "APK: clients/mobile/android/app/build/outputs/apk/debug/app-debug.apk"
+	@# Android signs a debug build with the local debug key, which is why it installs; a release build has no
+	@# signing config here and would produce an unsigned APK no device takes. Check what was built, the way desktop.yml
+	@# checks the macOS app: the target succeeds only when the APK really carries a signature.
+	@if [ -n "$(ANDROID_SDK)" ]; then \
+		APKSIGNER=$$(ls -1d "$(ANDROID_SDK)"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1); \
+		APK=clients/mobile/android/app/build/outputs/apk/debug/app-debug.apk; \
+		if [ -z "$$APKSIGNER" ]; then echo "no apksigner under $(ANDROID_SDK)/build-tools: the APK's signature was not checked"; \
+		elif "$$APKSIGNER" verify --print-certs "$$APK" >/dev/null; then \
+			echo "signed: $$("$$APKSIGNER" verify --print-certs "$$APK" | sed -n 's/^Signer #1 certificate DN: //p')"; \
+		else echo "this APK is not signed; no device will install it"; exit 1; fi; \
+	fi
 
 # Both apps in one command. The Android half needs the SDK; the desktop half needs electron-builder's download.
 package: desktop-package mobile-apk
