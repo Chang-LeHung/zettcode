@@ -16,13 +16,14 @@ from zettcode.engine.storage.ledger import SUMMARY_FILE, LedgerReader
 WORK = "work"
 
 
-def spent(input_tokens: int, output_tokens: int, cache: int = 0) -> ModelUsage:
+def spent(input_tokens: int, output_tokens: int, cache: int = 0, *, reported: bool = True) -> ModelUsage:
     return ModelUsage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cache_read_tokens=cache,
         cache_write_tokens=0,
         reasoning_tokens=0,
+        cache_reported=reported,
     )
 
 
@@ -139,6 +140,16 @@ async def test_the_totals_of_each_session_are_what_the_ledger_says(tmp_path: Pat
     assert SessionStats("x").cache_share is None, "before any input there is nothing to be a share of"
 
 
+async def test_a_session_that_did_not_report_its_cache_has_no_share(tmp_path: Path):
+    store = SessionStore(tmp_path, tmp_path / WORK)
+    await answer(store, "a", "r1", spent(1000, 100, cache=600, reported=False))
+
+    stats = reader(tmp_path).stats(["a"])["a"]
+
+    assert stats.cache_reported is False
+    assert stats.cache_share is None, "a provider that said nothing has not measured a miss"
+
+
 async def test_the_summary_is_written_beside_the_sessions_and_is_small(tmp_path: Path):
     await two_sessions(tmp_path)
     ledger = reader(tmp_path)
@@ -148,8 +159,8 @@ async def test_the_summary_is_written_beside_the_sessions_and_is_small(tmp_path:
     written = json.loads(summary_of(tmp_path).read_text(encoding="utf-8"))
     assert summary_of(tmp_path).name == SUMMARY_FILE == "sessions.json"
     assert summary_of(tmp_path).parent == ledger.index_path.parent
-    assert written["version"] == 1 and set(written["sessions"]) == {"a", "b"}
-    assert all(len(item) == 8 for item in written["sessions"].values()), "a stamp and six numbers; no reply rows"
+    assert written["version"] == 2 and set(written["sessions"]) == {"a", "b"}
+    assert all(len(item) == 9 for item in written["sessions"].values()), "a stamp, six numbers and the cache flag"
     assert summary_of(tmp_path).stat().st_size < ledger.index_path.stat().st_size
 
 

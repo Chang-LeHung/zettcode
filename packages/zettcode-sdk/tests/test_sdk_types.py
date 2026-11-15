@@ -19,7 +19,9 @@ from zettcode.sdk.types import (
     ModelInfo,
     RunResult,
     SessionInfo,
+    SessionStatsInfo,
     ToolRecord,
+    Totals,
     Usage,
 )
 
@@ -44,6 +46,26 @@ def test_the_cache_hit_rate_is_none_before_any_input_and_a_fraction_after():
     assert Usage().cache_hit_rate is None
     assert Usage(input_tokens=200, cache_read_tokens=50).cache_hit_rate == 0.25
     assert Usage(input_tokens=10, cache_read_tokens=10).cache_hit_rate == 1.0
+
+
+def test_the_cache_hit_rate_is_none_when_the_calls_did_not_report_it():
+    assert Usage(input_tokens=200, cache_read_tokens=50, cache_reported=False).cache_hit_rate is None
+    assert Usage(input_tokens=200, cache_read_tokens=0).cache_hit_rate == 0.0, "a reported zero is a measured miss"
+
+
+def test_a_delta_keeps_the_cache_measured_only_when_both_readings_were():
+    before = Usage(input_tokens=100, cache_read_tokens=50)
+    after = Usage(input_tokens=300, cache_read_tokens=150)
+
+    assert after.since(before).cache_hit_rate == pytest.approx(100 / 200)
+    assert after.since(Usage(input_tokens=100, cache_reported=False)).cache_hit_rate is None
+
+
+def test_stored_totals_report_no_share_when_the_cache_was_not_measured():
+    assert Totals(requests=1, input_tokens=200, cache_read_tokens=50).cache_share == 0.25
+    assert Totals(requests=1, input_tokens=200, cache_reported=False).cache_share is None
+    assert SessionStatsInfo("s", requests=1, input_tokens=200, cache_reported=False).cache_share is None
+    assert SessionStatsInfo("s", requests=1, input_tokens=200, cache_read_tokens=50).cache_share == 0.25
 
 
 def test_the_output_rate_needs_measured_time():

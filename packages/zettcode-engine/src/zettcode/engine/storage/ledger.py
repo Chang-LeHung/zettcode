@@ -71,11 +71,11 @@ INDEX_FILE = "usage.json"
 
 #: Bumped when the index's shape changes; an index of another version is ignored. The fingerprint's width is part
 #: of the shape: a stored tail that was taken over other bytes never matches, and re-reading the file is the whole cost.
-INDEX_VERSION = 2
+INDEX_VERSION = 3
 
 #: The per-session totals the sessions panel reads, beside the index, and the version of its shape.
 SUMMARY_FILE = "sessions.json"
-SUMMARY_VERSION = 1
+SUMMARY_VERSION = 2
 
 #: What marks a stored line as a message record, with and without the space after the colon. Keys are written
 #: in sorted order and a message's own text is escaped, so the pair never appears inside a message.
@@ -96,7 +96,7 @@ BUCKET_SECONDS = 900
 
 #: One reply as the index keeps it: request id, stored timestamp, UTC seconds, model, then the
 #: input, output, cache-read and reasoning counters.
-Row = tuple[str, str, int, str, int, int, int, int]
+Row = tuple[str, str, int, str, int, int, int, int, bool]
 
 
 @dataclass(slots=True)
@@ -113,6 +113,8 @@ class Tally:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     reasoning_tokens: int = 0
+    #: Whether every reply here reported its cache reads; a reply that did not leaves the share unknown.
+    cache_reported: bool = True
 
     @property
     def total(self) -> int:
@@ -121,8 +123,10 @@ class Tally:
 
     @property
     def cache_share(self) -> float | None:
-        """Return the cached share of all input, or ``None`` before there is any."""
-        return self.cache_read_tokens / self.input_tokens if self.input_tokens else None
+        """Return the cached share of all input, or ``None`` before any input or when it was not measured."""
+        if not self.cache_reported or not self.input_tokens:
+            return None
+        return self.cache_read_tokens / self.input_tokens
 
     def add(self, other: Tally) -> None:
         """Add another tally's counters into this one."""
@@ -131,6 +135,7 @@ class Tally:
         self.output_tokens += other.output_tokens
         self.cache_read_tokens += other.cache_read_tokens
         self.reasoning_tokens += other.reasoning_tokens
+        self.cache_reported = self.cache_reported and other.cache_reported
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +172,8 @@ class SessionStats:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     reasoning_tokens: int = 0
+    #: Whether every reply it was charged for reported its cache reads.
+    cache_reported: bool = True
 
     @property
     def total(self) -> int:
@@ -175,8 +182,10 @@ class SessionStats:
 
     @property
     def cache_share(self) -> float | None:
-        """Return the cached share of all input, or ``None`` before there is any."""
-        return self.cache_read_tokens / self.input_tokens if self.input_tokens else None
+        """Return the cached share of all input, or ``None`` before any input or when it was not measured."""
+        if not self.cache_reported or not self.input_tokens:
+            return None
+        return self.cache_read_tokens / self.input_tokens
 
 
 @dataclass(slots=True)
@@ -253,6 +262,9 @@ def _row_of(line: str) -> Row | None:
         _count(usage.get("output_tokens")),
         _count(usage.get("cache_read_tokens")),
         _count(usage.get("reasoning_tokens")),
+        # A line written before the flag existed said what the provider said, so it keeps counting
+        # as reported; only an explicit false leaves the share unknown.
+        usage.get("cache_reported") is not False,
     )
 
 
@@ -369,14 +381,16 @@ def _whole(value: object) -> bool:
 
 def _row_from_index(row: object) -> Row:
     """Check one stored row's shape and return it as a tuple; raise ``ValueError`` if it is odd."""
-    if not isinstance(row, list) or len(row) != 8:
-        raise ValueError("a row has eight fields")
-    request, created, seconds, model, *counters = row
+    if not isinstance(row, list) or len(row) != 9:
+        raise ValueError("a row has nine fields")
+    request, created, seconds, model, *rest = row
     if not (isinstance(request, str) and isinstance(created, str) and isinstance(model, str)):
         raise ValueError("a row's text fields are text")
-    if not all(_whole(number) for number in (seconds, *counters)):
+    if not all(_whole(number) for number in (seconds, *rest[:-1])):
         raise ValueError("a row's counters are whole numbers")
-    return (request, created, seconds, model, *counters)
+    if not isinstance(rest[-1], bool):
+        raise ValueError("a row's cache flag is a boolean")
+    return (request, created, seconds, model, *rest)
 
 
 def _file_from_index(item: object) -> _File | None:
@@ -582,16 +596,29 @@ class LedgerReader:
             return {}
         found: dict[str, tuple[tuple[int, int], SessionStats]] = {}
         for session_id, item in sessions.items():
-            if not isinstance(session_id, str) or not isinstance(item, list) or len(item) != 8:
+            if not isinstance(session_id, str) or not isinstance(item, list) or len(item) != 9:
                 continue
             if not all(_whole(number) and number >= 0 for number in item):
                 continue
             size, mtime_ns, *counters = item
-            found[session_id] = ((size, mtime_ns), SessionStats(session_id, *counters))
+            entries, requests, sent, received, cache, reasoning, reported = counters
+            found[session_id] = (
+                (size, mtime_ns),
+                SessionStats(
+                    session_id,
+                    entries=entries,
+                    requests=requests,
+                    input_tokens=sent,
+                    output_tokens=received,
+                    cache_read_tokens=cache,
+                    reasoning_tokens=reasoning,
+                    cache_reported=bool(reported),
+                ),
+            )
         return found
 
     def _save_summary(self, fresh: dict[str, tuple[tuple[int, int], SessionStats]]) -> None:
-        """Write the summary: for each session its stamp, then the seven numbers a row shows."""
+        """Write the summary: for each session its stamp, then the numbers a row shows."""
         payload = {
             "version": SUMMARY_VERSION,
             "sessions": {
@@ -604,6 +631,7 @@ class LedgerReader:
                     stats.output_tokens,
                     stats.cache_read_tokens,
                     stats.reasoning_tokens,
+                    int(stats.cache_reported),
                 ]
                 for session_id, (stamp, stats) in fresh.items()
             },
@@ -624,7 +652,7 @@ def _fold(found: Iterable[tuple[datetime, str, Path, _File]]) -> Ledger:
             if key in seen:
                 continue
             seen.add(key)
-            reply = Tally(1, row[4], row[5], row[6], row[7])
+            reply = Tally(1, row[4], row[5], row[6], row[7], row[8])
             tally.add(reply)
             ledger.models.setdefault(row[3], Tally()).add(reply)
             bucket = row[2] // BUCKET_SECONDS
@@ -656,4 +684,5 @@ def _stats_of(row: SessionUsage) -> SessionStats:
         tally.output_tokens,
         tally.cache_read_tokens,
         tally.reasoning_tokens,
+        tally.cache_reported,
     )

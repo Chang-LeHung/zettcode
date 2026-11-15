@@ -124,6 +124,7 @@ def usage_from(snapshot: UsageSnapshot) -> Usage:
         output_tokens=snapshot.output_tokens,
         cache_read_tokens=snapshot.cache_read_tokens,
         cache_write_tokens=snapshot.cache_write_tokens,
+        cache_reported=snapshot.cache_reported,
         reasoning_tokens=snapshot.reasoning_tokens,
         seconds=snapshot.seconds,
         requests=snapshot.requests,
@@ -188,6 +189,7 @@ def totals_from(tally: Tally) -> Totals:
         output_tokens=tally.output_tokens,
         cache_read_tokens=tally.cache_read_tokens,
         reasoning_tokens=tally.reasoning_tokens,
+        cache_reported=tally.cache_reported,
     )
 
 
@@ -226,6 +228,7 @@ def stats_from(stats: SessionStats) -> SessionStatsInfo:
         output_tokens=stats.output_tokens,
         cache_read_tokens=stats.cache_read_tokens,
         reasoning_tokens=stats.reasoning_tokens,
+        cache_reported=stats.cache_reported,
     )
 
 

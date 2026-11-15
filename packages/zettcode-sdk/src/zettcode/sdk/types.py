@@ -83,6 +83,8 @@ class Usage:
         output_tokens: Everything the model generated.
         cache_read_tokens: Input the provider served from its cache.
         cache_write_tokens: Input written into the provider's cache.
+        cache_reported: Whether the counted calls reported their cache reads; False leaves the share unknown
+            rather than zero.
         reasoning_tokens: The reasoning part of ``output_tokens``.
         seconds: Time from the first token of each call to that call's terminal response, summed: the window output
             was generated in, the rate's denominator.
@@ -94,6 +96,7 @@ class Usage:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    cache_reported: bool = True
     reasoning_tokens: int = 0
     seconds: float = 0.0
     requests: int = 0
@@ -106,8 +109,14 @@ class Usage:
 
     @property
     def cache_hit_rate(self) -> float | None:
-        """Return the cached share of the input, or ``None`` before there is any input."""
-        return self.cache_read_tokens / self.input_tokens if self.input_tokens else None
+        """Return the cached share of the input, or ``None`` when it was not measured.
+
+        ``None`` means no input yet, or a counted call that said nothing about what it read from the cache.
+        A reported zero read is a measured miss, and stays ``0.0``.
+        """
+        if not self.cache_reported or not self.input_tokens:
+            return None
+        return self.cache_read_tokens / self.input_tokens
 
     @property
     def output_rate(self) -> float | None:
@@ -129,12 +138,14 @@ class Usage:
         values = {
             item.name: max(0, getattr(self, item.name) - getattr(earlier, item.name))
             for item in fields(self)
-            if item.name not in ("context_tokens", "seconds")
+            if item.name not in ("context_tokens", "seconds", "cache_reported")
         }
         return Usage(
             **values,
             seconds=max(0.0, self.seconds - earlier.seconds),
             context_tokens=self.context_tokens,
+            # A delta is only measured if the readings it is the difference of both were.
+            cache_reported=self.cache_reported and earlier.cache_reported,
         )
 
 
@@ -803,6 +814,7 @@ class Totals:
         output_tokens: Everything generated, reasoning included.
         cache_read_tokens: The part of the input the provider served from its cache.
         reasoning_tokens: The reasoning part of the output.
+        cache_reported: Whether every counted reply reported its cache reads.
     """
 
     requests: int = 0
@@ -810,6 +822,7 @@ class Totals:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     reasoning_tokens: int = 0
+    cache_reported: bool = True
 
     @property
     def total_tokens(self) -> int:
@@ -818,8 +831,10 @@ class Totals:
 
     @property
     def cache_share(self) -> float | None:
-        """Return the share of the input the provider served from its cache, or ``None`` before there is input."""
-        return self.cache_read_tokens / self.input_tokens if self.input_tokens else None
+        """Return the share of the input the provider served from its cache, or ``None`` when it was not measured."""
+        if not self.cache_reported or not self.input_tokens:
+            return None
+        return self.cache_read_tokens / self.input_tokens
 
 
 @dataclass(frozen=True, slots=True)
@@ -890,6 +905,7 @@ class SessionStatsInfo:
         output_tokens: Everything generated, reasoning included.
         cache_read_tokens: The part of the input the provider served from its cache.
         reasoning_tokens: The reasoning part of the output.
+        cache_reported: Whether every counted reply reported its cache reads.
     """
 
     id: str
@@ -899,6 +915,7 @@ class SessionStatsInfo:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     reasoning_tokens: int = 0
+    cache_reported: bool = True
 
     @property
     def total_tokens(self) -> int:
@@ -907,8 +924,10 @@ class SessionStatsInfo:
 
     @property
     def cache_share(self) -> float | None:
-        """Return the cached share of the input, or ``None`` before there was any."""
-        return self.cache_read_tokens / self.input_tokens if self.input_tokens else None
+        """Return the cached share of the input, or ``None`` when it was not measured."""
+        if not self.cache_reported or not self.input_tokens:
+            return None
+        return self.cache_read_tokens / self.input_tokens
 
 
 @dataclass(frozen=True, slots=True)

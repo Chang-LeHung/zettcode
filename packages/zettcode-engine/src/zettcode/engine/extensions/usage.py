@@ -47,6 +47,8 @@ class UsageSnapshot:
         output_tokens: Generated tokens, including reasoning when reported.
         cache_read_tokens: Input tokens the provider served from its cache.
         cache_write_tokens: Input tokens written into the provider cache.
+        cache_reported: Whether every counted call reported how much input it read from the cache; a
+            call that reported nothing leaves the share unknown, not zero.
         reasoning_tokens: Reasoning subset of ``output_tokens``.
         seconds: Time from the first token of each call to that call's terminal
             response, summed: the window output was generated in, the rate's
@@ -60,6 +62,7 @@ class UsageSnapshot:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    cache_reported: bool = True
     reasoning_tokens: int = 0
     seconds: float = 0.0
     requests: int = 0
@@ -72,8 +75,15 @@ class UsageSnapshot:
 
     @property
     def cache_hit_rate(self) -> float | None:
-        """Return the cached share of all input, or None before any input."""
-        return self.cache_read_tokens / self.input_tokens if self.input_tokens else None
+        """Return the cached share of all input, or None when it was not measured.
+
+        None means there is no ratio to report: no input yet, or a counted call said nothing about what
+        it read from the cache. A provider that reports a zero read has still measured a miss, and that
+        is 0.0 rather than None.
+        """
+        if not self.cache_reported or not self.input_tokens:
+            return None
+        return self.cache_read_tokens / self.input_tokens
 
     @property
     def output_rate(self) -> float | None:
@@ -107,6 +117,9 @@ class UsageSnapshot:
             output_tokens=self.output_tokens + usage.output_tokens,
             cache_read_tokens=self.cache_read_tokens + usage.cache_read_tokens,
             cache_write_tokens=self.cache_write_tokens + usage.cache_write_tokens,
+            # One call that said nothing about its cache leaves the running share unknown: the
+            # percentage would be over the calls that happened to report.
+            cache_reported=self.cache_reported and usage.cache_reported,
             reasoning_tokens=self.reasoning_tokens + usage.reasoning_tokens,
             seconds=self.seconds + max(0.0, seconds),
             requests=self.requests + 1,
@@ -115,13 +128,14 @@ class UsageSnapshot:
             context_tokens=(usage.input_tokens or self.context_tokens) if context_tokens is None else context_tokens,
         )
 
-    def to_payload(self) -> dict[str, int | float]:
+    def to_payload(self) -> dict[str, int | float | bool]:
         """Return the JSON-serializable form carried by the custom event."""
         return {
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "cache_read_tokens": self.cache_read_tokens,
             "cache_write_tokens": self.cache_write_tokens,
+            "cache_reported": self.cache_reported,
             "reasoning_tokens": self.reasoning_tokens,
             "seconds": self.seconds,
             "requests": self.requests,
@@ -145,6 +159,9 @@ class UsageSnapshot:
             output_tokens=count("output_tokens"),
             cache_read_tokens=count("cache_read_tokens"),
             cache_write_tokens=count("cache_write_tokens"),
+            # A payload written before this flag existed said what the provider said, so it keeps
+            # the old meaning rather than turning every replayed session's share into unknown.
+            cache_reported=payload.get("cache_reported") is not False,
             reasoning_tokens=count("reasoning_tokens"),
             seconds=seconds("seconds"),
             requests=count("requests"),

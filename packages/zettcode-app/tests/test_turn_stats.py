@@ -73,6 +73,13 @@ def test_a_fact_with_nothing_to_say_is_none():
     assert tokens_text(Usage()) is None, "nothing before the model has answered"
 
 
+def test_a_cache_share_that_was_not_measured_says_nothing():
+    unmeasured = spent_usage(cache_reported=False)
+
+    assert unmeasured.cache_hit_rate is None
+    assert cache_text(unmeasured) is None, "a dash in the request line would be a claim the provider did not make"
+
+
 def test_the_speed_is_given_to_a_tenth_below_ten_and_whole_above_and_not_at_all_below_one():
     assert speed_text(spent_usage(output_tokens=100)) == "5.0 tok/s"
     assert speed_text(spent_usage(output_tokens=10)) is None

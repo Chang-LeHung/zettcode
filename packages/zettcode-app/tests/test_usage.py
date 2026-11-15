@@ -62,7 +62,12 @@ class _CountingClock(_Clock):
 
 
 def _response(
-    *, input_tokens: int, output_tokens: int, cache_read_tokens: int = 0, ttft: float | None = 1.0
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    ttft: float | None = 1.0,
+    cache_reported: bool = True,
 ) -> ModelResponse:
     """Build the assistant response one model call returns.
 
@@ -75,6 +80,7 @@ def _response(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
+            cache_reported=cache_reported,
             ttft_any_ns=None if ttft is None else round(ttft * 1e9),
         ),
     )
@@ -120,6 +126,27 @@ async def test_the_extension_accumulates_each_call_and_publishes_the_total():
     assert event.name == USAGE_EVENT_NAME
     assert event.payload == snapshot.to_payload()
     assert UsageSnapshot.from_payload(event.payload) == snapshot
+
+
+async def test_a_call_that_reported_no_cache_leaves_the_share_unknown():
+    extension = UsageExtension(clock=_Clock(1.0, 3.5, 10.0, 12.0))
+    context = _Context()
+
+    await _call(extension, context, _response(input_tokens=1_000, output_tokens=100, cache_read_tokens=600))
+    await _call(extension, context, _response(input_tokens=2_000, output_tokens=300, cache_reported=False))
+
+    snapshot = extension.snapshot("s-1")
+    assert snapshot.cache_reported is False
+    assert snapshot.cache_hit_rate is None, "one call that said nothing leaves the share unmeasured"
+    assert UsageSnapshot.from_payload(snapshot.to_payload()).cache_reported is False
+
+
+async def test_a_reported_zero_is_a_measured_miss():
+    extension = UsageExtension(clock=_Clock(1.0, 3.5))
+
+    await _call(extension, _Context(), _response(input_tokens=1_000, output_tokens=100, cache_read_tokens=0))
+
+    assert extension.snapshot("s-1").cache_hit_rate == 0.0
 
 
 async def test_the_wait_for_the_first_token_is_not_generation_time():

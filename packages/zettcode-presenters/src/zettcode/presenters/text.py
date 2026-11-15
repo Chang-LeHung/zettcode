@@ -233,9 +233,14 @@ def tokens_text(usage: Usage) -> str | None:
 
 
 def cache_text(usage: Usage) -> str | None:
-    """Say the share of the input the provider served from its cache, or nothing when it served none."""
-    if usage.requests and usage.cache_read_tokens > 0 and usage.input_tokens > 0:
-        return f"{usage.cache_read_tokens / usage.input_tokens * 100:.1f}% cached"
+    """Say the share of the input the provider served from its cache, or nothing when it served none.
+
+    A share that was not measured (the provider reported no cache reads) is left out rather than shown as
+    zero: the status line has no room for a dash, and a zero would claim a miss nobody measured.
+    """
+    rate = usage.cache_hit_rate
+    if usage.requests and rate is not None and usage.cache_read_tokens > 0:
+        return f"{rate * 100:.1f}% cached"
     return None
 
 
