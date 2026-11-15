@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   # The plugin base classes.
-  "zettcode-engine>=0.5.0,<0.6",
+  "zettcode-engine>=0.5.1,<0.6",
   # The message types and the extension hook the merge runs on.
   "zett-agent>=0.2.10,<0.3",
 ]

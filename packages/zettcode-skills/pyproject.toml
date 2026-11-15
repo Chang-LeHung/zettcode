@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   # The plugin base classes and the shape of an @ reference.
-  "zettcode-engine>=0.5.0,<0.6",
+  "zettcode-engine>=0.5.1,<0.6",
   # The skill extension that discovers and reads them.
   "zett-agent>=0.2.10,<0.3",
 ]
