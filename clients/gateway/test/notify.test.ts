@@ -81,6 +81,7 @@ test("a message for a conversation that is not being looked at is shown by the b
 
 test("clicking the notice brings the window forward, opens that conversation and closes the notice", () => {
   notifyInbound(event);
+  assert.deepEqual([place.hash, focused, FakeNotification.last?.closed], ["", 0, false], "nothing happens until the click");
 
   FakeNotification.last?.onclick?.();
 
@@ -169,6 +170,10 @@ test("the permission is asked for only when the person has not answered yet", as
   FakeNotification.permission = "default";
   FakeNotification.answer = "denied";
   assert.equal(await enableNotifications(), false);
+  assert.equal(FakeNotification.asked, 1);
+
+  FakeNotification.answer = "granted";
+  assert.equal(await enableNotifications(), false, "a denied permission is not asked again");
   assert.equal(FakeNotification.asked, 1);
 
   FakeNotification.permission = "default";
