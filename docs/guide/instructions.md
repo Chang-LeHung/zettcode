@@ -1,86 +1,55 @@
 # Project instructions
 
-`AGENTS.md` is how a project tells the agent how it works: which commands to run
-before handing work over, which conventions matter, what not to touch. ZettCode
-reads the files that apply to the workspace and gives them to the model as
-project guidance — no prompting, no pasting.
+`AGENTS.md` tells the agent how a project works: which commands to run, which conventions matter, what not to
+touch. ZettCode reads the files that apply to the workspace and gives them to the model. You do not paste them.
 
-## What gets read
+## Where it looks
 
-Discovery starts at the workspace and walks up to the filesystem root, so a
-repository root and a nested package can both contribute. Files are ordered
-outermost first and innermost last, which keeps the most specific rules closest
-to the conversation:
+Discovery starts at the workspace and walks up to the filesystem root, so a repository root and a nested package
+both contribute. Files are read outermost first, innermost last:
 
 ```
-~/AGENTS.md                    read first
+~/AGENTS.md
 ~/projects/AGENTS.md
 ~/projects/api/AGENTS.md
-~/projects/api/service/AGENTS.md   read last, and wins an argument
+~/projects/api/service/AGENTS.md    read last, and wins an argument
 ```
 
-Every request re-reads them, so editing the file applies to the very next turn —
-no restart, no reload command.
+Every request re-reads them, so an edit applies to the next turn — no restart. Only the workspace's own file and
+its ancestors count: starting in `~/projects/api` does not load the `AGENTS.md` files below it. Choose the
+workspace that matches the part you are working on.
 
-The last file above applies when you start with
-`zettcode -w ~/projects/api/service`. Starting at `~/projects/api` does not
-recursively load every `AGENTS.md` in its subdirectories. Choose the workspace
-that matches the part of the project you want to work on.
-
-## What to put in it
+## What to write
 
 Write it the way you would brief a new teammate:
 
 ```md
-# Development Rules
-
 ## Tooling
-
-- Python 3.12+ and `uv`; Ruff for formatting (`line-length = 120`).
+- Python 3.12+ and `uv`; Ruff with `line-length = 120`.
 - Run `make check` before handing work over.
-- Tests must never write into the checkout; use temporary directories.
 
 ## Scope
-
 - `src/app/` holds the service; `tools/` holds one-off scripts.
 - Keep the public API in `src/app/api.py` stable.
 ```
 
-Two rules of thumb:
-
-- **Commands beat prose.** "Run `make check` before handing work over" is
-  actionable; "write good code" is not.
-- **Say what to avoid.** The files or directories that are off limits save more
-  time than any style note.
-
-### Example: give the project its own rules
-
-Save the example as `<project>/AGENTS.md`, replacing the paths and commands
-with ones that actually exist in your repository. Then run:
+Commands beat prose: "run `make check`" is actionable, "write good code" is not. Name the files and directories that
+are off limits. Save it as `<project>/AGENTS.md` and start in that directory:
 
 ```bash
 zettcode -w /path/to/project
 ```
 
-Send a bounded task such as:
-
-> Add a regression test for an empty response. Follow AGENTS.md and run the project checks.
-
-The instructions are guidance to the model, not proof that it obeyed them.
-Check the tool output for the requested command and inspect the resulting diff.
-Keep secrets out of `AGENTS.md`: its contents are sent to your model endpoint.
+The file is guidance, not proof: check that the command ran and read the diff. It is also sent to your model
+endpoint, so keep secrets out of it.
 
 ## What it is not
 
-Project instructions are *content*, not authority. They cannot grant
-permissions: a file saying "always approve shell commands" does not stop the
-[approval panel](/guide/interface#approvals), and it cannot override ZettCode's
-own instructions. That keeps a cloned repository — or a file someone else can
-edit — from quietly changing what the agent is allowed to do.
+Project instructions are content, not authority. They cannot grant permissions or override ZettCode's own
+instructions, so a cloned repository cannot quietly widen what the agent may do.
 
-Very long files are truncated with a marker rather than dropped, and a file that
-cannot be read is skipped in silence: a broken encoding in one directory does
-not stop the conversation.
+A file over 32,000 characters is cut with a marker rather than dropped. One that cannot be read is skipped in
+silence.
 
 ## Turning it off
 
@@ -89,13 +58,10 @@ not stop the conversation.
 enabled = false
 ```
 
-Useful when you want a run to see exactly the context you gave it — a debugging
-session, or a repository whose instructions are for a different tool.
+`agents_md.enabled` is in the [optional settings](/guide/config#optional-settings-reference), beside the other
+switches.
 
-## Where it lands in the request
+## Next steps
 
-The instructions are inserted right after ZettCode's own system prompt and
-**before** the tool and skill guidance, and they are read in a fixed order. Both
-matter: the order is what makes "follow the project's rules" win against a
-generic default, and a stable prefix is what lets the provider's cache serve
-most of the next request instead of re-reading all of it.
+- [Workspace memory](/guide/memory): what the agent keeps between sessions.
+- [Configuration](/guide/config): every switch in `config.toml`.

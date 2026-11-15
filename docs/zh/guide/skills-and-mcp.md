@@ -1,18 +1,11 @@
 # Skills 与 MCP
 
-有两种方式让 ZettCode 学会它本身没有的东西：你自己写的 **skills**，和现成的 **MCP 服务器**。
-skills 提供可复用的指令，MCP 服务器提供额外工具。两者默认启用，但需要本地文件或服务器
-定义才有内容可加载。
+有两种方式给 ZettCode 它本身没有的东西：**skill** 是你写的指令，**MCP 服务器**是提供工具的程序。两者默认启用，
+而且都要先有文件才能加载。
 
-## Skills
+## 什么是 skill
 
-一个 skill 就是一个目录，里面放一份带 name 和 description 的 `SKILL.md`：
-
-```
-~/.zettcode/skills/
-└── code-review/
-    └── SKILL.md
-```
+一个 skill 就是一个目录，里面一份 `SKILL.md`：front matter 里写 `name` 和 `description`，正文写指令。
 
 ```md
 ---
@@ -24,32 +17,24 @@ description: Review a diff with the team checklist
 发现的问题按严重程度从高到低列出来。
 ```
 
-进入模型的只是**目录** —— 名字和描述，仅此而已。正文只有在模型判断自己需要时才被读取，这也是
-skills 再多也不会把上下文占满的原因。
+在模型判断需要之前，进入模型的只有名字和描述；需要时正文才被读进来。这也是 skills 再多也不会占满上下文的原因。
 
-几种发现方式：
+## 从哪里读 skills 和服务器 {#where-they-live}
 
-| 位置 | 给谁用 |
+| 位置 | 放什么 |
 | --- | --- |
-| `~/.zettcode/skills/` | 你自己，在所有项目里都生效。 |
-| `<工作区>/.zettcode/skills/` | 某一个项目，随项目一起提交。默认会读取；可用 `[skills] scope` 关掉。 |
-| `~/.agents/skills/` 和 `<工作区>/.agents/skills/` | 其他编码 agent 共用的 `.agents` 目录下的同样两个位置，为它们写的 skill 不用复制就能被找到。各自排在所属范围的 `.zettcode` 目录之后读取。 |
-| `[skills] roots` | 团队目录或任何其他目录：`roots = ["~/team-skills"]`。相对路径按工作区解析。 |
+| `[skills] roots` | 额外的目录，最先搜索：`roots = ["~/team-skills"]` |
+| `<工作区>/.zettcode/skills/`、`<工作区>/.agents/skills/` | 项目自己的，随项目提交 |
+| `~/.zettcode/skills/`、`~/.agents/skills/` | 你自己的，在所有项目里生效 |
+| `~/.zettcode/`、`~/.agents/`、`<工作区>/.zettcode/`、`<工作区>/.agents/` 下的 `mcp.json` | MCP 服务器 |
 
-先搜索配置的根目录，再搜索 scope 对应的目录；名字冲突时前面的优先。`[skills] enabled = false` 可以
-关掉发现。
+同名声明以靠前的位置为准，所以项目里的 skill 在这个项目里胜出。`scope` 决定读哪一边，skills 和服务器都一样：
 
-### 放在哪里：你的目录、项目的目录，还是两者 {#where-they-live}
-
-`[skills] scope`（以及下面的 `[mcp] scope`）决定读取谁的文件：
-
-| `scope` | skills 从哪里读 | MCP 服务器从哪里读 |
+| `scope` | skills | MCP 服务器 |
 | --- | --- | --- |
-| `"both"`（默认） | 先项目的，再你的 | 两个都读并合并；同名服务器以项目的为准 |
-| `"workspace"` | `<工作区>/.zettcode/skills`、`<工作区>/.agents/skills` | `<工作区>/.zettcode/mcp.json`、`<工作区>/.agents/mcp.json` |
-| `"global"` | `~/.zettcode/skills`、`~/.agents/skills` | `~/.zettcode/mcp.json`（或 `[mcp] config`），以及 `~/.agents/mcp.json`（`[mcp] config` 指定了文件时不读） |
-
-除非你另行指定，两边会一起使用，所以项目不用任何配置就能带上自己的 skills 和服务器。想只用一边：
+| `"both"`（默认） | 先项目的，再你的 | 两个文件合并，同名以项目的为准 |
+| `"workspace"` | 只有项目的 | 只有 `<工作区>/.zettcode/mcp.json` |
+| `"global"` | 只有你的 | `~/.zettcode/mcp.json`，以及 `~/.agents/mcp.json`（`[mcp] config` 指定了文件时不读） |
 
 ```toml
 [skills]
@@ -59,49 +44,28 @@ scope = "global"      # 忽略项目自带的 skills
 scope = "global"      # 绝不启动项目自带的服务器
 ```
 
-用 `both` 时，项目可以带一个自己的 `review` skill，它只在这个项目里压过你自己的同名 skill。
-工作区就是你启动时指定的那个：`zettcode -w ~/projects/api` 读取的是 `~/projects/api/.zettcode/…`。
-
 ::: warning 仓库里的文件默认会被读取
-skill 是模型会照着做的指令，MCP 条目是 ZettCode 会去执行的命令。按默认设置，打开一个带有
-`.zettcode/mcp.json` 的仓库就会启动它列出的服务器。读这些文件之前，像对待一段你要运行的脚本一样先看一遍；
-对不信任的仓库，把 scope 设为 `global`。
+skill 是模型会照着做的指令，MCP 条目是 ZettCode 会执行的命令，所以打开一个带 `.zettcode/mcp.json` 的仓库就会启动它列出的
+服务器。像看待一段要运行的脚本那样先看这些文件；对不信任的仓库，把 `scope` 设为 `global`。
 :::
 
-### 用起来
+## 用 skill
 
-在草稿里输入 `@` 就能引用一个 skill：
+在草稿里输入 `@` 指向一个：
 
 > 用 @code-review 帮我审一下刚才的改动
 
-菜单会列出找到的 skills。被存下来的消息就是你打的那句，所以之后恢复会话看到的是
-`@code-review`，而不是一大段指令；模型只被告知在需要时去加载这个 skill。
+存下来的消息是 `@code-review` 本身，不是一大段指令。不加 `@` 时，模型看到每个 skill 的名字和描述，任务对得上就去读正文。
 
-### 例子：安装自己的审阅 skill
+菜单里没有你的 skill，就检查目录和 `name` 字段，以及 `[skills] enabled` 是不是 `false`。skill 是指令，不是工具：
+它可以要求模型用已有工具，但不会新增。
 
-1. 创建 `~/.zettcode/skills/code-review/` 目录。
-2. 把上面的示例保存为目录中的 `SKILL.md`，保留 `---` 和 `name`、`description` 两个字段。
-3. 重启 ZettCode，输入 `@code`，从菜单中选择 `code-review`。
-4. 发送“用 @code-review 审阅当前 diff，先不要修改文件。”
-
-引用时用名字，不是绝对路径。如果菜单没有出现，检查目录和文件的拼写，以及是否配置了
-`[skills] enabled = false`。添加 skill 不等于安装工具：正文可以指导模型使用已有工具，
-但不会凭空创建新工具。
-
-想让 skill 随项目提交，可以放在 `<工作区>/.zettcode/skills/code-review/SKILL.md`。不需要任何配置就能找到它，
-而且在这个项目里，它会压过你自己目录里的同名 skill。使用别人提供的 skill 前，先阅读正文，
-就像检查交给同事的任务说明一样。
+项目的 skill 放在 `<工作区>/.zettcode/skills/<名字>/SKILL.md`，不需要任何配置。用别人的 skill 前先读一遍。
 
 ## MCP 服务器
 
-MCP 服务器会发布工具。ZettCode 从 `~/.zettcode/mcp.json`（或 `[mcp] config` 指向的位置）读取，
-也读 `<工作区>/.zettcode/mcp.json`（[读哪些文件](#where-they-live)）。
-把每个工具注册成 `<服务器名>__<工具名>`，和自带工具放在一起。
-
-### 例子：本地浏览器服务器
-
-以 Chrome DevTools 为例，先安装能提供 `npx` 的 Node.js 和 Google Chrome，
-再把这份 **JSON** 保存到 `~/.zettcode/mcp.json`：
+ZettCode 从 `~/.zettcode/mcp.json`（或 `[mcp] config` 指定的文件）读服务器定义，把每个工具注册成
+`<服务器>__<工具>`，和自带工具放在一起。
 
 ```json
 {
@@ -114,18 +78,13 @@ MCP 服务器会发布工具。ZettCode 从 `~/.zettcode/mcp.json`（或 `[mcp] 
 }
 ```
 
-重启后可以发送：
+| 参数 | 含义 |
+| --- | --- |
+| `command` | 本地服务器的可执行程序，进程必须能找到它。 |
+| `args`、`env`、`cwd` | 它的参数、环境变量和工作目录。 |
+| `url`、`headers` | 远程服务器，配合 `"type": "streamable-http"`。 |
 
-> 用浏览器工具打开 `http://localhost:3000`，检查是否有控制台错误。
-
-你的应用应该已经在这个 URL 运行。服务器是外部程序，不是 ZettCode 自带的包，第一次启动
-可能需要下载。支持的 Node.js 版本和浏览器选项见它的
-[安装说明](https://github.com/ChromeDevTools/chrome-devtools-mcp)。
-需要可控版本时，用自己审阅过的版本替代 `@latest`。
-
-### 例子：远程 HTTP 服务器
-
-如果已有服务提供 MCP 接口，填写它的实际地址：
+在别处运行的服务器用 URL 指定：
 
 ```json
 {
@@ -138,64 +97,23 @@ MCP 服务器会发布工具。ZettCode 从 `~/.zettcode/mcp.json`（或 `[mcp] 
 }
 ```
 
-这个 URL 只是示例，需要自己启动服务器或替换地址。想同时使用两个服务器，把 `browser`
-和 `docs` 放进同一个 `servers` 对象，不能直接拼接两份 JSON。JSON 必须使用双引号，
-不支持注释和末尾多余的逗号。
+`mcpServers` 是 `servers` 的另一种写法。服务器是外部程序，不自带；第一次启动可能要下载包。重启后，按它做的事来点：
+“用浏览器工具打开 `http://localhost:3000`，检查是否有控制台错误。”
 
-`mcpServers` 是 `servers` 的另一种写法；一个服务器要么是 streamable HTTP 的 `url`（可带
-`headers`），要么是 stdio 的 `command`（可带 `args`、`env`、`cwd`）。
-
-| 服务器参数 | 含义 | 例子 |
-| --- | --- | --- |
-| `command` | 本地 stdio 服务器的可执行程序，启动进程必须能找到它。 | `"npx"` |
-| `args` | 独立的命令参数组成的数组。 | `["-y", "chrome-devtools-mcp@latest"]` |
-| `env` | 传给服务器的环境变量值。 | `{ "API_KEY": "your-server-key" }` |
-| `cwd` | 本地服务器的工作目录。 | `"/absolute/path/to/project"` |
-| `url` | 远端 MCP 接口，不是普通网页地址。 | `"http://127.0.0.1:9000/mcp"` |
-| `headers` | 远端服务器需要的 HTTP 请求头。 | `{ "Authorization": "Bearer your-server-key" }` |
-
-本地 stdio 使用 `command`，HTTP 使用 `"type": "streamable-http"` 和 `url`，
-它们是两种不同的传输方式。
-
-::: warning 外部工具需要信任
-MCP 服务器使用进程本身的权限，也可能提供产生副作用的工具。ZettCode 的 shell 审批不是
-所有 MCP 工具的沙箱。启用前先确认服务器来源和能力，`env` 或 `headers` 中的密钥不要提交到 Git。
+::: warning MCP 服务器以自己的进程权限运行
+它的工具可能产生副作用，shell 的审批提示管不到它们。`env` 或 `headers` 里的密钥不要进版本控制，能用固定版本就别用
+`@latest`。
 :::
 
-没有这个文件就是没有东西可加载，于是一次没配置 MCP 的运行完全不会带上 MCP 相关指令 —— 而不是
-放进一条“没有可加载内容”的系统消息。`[mcp] enabled = false` 关掉这个扩展。
+`[mcp] enabled = false` 关掉它。没有文件时什么都不加载。
 
-### 启动服务器
-
-需要启动的服务器是一个进程，启动可能要一会儿（`npx` 可能要先下载包）。这期间对话里会说明，
-这样一个停在 “Processing” 的请求就有了你能读到的原因：
-
-```text
-Starting MCP server 'docs' (process)…
-MCP server 'docs' is ready: 3 tools, 2.1s
-```
-
-远程服务器显示 `(connection)`。这些行**每个会话只在第一轮出现一次**——它们解释的是那一轮为什么慢，之后没有什么需要再解释：
-ZettCode 每隔几分钟会重新查看服务器，但不会再说出来。新建会话或恢复一个会话就是进入一个会话，它的第一轮会再说一次。
-ZettCode 已经有它工具列表的服务器不需要启动，也就什么都不说；连不上的服务器会被报告为不可用，而不是就绪——
-这一条无论在哪一轮发生都会说。这些行只写服务器的名字和类型，不会重复它的命令（命令里可能带密钥）。子 agent 不会说服务器的事：你并没有问过它什么。
-
-### 服务器或工具出问题时
-
-任何一个 MCP 环节出错都不会让任务停下来。具体怎么处理，看是哪个环节：
+## 服务器或工具出问题时
 
 | 出了什么问题 | 会发生什么 |
 | --- | --- |
-| 服务器没起来、启动失败或在时限内没有响应 | 这一次请求会跳过它，其余服务器照常工作。对话里会出现一行提示 —— `MCP server 'docs' is not available (ConnectionError); its tools are skipped until it works` —— 同时也会告诉模型，免得它去调用不存在的工具。这行提示只说一次，不会每轮都出现；服务器恢复之后再次失败，才会再次提示。 |
-| 工具报错，或服务器在调用中途崩溃 | 这次调用会作为一个普通的失败工具结果带着服务器自己的报错信息回到模型，模型继续往下做。一直不返回的调用五分钟后超时。 |
-| `mcp.json` 里某一项写坏了（缺字段、`type` 不认识） | 这一项被忽略并点名 —— `MCP server 'typo' in mcp.json is ignored: …` —— 其余服务器照常加载。 |
-| `mcp.json` 根本不是合法 JSON，或者没有任何服务器 | 本次运行关闭 MCP，并说明原因。修好文件后重启 ZettCode：启动时合法的文件在改动后会被重新读取，但从没成功加载过的文件没有可重载的东西。 |
+| 服务器没起来，或启动很慢 | 这次请求跳过它，对话里有一行说明，模型也会知道这些工具不在。 |
+| 工具报错，或服务器中途崩溃 | 这次调用作为失败的工具结果、带着服务器自己的信息回去；一直不返回的调用五分钟超时。 |
+| `mcp.json` 里某一项写坏了 | 这一项被忽略并点名，其余服务器照常加载。 |
+| 文件根本不是合法 JSON | 本次运行关闭 MCP，并说明原因。修好文件再重启。 |
 
-早期版本只要有一个服务器连不上，就会用 `MCP unavailable (…)` 把整个请求停掉，而且把所有配置的服务器
-（包括好的）都列在报错里。
-
-::: tip 话多的服务器弄不坏画面
-stdio 服务器会把启动横幅写到 stderr。ZettCode 占用终端期间，这些输出会进
-`~/.zettcode/log/tui.log`，因为直接画上去会把画面弄乱。如果某个服务器看起来毫无反应，先看
-这个文件。
-:::
+ZettCode 占用终端时，stdio 服务器的启动横幅会写进 `~/.zettcode/log/tui.log`，服务器看起来没反应时先看这个文件。

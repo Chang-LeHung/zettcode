@@ -1,63 +1,42 @@
 # Find your next step
 
-ZettCode works in your terminal, on the files in your workspace. This guide is
-organized around what you want to do — start a first task, keep a conversation
-moving, or set up the tools and models that suit your project.
+ZettCode is a coding agent that runs in your terminal, on the files of one directory, and asks before it runs a shell
+command. Pick the route that matches what you are doing now.
 
-## First time here?
+## First time here
 
-1. **[Install and connect a model](/guide/getting-started).** You need Python
-   3.10+, a terminal, and an OpenAI-compatible API (or Anthropic's Messages
-   API). The quickstart takes you from installation to your first task.
-2. **[See what it can do](/guide/capabilities).** The JIT harness, `/code-review`,
-   background agents, groups, the web gateway, and Codex and Claude Code as members —
-   each with a command to try.
-3. **[Get to know the screen](/guide/interface).** Understand thinking, tool
-   output, the composer, and the status line.
-4. **[Keep the essentials handy](/guide/keys).** Enter submits, Ctrl-C stops a
-   request, and Ctrl-D exits when the composer is empty.
+- **[Getting started](/guide/getting-started).** Install, connect a model, run a first task. You need Python 3.10+ and
+  a token for an OpenAI-compatible or Anthropic endpoint.
+- **[What it can do](/guide/capabilities).** The eight things it does beyond one session in one terminal, each with a
+  command that starts it.
+- **[The interface](/guide/interface) and [keys](/guide/keys).** What each row on the screen means; Enter submits,
+  Ctrl-C stops a request, Ctrl-D exits when the composer is empty and nothing runs.
 
-## Working on a project
+## Every day
 
-| I want to… | Go to |
-| --- | --- |
-| Switch models, change reasoning effort, or ask a side question | [Commands](/guide/commands) |
-| Select text, paste an image, or scroll back to an answer | [Keys & mouse](/guide/keys) |
-| Continue an earlier session or export it to HTML | [Sessions](/guide/sessions) |
-| Understand context usage, compaction, and caching | [The context window](/guide/context) |
-| Let the model write a small tool for the task | [The JIT harness](/guide/harness) |
+- **[Commands](/guide/commands).** Every slash command and every `zettcode` option, in tables.
+- **[Sessions](/guide/sessions) and [the context window](/guide/context).** Resume yesterday's conversation, export it
+  to HTML, and read how full the model's window is.
+- **[The JIT harness](/guide/harness).** The model writes the small tool the task needs, loads it, and calls it.
 
-Typing while the agent works asks whether the message should **steer** the
-request — picked up at the next tool or model boundary — or **follow up** after it,
-as a message of its own that you can still edit and reorder. Use `/btw <question>`
-instead when you want an answer that will not join the context of later requests.
-See [The interface](/guide/interface) for all three.
+Typing while the agent works asks whether to **steer** the running request or **follow up** after it, as a message of
+its own. `/btw <question>` gets an answer that never joins the context of later requests; [The
+interface](/guide/interface) covers all three.
 
-## Work with several agents
+## Several agents
 
-| I want to… | Go to |
-| --- | --- |
-| Have a second agent review my uncommitted changes | [Code review](/guide/code-review) |
-| Run an agent in the background while I keep working | [Background agents](/guide/daemons) |
-| Send a message to another session, or put sessions in a group | [Talking between sessions](/guide/messaging) |
-| Watch and steer daemons from a browser or a phone | [Web gateway](/guide/gateway), [Desktop & phone apps](/guide/app) |
-| Run Codex or Claude Code beside my own sessions | [Codex & Claude Code](/guide/code-agents) |
+- **[Code review](/guide/code-review).** A second agent reads your uncommitted changes and reports what it would fix.
+- **[Background agents](/guide/daemons).** A session with nobody at the keyboard, which keeps running after you close
+  the terminal.
+- **[Talking between sessions](/guide/messaging), [the web gateway](/guide/gateway), [desktop & phone apps](/guide/app),
+  [Codex & Claude Code](/guide/code-agents).** Sessions message each other, join groups, and can be watched from a
+  browser.
 
 ## Make it yours
 
-- **[Configuration](/guide/config):** model connections, optional capabilities,
-  and your theme. Start here when you want to change a setting.
-- **[Project instructions](/guide/instructions):** write `AGENTS.md` to explain
-  conventions, test commands, and boundaries for your workspace.
-- **[Skills & MCP](/guide/skills-and-mcp):** give the agent reusable instructions
-  or connect external tools.
-- **[Plugins](/guide/plugins):** install Python extensions that add commands and
-  customize the interface.
-- **[SDK](/sdk/):** drive the agent from Python programs, without a terminal.
+[Configuration](/guide/config) covers models, permissions and theme; [project instructions](/guide/instructions) put
+your conventions in `AGENTS.md`; [skills & MCP](/guide/skills-and-mcp) and [plugins](/guide/plugins) add commands and
+tools. The [SDK](/sdk/) drives the same agent from Python.
 
-## Something not working?
-
-Start with [Problems & questions](/guide/faq). For a reproducible bug, open an
-[issue on GitHub](https://github.com/Chang-LeHung/zettcode/issues). Include the
-OS, terminal, ZettCode version, and the steps to reproduce it; leave API tokens
-and private conversation content out.
+Stuck? [Problems & questions](/guide/faq) has the common failures. For a reproducible bug, open an [issue on
+GitHub](https://github.com/Chang-LeHung/zettcode/issues) with the OS, the terminal, the version and the steps.

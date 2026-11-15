@@ -115,7 +115,7 @@ class ExampleCommandUi(CommandUi):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("path", ["docs/guide/plugins.md", "docs/zh/guide/plugins.md"])
+@pytest.mark.parametrize("path", ["docs/guide/plugin-api.md", "docs/zh/guide/plugin-api.md"])
 async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     examples = code_blocks(path, "python")
     # Sixteen blocks: one complete plugin, one testing helper, one tool, one default-off plugin, the window hooks and

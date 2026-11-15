@@ -1,29 +1,15 @@
 # 快捷键与鼠标
 
-输入框的行为跟 Readline 一样，因为大家已经熟悉它；外壳只补上那些需要整块屏幕的按键。
-
-## 可以先试这几个操作
-
-- **输入多行任务：** 写完第一行，按 `Shift-Enter` 换行，最后按 `Enter` 发送整个草稿。
-  终端不被告知就无法区分 `Shift-Enter`，所以 ZettCode 会主动向它请求：支持这个请求的终端上，
-  `Shift-Enter` 就是它自己的按键；不支持时改用 `Alt-Enter`，任何终端都能发出它。
-- **修改行首：** `Ctrl-A` 到当前行开头，改完再用 `Ctrl-E` 回到行尾。这里是移动光标，不是全选。
-- **复用之前的输入：** 空草稿中按 `↑` 或 `Ctrl-P` 找回提交过的输入，编辑后按 `Enter`
-  作为新请求发送。`Ctrl-R` 搜索的是用户输入历史，不是助手回答。
-- **回看回答：** 用滚轮或 `Page Up` 向上查看，`Esc` 返回底部，不会改变草稿。
-- **粘贴文本或图片：** 文本使用终端本来的粘贴快捷键，macOS 常用 `Cmd-V`，其他终端常用
-  `Ctrl-Shift-V`。ZettCode 内的 `Ctrl-V` 专门用于附加图片，不是文本粘贴。
-
-快捷键会随焦点变化：例如列表里的 `Enter` 是选择一行，不是发送草稿；`Esc` 会先关闭面板。
-审批和提问面板以底部显示的提示为准。
+输入框和 Readline 一样。按键属于拿到焦点的东西：面板里的 `Enter` 是选一行，不是发送草稿；`Esc` 先关面板。每个
+面板都会在自己下面印出它的按键。
 
 ## 发送
 
 | 按键 | 作用 |
 | --- | --- |
 | <kbd>Enter</kbd> | 发送草稿，或执行斜杠命令。 |
-| <kbd>Alt</kbd>+<kbd>Enter</kbd>、<kbd>Shift</kbd>+<kbd>Enter</kbd> | 插入换行。 |
-| <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> | 补全正在输入的斜杠命令。 |
+| <kbd>Alt</kbd>+<kbd>Enter</kbd>、<kbd>Shift</kbd>+<kbd>Enter</kbd> | 插入换行。`Alt-Enter` 到处都能用；`Shift-Enter` 要终端肯上报才行。 |
+| <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> | 补全斜杠命令。 |
 
 ## 编辑
 
@@ -35,53 +21,48 @@
 | <kbd>Ctrl</kbd>+<kbd>Home</kbd> / <kbd>Ctrl</kbd>+<kbd>End</kbd>、<kbd>Alt</kbd>+<kbd>&lt;</kbd> / <kbd>Alt</kbd>+<kbd>&gt;</kbd> | 整段草稿的开头 / 结尾。 |
 | <kbd>Ctrl</kbd>+<kbd>U</kbd> / <kbd>Ctrl</kbd>+<kbd>K</kbd> | 删到行首 / 行尾。 |
 | <kbd>Ctrl</kbd>+<kbd>W</kbd> / <kbd>Alt</kbd>+<kbd>Backspace</kbd>、<kbd>Alt</kbd>+<kbd>D</kbd> | 删除前一个 / 后一个词。 |
-| <kbd>Ctrl</kbd>+<kbd>Y</kbd> | 粘回上一次被整行或整词删掉的内容。 |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>_</kbd> | 撤销最近一次编辑。 |
-| <kbd>↑</kbd> / <kbd>↓</kbd> | 先在多行草稿里移动，然后在已发送的输入历史里翻。 |
-| <kbd>Ctrl</kbd>+<kbd>P</kbd> / <kbd>Ctrl</kbd>+<kbd>N</kbd> | 直接在输入历史里翻。 |
-| <kbd>Ctrl</kbd>+<kbd>R</kbd> | 在输入历史里向后搜索。 |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | 先在多行草稿里移动，再翻已发送的输入。 |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> / <kbd>Ctrl</kbd>+<kbd>N</kbd> | 直接翻已发送的输入。 |
+| <kbd>Ctrl</kbd>+<kbd>R</kbd> | 在已发送的输入里向后搜索。 |
 
 ## 外壳
 
 | 按键 | 作用 |
 | --- | --- |
-| <kbd>Ctrl</kbd>+<kbd>C</kbd> | 复制并清除选中内容；没有选中时停止正在跑的请求；请求也是空的时清空草稿。 |
-| <kbd>Ctrl</kbd>+<kbd>D</kbd> | 删除后一个字符 —— 输入框为空且没有任务在跑时则退出。 |
+| <kbd>Ctrl</kbd>+<kbd>C</kbd> | 复制并清除选中内容；没有选中时停止请求；草稿为空时清空草稿。 |
+| <kbd>Ctrl</kbd>+<kbd>D</kbd> | 删除后一个字符，输入框为空且没有任务在跑时则退出。 |
 | <kbd>Ctrl</kbd>+<kbd>L</kbd> | 重画屏幕，终端内容被冲掉时用。 |
 | <kbd>Ctrl</kbd>+<kbd>T</kbd> | 展开 / 收起最新的一段思考。 |
-| <kbd>Ctrl</kbd>+<kbd>V</kbd> | 从剪贴板附上一张图片。 |
-| <kbd>Page Up</kbd> / <kbd>Page Down</kbd> | 滚动对话，输入框仍然保持聚焦。 |
-| <kbd>Alt</kbd>+<kbd>Up</kbd> / <kbd>Alt</kbd>+<kbd>Down</kbd>（也可用 <kbd>Ctrl</kbd>+<kbd>Up</kbd> / <kbd>Ctrl</kbd>+<kbd>Down</kbd>） | 跳到你发送的上一条或下一条消息，让它停在视图顶部；越过最后一条就回到最新一行。有后续消息在等待时，这几个键改为在那个列表里移动（见下文）。 |
-| <kbd>Esc</kbd> | 停止正在跑的请求；或者先于它：向上滚动时跳回最新一行、关闭弹窗或命令菜单、取消高亮的后续消息。停止不会丢掉后续消息。 |
-| <kbd>Tab</kbd> | 接受弹窗或命令菜单里高亮的那一项。 |
+| <kbd>Ctrl</kbd>+<kbd>V</kbd> | 从剪贴板附上一张图片。粘贴文本用终端自己的键。 |
+| <kbd>Page Up</kbd> / <kbd>Page Down</kbd> | 滚动对话，输入框保持聚焦。 |
+| <kbd>Alt</kbd>+<kbd>Up</kbd> / <kbd>Alt</kbd>+<kbd>Down</kbd>（也可用 <kbd>Ctrl</kbd>+<kbd>Up</kbd> / <kbd>Ctrl</kbd>+<kbd>Down</kbd>） | 跳到你上一条或下一条消息，让它停在视图顶部；有后续消息在等时，改为在那个列表里移动。 |
+| <kbd>Esc</kbd> | 停止请求；或者先做这些：回到最新一行、关闭面板或菜单、取消高亮的后续消息。 |
+| <kbd>Tab</kbd> | 接受面板或命令菜单里高亮的那一项。 |
 
 ## 请求运行时
 
-请求运行期间输入，会问这条消息是要引导它还是在它之后跟进。后续消息在输入框上方的列表里等待，
-下面这些按键作用于它们。列表自己也会在下方打印这些按键，所以它们在有用的那一刻就能看到。
-`Option` 就是 Mac 上的 `⌥` 键，其他键盘上是 `Alt`。
+请求运行期间输入，会问这条消息是引导它还是在它之后跟进。`Option` 就是 Mac 上的 `⌥` 键，其他键盘上是 `Alt`。
 
 | 按键 | 作用 |
 | --- | --- |
-| <kbd>Enter</kbd> | 询问输入的这条消息是什么。在提问里：采用高亮的那一行。 |
+| <kbd>Enter</kbd> | 询问这条消息算什么；在提问里，采用高亮的那一行。 |
 | <kbd>F</kbd> / <kbd>S</kbd> | 在提问里：直接选 **f**ollow up（后续）或 **s**teer（引导）。`Esc` 保留草稿。 |
-| <kbd>Option</kbd>+<kbd>↑</kbd> / <kbd>Option</kbd>+<kbd>↓</kbd> | 没有高亮时：进入后续消息列表。有消息高亮时：把它**前移或后移**一位。 |
-| <kbd>↑</kbd> / <kbd>↓</kbd> | 有后续消息高亮时：移动高亮；在最后一行再按 `↓` 回到输入框。 |
-| <kbd>Enter</kbd> | 有后续消息高亮时：把它取回输入框去修改；再次发送会放回它的位置。 |
-| <kbd>Delete</kbd> / <kbd>Backspace</kbd> | 有后续消息高亮时：删除它。 |
-| <kbd>Esc</kbd> | 有后续消息高亮时：取消高亮；否则：停止请求 —— 后续消息会保留，暂存到你的下一条回复完成。 |
+| <kbd>Option</kbd>+<kbd>↑</kbd> / <kbd>Option</kbd>+<kbd>↓</kbd> | 没有高亮时进入后续消息列表；有消息高亮时把它**前移或后移**一位。 |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | 有后续消息高亮时移动高亮；在最后一行再按 `↓` 回到输入框。 |
+| <kbd>Enter</kbd> | 有后续消息高亮时取回输入框；再次发送会放回原处。 |
+| <kbd>Delete</kbd> / <kbd>Backspace</kbd> | 有后续消息高亮时删除它。 |
+| <kbd>Esc</kbd> | 有后续消息高亮时取消高亮；否则停止请求，后续消息保留到你的下一条回复。 |
 
-引导消息一旦发出就不能再修改。两种消息各做什么、请求被停止时列表怎么处理，见[请求运行时输入](/zh/guide/interface#请求运行时输入)。
+引导消息发出后不能再改。[请求运行时输入](/zh/guide/interface#请求运行时输入)里有其余说明。
 
 ## 回答提问
-
-模型在等你回答时，这些按键属于它弹出的面板：
 
 | 按键 | 作用 |
 | --- | --- |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | 在模型给出的选项之间移动。 |
-| <kbd>Enter</kbd> | 对高亮的那一行生效：选中它（单选会直接发出）、勾选／取消勾选，或在 `send` 行上收尾；如果你是在打字，则发送你输入的内容。 |
-| 直接打字 | 编辑回答行，发给模型的就是这里的内容；打字期间选项会折起来，按 `↑` / `↓` 可以叫回来。 |
+| <kbd>Enter</kbd> | 对高亮那行生效：选中、勾选 / 取消勾选，或收尾多选；你打过字时发送你写的内容。 |
+| 直接打字 | 编辑回答行；打字期间选项折起来，`↑` / `↓` 叫回来。 |
 | <kbd>Esc</kbd>、<kbd>Ctrl</kbd>+<kbd>C</kbd> | 不回答：模型会收到「问题被取消」。 |
 
 ## 鼠标
@@ -90,10 +71,9 @@
 | --- | --- |
 | 滚轮 | 滚动对话。 |
 | 单击 Thinking 或 Tool 行 | 展开 / 收起。 |
-| 在对话区拖动 | 选中文字，松开即复制；拖到边缘之外会继续扩大选区。 |
-| 在弹窗、头部或状态行上拖动 | 复制画在那里的文字 —— 这些区域以前本来没有可选中文本。 |
+| 在对话区拖动 | 选中文字，松开即复制，并有提示确认；拖到边缘之外会继续扩大。 |
+| 在面板、头部或状态行上拖动 | 复制画在那里的文字。 |
 | 双击 | 选中整行。 |
 | <kbd>Shift</kbd>+单击 | 扩大当前选区。 |
 
-如果你想用终端自己的选择功能，按住终端的修饰键（通常是 <kbd>Shift</kbd> 或 <kbd>Alt</kbd>）
-再拖。
+想用终端自己的选择功能，按住它的修饰键（通常是 <kbd>Shift</kbd> 或 <kbd>Alt</kbd>）再拖。

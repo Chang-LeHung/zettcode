@@ -53,8 +53,8 @@ conversation remains the same when you switch; use `/new` for a clean start.
 | `max` | The highest budget the provider accepts. |
 | `ultra` | Highest requested level; availability depends on the endpoint. |
 
-The choice applies to later requests for the current application run, and the
-header shows which one is selected. It is not a saved setting in `config.toml`.
+The choice applies to later requests, and it is recorded with the session: resuming that session puts the level back.
+It is not a setting in `config.toml` — a new session starts at the configured `reasoning_effort`.
 For example:
 
 ```text
@@ -71,6 +71,18 @@ DeepSeek documents its current mapping in
 In this client, Chat Completions with `/effort off` omits `reasoning_effort`;
 it does not send DeepSeek's separate `thinking` toggle, so it is not a guarantee
 that a provider with thinking enabled by default will disable it.
+
+## What a session restores {#what-a-session-restores}
+
+A session records the model and reasoning level it last used. Resuming it — `/resume`, `/fork` or `zettcode -r` —
+switches back to both, and the conversation says so.
+
+- Switching with `/model` alone records nothing; a turn on it does. A `/btw` side question records nothing.
+- A session with no record keeps the model selected when you open it.
+- If the recorded model is no longer configured, or two entries share its name, ZettCode stays on the current model
+  and says so.
+- A level the current model does not take moves to the nearest one it does; the session's own record is unchanged.
+- A daemon's `--effort` applies to that process, not to the session.
 
 ## The context window
 
