@@ -8,21 +8,26 @@ stop the gateway from starting, so the two halves are kept here once instead of 
 from __future__ import annotations
 
 import contextlib
+import itertools
 import json
 import os
 from pathlib import Path
 from typing import Any
 
+#: Numbers the temporary files of this process, so that two writes of one file never share one.
+_writes = itertools.count(1)
 
-def read_json(path: Path) -> Any | None:
+
+def read_json(path: Path) -> object | None:
     """Return the document in ``path``, or ``None`` when the file is missing, unreadable, or not JSON.
 
-    A caller checks the shape it expects (``isinstance``) as it always has: this says only that there was no document.
+    The caller checks the shape it expects with ``isinstance``: this says only whether there was a document.
     """
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        value: object = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+    return value
 
 
 def write_json(
@@ -35,22 +40,26 @@ def write_json(
 ) -> None:
     """Write ``value`` to ``path`` as one step: the file is the old document or the new one, never a part of either.
 
-    The text goes to a file beside it (named for this process, so two gateways of one user do not share one) which then
-    replaces ``path``; a failure leaves nothing behind. ``private`` makes the file readable by this account only, for
-    what holds a token or what people said.
+    The text goes to a hidden file beside it, named for this process and this write (so neither another gateway of the
+    same user nor a second write of the same file shares it), which then replaces ``path``; a failure leaves nothing
+    behind. ``private`` asks for a file readable by this account only, for what holds a token or what people said; a
+    filesystem that cannot hold modes keeps the write and loses only the mode.
 
     Raises:
         OSError: The folder cannot be made or the file cannot be written; the caller says whether that matters.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{next(_writes)}.tmp")
     text = json.dumps(value, ensure_ascii=ensure_ascii, indent=indent)
     try:
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600 if private else 0o666)
-        if private and hasattr(os, "fchmod"):
-            # POSIX only; a temporary left by an earlier run keeps its old mode otherwise.
-            os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        with os.fdopen(
+            os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600 if private else 0o666),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            if private and hasattr(os, "fchmod"):  # POSIX only
+                with contextlib.suppress(OSError):
+                    os.fchmod(handle.fileno(), 0o600)
             handle.write(text)
         os.replace(temporary, path)
     except BaseException:
