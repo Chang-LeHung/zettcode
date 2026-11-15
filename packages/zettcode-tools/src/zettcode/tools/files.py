@@ -62,7 +62,7 @@ def read(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> ReadRes
         limit: Maximum number of lines to return; ignored for images.
 
     Returns:
-        The requested line range, each line prefixed with its 1-based number and a tab (``<line>\t<content>``), or the
+        The requested line range, each line prefixed with its 1-based number and a tab (``<line>\\t<content>``), or the
         image and a one-line description of it; a trailing hint says how to continue when more lines remain. The
         prefix is for reference: it is not part of the file.
 
@@ -101,8 +101,9 @@ def read_file(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> st
         limit: Maximum number of lines to return.
 
     Returns:
-        The requested line range, each line prefixed with its 1-based number as ``<line>: <content>``; a trailing hint
-        says how to continue when more lines remain. The prefix is for reference: it is not part of the file.
+        The requested line range, each line prefixed with its 1-based number and a tab (``<line>\\t<content>``); a
+        trailing hint says how to continue when more lines remain. The prefix is for reference: it is not part of the
+        file.
 
     Snippet:
         read_file(file_path="src/app.py", offset=1, limit=200)
