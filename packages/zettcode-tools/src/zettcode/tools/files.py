@@ -268,7 +268,7 @@ def edit(file_path: FilePath, old_string: OldString, new_string: str, replace_al
         - Always use this tool when you need to modify an existing file, instead of sed, awk, perl -i, python -c, tee, or shell redirection. Reserve those for bulk or mechanical rewrites this tool cannot express, such as renaming a symbol across many files.
         - One change a call: call edit again for the next change, and nothing is written when the old text does not match.
         - Avoid sed, cat, and similar shell commands for reading or changing files unless it is necessary; inspect files with the read tool and change them with this tool.
-        - Read the target lines first and copy old_string exactly: same indentation, quotes, and line breaks.
+        - Read the target lines first and copy old_string exactly: same indentation, quotes, and line breaks; a read's line number and tab are not part of the file.
         - Make old_string unique by including a neighbouring line or two; set replace_all only when every occurrence must change.
         - When an edit fails, read the file again and retry with corrected old_string rather than switching to a shell command.
     """

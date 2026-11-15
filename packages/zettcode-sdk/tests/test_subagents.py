@@ -347,6 +347,8 @@ def test_a_coding_child_with_a_shell_is_told_it_works_under_the_users_permission
 
     assert "Tools: read, write_file, edit and bash" in profile.system_prompt
     assert "permission level" in profile.system_prompt and "cannot start another subagent" in profile.system_prompt
+    assert "prefix is not in the file" in profile.system_prompt
+    assert "leave it out of old_string and write_file content" in profile.system_prompt
     assert "cannot run commands" not in profile.system_prompt
     assert "glob" not in profile.system_prompt and "grep" not in profile.system_prompt.replace("rg, grep", "")
     assert "permission level" in profile.description and "cannot run commands" not in profile.description
