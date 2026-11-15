@@ -173,6 +173,17 @@ running code came from) instead of offering the same upgrade again. A different 
 never upgraded (for instance a `pip` install beside a `uv tool` one) is offered the upgrade
 as usual, and the command it shows is the one for the copy that is running.
 
+**I upgraded from 0.3 and now it cannot find its own modules.** Before 0.4 the program was one distribution; since
+then it is a set of them sharing the `zettcode` namespace, and a package manager upgrading in place can remove the old
+distribution's files by path *after* the new ones were written to the same directories, which leaves
+`ModuleNotFoundError` behind. Install over it once:
+
+```bash
+pip install --force-reinstall "zettcode[all]"
+```
+
+`uv tool upgrade zettcode` does the same thing in one step. A fresh install, and every later upgrade, is unaffected.
+
 ## Diagnostics
 
 **Something failed and I need to report it.** The three long-running faces keep separate logs:
