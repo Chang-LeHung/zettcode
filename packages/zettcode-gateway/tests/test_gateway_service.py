@@ -1427,7 +1427,7 @@ async def test_pinned_and_archived_exclude_each_other_and_outlive_the_name_ttl(t
     await gateway.refresh()
 
     assert "01b" not in gateway._profiles
-    assert gateway._profiles["01a"] == {"pinned": "1"}
+    assert gateway._profiles.get("01a") == {"pinned": "1"}
 
 
 async def test_what_the_gateway_kept_for_a_thread_with_no_store_survives_a_restart(tmp_path):
