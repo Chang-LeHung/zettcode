@@ -51,3 +51,9 @@ npm run assets
 
 There is no native key-store plugin and no gateway CORS/WebSocket change on this side: the loaded page is already at
 the gateway's origin. `docs/internal/clients-app.md` has the full map.
+
+`make mobile-apk` builds the **debug** APK, which Gradle signs with this machine's debug key — that signature is why a
+phone installs it — and the target checks that signature with `apksigner` and fails if the APK has none. There is no
+release signing config here, so a hand-run `assembleRelease` writes an unsigned APK that no device will take; a
+signed release build would need a key-store and a version bump for `versionCode`/`versionName` in
+`android/app/build.gradle`, which this app does not ship today.
