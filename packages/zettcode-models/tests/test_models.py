@@ -85,13 +85,15 @@ def test_the_deepseek_id_is_the_one_its_endpoint_accepts():
     """``deepseek-v4.1-flash`` was the display name, and a request on it answered 400.
 
     The vendor's own ``/models`` lists ``deepseek-flash`` (named ``DeepSeek-V4.1-Flash``) with a 1,048,576-token
-    window and image input, so the table says that rather than the name a page shows.
+    window and image input, so the table says that rather than the name a page shows. Its Messages endpoint is where
+    the host serves its hosted tools, and the protocol this plugin was asked to use for it by default.
     """
     (deepseek,) = [vendor for vendor in VENDORS if vendor.name == "deepseek"]
 
     assert (deepseek.model, deepseek.display) == ("deepseek-flash", "DeepSeek V4.1 Flash")
     assert deepseek.context_window == 1_048_576
     assert deepseek.multimodal is True
+    assert (deepseek.api, deepseek.base_url) == ("anthropic", "https://api.deepseek.com/anthropic")
 
 
 def test_a_name_the_reader_already_uses_leaves_that_vendor_out(tmp_path, monkeypatch):
