@@ -169,7 +169,7 @@ Search for *ZettCode* in Settings:
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `zettcode.permission` | `ask` | The shell permission a session starts with when you have not chosen one: `deny`, `ask`, `safe` (a sandbox) or `full` |
-| `zettcode.harness` | `false` | Start with the tool harness on: the model may write small Python tools of its own and run them, outside the shell permission. `/harness on` or `/harness off` switches it for a session |
+| `zettcode.harness` | unset | Start the server with the tool harness on or off: the model may write small Python tools of its own and run them, in a child process inside the safe sandbox below the `full` shell level. Unset follows `[harness] jit` in your configuration, which starts it on unless it says false. `/harness on` or `/harness off` switches it for a session |
 | `zettcode.restoreSession` | `true` | Reopen the conversation this folder had last |
 | `zettcode.autoTitle` | `true` | Let the model name an untitled conversation after its first answer |
 | `zettcode.answerTimeout` | `90` | Seconds an approval waits |

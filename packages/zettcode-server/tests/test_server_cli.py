@@ -132,3 +132,32 @@ def test_the_parser_is_what_help_describes():
     assert "Serve the ZettCode coding agent over HTTP" in text
     assert "--workspace" in text and "--token" in text and "--permission" in text
     assert "deny" in text and "safe" in text
+
+
+def test_the_harness_is_left_to_the_configuration_unless_a_flag_names_it():
+    assert settings_from([]).harness is None, "no flag: [harness] jit decides"
+    assert settings_from(["--harness"]).harness is True
+    assert settings_from(["--no-harness"]).harness is False
+
+
+async def test_a_server_with_no_harness_flag_does_not_override_the_configuration(tmp_path: Path, monkeypatch):
+    """The SDK takes a missing keyword as "what the configuration says"; a keyword it is given as a value."""
+    import zettcode.sdk
+
+    seen: list[dict[str, object]] = []
+
+    class Recorder:
+        def __init__(self, workspace: object, **kwargs: object) -> None:
+            seen.append(kwargs)
+
+    monkeypatch.setattr(zettcode.sdk, "Client", Recorder)
+    monkeypatch.setattr(zettcode.sdk, "list_models", lambda path: [types.SimpleNamespace(name="gpt", model="gpt")])
+    from zettcode.server.runner import Runner
+
+    runner = Runner(settings_from(["-w", str(tmp_path)]))
+    await runner._open_client(model=None, effort=None, permission="deny", harness=None)
+    await runner._open_client(model=None, effort=None, permission="deny", harness=False)
+    await runner._open_client(model=None, effort=None, permission="deny", harness=True)
+
+    assert "jit_harness" not in seen[0], "nothing was named, so nothing is forced"
+    assert seen[1]["jit_harness"] is False and seen[2]["jit_harness"] is True

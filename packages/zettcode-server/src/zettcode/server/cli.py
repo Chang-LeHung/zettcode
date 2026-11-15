@@ -48,8 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--harness",
-        action="store_true",
-        help="start with the just-in-time harness on: the model may write and run its own Python tools (default: off)",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "start with the just-in-time harness on (--no-harness turns it off); by default the configuration decides,"
+            " and [harness] jit starts it on unless it says false"
+        ),
     )
     parser.add_argument("--model", default=None, help="model to start on, by name (default: the first configured)")
     parser.add_argument("--effort", default=None, help="reasoning effort to start on (default: the model's own)")

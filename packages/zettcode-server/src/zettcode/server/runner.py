@@ -682,12 +682,14 @@ class Runner:
         return None if self._client is None else self._client.model.name
 
     async def _open_client(
-        self, *, model: str | None, effort: str | None, permission: str, harness: bool, resume: str | None = None
+        self, *, model: str | None, effort: str | None, permission: str, harness: bool | None, resume: str | None = None
     ) -> Client | None:
         """Make a client for this workspace that works the way the arguments say; ``None`` when no model is configured.
 
         A model is named the way every other layer names one — its display name first, its id only when no display
-        name answers — so a client started with ``--model <id>`` is not quietly moved to the first entry.
+        name answers — so a client started with ``--model <id>`` is not quietly moved to the first entry. ``harness``
+        is named only when it is not ``None``: the SDK takes a missing keyword as "the configured value", and a
+        keyword it was given as a value.
         """
         if self._factory is not None:
             return self._factory()
@@ -702,6 +704,20 @@ class Runner:
         chosen = model
         if model is not None and not any(entry.name == model or entry.model == model for entry in models):
             chosen = None
+        # Left out when nobody named one, so the client keeps what the configuration says; the SDK takes a missing
+        # keyword as "the configured value" and a keyword it is given as a value.
+        if harness is None:
+            return await asyncio.to_thread(
+                lambda: Client(
+                    self.settings.workspace,
+                    config_path=self.settings.config_path,
+                    model=chosen,
+                    effort=effort,
+                    permission=permission,
+                    resume=resume,
+                    sessions_enabled=True,
+                )
+            )
         return await asyncio.to_thread(
             lambda: Client(
                 self.settings.workspace,

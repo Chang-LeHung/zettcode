@@ -257,8 +257,7 @@
         },
         "zettcode.harness": {
           "type": "boolean",
-          "default": false,
-          "description": "Start with the tool harness on: the model may write small Python tools of its own and run them. What it writes runs on this machine with your access, outside the shell permission, so it is off unless you turn it on. Switch it per session with /harness."
+          "description": "Start with the tool harness on: the model may write small Python tools of its own and run them. The code runs in a child process, inside the safe sandbox below the full shell level. Leave it unset to follow `[harness] jit` in your configuration, which starts it on unless it says false; true or false forces it for the server this window starts. Switch it per session with /harness."
         },
         "zettcode.answerTimeout": {
           "type": "number",

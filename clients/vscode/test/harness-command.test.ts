@@ -50,8 +50,12 @@ test("a harness word that is neither on nor off changes nothing and says how to 
 
 test("the host turns the setting into the server's flag, and registers the palette command it declares", async () => {
   const server = await readFile("src/server.ts", "utf8");
-  assert.ok(server.includes('"--harness"'), "the launched server is told to start with the harness on");
-  assert.ok(server.includes('config.get<boolean>("harness", false)'), "and it is off unless the setting says so");
+  assert.ok(server.includes('"--harness"'), "the launched server can be told to start with the harness on");
+  assert.ok(server.includes('"--no-harness"'), "and to start with it off");
+  assert.ok(
+    server.includes('config.get<boolean | undefined>("harness")'),
+    "a setting the reader did not touch leaves the choice to the configuration",
+  );
 
   const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
     contributes: {
@@ -63,7 +67,11 @@ test("the host turns the setting into the server's flag, and registers the palet
   assert.ok(declared.includes("zettcode.toggleHarness"));
   const extension = await readFile("src/extension.ts", "utf8");
   assert.ok(extension.includes('command("zettcode.toggleHarness"'), "a command that is declared is registered");
-  assert.equal(manifest.contributes.configuration.properties["zettcode.harness"]?.default, false, "off by default");
+  assert.equal(
+    manifest.contributes.configuration.properties["zettcode.harness"]?.default,
+    undefined,
+    "no default of its own: the configuration decides until the reader sets one",
+  );
 });
 
 test("the permission setting names full and still accepts auto, which the extension reads as full", async () => {

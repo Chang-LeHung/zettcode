@@ -35,6 +35,7 @@ class Settings:
         permission: The shell permission level a run starts at: ``deny``, ``ask``, ``safe`` (every command in a
             sandbox that writes only the workspace and ``/tmp``) or ``full``. ``auto`` is the old name of ``full``.
         harness: Whether the just-in-time harness, which lets the model write and run small Python tools, starts on.
+            ``None`` leaves it to the configuration (``[harness] jit``), which starts it on unless it says otherwise.
         model: The model to start on, by name, or ``None`` for the first configured one.
         effort: The reasoning level to start on, or ``None`` for the model's own.
         config_path: A configuration file to read instead of ``~/.zettcode/config.toml``.
@@ -47,7 +48,7 @@ class Settings:
     port: int = DEFAULT_PORT
     token: str | None = field(default_factory=lambda: os.environ.get(TOKEN_VARIABLE) or None)
     permission: str = DEFAULT_PERMISSION
-    harness: bool = False
+    harness: bool | None = None
     model: str | None = None
     effort: str | None = None
     config_path: Path | None = None
