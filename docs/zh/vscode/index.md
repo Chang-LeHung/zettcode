@@ -148,7 +148,7 @@ Reasoning Effort** 和 **Select Shell Permission**。**Add Model** 会往终端�
 | 设置 | 默认 | 含义 |
 | --- | --- | --- |
 | `zettcode.permission` | `ask` | 没有手动选过时，会话启动用的 shell 权限：`deny`、`ask`、`safe`（沙箱）或 `full` |
-| `zettcode.harness` | `false` | 启动时就打开工具 harness：模型可以自己写小的 Python 工具并运行，不受 shell 权限管辖。`/harness on` 或 `/harness off` 在一个会话里切换 |
+| `zettcode.harness` | 未设置 | 启动服务端时打开或关闭工具 harness：模型可以自己写小的 Python 工具并运行，代码跑在子进程里，低于 `full` 的 shell 级别时跑在 `safe` 的沙箱中。不设置时跟随配置里的 `[harness] jit`，除非写成 false 否则开启。`/harness on` 或 `/harness off` 在一个会话里切换 |
 | `zettcode.restoreSession` | `true` | 重新打开这个文件夹上次的会话 |
 | `zettcode.autoTitle` | `true` | 让模型在第一次回答后给没有标题的会话起名 |
 | `zettcode.answerTimeout` | `90` | 审批等待的秒数 |

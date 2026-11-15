@@ -34,7 +34,7 @@ a token should say who may.
 | `--host`, `--port` | Where to listen; `127.0.0.1:3290` by default. |
 | `--token` | A bearer token every endpoint but `/health` requires. Defaults to `$ZETTCODE_SERVER_TOKEN`. |
 | `--permission {deny,ask,safe,full}` | The shell permission a run starts at; `deny` by default. `safe` runs every command in a sandbox that writes only the workspace and `/tmp`; `full` runs them with your own access. `auto`, the old name of `full`, is still taken. A client changes it per request. |
-| `--harness` | Start with the just-in-time harness on: the model may write and run small Python tools. Off by default; `PATCH /settings` with `{"harness": true}` changes it. |
+| `--harness`, `--no-harness` | Start with the just-in-time harness on or off: the model may write and run small Python tools. With neither, the configuration decides ([`harness.jit`](/guide/config), on unless it says false); `PATCH /settings` with `{"harness": true}` changes it for the run. |
 | `--model`, `--effort` | What the first run starts with. |
 | `--config FILE` | A configuration file instead of `~/.zettcode/config.toml`. |
 | `--log-level` | uvicorn's log level. |
