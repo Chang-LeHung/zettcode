@@ -179,8 +179,7 @@ enter run · tab complete · pgup scroll · esc close
 /config remove "DeepSeek Pro"    # 或它显示的名字
 ```
 
-`add` 后面可以带任意参数，这一行没给的表单会接着问；表单没有 model id 就不保存，所以要现在写 `--model`，要么就等它在框里问你。
-`--api` 不写就是 chat completions。可用参数有
+`add` 后面什么参数都能省：省掉的面板接着问；但没有 model id 它就不保存。没写 `--api` 就是 chat completions。可用参数有
 `--api chat|responses|anthropic`、`--token`、`--url`、`--name`（`/model` 显示的名字）、`--multimodal`、
 `--context 128000`/`128k`/`1m`、`--compact 70`、`--temperature 0.7`，以及 `--web-search` 配 `--search-tool`。
 第一个加进来的模型就是请求要用的那个；一个模型都没有时，`/model` 会让你先来这里。存不下的条目不会写入——地址不对、
@@ -194,7 +193,7 @@ enter run · tab complete · pgup scroll · esc close
 ```
 
 两个条目重名的会被当成有歧义而拒绝，这种情况在选择器里挑。切换从下一个请求开始生效；正在跑的那一轮和压缩点会怎样，
-见上面「请求运行期间」表里 `/model` 那一行。`/effort` 和 `/permission` 就在旁边：带一个词就切过去，
+见[「请求运行期间」](#请求运行期间)表里 `/model` 那一行。`/effort` 和 `/permission` 就在旁边：带一个词就切过去，
 不带词时 `/effort` 打开它的滑轨，`/permission` 打开那一串档位。
 
 ## 日常操作例子

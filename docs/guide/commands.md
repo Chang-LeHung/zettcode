@@ -207,12 +207,11 @@ what you want:
 /config remove "DeepSeek Pro"    # or by the name it shows
 ```
 
-`add` takes any flag, and asks for the ones the line left out; the form will not save without the model id, so that is
-the one thing `--model` must give now or you will type into the box. A line with no `--api` is chat completions. The
-flags are `--api chat|responses|anthropic`, `--token`, `--url`, `--name` (what `/model` shows),
-`--multimodal`, `--context 128000`/`128k`/`1m`, `--compact 70`, `--temperature 0.7`, and `--web-search` with
-`--search-tool`. The first model added becomes the one requests use; when there is no model at all, `/model` says to
-start here. Nothing is written when an entry cannot be saved — a bad address, a temperature out of range — and the
+Any flag may be left out — the form asks for the rest — but it will not save without the model id. A line with no
+`--api` is chat completions. The flags are `--api chat|responses|anthropic`, `--token`, `--url`, `--name` (what
+`/model` shows), `--multimodal`, `--context 128000`/`128k`/`1m`, `--compact 70`, `--temperature 0.7`, and `--web-search`
+with `--search-tool`. The first model added becomes the one requests use; when there is no model at all, `/model` says
+to start here. Nothing is written when an entry cannot be saved — a bad address, a temperature out of range — and the
 reason names the flag or the box.
 
 `/model` switches between entries. On its own it opens a picker; with a name it switches directly, and the name is what
@@ -224,7 +223,8 @@ reason names the flag or the box.
 ```
 
 A name two entries share is refused as ambiguous — pick it in the picker instead. A switch lands on the next request;
-the row for `/model` in *While a request is running* above says what the turn in flight and the compaction point do.
+the row for `/model` in [While a request is running](#while-a-request-is-running) says what the turn in flight and the
+compaction point do.
 `/effort` and `/permission` sit beside it: a word switches, and with no word `/effort` opens its rail and `/permission`
 the menu of the levels.
 
