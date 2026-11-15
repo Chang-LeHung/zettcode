@@ -11,7 +11,9 @@ kind once the broker owner adds it.
 from __future__ import annotations
 
 import base64
+import json
 import logging
+import os
 import secrets
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -29,6 +31,9 @@ ENTRY_POINT = "zettcode.gateway.external"
 
 #: How many agents one gateway may keep running. A page cannot grow the roster without bound.
 MAX_AGENTS = 64
+
+#: Where the gateway keeps which agents it was asked to run, in its own folder.
+ROSTER_FILE = "agents.json"
 
 #: The largest avatar a plugin may contribute, encoded as a data URL.
 MAX_AVATAR = 300_000
@@ -140,6 +145,54 @@ class AgentManager:
         self._running: dict[str, ExternalSession] = {}
         self._kinds: dict[str, str] = {}
 
+    # -- the roster, kept across a restart --------------------------------------------------------
+    @property
+    def _roster_path(self) -> Path:
+        return self.directory / ROSTER_FILE
+
+    def _roster(self) -> dict[str, dict[str, str]]:
+        """Return the agents this gateway was asked to keep, by session id; an unreadable file is an empty roster."""
+        try:
+            data = json.loads(self._roster_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {
+            key: {"kind": value["kind"], "title": str(value.get("title", ""))}
+            for key, value in data.items()
+            if isinstance(key, str) and isinstance(value, dict) and isinstance(value.get("kind"), str)
+        }
+
+    def _write_roster(self, roster: dict[str, dict[str, str]]) -> None:
+        try:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            temporary = self._roster_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(roster, indent=1), encoding="utf-8")
+            os.replace(temporary, self._roster_path)
+        except OSError:
+            # The agent is running; failing to remember it must not say otherwise.
+            logger.exception("agents.roster_failed")
+
+    async def restore(self) -> list[str]:
+        """Start again the agents a previous run was asked to keep, and return the ids that came back.
+
+        A stopped gateway closes its agents but keeps the roster, so a session the person created is still there after
+        a restart. One that cannot start now (a type that is no longer installed, a broker that refused) stays on the
+        roster for the next start; only :meth:`remove` forgets one.
+        """
+        back: list[str] = []
+        for session_id, entry in self._roster().items():
+            if session_id in self._running:
+                continue
+            try:
+                await self._start(entry["kind"], entry["title"], session_id, "")
+            except AgentError as error:
+                logger.warning("agents.restore_failed", extra={"session": session_id, "error": str(error)})
+            else:
+                back.append(session_id)
+        return back
+
     def available(self) -> list[AgentType]:
         """Return the agent types a page may create."""
         return [
@@ -175,6 +228,16 @@ class AgentManager:
         if plugin is None:
             raise AgentError(f"there is no external agent type {kind!r}")
         session_id = session_id or f"web-{secrets.token_hex(6)}"
+        session = await self._start(kind, title, session_id, group)
+        roster = self._roster()
+        roster[session_id] = {"kind": kind, "title": title or self._plugins[kind].title or kind}
+        self._write_roster(roster)
+        return session
+
+    async def _start(self, kind: str, title: str, session_id: str, group: str) -> ExternalSession:
+        plugin = self._plugins.get(kind)
+        if plugin is None:
+            raise AgentError(f"there is no external agent type {kind!r}")
         if session_id in self._running:
             raise AgentError(f"the external agent {session_id!r} is already running")
         if len(self._running) >= MAX_AGENTS:
@@ -194,16 +257,20 @@ class AgentManager:
         return session
 
     async def remove(self, session_id: str) -> bool:
-        """Stop one agent; return whether it was running."""
+        """Stop one agent and drop it from the roster; return whether there was one to stop or to forget."""
         session = self._running.pop(session_id, None)
         self._kinds.pop(session_id, None)
+        roster = self._roster()
+        kept = roster.pop(session_id, None) is not None
+        if kept:
+            self._write_roster(roster)
         if session is None:
-            return False
+            return kept
         await session.close()
         return True
 
     async def close(self) -> None:
-        """Stop every agent this manager started."""
+        """Stop every agent this manager started; the roster stays, so the next start brings them back."""
         running, self._running = list(self._running.values()), {}
         for session in running:
             await session.close()

@@ -119,3 +119,28 @@ def test_an_avatar_can_be_a_local_file_or_base64(tmp_path):
         "data:image/png;base64,"
     )
     assert avatar_data(str(tmp_path / "missing.png")) == ""
+
+
+async def test_agents_come_back_after_the_gateway_restarts(tmp_path: pathlib.Path):
+    first = AgentManager(tmp_path, [FakePlugin()])
+    await first.create("echo", "Echo one", "agent-1")
+    await first.create("echo", "Echo two", "agent-2")
+    await first.remove("agent-2")
+    await first.close()
+
+    plugin = FakePlugin()
+    second = AgentManager(tmp_path, [plugin])
+    assert await second.restore() == ["agent-1"]
+    assert plugin.created[0].title == "Echo one" and plugin.created[0].connected
+    assert second.kind_of("agent-1") == "echo"
+    assert await second.restore() == []
+
+
+async def test_an_agent_that_cannot_start_stays_on_the_roster(tmp_path: pathlib.Path):
+    first = AgentManager(tmp_path, [FakePlugin()])
+    await first.create("echo", "Echo one", "agent-1")
+    await first.close()
+
+    assert await AgentManager(tmp_path, []).restore() == []
+    again = AgentManager(tmp_path, [FakePlugin()])
+    assert await again.restore() == ["agent-1"]

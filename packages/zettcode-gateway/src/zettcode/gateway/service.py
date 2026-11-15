@@ -346,6 +346,8 @@ class Gateway:
     async def start(self, *, watch: bool = True) -> None:
         """Join the broker and begin watching; a test that wants to say when the gateway looks passes ``watch=False``."""
         await self.backend.start(self._received, self._wake_up)
+        # The agents the person made before the last stop come back under their own ids, before the first read.
+        await self.agents.restore()
         self.backend.on_stream(self._streamed)
         self.backend.observe(self._traffic)
         await self.refresh()
