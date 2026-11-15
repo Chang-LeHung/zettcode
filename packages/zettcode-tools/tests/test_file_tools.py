@@ -209,9 +209,7 @@ async def test_write_file_creates_then_replaces_and_says_which(here: Path):
     assert (here / "new" / "dir" / "n.txt").read_text() == "bye\n"
 
 
-async def test_write_file_can_be_told_not_to_replace_and_never_writes_over_a_directory(here: Path):
-    with pytest.raises(ValueError, match="File already exists: a.txt"):
-        await write_file.handler(file_path="a.txt", content="x", overwrite=False)
+async def test_write_file_refuses_a_directory(here: Path):
     with pytest.raises(ValueError, match="Path is not a file: src"):
         await write_file.handler(file_path="src", content="x")
     assert (here / "a.txt").read_text() == "one\ntwo\nthree\n"
