@@ -51,7 +51,7 @@ async def test_read_returns_text_as_a_range_and_a_picture_as_an_image(here: Path
     text = await read.handler(file_path="a.txt", offset=2, limit=1)
     image = await read.handler(file_path=str(picture))
 
-    assert text.startswith("two\n") and "one" not in text.split("...")[0]
+    assert text.startswith("2\ttwo\n") and "one" not in text.split("...")[0]
     assert isinstance(image, list) and any(isinstance(part, ImageContent) for part in image)
     assert any(isinstance(part, TextContent) and "image/png" in part.text for part in image)
 
@@ -80,7 +80,7 @@ async def test_a_range_says_how_to_go_on_when_there_is_more(here: Path):
 
     text = await read_file.handler(file_path="long.txt", offset=3, limit=2)
 
-    assert text == "line 3\nline 4\n\n... [more lines; continue with offset=5]"
+    assert text == "3\tline 3\n4\tline 4\n\n... [more lines; continue with offset=5]"
 
 
 async def test_a_line_too_long_to_return_is_cut_and_the_reader_is_sent_to_the_shell(here: Path):
@@ -112,7 +112,7 @@ async def test_an_ordinary_line_cut_by_a_full_budget_is_reached_again_with_its_o
     rest = await read_file.handler(file_path="mixed.txt", offset=start, limit=2000)
 
     assert "output truncated; continue with offset=1001" in text
-    assert rest.startswith("zzz") and "output truncated" not in rest, "one more call carries the whole line"
+    assert rest.startswith("1001\tzzz") and "output truncated" not in rest, "one more call carries the whole line"
 
 
 async def test_a_budget_used_up_by_earlier_lines_says_where_to_go_on_not_that_a_line_is_too_long(here: Path):

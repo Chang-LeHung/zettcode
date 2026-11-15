@@ -99,7 +99,10 @@ async def test_the_kept_result_is_where_the_text_says_and_read_opens_it(store: S
     await _after(_extension(store), message)
 
     path = WHERE.search(message.content).group(1)
-    assert await read.handler(file_path=path, limit=2) == "line 1\nline 2\n\n... [more lines; continue with offset=3]"
+    assert (
+        await read.handler(file_path=path, limit=2)
+        == "1\tline 1\n2\tline 2\n\n... [more lines; continue with offset=3]"
+    )
 
 
 async def test_the_kept_file_is_in_the_session_folder_and_never_in_the_project(store: SessionStore, workspace: Path):

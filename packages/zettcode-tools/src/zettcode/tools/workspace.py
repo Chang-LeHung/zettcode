@@ -140,6 +140,9 @@ def write_text(path: Path, content: str) -> None:
 def read_lines(located: Located, offset: int, limit: int) -> str:
     """Return ``limit`` lines of a UTF-8 file from line ``offset``, with a note on how to continue when more remains.
 
+    Each line is prefixed with its 1-based number as ``<number>: <content>``; the prefix is for reference and is not
+    part of the file.
+
     The result is held to :data:`MAX_OUTPUT_BYTES`. A line longer than that is cut, and the note says so: the
     reader has no column to resume from, because one 2 MB line is not what the tool is for — the shell reads it.
     A cut inside an ordinary line is not that: the budget was used up before it, and the note then names the line
@@ -165,15 +168,16 @@ def read_lines(located: Located, offset: int, limit: int) -> str:
                     next_offset = number
                     break
                 if number >= offset:
-                    part = utf8_prefix(fragment, MAX_OUTPUT_BYTES - used)
+                    numbered = f"{number}\t{fragment}"
+                    part = utf8_prefix(numbered, MAX_OUTPUT_BYTES - used)
                     selected.append(part)
                     used += len(part.encode("utf-8"))
-                    if len(part) < len(fragment):
+                    if len(part) < len(numbered):
                         # Whether this line could fill a call of its own decides what the note says, and only
                         # what is left of the line knows that. Reading on is bounded by one budget.
                         cut_at = number
                         oversized = _line_longer_than_budget(
-                            source, used - line_start, fragment[len(part) :], MAX_OUTPUT_BYTES
+                            source, used - line_start, numbered[len(part) :], MAX_OUTPUT_BYTES
                         )
                         break
                 if fragment.endswith("\n"):
