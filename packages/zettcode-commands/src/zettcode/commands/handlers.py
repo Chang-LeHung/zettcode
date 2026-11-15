@@ -464,6 +464,15 @@ class CodeReview(TuiPlugin):
         "This session runs no shell commands, so neither the diff nor a daemon to read it can be gathered: review "
         "the files themselves with the reading tools, and say which ones you read."
     )
+    #: A review is the second half of a pair, not a confirmation pass: the change was written to look right, so the
+    #: reviewer's job is to find the input that makes it wrong. A review that found nothing must be able to say what
+    #: it tried, or it cannot be told apart from one that never happened.
+    STANCE = (
+        "The review is adversarial in the way a discriminator is: the change was written to look right, so assume it "
+        "is wrong somewhere and try to prove it — a counterexample, a test that would still pass if the bug came "
+        "back, a failure path or a boundary the change did not think about, an ordering, a claim in the prose that "
+        "the code contradicts. A review that finds nothing must say what it tried before it says so."
+    )
     SHAPE = (
         "In the review, name concrete problems with `file:line` — correctness, error handling, tests, naming — say "
         "what you would change and why, and do not restate the diff.\n"
@@ -513,6 +522,7 @@ class CodeReview(TuiPlugin):
             parts.append(self.NOT_YOURS)
         else:
             parts.append(self.ALONE)
+        parts.append(self.STANCE)
         parts.append(self.SHAPE.format(focus=focus))
         return "\n\n".join(parts)
 

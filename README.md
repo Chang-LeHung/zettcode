@@ -129,6 +129,12 @@ The model starts (or reuses) a background session named `code-review`, sends it 
 after each fix. The reviewer runs at your own shell level (at `safe` when yours is `ask`) and is told to read, not
 change; that is an instruction, not a sandbox.
 
+The review is adversarial on purpose, like the discriminator half of a GAN: the change was written to look right, so the
+reviewer is told to assume it is wrong somewhere and try to prove it — a counterexample, a test that would still pass
+if the bug came back, a failure path or a waiting-order the change missed — and to say what it tried before it says
+there is nothing to change. Each fix is a new change and gets attacked again, which is why it is rounds rather than one
+message. See [Code review](https://chang-lehung.github.io/zettcode/guide/code-review#a-reviewer-not-a-confirmation-pass).
+
 **3. Run an agent in the background and talk to it.**
 
 ```bash

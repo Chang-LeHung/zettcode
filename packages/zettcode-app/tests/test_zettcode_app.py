@@ -1356,6 +1356,8 @@ async def test_code_review_runs_a_turn_that_asks_for_a_review_of_the_change():
     assert "reuse it rather than starting another" in read, "an earlier reviewer of this workspace is preferred"
     assert f"{CodeReview.command()} list" in read, "the model is told how to find one"
     assert "round after round, until nothing it found is left" in read
+    assert "assume it" in read and "try to prove it" in read, "the review is adversarial, not a confirmation pass"
+    assert "must say what it tried" in read, "a review that found nothing owes an account of the attempts"
     assert "go round again until it has nothing left to say" in read, "the reviewer outlives the first round"
     assert "it must answer" in read, "the reviewer is told that a round without a word is not an answer"
     assert "if it has nothing to change, say that in a word" in read

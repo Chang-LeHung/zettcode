@@ -12,6 +12,27 @@ that is the model's work, guided by the brief.
 Whatever you type after the command is the focus. With nothing, the focus is "anything that would make this change wrong
 or hard to keep". The transcript shows the command you typed, not the brief.
 
+## A reviewer, not a confirmation pass
+
+Think of it as the discriminator half of a generative adversarial pair. The change is the generator: it was written to
+look right, and by the time it is handed over, its author believes it. The reviewer's value is entirely in trying to
+prove it wrong — a counterexample, a case the new test would still pass if the bug came back, a failure path or a
+boundary the change did not think about, an ordering between two events, a sentence in the prose that the code
+contradicts. A review that ends in "looks good" without having tried those is worth nothing, which is why the brief
+asks it to say what it tried before it says there is nothing to change.
+
+That is also why this command is built around rounds rather than one message. A fix is a new change and gets attacked
+again — the second round is exactly where a "fix" that only rewords the symptom survives a single pass and fails here.
+The loop ends when the reviewer has nothing left to attack, not when the author has nothing left to add.
+
+In practice you will see the difference in what comes back:
+
+| A confirmation pass | An adversarial review |
+| --- | --- |
+| "The change looks correct and consistent with the surrounding code." | "`parse.py:42` slices `text[:limit]`, so a record of exactly `limit` bytes loses its last byte and the boundary test beside it only covers the over-long case." |
+| Restates the diff. | Never restates the diff: names the defect, the line, and the change to make. |
+| Answers "nothing" straight away. | Answers "nothing" with the attacks it ran, so a real silence is distinguishable from a failed review. |
+
 ## What happens, step by step
 
 1. **Collect the change.** The brief tells the model to run `git status --short` for what changed, `git diff HEAD` for the
