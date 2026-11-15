@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import PurePath
 from time import monotonic
 
 from zettcode.app.ui.widgets.effort_page import heat_colour
@@ -15,8 +15,15 @@ from zettcode.tui.render import blend, display_width
 
 from . import context_charts as charts
 
-#: Rows above the body: a blank, the title, and the file the session is stored in.
-HEAD_ROWS = 3
+#: Rows above the blank line that separates the header from the body: a blank, the title, the directory the
+#: session works in, and the file it is stored in.
+HEAD_ROWS = 4
+
+#: Columns a path's label takes before the path, so the two paths line up.
+PATH_LABEL = 11
+
+#: Columns a path needs of its own before the label is worth the room; narrower than this, the path is drawn alone.
+PATH_LEAST = 8
 
 #: How far a mouse-wheel notch moves the body.
 WHEEL_ROWS = 3
@@ -46,7 +53,8 @@ class ContextPage(Widget):
     Shape::
 
         Context  Opus 5                              <- title and model
-        ~/.zettcode/sessions/…/conversation.jsonl    <- where this session is stored
+        Workspace  ~/projects/api                    <- the directory the tools work in
+        Session    …/01a145fa/data.jsonl             <- where this session is stored, shortened from the left
         Window   17,926 / 200,000 tokens   9.0% full
         ██▌░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
                                             ▲ compacts at 160,000 tokens (80.0%)
@@ -82,7 +90,8 @@ class ContextPage(Widget):
         self,
         report: ContextReport,
         *,
-        path: Path | None = None,
+        path: PurePath | None = None,
+        workspace: PurePath | None = None,
         model: str = "",
         trigger: int | None = None,
         compact_percent: float | None = None,
@@ -94,8 +103,10 @@ class ContextPage(Widget):
         Args:
             report: Breakdown to show, as produced by the context extension.
             path: File this session is stored in. The home directory collapses to ``~``; a line
-                too long for the page is cut at the edge, so a narrow terminal loses the end of
-                the path and not which file it named.
+                too long for the page keeps its end, so a narrow terminal still shows the file.
+            workspace: Directory this session works in, and the one the tools resolve relative
+                paths against. Shown the way ``path`` is: a long one keeps its end, which is the
+                part that names the project.
             model: The model the window belongs to, shown beside the title.
             trigger: Tokens at which a request is compacted; the gauge marks it. ``None`` for a
                 model that is never compacted.
@@ -107,7 +118,8 @@ class ContextPage(Widget):
         """
         super().__init__()
         self.report = report
-        self.path = compact_path(path, limit=None) if path is not None else ""
+        self.path = path
+        self.workspace = workspace
         self.model = model
         self.trigger = trigger
         self.start_percent = compact_percent
@@ -315,7 +327,7 @@ class ContextPage(Widget):
         return Style(foreground=colours.get(role, theme.text), background=page, bold=role == "heading")
 
     def render(self, canvas) -> None:
-        """Fill the page, then draw the title, the file, the body, and the footer."""
+        """Fill the page, then draw the title, the two paths, the body, and the footer."""
         if self.rect.empty:
             return
         theme = self.theme
@@ -327,8 +339,8 @@ class ContextPage(Widget):
             canvas.draw_text(
                 rect.x + 2 + used + 2, rect.y + 1, self.model, self.style_of("muted"), max_width=max(0, room - used - 2)
             )
-        if self.path:
-            canvas.draw_text(rect.x + 2, rect.y + 2, self.path, self.style_of("muted"), max_width=room)
+        self._draw_path(canvas, rect.x + 2, rect.y + 2, "Workspace", self.workspace, room)
+        self._draw_path(canvas, rect.x + 2, rect.y + 3, "Session", self.path, room)
         body = self.lines(room)
         top = rect.y + HEAD_ROWS + 1
         control = self.adjustable
@@ -342,6 +354,26 @@ class ContextPage(Widget):
             keys = f" {SEPARATOR} ".join(part for part in (keys, "\u2190 \u2192 compress at", "enter apply") if part)
         hint = f" {SEPARATOR} ".join(part for part in (keys, "esc back") if part)
         canvas.draw_text(rect.x + 2, rect.bottom - 1, hint, self.style_of("muted"), max_width=room)
+
+    def _draw_path(self, canvas, x: int, y: int, label: str, path: PurePath | None, room: int) -> None:
+        """Draw one labelled path, keeping its end, which is the part that names the directory or the file.
+
+        A page too narrow for a label and a path worth reading drops the label and gives the whole row to the path,
+        rather than painting a bold word beside an ellipsis.
+        """
+        if path is None:
+            return
+        if room < PATH_LABEL + PATH_LEAST:
+            canvas.draw_text(x, y, compact_path(path, limit=max(1, room)), self.style_of("muted"), max_width=room)
+            return
+        canvas.draw_text(x, y, label, self.style_of("heading"), max_width=PATH_LABEL - 1)
+        canvas.draw_text(
+            x + PATH_LABEL,
+            y,
+            compact_path(path, limit=room - PATH_LABEL),
+            self.style_of("muted"),
+            max_width=room - PATH_LABEL,
+        )
 
     def _draw_control(self, canvas, x: int, y: int, room: int) -> None:
         """Draw the share the window is compacted at as a rail with a knob, its value, and what it was until Enter.

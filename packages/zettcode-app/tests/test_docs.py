@@ -502,7 +502,16 @@ def test_the_screens_agree_with_what_the_guide_says_about_them():
         "usage-models": ("3.14M tokens", "43 requests · 3 sessions", "61.07%", "2.40M tokens · 34 requests"),
         "usage-sessions": ("Fix the parser crash", "76.51%", "1.45M", "Pagination for /use"),
         "usage-calendar": ("Sat 17 Oct 2026", "16 active days · longest streak 4", "168K tokens"),
-        "context": ("103,241 / 200,000", "51.6%", "compacts at 160,000 tokens (80.0%)", "62,069", "60.1%"),
+        "context": (
+            "103,241 / 200,000",
+            "51.6%",
+            "compacts at 160,000 tokens (80.0%)",
+            "62,069",
+            "60.1%",
+            "Workspace",
+            "~/projects/api",
+            "Session",
+        ),
         "context-near": ("158,900 / 200,000", "1,100", "Compaction summary", "93,654"),
         "context-resumed": ("84,000 / 200,000", "pending", "42.0%"),
     }

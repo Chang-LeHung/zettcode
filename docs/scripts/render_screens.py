@@ -53,6 +53,9 @@ THEME = replace(DARK, background="#232a2e")
 TODAY = date(2026, 10, 17)
 WORKSPACE = "~/projects/api"
 
+#: The directory the sample `/context` session works in, painted as the path it is.
+WORKSPACE_PATH = PurePosixPath(WORKSPACE)
+
 OUTPUT = Path("docs/public/screens")
 
 
@@ -273,7 +276,13 @@ def context_canvas(kind: str) -> Canvas:
     """Paint the ``/context`` page for one of the sample situations."""
     report, trigger = context_report(kind)
     return full_screen(
-        lambda: ContextPage(report, path=SESSION_FILE, model="claude-sonnet-4-5", trigger=trigger),  # type: ignore[arg-type]
+        lambda: ContextPage(
+            report,
+            path=SESSION_FILE,
+            workspace=WORKSPACE_PATH,
+            model="claude-sonnet-4-5",
+            trigger=trigger,
+        ),
         100,
         CONTEXT_ROWS,
     )

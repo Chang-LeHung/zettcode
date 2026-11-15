@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING
 
 from zettcode.tui import ELLIPSIS
@@ -264,7 +264,7 @@ def tools_text(tools: int, failed_tools: int = 0) -> str | None:
     return f"{said}, {failed_tools} failed" if failed_tools else said
 
 
-def compact_path(path: Path, *, limit: int | None = 38) -> str:
+def compact_path(path: PurePath, *, limit: int | None = 38) -> str:
     """Shorten a workspace path for the header.
 
     Args:

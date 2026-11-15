@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
+
 import pytest
 
 from zettcode.budget import SOURCES
 from zettcode.commands import context_charts as charts
 from zettcode.commands.context_page import ContextPage
 from zettcode.sdk.types import ContextReport, ContextShare
-from zettcode.tui import DARK, LIGHT, TuiApp
+from zettcode.tui import DARK, ELLIPSIS, LIGHT, TuiApp
 from zettcode.tui.render.text import display_width
 from zettcode.tui.testing import Harness
 
@@ -260,6 +262,39 @@ def test_the_page_names_the_model_the_file_and_the_window():
     assert "Context" in text and "claude-opus-4-5" in text
     assert "25,926 / 200,000 tokens" in text and "compacts at 160,000" in text
     assert page.title == "Context  25,926 / 200,000 tokens"
+
+
+def test_the_page_names_the_directory_the_session_works_in_and_the_file_it_is_stored_in():
+    page = ContextPage(
+        report_of(), path=PurePosixPath("/work/sessions/conversation.jsonl"), workspace=PurePosixPath("/work/api")
+    )
+    lines = Harness(page, width=100, height=34).render().text.splitlines()
+
+    assert "  Workspace  /work/api" in lines
+    assert "  Session    /work/sessions/conversation.jsonl" in lines
+    assert lines.index("  Workspace  /work/api") < lines.index("  Session    /work/sessions/conversation.jsonl")
+
+
+def test_a_long_path_keeps_its_end_and_never_widens_the_page():
+    long = PurePosixPath("/a-directory-with-a-name-far-too-long-for-a-narrow-terminal/api")
+    page = ContextPage(report_of(), path=long / "conversation.jsonl", workspace=long)
+    rendered = Harness(page, width=40, height=34).render()
+    lines = rendered.text.splitlines()
+
+    workspace = next(line for line in lines if line.strip().startswith("Workspace"))
+    session = next(line for line in lines if line.strip().startswith("Session"))
+    assert workspace.rstrip().endswith("api") and ELLIPSIS in workspace
+    assert session.rstrip().endswith("conversation.jsonl") and ELLIPSIS in session
+    for line in lines:
+        assert display_width(line.rstrip()) <= 40, line
+
+
+def test_a_page_too_narrow_for_a_label_gives_the_row_to_the_path():
+    page = ContextPage(report_of(), workspace=PurePosixPath("/work/api"))
+    text = Harness(page, width=16, height=34).render().text
+
+    assert "/work/api" in text
+    assert "Workspace" not in text
 
 
 def test_escape_and_q_leave_through_the_owners_callback():

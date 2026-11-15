@@ -30,7 +30,7 @@
 | `/bash` | 在工作区里打开一个全屏命令行：`/bash` 打开空面板，`/bash git status` 打开后立即运行这条命令。有历史、Tab 补全和彩色输出；因为是你自己在敲，所以不需要任何权限确认。见[Shell 面板](#bash)。 |
 | `/theme` | 按名字选配色：`/theme` 打开菜单，在菜单里移动时会预览每一套；`/theme nord` 一步切换。你自己的主题（`~/.zettcode/themes/<name>.toml`）也在菜单里。 |
 | `/pet` | 选择对话上方的宠物：`/pet` 打开面板（↑ ↓ 移动时把每只宠物立即放到对话区里，`Enter` 选定，`Esc` 把原来的放回去）；`/pet whale` 一步切换。保存到 `[ui] pet`。见[宠物](/zh/guide/interface#the-pet)。 |
-| `/context` | 查看上下文窗口有多满、离自动压缩还有多远、被什么占着——用条形图表示，并列出这个会话存在哪里。见[上下文窗口](/zh/guide/context)。 |
+| `/context` | 查看上下文窗口有多满、离自动压缩还有多远、被什么占着——用条形图表示，并列出这个会话的工作目录和存储文件。见[上下文窗口](/zh/guide/context)。 |
 | `/usage` | 打开一个页面，看这个项目的会话花了多少：按模型、按会话统计 token，以及一张按天的日历图。见[Token 用量](/zh/guide/usage)。 |
 | `/compact` | 立即总结对话，而不用等到窗口快满。 |
 | `/statusline` | 选择头部和状态行里哪些有名字的部分要显示——`ctx`、`cache`、`workspace` 等等。`/statusline` 打开面板（↑ ↓ 选部分，← → 隐藏或显示，`Enter` 应用）；`/statusline hide ctx speed`、`/statusline show all` 在键盘上做同样的事。保存在 `config.toml` 的 `[statusline]`。见[选择显示哪些部分](/zh/guide/interface#choosing-what-is-shown)。 |
