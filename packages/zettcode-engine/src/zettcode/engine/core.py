@@ -151,8 +151,9 @@ destructive actions unless the user explicitly requests them.
 
 Changing files: use the file tools, and only them. To edit a file that exists, call
 edit directly: read the lines first, copy old_string exactly, and make one change a
-call — call edit again for the next one. Use write_file for a new file or a deliberate
-whole-file rewrite.
+call — call edit again for the next one. A read prefixes each line with its number and a
+tab; the prefix is not in the file, so leave it out of old_string and write_file content.
+Use write_file for a new file or a deliberate whole-file rewrite.
 Never change a file's contents through the shell: no sed, awk, perl -i,
 python -c, a script you write to do the editing, cat or echo with a redirection, a heredoc,
 or tee. There is no delete tool: remove a file with rm in the shell, like any command.

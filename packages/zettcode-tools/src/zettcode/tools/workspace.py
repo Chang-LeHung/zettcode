@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -157,7 +158,7 @@ def read_lines(located: Located, offset: int, limit: int) -> str:
         ValueError: When the file is not UTF-8 text.
     """
     selected: list[str] = []
-    number, used, line_start = 1, 0, 0
+    number, used, line_start, emitted = 1, 0, 0, 0
     next_offset: int | None = None
     cut_at: int | None = None
     oversized = False
@@ -168,10 +169,20 @@ def read_lines(located: Located, offset: int, limit: int) -> str:
                     next_offset = number
                     break
                 if number >= offset:
-                    numbered = f"{number}\t{fragment}"
+                    # The prefix belongs to the first fragment of a line; a long line is read in pieces, and
+                    # repeating the number for each would put it in the middle of the content.
+                    prefix = "" if number == emitted else f"{number}\t"
+                    numbered = prefix + fragment
                     part = utf8_prefix(numbered, MAX_OUTPUT_BYTES - used)
+                    if len(part) <= len(prefix):
+                        # The budget ran out inside the line number, or exactly at it. A bare number would read
+                        # as content, so emit none of the line and send the reader back to it.
+                        cut_at = number
+                        oversized = _line_longer_than_budget(source, used - line_start, numbered, MAX_OUTPUT_BYTES)
+                        break
                     selected.append(part)
                     used += len(part.encode("utf-8"))
+                    emitted = number
                     if len(part) < len(numbered):
                         # Whether this line could fill a call of its own decides what the note says, and only
                         # what is left of the line knows that. Reading on is bounded by one budget.
@@ -249,12 +260,27 @@ def apply_edit(content: str, old_string: str, new_string: str, replace_all: bool
 
 def _miss_hint(content: str, old_string: str) -> str:
     """Say why an exact match failed, so the model fixes ``old_string`` instead of leaving the tool."""
+    if _numbered_copy_matches(content, old_string):
+        return (
+            "A read prefixes each line with its number and a tab, and those are not in the file; "
+            "copy the lines again without them. Nothing was written."
+        )
     if " ".join(content.split()).count(" ".join(old_string.split())) > 0:
         return (
             "A match exists that differs only in whitespace or indentation; "
             "read the file again and copy the lines exactly. Nothing was written."
         )
     return "Read the file again and copy old_string from its current content. Nothing was written."
+
+
+#: A line a read returned: its 1-based number, a tab, then the file's own text.
+_NUMBERED_LINE = re.compile(r"^[ \t]*\d+\t", re.MULTILINE)
+
+
+def _numbered_copy_matches(content: str, old_string: str) -> bool:
+    """Return whether ``old_string`` matches once a read's line numbers and tabs are removed."""
+    stripped = _NUMBERED_LINE.sub("", old_string)
+    return stripped != old_string and stripped in content
 
 
 def _excerpt(value: str, *, limit: int = 60) -> str:
