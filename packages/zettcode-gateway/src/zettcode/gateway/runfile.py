@@ -12,13 +12,12 @@ the reader validates it, and a stale one is removed.
 
 from __future__ import annotations
 
-import json
 import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeGuard
 
+from .jsonfile import read_json, write_json
 from .settings import Settings
 
 #: The record of the serving gateway, and the log a gateway started in the background writes.
@@ -69,17 +68,8 @@ def write(settings: Settings) -> None:
         "client_origins": list(settings.client_origins),
         "read_token": settings.read_token,
     }
-    descriptor, temporary = tempfile.mkstemp(dir=settings.directory, prefix=".run-", suffix=".tmp")
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle)
-        os.replace(temporary, path(settings.directory))
-    except BaseException:
-        try:
-            os.unlink(temporary)
-        except OSError:
-            pass
-        raise
+    # The token is in it: readable by this account only.
+    write_json(path(settings.directory), payload, private=True)
 
 
 def read(directory: Path) -> Running | None:
@@ -89,10 +79,7 @@ def read(directory: Path) -> Running | None:
     the same answer: nobody to stop. The pid is not checked here; whether that process is a gateway is the caller's
     question, and it is the one that must not be guessed at.
     """
-    try:
-        raw = json.loads(path(directory).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+    raw = read_json(path(directory))
     if not isinstance(raw, dict):
         return None
     pid, port = raw.get("pid"), raw.get("port")

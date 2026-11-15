@@ -8,8 +8,6 @@ at it and runs no model.
 
 from __future__ import annotations
 
-import json
-import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -32,6 +30,8 @@ from zettcode.sdk.types import (
     SendLimits,
     StreamEvent,
 )
+
+from .jsonfile import read_json, write_json
 
 #: What the gateway's own session is called, so the sessions it writes to can tell who is speaking.
 TITLE = "Web gateway"
@@ -262,18 +262,12 @@ class SdkBackend(Backend):
             raise GatewayStartError("another gateway is already running for this user") from error
 
     def _remembered(self) -> str | None:
-        try:
-            data = json.loads((self.directory / HOST_FILE).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
+        data = read_json(self.directory / HOST_FILE)
         session = data.get("session") if isinstance(data, dict) else None
         return session if isinstance(session, str) and session else None
 
     def _remember(self, session_id: str) -> None:
-        self.directory.mkdir(parents=True, exist_ok=True)
-        temporary = self.directory / f".{HOST_FILE}.{os.getpid()}.tmp"
-        temporary.write_text(json.dumps({"session": session_id}), encoding="utf-8")
-        os.replace(temporary, self.directory / HOST_FILE)
+        write_json(self.directory / HOST_FILE, {"session": session_id})
 
     @property
     def client(self) -> Client:
