@@ -9,7 +9,16 @@ export const streams = reactive<Record<string, LiveTurn>>({});
 
 const empty = (): LiveTurn => ({ text: "", thinking: false, tools: [] });
 
+/** How many pieces (an end included) have been heard per session: a read compares it before and after it was asked. */
+const heard = new Map<string, number>();
+
+/** Note what has been heard so far, to give `seedStream` when the read that follows answers. */
+export function streamMark(id: string): number {
+  return heard.get(id) ?? 0;
+}
+
 export function applyStream(id: string, piece: StreamPiece): void {
+  heard.set(id, streamMark(id) + 1);
   if (piece.kind === "end") {
     delete streams[id];
     return;
@@ -29,8 +38,13 @@ export function applyStream(id: string, piece: StreamPiece): void {
   }
 }
 
-/** Take the turn a freshly read conversation says is running, unless pieces of it have already arrived: they are newer. */
-export function seedStream(id: string, turn: LiveTurn | null): void {
+/**
+ * Take the turn a freshly read conversation says is running, unless pieces of it have already arrived: they are newer.
+ * `mark` is `streamMark` from before the read was asked: when anything was heard since, the read is older than the
+ * socket, and its turn may be one whose end was heard meanwhile — seeding it would bring back a turn nothing ends.
+ */
+export function seedStream(id: string, turn: LiveTurn | null, mark?: number): void {
+  if (mark !== undefined && mark !== streamMark(id)) return;
   if (turn && !(id in streams)) streams[id] = turn;
 }
 

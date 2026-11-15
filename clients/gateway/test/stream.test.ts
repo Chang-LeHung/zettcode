@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyStream, resetStreams, seedStream, streams } from "../src/stores/stream";
+import { applyStream, resetStreams, seedStream, streamMark, streams } from "../src/stores/stream";
 
 test("a turn is built from its pieces and dropped when it ends", () => {
   resetStreams();
@@ -23,6 +23,18 @@ test("a piece that arrives before its begin still starts a turn, and a begin sta
 
   applyStream("s", { kind: "begin" });
   assert.equal(streams.s?.text, "");
+});
+
+test("a read that was asked before a turn ended does not bring the turn back", () => {
+  resetStreams();
+  applyStream("s", { kind: "begin" });
+  const mark = streamMark("s");
+  applyStream("s", { kind: "end" });
+  seedStream("s", { text: "done", thinking: false, tools: [] }, mark);
+  assert.equal("s" in streams, false);
+
+  seedStream("s", { text: "running", thinking: false, tools: [] }, streamMark("s"));
+  assert.equal(streams.s?.text, "running");
 });
 
 test("a turn read from the gateway does not replace pieces that have already arrived", () => {
