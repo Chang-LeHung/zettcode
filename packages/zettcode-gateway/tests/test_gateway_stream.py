@@ -117,12 +117,16 @@ async def test_every_live_turn_is_dropped_when_the_broker_comes_back_because_pie
     await gateway.refresh()
     backend.stream(DAEMON, "begin")
     backend.stream(DAEMON, "text", text="half an ans")
+    queue = gateway.subscribe()
+    drained(queue)
     backend._reachable = False
     await gateway.refresh()
     backend._reachable = True
     await gateway.refresh()
 
     assert (await gateway.thread(DAEMON))["live"] is None
+    ends = [item["event"] for item in drained(queue) if item["type"] == "stream" and item["event"]["kind"] == "end"]
+    assert [end["turn"] for end in ends] == [1], "the page is told, so a truncated bubble does not stay"
 
 
 async def test_a_page_that_stopped_reading_is_told_to_go_instead_of_being_left_with_stale_data(tmp_path):

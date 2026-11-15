@@ -38,7 +38,11 @@ class Turn:
 
 
 class LiveTurns:
-    """The running turn of each watched session, by session id."""
+    """The running turn of each watched session, by session id.
+
+    The clock is read on every use, so a caller may hand over a function that delegates to a clock it replaces later.
+    Iterating yields the session ids of a copy, so a turn may be dropped while looping.
+    """
 
     def __init__(self, clock: Callable[[], float]) -> None:
         self._clock = clock
@@ -57,11 +61,11 @@ class LiveTurns:
         return None if turn is None else turn.number
 
     def hear(self, event: StreamEvent) -> dict[str, Any] | None:
-        """Take one piece a session's turn said, and return what to tell the pages, or ``None`` for an end.
+        """Take one piece a session's turn said, and return what to tell the pages.
 
         A ``begin`` starts a turn afresh, whatever was running; any other piece of a session with no turn starts one,
-        because the first pieces may have been missed. An end is not applied here: the caller reads what the turn wrote
-        before :meth:`finish` takes it away.
+        because the first pieces may have been missed. The caller reads an ``end`` itself (what the turn wrote has to be
+        read before :meth:`finish` takes it away), so one that is passed here only returns ``None``.
         """
         session_id, kind = event.session_id, event.kind
         turn = self._turns.get(session_id)
@@ -94,7 +98,11 @@ class LiveTurns:
         return wire
 
     def view(self, session_id: str) -> dict[str, Any] | None:
-        """Return the turn running in a session as a page reads it, or ``None`` (the time it last spoke is not shown)."""
+        """Return the turn running in a session as a page reads it, or ``None`` (the time it last spoke is not shown).
+
+        ``tools`` is the turn's own list, not a copy: a ``tool_end`` heard later shows in a snapshot already taken, as
+        it always has.
+        """
         turn = self._turns.get(session_id)
         if turn is None:
             return None
@@ -104,6 +112,7 @@ class LiveTurns:
         """Drop the turn ``number`` of a session; return whether it was still the one running.
 
         The session may have begun its next turn while the end was being read, and that one is not this one's to end.
+        ``None`` (an end heard with no turn running) matches nothing, and neither does a session with no turn.
         """
         turn = self._turns.get(session_id)
         if turn is None or turn.number != number:

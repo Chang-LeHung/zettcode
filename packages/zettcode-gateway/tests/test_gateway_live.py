@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
 from zettcode.gateway.live import STALE_SECONDS, TEXT_LIMIT, TOOL_LIMIT, LiveTurns
-from zettcode.sdk.types import StreamEvent
+from zettcode.sdk.types import Peer, StreamEvent
 
 
 def piece(kind: str, session: str = "s", **fields: Any) -> StreamEvent:
     return StreamEvent(session_id=session, kind=kind, **fields)
 
 
-def peer(status: str) -> Any:
-    return SimpleNamespace(status=status)
+def peer(status: str) -> Peer:
+    return Peer(session_id="p", handle="p", status=status)
 
 
 def make() -> tuple[LiveTurns, list[float]]:
@@ -116,6 +115,52 @@ def test_dropping_forgets_a_session_or_all_of_them_and_says_what_it_dropped():
 
     assert live.drop("s") == 1 and live.drop("s") is None
     assert live.drop_all() == [("b", 2)] and len(live) == 0
+
+
+def test_dropping_all_says_every_turn_it_dropped():
+    live, _ = make()
+    live.hear(piece("begin"))
+    live.hear(piece("begin", session="b"))
+
+    assert live.drop_all() == [("s", 1), ("b", 2)] and len(live) == 0
+
+
+def test_finishing_drops_only_its_own_session():
+    live, _ = make()
+    live.hear(piece("begin"))
+    live.hear(piece("begin", session="b"))
+
+    assert live.finish("s", 1) is True and live.number_of("b") == 2
+
+
+def test_a_turn_is_not_finished_by_an_end_that_named_no_turn():
+    live, _ = make()
+    live.hear(piece("begin"))
+
+    assert live.finish("s", None) is False and live.number_of("s") == 1
+
+
+def test_a_tool_end_settles_the_call_it_names_and_no_other():
+    live, _ = make()
+    live.hear(piece("tool", call_id="c1", name="bash", brief="ls"))
+    live.hear(piece("tool", call_id="c2", name="read", brief="a.py"))
+    live.hear(piece("tool_end", call_id="c2", ok=False))
+
+    assert live.view("s")["tools"] == [
+        {"id": "c1", "name": "bash", "brief": "ls", "ok": None},
+        {"id": "c2", "name": "read", "brief": "a.py", "ok": False},
+    ]
+
+
+def test_a_text_piece_or_a_tool_stops_the_thinking_on_its_own():
+    live, _ = make()
+    live.hear(piece("thinking"))
+    live.hear(piece("text", text="here"))
+    assert live.view("s")["thinking"] is False
+
+    live.hear(piece("thinking"))
+    live.hear(piece("tool", call_id="c", name="bash", brief="ls"))
+    assert live.view("s")["thinking"] is False
 
 
 def test_a_turn_is_expired_when_its_session_is_gone_or_idle_and_silent_but_not_while_it_works():
