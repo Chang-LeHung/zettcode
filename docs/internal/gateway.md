@@ -52,6 +52,7 @@ packages/zettcode-gateway/src/zettcode/gateway/
   cli.py       zettcode gateway: serve, start, stop, restart
   runfile.py   the record a serving gateway leaves, and the log of a background one
   jsonfile.py  read_json / write_json: how every state file is read (damage reads as nothing) and rewritten whole
+  live.py      LiveTurns: the turns running now, numbered; state only — `Gateway` publishes, so `_publish` stays the one writer
   static/      the built page (not in git: `make gateway-ui` builds it, and the release workflow builds it before the wheel)
 clients/gateway/   the page: src/{api,stores,lib,components}, tests with node:test
 clients/desktop/   Electron shell around the page's app build (see clients-app.md)
