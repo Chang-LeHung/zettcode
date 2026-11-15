@@ -461,7 +461,9 @@ def test_a_thread_can_be_pinned_and_archived(parts):
     assert pinned.json()["thread"]["pinned"] is True and pinned.json()["thread"]["archived"] is False
     assert archived.json()["thread"]["archived"] is True
     assert [thread["id"] for thread in client.get("/api/threads").json()["threads"]] == ["01d", "02d"]
-    assert client.patch("/api/threads/01d/profile", json={"pinned": "yes"}).status_code == 400
+    refused = client.patch("/api/threads/01d/profile", json={"pinned": "yes"})
+    assert refused.status_code == 400
+    assert refused.json()["error"] == {"code": "invalid", "message": "pinned is true or false"}
 
     undone = client.patch("/api/threads/01d/profile", json={"pinned": False})
     assert undone.json()["thread"]["pinned"] is False

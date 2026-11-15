@@ -57,16 +57,11 @@ from .chat import first_unread, items_of, preview, spoken, with_reply_request
 from .chat import picture_id as picture_name
 from .jsonfile import read_json, write_json
 from .live import LiveTurns
+from .profiles import ProfileError, Profiles
 from .settings import Settings
 
 #: Seconds between two looks at the daemons, the roster and the stored conversations when nothing woke the watcher.
 POLL_SECONDS = 1.5
-
-#: Where a page-visible name and picture for a thread are kept, by session id.
-PROFILE_FILE = "profiles.json"
-
-#: Keep a thread's profile this long after its session disappears from a refresh.
-PROFILE_TTL = 24 * 60 * 60
 
 #: How long a probe of "does another process have this session open" is kept before it is asked again.
 LOCK_PROBE_SECONDS = 5.0
@@ -310,8 +305,9 @@ class Gateway:
         self._watching: set[str] = set()
         self.roots = tuple(root.expanduser().resolve() for root in settings.roots)
         self._views: dict[str, dict[str, Any]] = {}
-        self._profiles: dict[str, dict[str, str]] = self._load_profiles()
-        self._profile_seen: dict[str, float] = {}
+        #: What a person made of each thread (name, picture, pin, archive). It reads the clock through ``self.clock`` each
+        #: time, so a clock replaced after construction is the one its one-day expiry uses.
+        self._profiles = Profiles(settings.directory, lambda: self.clock())
         self._meta: dict[str, Meta] = {}
         self._inbox: dict[str, deque[dict[str, Any]]] = {}
         #: Messages of ours in a thread's box that no session has taken yet, by identity: they are not written out.
@@ -431,21 +427,7 @@ class Gateway:
             reachable = self.backend.reachable
             changed = views != self._views
             self._views = views
-            now = self.clock()
-            # A name and a picture are kept for a day after a session leaves the list; a pin or an archive is a choice
-            # the person made about that conversation and is kept until they undo it.
-            vanished = [
-                session_id
-                for session_id in self._profiles
-                if session_id not in views
-                and now - self._profile_seen.get(session_id, now) > PROFILE_TTL
-                and not self._profiles[session_id].keys() & {"pinned", "archived"}
-            ]
-            if vanished:
-                for session_id in vanished:
-                    self._profiles.pop(session_id, None)
-                    self._profile_seen.pop(session_id, None)
-                self._save_profiles()
+            self._profiles.forget_vanished(views.keys())
         if changed or reachable != self._reachable:
             if reachable and self._reachable is False:
                 # Pieces of every turn were missed while the broker was away: a bubble resumed mid-answer would be a
@@ -499,9 +481,7 @@ class Gateway:
             kind = "external" if peer.kind == "external" else "session"
         else:
             kind = "external" if session_id.startswith("external:") else "session"
-        profiled = self._profiles.get(session_id, {})
-        if profiled:
-            self._profile_seen[session_id] = self.clock()
+        profiled = self._profiles.read(session_id)
         title = (
             profiled.get("name")
             or (daemon.title if daemon is not None else None)
@@ -582,67 +562,16 @@ class Gateway:
         return daemon.status if daemon.status in ("starting", "stopping", "dead") else "offline"
 
     # -- what a page asks -------------------------------------------------------------------------
-    def _load_profiles(self) -> dict[str, dict[str, str]]:
-        data = read_json(self.settings.directory / PROFILE_FILE)
-        if not isinstance(data, dict):
-            return {}
-        found: dict[str, dict[str, str]] = {}
-        for session_id, value in data.items():
-            if not isinstance(session_id, str) or not isinstance(value, dict):
-                continue
-            profile = {key: str(value[key]) for key in ("name", "avatar") if isinstance(value.get(key), str)}
-            profile.update({key: "1" for key in ("pinned", "archived") if value.get(key) == "1"})
-            if profile:
-                found[session_id] = profile
-        return found
-
-    def _save_profiles(self) -> None:
-        write_json(self.settings.directory / PROFILE_FILE, self._profiles, ensure_ascii=False)
-
     async def update_profile(self, session_id: str, data: Mapping[str, Any]) -> dict[str, Any]:
         """Set a thread's display name, picture, and whether it is pinned or archived; an empty value removes an override."""
         if session_id not in self._views:
             await self.refresh()
         if session_id not in self._views:
             raise GatewayError(404, "not_found", "No such session is listed")
-        profile = dict(self._profiles.get(session_id, {}))
-        if "name" in data:
-            name = data["name"]
-            if not isinstance(name, str) or len(name) > 80:
-                raise GatewayError(400, "invalid", "name is a string of at most 80 characters")
-            if name.strip():
-                profile["name"] = name.strip()
-            else:
-                profile.pop("name", None)
-        if "avatar" in data:
-            avatar = data["avatar"]
-            if not isinstance(avatar, str) or len(avatar) > 300_000:
-                raise GatewayError(400, "invalid", "avatar is a small image data URL")
-            if avatar and not avatar.startswith("data:image/"):
-                raise GatewayError(400, "invalid", "avatar is an image data URL")
-            if avatar:
-                profile["avatar"] = avatar
-            else:
-                profile.pop("avatar", None)
-        for flag in ("pinned", "archived"):
-            if flag in data:
-                if not isinstance(data[flag], bool):
-                    raise GatewayError(400, "invalid", f"{flag} is true or false")
-                if data[flag]:
-                    profile[flag] = "1"
-                else:
-                    profile.pop(flag, None)
-        # Pinned and archived exclude each other: a conversation is either kept at the top or put away, and the last
-        # one asked for wins (archiving unpins, pinning brings it back from the archive).
-        if data.get("archived") is True:
-            profile.pop("pinned", None)
-        elif data.get("pinned") is True:
-            profile.pop("archived", None)
-        if profile:
-            self._profiles[session_id] = profile
-        else:
-            self._profiles.pop(session_id, None)
-        self._save_profiles()
+        try:
+            self._profiles.change(session_id, data)
+        except ProfileError as error:
+            raise GatewayError(400, "invalid", str(error)) from error
         await self.refresh()
         return {"thread": self._views.get(session_id)}
 
@@ -1339,9 +1268,8 @@ class Gateway:
             raise GatewayError(400, "agent", str(error)) from error
         avatar = self.agents.avatar(kind)
         if avatar:
-            self._profiles[session.session_id] = {"avatar": avatar}
             try:
-                self._save_profiles()
+                self._profiles.set_default_avatar(session.session_id, avatar)
             except OSError:
                 # The agent is already running and in the group; losing its default picture must not say otherwise.
                 logger.exception("profile.save_failed", extra={"session": session.session_id})
