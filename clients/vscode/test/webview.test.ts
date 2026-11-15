@@ -18,6 +18,7 @@ const usage: Usage = {
   seconds: 4.2,
   requests: 3,
   context_tokens: 1540,
+  cache_reported: true,
 };
 
 const settings: Settings = {
@@ -688,6 +689,16 @@ test("the session's tokens, cache and speed sit under the input", async () => {
   assert.equal(empty.one("#session-stats"), null);
 });
 
+test("a session whose cache was not measured leaves the share out", async () => {
+  const unmeasured = { ...usage, cache_reported: false };
+  const ui = await harness(fixtureTurns(), { ...state, session: { ...state.session!, usage: unmeasured } });
+
+  const words = ui.one(".composer #session-stats")?.textContent ?? "";
+
+  assert.ok(words.includes("↑ 1.2k"), "the tokens are still there");
+  assert.equal(words.includes("cached"), false, "no percentage nobody measured");
+});
+
 test("the drawer opens context and keeps the other panels", async () => {
   const ui = await harness();
   await ui.click("#session-button");
@@ -754,6 +765,22 @@ test("a finished request ends in a receipt with its state, time and tokens", asy
   assert.ok(receipt.textContent?.includes("66.7% cached"));
   assert.ok(receipt.textContent?.includes("4s"));
   assert.ok(receipt.textContent?.includes("↑ 1.2k"));
+});
+
+test("a receipt leaves out a cache share nobody measured", async () => {
+  const ui = await harness();
+  const turn = createTurn("unmeasured", [], 5000, "turn-unmeasured");
+  applyEvent(turn, { type: "text_delta", text: "ok" }, 5100);
+  turn.status = "done";
+  turn.finishedAt = 9000;
+  turn.usage = { ...usage, cache_reported: false };
+  await ui.send({ type: "turn", turn });
+
+  const receipt = ui.one('[data-id="turn-unmeasured"] .receipt');
+
+  assert.ok(receipt);
+  assert.ok(receipt.textContent?.includes("↑ 1.2k"), "the tokens are still there");
+  assert.equal(receipt.textContent?.includes("cached"), false, "no percentage nobody measured");
 });
 
 test("thoughts, tools and the narration between them share one unbroken rail", async () => {

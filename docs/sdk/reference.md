@@ -362,7 +362,7 @@ control, so `"read"` and `"read_write"` behave the same there, and `"off"` only 
 
 ### `Usage`
 
-`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `reasoning_tokens` (all `int`, default `0`), `seconds: float`, `requests: int`, `context_tokens: int`.
+`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `reasoning_tokens` (all `int`, default `0`), `seconds: float`, `requests: int`, `context_tokens: int`, `cache_reported: bool` (default `True`; last, so the positional order stays).
 
 | Member | Meaning |
 | --- | --- |
