@@ -1,8 +1,7 @@
 # The interface
 
-The screen is a fixed frame around a scrolling conversation. The composer
-stays near the bottom while the conversation uses the remaining space; command
-panels temporarily cover the lower part of it.
+The screen is a fixed frame around a scrolling conversation: the composer stays near the bottom, and a panel covers
+the lower part while you choose.
 
 ```
   ▐ zettcode  New session · @api · ~/projects/api   DeepSeek Pro · high  ← header
@@ -20,168 +19,66 @@ panels temporarily cover the lower part of it.
 
 ## The header
 
-The left side names the application, the **session** — its title (`New session` until it has one) and, when
-[messaging](/guide/messaging) is on, the name other sessions reach it by (`@api`) — and the workspace, shortened
-to the last useful part of the path. A very long title is cut to leave room for the rest; when the row is still too
-narrow it is the workspace that goes first, because it does not change while the session is open. The right side names the model and the reasoning effort
-that the **next** request will use, so a switch is visible before you send
-anything. Changing the effort plays an animation in that corner for a few seconds: a hairline gauge with one cell per level fills from the level you left to the level you chose, and a soft glow travels over it and then over the word. Colour is a position on the scale, not a state: the cheap end is your theme's accent and the dear end its error colour, with a smooth blend between. The gauge fades in and out rather than cutting, and gives the corner back when it is done.
+The left side names the program, the session and the workspace.
 
-Switching to `max` or `ultra` — the top of the scale, the expensive end — plays a longer show of its own instead: light crosses the whole header from right to left, four or five times in quick succession, each pass a little quicker than the last, with a white-hot core inside a wide gold halo. The first pass ignites the corner as it goes, laying the gauge down in gold (running on into your error colour at `ultra`) and the word between twinkling sparkles; the later passes glint across the title and workspace on the left too, and `ultra` also glitters along the whole gauge. It is the same length of row throughout, so nothing shivers, and it hands the header back the same way. Like the ordinary gauge, it does not appear while a request runs (the waiting row is moving then) or under reduced motion, where the level still changes and the transcript still says so.
+- The session is `New session` until it has a title. When [messaging](/guide/messaging) is on, its `@name` follows.
+- The workspace is shortened to its last useful part.
+- On a narrow terminal the title is cut first, then the workspace.
 
-## Terminal tabs
-
-ZettCode sets its window title to `◈ zettcode · New session`, then replaces
-`New session` with the active session's title. Naming a session with `/title`,
-resuming another one, or starting a new one updates the title automatically.
-On macOS and Linux, the foreground process is also named `zettcode` rather
-than `python3`, including iTerm2's job label.
-
-VS Code's default terminal tab shows the **process**, not the title a program
-sets. To show the ZettCode marker and session name, open **Preferences: Open
-User Settings (JSON)** and add these keys to the existing object:
-
-```json
-{
-  "terminal.integrated.tabs.title": "${sequence}",
-  "terminal.integrated.tabs.description": "${process}"
-}
-```
-
-This applies to all integrated terminals. A manually renamed tab takes
-precedence; reset its name through the terminal's **Rename** action if needed.
-ZettCode does not modify your editor settings. The `◈` is a text brand marker:
-VS Code's separate tab icon cannot be replaced with our pixel SVG by terminal
-output; a custom image icon requires an editor extension.
+The right side names the model and the effort the **next** request will use.
 
 ## The transcript
 
-Every kind of output has its own row, in the order it happened:
+Every event gets a row, in the order it happened.
 
-- **Your message** is marked with `›` and a band of colour.
-- **Thinking** is collapsed to one row. `Ctrl-T` or a click opens the newest one;
-  each block can be opened on its own.
-- **Tool calls** read like a log — `Read src/app.py · 199 lines`, `Bash pwd`, `Edit
-  app.py +24 -6`, `Write src/new.py +40`, `Searched TODO in src`. A read says how many lines came back. An edit's added lines
-  are painted green and its removed ones red, whether the call is still running or done, and a
-  write says how many lines the file now holds. Once an edit or a write has succeeded the row shows
-  **the change itself** under the title, instead of the tool's one-line answer:
+- **Your message** is marked `›`.
+- **Thinking** is collapsed to one row; `Ctrl-T` or a click opens the newest block, or each block on its own.
+- **Tool calls** read like a log: `Read src/app.py · 199 lines`, `Bash pwd`, `Edit app.py +24 -6`, `Write src/new.py
+  +40`, `Searched TODO in src`.
 
-  ```text
-  ✓ Edit app.py +2 -1  0.0 s ▸
-    └ - x = 1
-      + x = 2
-        keep
-      + y = 3
-  ```
+  A successful edit shows the change under its row: removed lines red, added lines green, one unchanged line either
+  side for context. A write shows every line as added. A failed edit shows its error instead. The first five rows
+  stay visible and the rest sit behind a click, up to forty; a long line is cut.
+- **The files a request changed** are listed once, when it ends, above `Processed for …`. One file is one line
+  (`Changed src/app.py +4 -1`); several are a short list (`Changed 3 files`, eight entries, then `and N more`). Paths
+  are relative to the workspace. Only successful edits, writes and deletes count, and a stopped request still
+  reports what it had done. Changes a shell command made are not seen.
+- **The answer** is Markdown, with tables that survive wide CJK characters and HTML entities drawn as the character
+  they name.
+- **The running request** is one row pinned to the bottom: `✦ Processing (8s · ^C/Esc to interrupt)`. When the
+  request ends it becomes `Processed for 12s · 22:53`, followed by what it spent: `↑12.3k ↓1.2k · 87.0% cached · 3
+  model calls · 62 tok/s · 5 tool calls, 1 failed`.
 
-  A removed line is red, an added one green, and one unchanged line either side keeps the change in
-  place. A session stored when one call could carry several changes says so with `edit 1 of 3`. A written file is shown the same
-  way with **every line added**: the call holds the new content and not what it replaced, so nothing
-  can be shown as removed. A failed edit or write shows its error instead, because nothing changed. The first five rows stay visible and the rest is behind a click
-  (up to forty when open); a long line is cut at the width, never wrapped. Other output works the
-  same way; nothing is ever dumped as JSON.
-- **Tool rows use a few colours**, so a long transcript stays calm: a warm yellow for reading a file (and a skill,
-  which reads one), lavender for what the agent looks around with or runs (searching, a picture, a command, the
-  plan), orange for writing and editing (not green, which is an added line in its diff), red for deleting (and for any
-  call that failed), teal for a delegated subagent, and mauve for talking to another session. The read yellow is the
-  palette's own — which is also its warning colour in every named palette but one, and not in the two built-ins —
-  a skipped row is told apart by its glyph, and the file rows are the most common in a transcript, which is why
-  they carry a colour at all. A theme file can change
-  each one under `[tools]`. A web search the endpoint ran and a question put to you have roles of their own there,
-  `web-search` and `ask-user`.
-- **The files a request changed** are listed once when it ends, above the `Processed for …` line, and only
-  when there are any:
+  If the model says nothing for twenty seconds, the row says so in the warning colour. After five seconds a tip
+  hangs under the row from the same `└` a tool result uses, replaced every fifteen seconds; `tips = false` under
+  `[transcript]` turns them off.
+- **A failed request** gives what the library reported and, in brackets, what the server answered, and names the
+  setting to check. A provider or network failure ends with `/continue tries the request again from where it
+  stopped.` A credential is replaced with `…`, so the line can be pasted into an issue.
+- **A reply that did not finish** says why — the output limit, a provider that cut it off or paused, a full context
+  window, a declined answer — and what to do: `/continue`, `/compact`, `/model`.
+- **Notices** — a copied selection, a refused command, an exported file — are muted one-liners.
 
-  ```text
-  Changed src/app.py +4 -1          <- one file: one line
-
-  Changed 3 files                   <- several: a short list (eight, then "and N more")
-    src/app.py +4 -1
-    src/new.py +40
-    old.py deleted
-  ```
-
-  Each file is counted once, however many times it was edited, with the totals; paths inside the
-  workspace are shown relative to it. Only edits, writes and deletes that **succeeded** count — a
-  failed call changed nothing — and a stopped request still reports what it had already done. Files
-  changed by a shell command (`sed -i`, a formatter) are not seen: the program only knows what its own file tools did.
-- **The answer** is rendered as Markdown: headings, lists, quotes, links,
-  **bold**, *emphasis*, `inline code`, fenced code with syntax colours, and
-  tables drawn with per-column rules that survive wide CJK characters. An HTML
-  entity is drawn as the character it names, so `&nbsp;` indents a line and
-  `&lt;` writes an angle bracket.
-- **The running request** is one row pinned to the bottom of the transcript:
-  `✦ Processing (8s · ^C/Esc to interrupt)`. Reasoning, tool calls, and the answer all appear
-  above it, and when the request ends — answered, failed, or stopped — that same
-  row becomes `Processed for 12s · 22:53`, followed by what the request spent, the same facts the VS Code
-  extension shows: `↑12.3k ↓1.2k · 87.0% cached · 3 model calls · 62 tok/s · 5 tool calls, 1 failed` (tokens sent and
-  received; the share of the input served from the cache; model calls, when there was more than one; output speed;
-  tool calls and how many failed). Each appears only when it has something to say, and a narrow terminal breaks the
-  line between two of them, never inside one. It is the only row that moves: its
-  marker and the highlight crossing the word pulse together — a second of
-  movement, then a second at rest — while the clock and the stop key stand
-  beside it in parentheses, in the quiet ink a notice uses, counting whole
-  seconds and minutes. If the model says nothing for twenty seconds while nothing else is running, the row
-  says so in the warning colour — `✦ Processing (47s · nothing from the model for 47s · ^C/Esc to interrupt)` —
-  so a request that is not going anywhere does not look like a slow one. It is only said, never acted on: a
-  model that reasons for minutes before its first word is normal, and `Esc` is yours to press. A command that
-  runs for minutes is not the model going quiet, and says nothing.
-  After five seconds a small tip hangs under the word in the same quiet ink, from the same `└` a tool's result hangs from — `└ Tip: /btw <question> is answered
-  on the side and never joins the conversation.` — and is replaced by the next every fifteen seconds. A request
-  that is answered at once shows none, and the settled row keeps none. Each request begins one tip further along,
-  so you see a different one each time; `tips = false` under `[transcript]` turns them off.
-- **A request that fails** says why in the conversation, in the error colour: what the library reported and, in
-  brackets, what the server answered — `error: Provider stream request failed (HTTP 404: The model gpt-9 does
-  not exist — check the model id and the address with /config)`. For a refused token, a missing model or an
-  address that cannot be reached it also says which setting to look at. When the failure is the provider's or the
-  network's — no response in time, a dropped connection, a 408, 429 or 5xx — the line ends with `/continue tries the
-  request again from where it stopped.`, because the request is stored and trying again often works; a wrong token or
-  a missing model says nothing of the kind. Anything in the server's reply that looks
-  like a credential is replaced with `…`, so an error can be pasted into an issue. A request that ends with an
-  empty reply says that instead of leaving a line with only a time on it.
-- **A reply that did not finish normally** is followed by a line saying why, in the error colour, so that what
-  the model managed to write is not taken for an answer: it hit its **output limit**, the provider **cut it off**
-  or **paused** it, the **context window** filled, or the model **declined** (with what the provider said, and
-  which tool calls it had asked for and were therefore not run). Where there is something to do the line says
-  it — `/continue`, `/compact`, `/model` — and it is shown again when the session is opened later.
-- **Notices** — a copied selection, a refused command, an exported file — appear
-  as muted one-liners.
-
-`Page Up` / `Page Down` and the mouse wheel scroll. The wheel moves one row for each event the terminal
-sends, however fast you turn it, and a single frame never moves further than half the screen, so a flick of a
-trackpad cannot jump past content you have not seen. If that is too slow for your mouse, set
-`transcript.mouse_scroll_speed` (see [Configuration](/guide/config)). While you are scrolled up, a
-`↓ back to bottom` badge appears; `Esc` or the badge returns to the newest line.
-While a request is running, `Esc` stops it, exactly as `Ctrl-C` does: the key that
-means "get me out of this" should not depend on remembering which of the two the
-shell reserved for it.
-and the view starts following the tail again.
+`Page Up` / `Page Down` and the wheel scroll, one row per event; no frame moves more than half a screen.
+`transcript.mouse_scroll_speed` speeds the wheel up. Scrolled up, a `↓ back to bottom` badge appears; `Esc` returns
+to the newest line or stops a running request.
 
 ## The composer
 
-The `›` prompt is where you type. It grows as the draft grows, up to a share of
-the screen.
+The `›` prompt grows with the draft, up to a share of the screen.
 
 - **Enter** sends. **Alt-Enter** or **Shift-Enter** adds a newline.
-- **`/`** opens the command menu, **`@`** opens the resource menu (your skills, files, and the other running
-  sessions — see [Talking between sessions](/guide/messaging)).
-  `Up` / `Down` choose, `Enter` or `Tab` fills in, `Esc` closes.
-- A long paste — over 512 characters, or taller than the composer grows — is
-  replaced by a `[pasted text 6012 chars]` chip. **Backspace** removes the whole
-  chip; the text is restored when the draft is sent.
-- **Ctrl-V** attaches an image from the desktop clipboard as an `[image #N]`
-  chip. Text and images keep the order you wrote them in. See
-  [Pictures and pastes](#pictures-and-pastes).
-- A `/command` or an `@resource` is coloured only when it is real. The command must exist and be
-  the first word of the draft (that is the only place a command runs); the resource must be one
-  that exists. Anything else — `/usr/bin` in a sentence, `@someone` — is just text, and
-  **Backspace** deletes it one character at a time. A real one is deleted whole.
+- **`/`** opens the command menu, **`@`** the resource menu (skills, files and running sessions). `Up` / `Down`
+  choose, `Enter` or `Tab` fills in, `Esc` closes.
+- A paste over 512 characters, or taller than the composer grows, becomes a `[pasted text 6012 chars]` chip.
+  `Backspace` removes it whole; the text returns when you send.
+- **Ctrl-V** attaches an image as an `[image #N]` chip. Text and images keep the order you wrote them in.
+- A `/command` or `@resource` is coloured only when it is real: the command must exist and be the first word.
+  `Backspace` deletes a fake one by character, and a real one whole.
 
 ## Typing while a request runs
 
-You do not have to wait for the model to stop. Type while it is working and press
-Enter, and ZettCode asks what the message is — the text alone cannot say:
+Type while the model works and press Enter, and ZettCode asks what the message is:
 
 ```text
 You sent a message while ZettCode is working. What should it do?
@@ -194,494 +91,144 @@ You sent a message while ZettCode is working. What should it do?
 enter choose · f follow up · s steer · esc keep editing the draft
 ```
 
-`f` and `s` pick a row directly, `Enter` takes the highlighted one (**Follow up**, the
-choice that cannot interrupt anything), and `Esc` closes the question and leaves your
-draft in the composer, so pressing Enter too early costs nothing. When only one answer
-is possible — a command such as `/compact` is running, which cannot be steered — nothing
-is asked and the message waits as a follow-up.
+`f` and `s` pick a row, `Enter` takes the highlighted one (follow up), and `Esc` keeps your draft. When only one
+answer is possible — a command such as `/compact` cannot be steered — nothing is asked.
 
-### Steer: change what it is doing
+**Steer** puts the message in a `↳ steer` list above the composer. The agent reads it at its next safe point and
+drops the rest of the current task; up to eight can queue. It is a new instruction for the same task and does not
+undo edits. Once the agent has it, it cannot be changed.
 
-A steering message joins a small `↳ steer` list above the composer. The agent reads it at
-its next safe point — after the tool batch it is running — and drops the rest of the
-current task for it. Up to eight can be queued. It is a new instruction for the **same**
-task and does not undo edits already made.
+**Follow up** puts the message in a `• follow-up` list directly above the composer. It goes out as its own message
+when the conversation ends well — one at a time, in the order shown, up to eight. You can move, edit, convert to a
+steer or delete one; the keys are in [Keys and mouse](/guide/keys).
 
-Both lists show one line per message. A message too long for the line is cut and ends in `…`, and
-so does one with more lines after the first (a pasted block shows its first line and `…`); the whole
-text is still what is sent.
+Stopping a request does not send the list or lose it: it reads `held until your next reply completes`, and goes out
+after the next reply that completes. `/new`, `/resume` and `/fork` hand the list back as text in the composer, and a
+steering message the agent never read goes back there too. If you need the agent to stop now, press `Esc`.
 
-By the time you see it in the list the agent already has it, and the agent offers no way
-to take a message back, so **a steering message cannot be edited, removed or reordered**.
-If you are not sure you want it, send it as a follow-up: that one stays in your hands.
+## Panels and approvals
 
-### Follow up: do this next
+A command that needs a choice opens a panel. `Up` / `Down` move, `Enter` accepts, `Esc` goes back to the composer,
+and the transcript waits underneath.
 
-A follow-up waits in its own `• follow-up` list, directly above the composer, and goes out
-as a message of its own when the conversation ends well — one at a time, in the order shown,
-each starting when the one before it is done. Up to eight can wait. Steering messages and
-follow-ups can wait together: the steering list sits above, and every key below works on
-the follow-ups.
+- `/model` picks the model for later requests. `/resume` picks a recent session, with its title and when it changed.
+- `/context` shows what is filling the context window. `/usage` shows what this project's sessions spent, and takes
+  the whole screen. See [Token usage](/guide/commands#usage).
+- **Approvals** ask whether to run a shell command.
 
-Because a follow-up is still in your hands, you can change it. `Option` is the key marked
-`⌥` on a Mac (`Alt` on other keyboards, and that is what the hints say there):
+`/theme` and `/permission` use the command menu instead; `/effort` opens a rail you slide with `←` `→`.
 
-| Key | What it does |
-| --- | --- |
-| <kbd>Option</kbd>+<kbd>Up</kbd> / <kbd>Option</kbd>+<kbd>Down</kbd> | With nothing highlighted: walk into the list. `Option-Up` lands on the row nearest the composer and `Option-Down` on the first. **With a message highlighted: move that message** one place earlier or later; the highlight goes with it. |
-| <kbd>Up</kbd> / <kbd>Down</kbd> | With a message highlighted: move the highlight. `Down` past the last row goes back to the composer. Without a highlight these are the composer's, as always. |
-| <kbd>Enter</kbd> | Take the highlighted message out of the list and into the composer to change it. Sending it again puts it back **in the slot it left**, not at the end. |
-| <kbd>Ctrl</kbd>+<kbd>S</kbd> | **Steer with it now.** The highlighted message leaves the follow-ups and goes to the running request as a steering message, to be adopted at its next model or tool boundary — for the one that turned out to be urgent. Pictures go with it. It says why when it cannot: nothing is running (the list is held after a stop), a command is running rather than a reply, or the steering limit is reached; the message stays where it is then. |
-| <kbd>Delete</kbd> / <kbd>Backspace</kbd> | Remove the highlighted message; it will not be sent. The line above the composer names what was removed. |
-| <kbd>Esc</kbd> | Let go of the highlight. The request keeps running; a second `Esc` stops it as usual. |
+When the model asks a question — a format, a file, whether to continue — the panel is as tall as the question.
+`Up` / `Down` and `Enter` work the choices, and typing answers in your own words. `Esc` declines.
 
-The list names these keys itself — the row under it reads `option+↑/↓ to select`, and once a
-message is highlighted it lists the rest — so there is nothing to memorise. Typing anything
-also lets go of the highlight, and `Enter` will not overwrite a draft you have already
-started: finish or clear it (`Ctrl-C`) first.
+### Approvals
 
-::: tip In VS Code's terminal
-VS Code rewrites `Option-↑` and `Option-↓` before the terminal sees them — it sends the keys
-`Ctrl-↑` and `Ctrl-↓` instead — so ZettCode treats the two spellings as the same key, and the
-list works the same there as in iTerm2. (Only while a follow-up list exists: with nothing queued
-the keys are left alone.)
-:::
-
-::: tip If your terminal swallows Option-Up
-Some terminals use `Option-Up` themselves. ZettCode reads the usual spellings, including
-the "Option sends Esc+" setting of macOS Terminal and iTerm2. If yours still keeps the key,
-turn on "Use Option as Meta" (Terminal) or set the left Option key to "Esc+" (iTerm2).
-:::
-
-### When the conversation does not end well
-
-`Esc` (or `Ctrl-C`) stops a request you no longer want, and that is *all* it does. The follow-ups
-are your own list: stopping does not send them, and it does not take them away either. They stay
-in the list, which now reads `held until your next reply completes`, and the transcript says how
-many are held. Say what you meant to say instead — and when **that** reply completes, the held
-follow-ups go out behind it, in order. A request that failed does the same.
-
-So a follow-up is only ever attached to a conversation that finished smoothly. A side question
-(`/btw`) finishing in between is not a reply and does not release them. The list belongs to its
-conversation: `/new`, `/resume` and `/fork` hand it back as text in the composer rather than send
-it into a conversation it was not written for.
-
-One thing is different. A *steering* message the agent never got to read was written to redirect
-the request that just ended, so it goes back into the composer, after whatever you had typed there.
-
-For example, while a pagination change is running, send this as a **steer**:
-
-> Keep the current API response format; only add the pagination fields.
-
-and this as a **follow-up**:
-
-> Then add a test for the last page.
-
-If you need the agent to stop immediately, press `Esc` instead.
-
-## Panels
-
-Commands that need a choice open a panel over the conversation instead of
-printing options into it. `Up` / `Down` move, `Enter` accepts, `Esc` goes back
-to the composer, and the transcript is untouched underneath:
-
-- `/model` — pick the model for later requests.
-- `/resume` — pick a recent session, with its title and how long ago it changed.
-- `/context` — what is filling the context window right now.
-- `/usage` — what this project's sessions have spent, by model, by session and by day; it takes the whole screen. See [Token usage](/guide/commands#usage).
-- **Approvals** — the panel that asks whether to run a shell command.
-
-`/theme` and `/permission` choose among a few fixed words, so they use the command menu
-instead of a panel: type the command and a space, and `Enter` applies the highlighted word.
-`/theme` goes one step further: moving the highlight repaints the whole interface in that palette, so you can
-judge it on your own conversation, and `Esc` puts the old one back.
-`/effort` has a panel of its own: a rail of levels with a knob you slide with `←` `→`.
-
-## Approvals
-
-`bash` is the one tool that asks. How often it asks is a setting with four
-levels, which `/permission` changes at any time between requests:
+`bash` is the tool that asks. `/permission` sets how often, between requests:
 
 | Level | What happens to a shell command |
 | --- | --- |
-| `deny` | None runs. The model is told the commands are off, and carries on with the file tools. The harness, when `/plugins` has it on, still runs the Python the model writes there — in the sandbox, since it is not a shell command. |
-| `ask` | Each one waits for your answer. This is where every run starts. |
-| `safe` | Every command runs without asking, inside an operating-system sandbox: it can write the workspace and `/tmp` and nothing else, and it has no network. |
-| `full` | Every command runs with your own access, without asking and without a sandbox. (Called `auto` before; `auto` still works.) |
+| `deny` | None runs. The model is told commands are off and carries on with the file tools. |
+| `ask` | Each command waits for your answer. A new session starts here. |
+| `safe` | Every command runs without asking, inside an operating-system sandbox. |
+| `full` | Every command runs with your own access, without asking and without a sandbox. (`auto` still works.) |
 
-The level covers the shell only. File edits and MCP tools are not behind a
-prompt in ZettCode, so `deny` is not a read-only mode for your workspace. It is
-not saved across restarts either: the next run starts at `ask` again.
+The level covers the shell only. File edits and MCP tools never ask, so `deny` is not a read-only mode. A new session
+starts at `ask`; a resumed session keeps the level it last used.
 
-### What the `safe` sandbox allows {#the-safe-sandbox}
-
-On macOS the sandbox is Seatbelt (`sandbox-exec`); on Linux it is bubblewrap
-(`bwrap`). Inside it a command can:
-
-- **write** the workspace and the temporary directory (`/tmp`, and `$TMPDIR` on macOS) — nowhere else, so a
-  stray `rm -rf ~` or a write to your home directory is refused by the kernel;
-- **read** the rest of the machine, except where credentials live (`~/.ssh`, `~/.aws`, `~/.gnupg` and the like);
-- not reach the network, unless you set `network = true` under `[shell]` in the [configuration](/guide/config);
-- not rewrite an existing `.git/hooks`, `.git/config` or shell start-up file (such as `.zshrc`), even inside the
-  workspace. macOS also stops one being created; on Linux bubblewrap can only protect a file that already exists;
-- see only a short list of environment variables, so an API key in yours does not reach it.
-
-A command that fails there ends with a note naming the boundary, so the model tells you which command needs
-more instead of trying the same wall again — and you can choose `/permission full` for it.
-
-Windows has no such sandbox, and neither does a Linux machine without `bwrap`. There `safe` is what it used to
-be: commands that only read run, and anything else asks. It never claims a boundary the machine cannot draw.
-
-At `ask` the panel shows the exact command, the directory it runs in when
-the call names one instead of the workspace, the level it is asking
-at, and offers:
+At `ask` the panel shows the command and its directory.
 
 | Key | Meaning |
 | --- | --- |
 | `y` | Run it this once. |
-| `p` | Run it, and remember this exact command for the session. The memory is the command text, not the directory: a command remembered here is not asked again wherever the model runs it. |
-| `s` | Run it, and stop asking: later commands run in the sandbox (switches to `safe`). Not offered at `safe`, where it would change nothing. |
-| `a` | Run it, and stop asking: full access, no sandbox (switches to `full`). |
-| `Esc` | Refuse. The agent is told the command failed, and can react. |
+| `p` | Run it, and remember this exact command for the session. The memory is the command text, not the directory. |
+| `s` | Run it and stop asking: later commands run in the sandbox. Not offered at `safe`. |
+| `a` | Run it and stop asking: full access, no sandbox. |
+| `Esc` | Refuse. The agent is told the command failed and can react. |
 
-`s` and `a` are the same change `/permission safe` and `/permission full` make:
-the level, the line in the conversation, and the status line all agree whichever
-door you used. Mid-request they are the way to change it, because a typed
-command waits for the request to end. The level belongs to the session, so the
-next time you open this conversation it starts there; a new session starts at
-the level a run begins with.
+### What the `safe` sandbox allows {#the-safe-sandbox}
 
-For a command such as `pytest tests/test_users.py`, choose `y` if you want to
-review the next command separately. Choose `p` only when you want that exact
-command remembered for the current process. `a` grants a wider allowance; do
-not choose it merely to dismiss the panel. Approval memory is not saved across
-program restarts, and the tools run locally rather than in a ZettCode sandbox.
+On macOS the sandbox is Seatbelt (`sandbox-exec`); on Linux it is bubblewrap (`bwrap`). A command inside it can:
 
-### What `safe` runs
+- **write** the workspace and the temporary directory, and nowhere else;
+- **read** the rest of the machine, except where credentials live (`~/.ssh`, `~/.aws`, `~/.gnupg`);
+- not reach the network, unless you set `network = true` under `[shell]`;
+- not rewrite `.git/hooks`, `.git/config` or a shell start-up file, even inside the workspace;
+- see only a short list of environment variables.
 
-`safe` runs a command without asking only when it recognises every part of it
-as unable to change anything: a short list of reading programs (`ls`, `cat`,
-`grep`, `head`, `wc`, `diff`, …), `rg` and `find` without the options that run
-something or write a file, and `git status`, `log`, `diff`, `show`, and other
-read-only subcommands, optionally joined with `|`. Anything it does not know
-asks, including `;`, `&&`, redirects, `$(…)`, and every program not on the list.
+Windows, and Linux without `bwrap`, have no such sandbox: `safe` runs commands that only read and asks for anything
+else.
 
-Two things it does not promise. A read-only command can still print a secret
-that sits in the workspace, so `safe` means *nothing will change*, not *nothing
-will be seen*. And `git` reads its own configuration, which can name programs to
-run: a repository whose config does is not trusted, and your global git
-configuration is not checked. If a workspace may hold such files, use `ask`.
-
-## When the model asks you a question
-
-Some decisions are not the model's to guess — which format, which of two files,
-whether to keep going. It can ask, and the turn waits for you. The panel is only
-as tall as the question needs, and it says which kind of answer it wants:
-
-```
-  Which format should I write the summary in?
-       1. Markdown
-   ▸ ✓ 2. Plain text
-  › up/down choose, enter sends · or type an answer · esc cancels
-```
-
-- `Up` / `Down` move through the choices, and `Enter` acts on the highlighted
-  row. A one-answer question sends it straight away, the way `/model` and
-  `/resume` work; the `✓` marks the row `Enter` would pick.
-- A question that allows several choices ticks instead, and grows a `send` row
-  to finish with:
-
-  ```
-     ✓ 1. Summary
-     ✓ 2. Diff
-       3. Tests
-     ➤ send (2 chosen)
-  ```
-
-  `Enter` on a ticked row unticks it, and `➤ send` answers with everything
-  ticked.
-- Under the choices sits the answer line, with no label of its own: it shows the
-  keys until you type, and what you type from then on. So you can pick a choice
-  or answer in your own words — and a question with no choices is nothing but
-  that line. A multiple-choice answer is its ticks *plus* whatever you type
-  beside them, in that order however you wrote them, and a word that is already
-  ticked is not repeated.
-- Typing takes the panel over: the choices fold away, and the `▸` marker and the
-  band move to the answer line, because that is where the cursor is. `Up`/`Down`
-  bring the choices back with your text still in the line — and on a one-answer
-  question no row is marked then, since the answer is what you wrote.
-- A chosen row keeps a raised background and an accent-coloured `✓`, so what you
-  have picked is visible at a glance; the row your cursor is on is banded more
-  strongly still.
-- On a one-answer question, choosing after typing asks first: the note
-  `one answer only` appears beside the question, and a second `Enter` replaces
-  what you wrote.
-- The header counts the questions when the model asked several in one turn, and
-  each is asked in turn: answer the one on screen, and the next appears.
-- `Esc`, or `Ctrl-C`, declines the question. The model is told the question was
-  cancelled and carries on rather than waiting for an answer that is not coming.
-
-The panel sits over the conversation like the approval prompt, and the run stays
-suspended until it is answered. `[ask_user] enabled = false` takes the tool away
-altogether, and then the model answers from what it already knows instead of
-asking.
+`safe` runs a command without asking only when every part of it is on a list of reading programs (`ls`, `cat`,
+`grep`, `git status`, …). `;`, `&&`, redirects and `$(…)` ask. A read-only command can still print a secret in the
+workspace: `safe` means nothing changes, not that nothing is seen. A `git` configuration can name programs to run:
+use `ask` where one may live.
 
 ## Side questions
 
-`/btw <question>` asks something the model should answer from what it already
-knows — "what does this function do?", "which of these two is faster?" — and the
-answer appears here like any other turn, marked `btw ›` on a tinted surface of
-its own, so the aside stands out from the turns around it (the
-[`surface_side`](/guide/config#colours) role, if you want to recolour it).
+`/btw <question>` asks something the model answers from what it already knows. The answer appears as any other turn,
+marked `btw ›` on a tinted surface of its own.
 
-What makes it *side* is what is not kept:
-
-- The exchange is written into the session file, but never replayed into the
-  model's context, so later turns do not know it happened.
-- It *is* replayed into the transcript when the session is resumed, marked
-  `btw ›` like it was when you asked it — you asked it, so it comes back; a
-  plugin's own side question, which nobody typed, does not — but it is not in an
-  [export](/guide/sessions#exporting).
-- Only the reading tools are offered. An edit made while asking would be
-  invisible to the conversation that continues afterwards, so the model would
-  carry on with a false picture of the workspace.
-
-Ask one while a turn is running and it waits for that turn instead of being
-refused; its tokens still count in the status line, and it does not trigger
-automatic compaction or naming.
-
-For example, during a task to update an API endpoint:
-
-```text
-/btw What is the difference between offset and cursor pagination?
-```
-
-Use a normal message instead if that answer should guide the continuing task.
-If a normal request is still running, the side question waits for it to finish;
-it is not a second simultaneous writer to the workspace.
+It is written to the session file but never replayed into the model's context, so later turns do not know it.
+It comes back in the transcript on resume, but not in an [export](/guide/sessions#exporting). Only the reading tools
+are offered, so an edit cannot slip out of it. A side question asked during a turn waits for it; its tokens still
+count and it does not trigger compaction or naming.
 
 ## Pictures and pastes
 
-A picture can be sent like any other message, including **while a request is running**: as a
-follow-up it goes out with its picture in the place its chip holds, and as steering it reaches the
-agent as one message with the picture in it. Taking a message back out to edit it, or getting back
-one the agent never read, restores its pictures as chips.
+**Ctrl-V** reads the clipboard and inserts an `[image #N]` chip where the picture belongs. PNG, JPEG, WebP and GIF
+are sent as image parts in that position.
 
-A terminal cannot hand a program the bytes of a pasted image, so **Ctrl-V** reads
-the system clipboard itself — the macOS pasteboard in-process, `wl-paste` or
-`xclip` on Linux — and inserts a chip where the picture belongs. PNG, JPEG, WebP
-and GIF all arrive as themselves, and each one is sent as an image part in the
-position its chip holds, so the model reads each picture where you put it.
+Over `ssh` it cannot see a picture copied on your machine: put the file on the server and refer to it by path.
 
-This reads the clipboard of the machine ZettCode runs on, so **over `ssh` it cannot see an image
-you copied on your own machine**: a terminal can carry text across the connection (that is how
-[copying works](#copying-over-ssh)) but has no way to carry a picture. Over `ssh` Ctrl-V therefore
-does not look at all; it says why and what to do instead — put the file on the server and refer to
-it by path, or set `ZETTCODE_CLIPBOARD=system` if a display forwarded over `ssh` makes the
-server's clipboard the right one.
+A restored session shows the chip, not the picture. A model with `multimodal = false` refuses the attach.
+See [Models](/guide/models).
 
-On a machine with no clipboard tool (a bare Linux server has neither `wl-paste` nor `xclip`),
-Ctrl-V says `no image on the clipboard`. A tool that is missing, cannot be run, or does not
-answer within three seconds never ends the session.
+## Copying over `ssh` {#copying-over-ssh}
 
-Two things follow from the chip being text:
-
-- a restored session shows `[image #3]` where the picture was, and does not
-  re-send it;
-- a model configured with `multimodal = false` refuses the attach with a notice
-  instead of failing later, and is never given the picture-reading `read` tool: it reads with `read_file`, which returns text only.
-
-Every other paste still goes through the terminal's own paste key
-(`Cmd-V` on macOS, `Ctrl-Shift-V` or `Alt-V` elsewhere). A terminal that pastes
-an image *as text* is recognised too — VS Code's integrated terminal turns a
-clipboard image into base64 — so a `data:image/…;base64,` URI, or base64 that
-decodes to a known image, becomes the same chip instead of a wall of characters.
-
-## Selecting and copying
-
-- Drag in the transcript to select; the selection is copied when you release, and
-  the row above the composer says so for a moment — a small highlighted pill, `✓ copied 42
-  chars to clipboard` — before the next thing typed takes that row back. The pill is the
-  only thing on screen that shows a copy happened, which is why it has a fill of its own;
-  it hugs its words rather than running across the screen.
-- Double-click selects a whole row; `Shift`-click extends.
-- Drag anywhere else — a panel, a list, the header — to copy the text painted
-  there; those surfaces never had selectable text of their own.
-- `Ctrl-C` copies the current selection and clears it. With nothing selected it
-  stops the running request, or clears the draft.
-
-### Copying over `ssh`
-
-When ZettCode runs on a server you reach with `ssh`, the clipboard you will paste from is
-the one on **your** machine, not the server's. A clipboard tool on the server can only reach
-the server's, so ZettCode does not use it there: it asks your terminal to do the copy
-(an [OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) escape sequence), and
-that travels over the connection like everything else it prints. The pill then reads
-
-```text
-✓ sent 42 chars to your terminal's clipboard
-```
-
-and says "sent" rather than "copied" on purpose: the program is on another machine and cannot
-see whether your terminal accepted it. Several terminals ask first or refuse by default.
-
-| Terminal | What it needs |
-| --- | --- |
-| iTerm2 | Turn on the setting that lets applications in the terminal access the clipboard — in Settings → General → Selection, "Applications in terminal may access clipboard". It is off until it is turned on, and a shell can turn it on too: `defaults write com.googlecode.iterm2 AllowClipboardAccessFromTerminal -bool true`, then quit and reopen iTerm2 |
-| kitty, Alacritty, Ghostty | Nothing: they allow a program to *write* the clipboard by default |
-| WezTerm, Windows Terminal | Support it |
-| tmux | `set -g set-clipboard on` — tmux's default, `external`, does not accept it from programs inside — or `set -g allow-passthrough on`, in `~/.tmux.conf` |
-
-A terminal that does not support OSC 52 ignores it, and the text goes nowhere. The pill still says
-the text was *sent*, because the program on the far side of the connection cannot see what your
-terminal did with it. iTerm2 has the sharpest edge here: the setting above is off until it is turned
-on, and iTerm2's own warning about a refused copy can be dismissed with "Don't Show This Again",
-after which every later refusal is silent — the copy simply does nothing. To see what your terminal
-does with it, run this in it and paste:
-
-```sh
-printf '\033]52;c;%s\007' "$(printf 'hello' | base64)"
-```
-
-`hello` on the clipboard means it took the copy; nothing means it refused. Then copy with the
-terminal's own selection, which you get by holding its modifier (<kbd>Shift</kbd> or
-<kbd>Option</kbd>) while dragging.
-
-ZettCode decides where to copy from the environment: `SSH_CONNECTION`, `SSH_CLIENT` or `SSH_TTY`
-means it is on the far side of a connection. Where that guess is wrong — `sudo` drops the
-variables, or you forwarded an X display and the server's clipboard is the one you want —
-say so with `ZETTCODE_CLIPBOARD=terminal` or `ZETTCODE_CLIPBOARD=system`.
+On a server, a selection is copied through your terminal with OSC 52, so it lands on the machine you sit at; the pill
+says `sent`, because the program cannot see whether the terminal accepted it. If a forwarded display makes the
+server's clipboard the right one, set `ZETTCODE_CLIPBOARD=system`. A terminal that ignores OSC 52 copies nothing, so
+hold its own modifier (<kbd>Shift</kbd> or <kbd>Option</kbd>) and drag.
 
 ## The status line
 
-The left half answers "what is happening, and how much has it cost"; the right
-half keeps the two keys worth remembering (`^C/Esc to interrupt`, `^D exit`) in view.
+The left half says what is happening and what it cost; the right half keeps `^C/Esc to interrupt` and `^D exit` in
+view.
 
 | Piece | Meaning |
 | --- | --- |
-| `●` / a blinking `✦` | The dot is idle; the blinking sparkle is work in progress. |
-| `ready`, `running` | The current state — or a one-off note, such as the command being run or a copied selection. |
-| `· deny`, `· safe`, `· full` | The shell permission, when it is not the default `ask`. |
-| `↑18.4k ↓900` | Tokens sent to the model, and tokens it generated, this session. |
-| `71.2% cached` | The share of the input the provider served from its cache. |
-| `74 tok/s` | Generated tokens per second: the provider's own output count over the time from the first token of each reply to its end, summed over the session. The wait for the first token is not in it, and the tokens that arrived with that token are counted against the window that opens at it, so the figure reads a little high rather than low. |
-| `ctx 12.3%` | How much of the model's declared window the newest request filled, measured from the conversation when the provider reports no input tokens. |
-
-Those counters come from the provider's own numbers, accumulated after every
-model call, with one exception that is measured here: `ctx`, when the provider
-reports no input tokens. `tok/s` divides the provider's count by the time the
-runtime measured from the first token to the end of the reply, so a resumed
-session reads essentially the rate a live one did: the stored reply carries that
-measurement, and the two differ only by the instant the live clock was started. A reply stored before it existed falls back to the span between its
-reasoning and content segments, which is a little shorter than the window.
+| `●` / a blinking `✦` | Idle; the sparkle means work in progress. |
+| `ready`, `running` | The state, or a one-off note. |
+| `· deny`, `· safe`, `· full` | The shell permission, when it is not `ask`. |
+| `↑18.4k ↓900` | Tokens sent and generated this session. |
+| `71.2% cached` | The share of input served from the provider's cache. |
+| `74 tok/s` | Generated tokens per second, over the session. |
+| `ctx 12.3%` | How much of the model's window the newest request filled. |
 
 ### Choosing what is shown {#choosing-what-is-shown}
 
-Every word in the header and the status line belongs to a **part** with a name, and every part is shown until you
-switch it off. `/statusline` opens a panel listing them:
-
-| Row | Part | What it shows |
-| --- | --- | --- |
-| Header | `app` | The mark and name of the program |
-| | `session` | The session's title; `New session` until it has one |
-| | `handle` | The `@name` other sessions reach this one by, when messaging is on |
-| | `workspace` | The directory the session works in |
-| | `model` | The model the next request goes to |
-| | `effort` | How much the model reasons on the next request |
-| Status line | `state` | The activity icon and what is happening |
-| | `mode` | How much of the shell may run unasked; shown unless it is `ask` |
-| | `self-compact` | Marks a session where the model may compact its own context |
-| | `tokens` | Tokens sent and received in this session |
-| | `cache` | The share of input the provider served from its cache |
-| | `speed` | How fast the model generates, in tokens per second |
-| | `ctx` | How much of the model's context window the last request filled |
-| | `keys` | The keys worth remembering: stop and exit |
-| Request line | `turn-time` | How long the request took: `Processed for 12s` |
-| | `turn-clock` | The time of day it ended |
-| | `turn-tokens` | Tokens sent and received by the request |
-| | `turn-cache` | The share of the request's input served from the cache |
-| | `turn-calls` | How many times the model was asked; shown when more than once. Off by default |
-| | `turn-speed` | The model's output speed during the request |
-| | `turn-tools` | Tool calls the model made, and how many failed. Off by default |
-| Companion | `pet` | The small pet over the conversation; see [The pet](#the-pet) |
-
-In the panel ↑ ↓ move between the parts — past the last goes round to the first, and past the first to the last — and ← → hide or show the one marked (Space flips it). The two rows above the
-list are a preview of the header and the status line with your choices, the marked part picked out, so you see the
-effect before applying it. `Enter` writes the choice and the bars change; `Esc` leaves everything as it was. On a
-short terminal the list scrolls.
-
-The choice is kept in `config.toml`, one line per part you switched off:
+Every word in both bars belongs to a named part, shown until you switch it off. `/statusline` lists them — `ctx`,
+`cache`, `model`, the `turn-*` items of the line a request ends on, `pet` and the rest — and `Enter` applies the
+choice while `Esc` leaves it as it was. In `config.toml`, one line per hidden part:
 
 ```toml
 [statusline]
 ctx = false
-speed = false
 ```
 
-The request line is the one a request ends on, in place of its waiting row: `Processed for 12s · 22:53 · ↑12.3k ↓1.2k · 87.0% cached · 3 model calls · 62 tok/s · 5 tool calls, 1 failed`. Each of its items is a part of its own, joined by `·`, so `turn-tools = false` removes just the tool count. A narrow terminal breaks the line between two items, never inside one. A plugin can add items of its own (named `turn-<something>`); they appear in the panel under the same heading and are switched the same way. A change applies to the requests that end after it; lines already in the conversation stay as they were.
+`/statusline hide ctx speed` and `/statusline show all` do the same from the keyboard. On a narrow terminal the
+figures that matter least are left out whole — `speed`, then `cache`, then `tokens` — and `ctx` stays.
 
-From the keyboard, `/statusline hide ctx speed` and `/statusline show cache` do the same, and `/statusline show all`
-brings every part back. A part with nothing to say right now (`handle` with messaging off, `mode` at `ask`) takes no room
-either way.
+## The pet {#the-pet}
 
-On a narrow terminal the keys on the right keep their room, and the left side would be cut at its end, which is
-where `ctx` stands. So when the status line does not fit, the figures that matter least are left out whole — `speed`
-first, then `cache`, then `tokens` — and `ctx` stays. Widen the terminal and they come back. A request whose
-provider reported no token count does not blank `ctx` either: the last reading stands until the next one.
+A small companion can stand over the right of the conversation. It is off until you set `pet = true`
+under `[statusline]`, or switch the `pet` part on in `/statusline`. `/pet` opens a panel and `/pet whale` picks one
+in a step. Drag it with the mouse to move it, and its place is saved for later sessions. A terminal narrower than 80
+columns does not draw it. See [`/pet`](/guide/commands#slash-commands) and
+[Optional features](/guide/config#optional-features).
 
-### The pet {#the-pet}
+## Next steps
 
-A small companion can stand over the right-hand side of the conversation, halfway down. **It is off until you switch
-it on**: turn on the `pet` part in `/statusline`, or set `pet = true` under `[statusline]`. It is a pixel sprite, nine to
-eleven pixels across and drawn with half blocks, each pet in its own small palette, and you choose which one with
-`/pet`:
-
-| Pet | What it is |
-| --- | --- |
-| `cat` | A ginger cat with pricked ears and a pink mouth. **The default.** |
-| `dog` | A tan dog with long floppy ears. |
-| `tiger` | An orange tiger with stripes on its brow. |
-| `polarbear` | A white polar bear with round ears. |
-| `snowbear` | A big white bear sitting side on; an ear flicks. |
-| `penguin` | A navy penguin that flaps its flippers. |
-| `scarfy` | A penguin in a red scarf that swings. |
-| `kangaroo` | A russet kangaroo that hops. |
-| `seagull` | A pale seagull that flaps its wings. |
-| `whale` | A blue whale that spouts. |
-| `chibi` | An original anime-style girl with a violet bob. |
-| `slime` | A round green slime that hops. |
-| `sprout` | A seedling in a pot whose leaves lift. |
-
-It is **asleep** while nothing runs, so it is a still picture and costs nothing; it wakes and goes about its
-business while a request runs (the cat watches, the whale spouts, the slime hops); and when you pat it, it closes its
-eyes and blushes for a moment. With reduced motion it holds still.
-
-`/pet` opens a panel. ↑ ↓ move through the list (up from the first goes round to the last, and down from the last to
-the first) and **the pet you are on is put over the conversation at once**, where
-it will stand, while a stage at the right shows it asleep, at work and pleased in turn, tinted with its own colour.
-`Enter` keeps it and `Esc` puts the old one back. `/pet whale` switches in one step. The choice is written to `[ui] pet`
-in `config.toml`:
-
-```toml
-[ui]
-pet = "whale"
-```
-
-Plugins can offer more pets; see [Offering a pet](/guide/plugins#pets).
-
-- **Drag it** with the mouse to put it anywhere from the top of the conversation to the bottom of the composer, so it
-  can stand on the composer too, in the empty space beside your draft. It never goes onto the header or the status
-  line, and a panel that opens covers it like everything else under it. It keeps its place, as a share of the room,
-  when you resize the terminal or change pets. The pointer and
-  the pet stay together: drag it past an edge and bring the pointer back, and it follows at the first step. Where you
-  leave it is remembered in the global `config.toml` (`[ui] pet_position = [0.82, 0.4]`, across and down, each from 0
-  to 1), and the next start puts it back there. It is the same in every project, because the pet is yours.
-- **Click it** (press and let go without moving) to pat it.
-- The wheel over it still scrolls the conversation, and the cells around its outline show the conversation through.
-- It takes no room: it is drawn over the text, so it hides a few columns of whatever is under it. Drag it aside, or
-  switch it off again with `/statusline hide pet` (or the `pet` switch in the panel). It is not drawn at all when the
-  conversation is narrower than 80 columns or too short to leave it room.
-
-It is a part like the others, but the only one that starts hidden: `pet = true` under `[statusline]` brings it out, and
-`pet = false` puts it away. It does not depend on `app` or on
-anything else in the bars. Its place is not saved: each session starts with it at the right-hand edge.
+- [Keys and mouse](/guide/keys): every key and mouse action on one page.
+- [Commands](/guide/commands): every slash command and the `zettcode` command line.
+- [Configuration](/guide/config): every setting, including `[transcript]`, `[statusline]` and `[tools]`.

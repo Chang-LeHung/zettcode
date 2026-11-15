@@ -1,145 +1,63 @@
 # 后台 agent
 
-daemon 是一个没人守在键盘前的会话。它在自己的工作目录里运行，终端关掉也继续活着；找到它的方式和找到别的会话一样：另一个 agent 用 `send_message` 给它发消息，它做完之后回复。
-
-它适合那种应该在你旁边发生、而不是挡在你前面的工作。比如你刚写完代码，让一个评审 agent 去读 diff；或者你继续改代码，让另一个 agent 去跑一遍失败的测试。每个 daemon 都是一个可以起、可以列、可以停的会话：
-
-```bash
-zettcode daemon model                    # 能跑在哪些模型上
-zettcode daemon spawn --model gpt-5 --effort high
-zettcode daemon list
-zettcode daemon kill 01a1726a-3109-75a7-9285-390d9e381111
-```
-
-`daemon model` 列出配置里的每个模型，名字就是 `spawn --model` 接受的那个，同时列出 id、API、是否收图片、窗口大小和推理级别；第一个标 `(default)`，也就是不起 daemon 时默认用的那个。`--json` 打同样的字段，给脚本读。
+daemon 是一个没人守在键盘前的会话。它在你关掉终端后仍在自己的工作目录里工作，你用发消息的方式联系它。
+适合那些该在你旁边发生、而不是挡在你前面的活：一个读 diff 的评审者，一个在你继续写代码时跑失败测试的探索者。
 
 ## 起一个
 
-`zettcode daemon spawn` 在当前目录起一个后台 agent，并打印它的 session id：
-
+```bash
+zettcode daemon spawn --name builder --title "tool builder" --permission safe
 ```
-session  01a1726a-3109-75a7-9285-390d9e381111
-workspace /Users/me/projects/api
-model    gpt-5 · effort high
-shell    full
 
-send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
-```
+它会打印 session id。`spawn` 一返回，daemon 就能收到消息。
 
 | 选项 | 作用 |
 | --- | --- |
-| `-w DIR` | 在哪个目录工作（默认当前目录） |
-| `--model NAME` | 用哪个模型，名字由 `daemon model` 列出（默认配置里的第一个） |
-| `--effort LEVEL` | 推理级别（默认模型自己的） |
-| `-n LABEL`、`--name LABEL` | 给这个 daemon 一个身份，记在会话旁边，由 `daemon list` 显示（默认没有） |
-| `--title TEXT` | 给它的会话起什么名字（默认由它第一次回答后自己起） |
-| `--permission LEVEL` | 它的 shell 级别：`safe`（每条命令都在沙箱里）、`deny`（完全不给 shell）、`full`（默认）。没有 `ask`：没人能答 |
-| `--resume SESSION` | 接着一个已存会话，而不是从空会话开始 |
-| `--json` | 把同样的信息打成 JSON，给脚本或 agent 读 |
+| `-w DIR` | 在哪个目录工作（默认当前目录）。 |
+| `--model NAME` | 用 `zettcode daemon model` 列出的模型（默认配置里的第一个）。 |
+| `--effort LEVEL` | 推理级别（默认取模型接受范围的中点）。 |
+| `-n`、`--name LABEL` | 给 `daemon list` 看的标签。 |
+| `--title TEXT` | 会话的名字；不给就由它第一次回答后自己起。 |
+| `--permission LEVEL` | `safe`、`deny` 或 `full`（默认）。没有 `ask`。 |
+| `--resume SESSION` | 接着一个已存会话，而不是从空会话开始。 |
+| `--json` | 把同样的信息打成 JSON。 |
 
-已安装插件可以给它加自己的选项；`zettcode daemon spawn --help` 会列出这些选项，值通过 `PLUGIN_CLI` service 交给插件。`spawn` 在 daemon 能被找到之后才返回，所以打印出来的 id 立刻就能发消息。起不来的话什么都不会留下，原因会打印出来（子进程最早写的那几行留在 `~/.zettcode/daemon/<workspace>/.spawn/` 里，读之前不删）。
+没有人批准 daemon 的命令，所以它的 shell 级别很要紧：
 
-::: warning daemon 不向任何人提问，它的 shell 级别是起它时选的
-没有人在旁边点“允许”或回答问题，所以 daemon 从不提问：`ask` 不是它能拿到的级别，`ask_user` 工具也不会给它。你选的级别意味着：
+- `full`（默认）：每条命令都以你的权限运行，没有沙箱，网络可用。只在你愿意把 shell 交给它的工作区里用。
+- `safe`：每条命令都在沙箱里跑，只能写工作区和临时目录；网络跟 `[shell] network` 走（默认关闭）。
+  `pip install --user`、SSH 推代码和 `gh` 都会失败。
+- `deny`：完全不给 shell，它只读文件、改文件、说话。
 
-- **`full`（默认）** —— 每条命令都以**启动它的那个账号的权限**运行：没有沙箱、没有审批、没有网络限制。只在你愿意把 shell 交给它的工作区里起它。
-- **`safe`** —— 每条命令都在沙箱里跑：只能写工作区和临时目录，`~` 下的凭据对它不可读，环境变量被过滤成 `PATH`、`HOME`、`SHELL`、`LANG`、`TERM`、`TMPDIR` 这类。网络跟配置里的 `[shell] network` 走，默认关闭，和终端一样；需要拉依赖时在那里打开；`pip install --user`、SSH 推代码、`gh` 会失败。
-- **`deny`** —— 完全不给 shell。daemon 只读文件、改文件、说话，不跑任何命令。
-
-配置里的 `permission` 对它不生效：daemon 的级别就是 `spawn` 时给的那个。
-
-它的会话仍然是普通会话：daemon 用那份权限做了什么，都在会话里；`daemon list` 能看到正在跑什么。
-:::
-
-它的会话是全新、空的 —— 需要什么由发送方告诉它。`--resume` 则接着一个已存会话，可以在被 kill 掉的 daemon 留下的工作上继续，也可以在你们已有的对话里做评审。这个会话就是普通会话，存储方式一模一样，所以 `daemon kill` 之后还能 `zettcode resume <id>` 接着手动聊。
-
-## 列出和停止
-
-`zettcode daemon list` 列出这台机器上所有 daemon，不管它在哪个目录，每个 daemon 一段：
-
-```
-01a1726a-3109-75a7-9285-390d9e381111  idle  8m
-  name       reviewer
-  title      Reviewer
-  workspace  ~/projects/api
-  model      gpt-5 · effort high
-  context    34k of 200k · 17%
-  input      12.3k
-  output     678
-  shell      safe
-```
-
-第一行是 session id、它正在做什么、已经多久：`starting`（还没连上 broker）、`idle`、`working`、`stopping`，或者 `dead` —— dead 表示进程已经不在了（机器重启过，或者它崩了），用 `kill` 把条目清掉。`name` 是 `spawn --name` 记下的标签，`title` 是会话自己的名字。`context` 是最近一次调用时上下文有多满、拿多大的窗口去量、占了多少；`input` 和 `output` 是这个会话发出去和生成的总量；它们在 daemon 状态变化时写，turn 跑着的时候只要数字变了也会写（每几秒看一次）。数字截至最近一次完成的模型调用，所以一条回答还在流式输出时不会跳动。出现 `next` 行说明有一个换模型或换级别的请求还没生效；出现 `error` 行说明上一次请求为什么没成。出现 `broker` 行说明这个 daemon 现在连不上会话 broker —— 它会一直重试，这段时间没人能给它发消息。`--json` 打同样的字段，方便程序读。
-
-`zettcode daemon stop <session-id>...` 停掉每个 daemon，但**保留记录**，显示为 `dead`，所以它仍留在 `daemon list` 和网关的列表里，之后可以用 `spawn --resume` 再启动。`zettcode daemon kill <session-id>...` 停掉它并删掉记录。两者遇到正在跑一轮对话的 daemon 都会拒绝，因为现在停掉会丢掉这一轮；要仍然停掉就加 `--force`。无论哪种，会话本身都留着，做过的事都在里面，之后可以在终端里打开。
-
-`zettcode daemon delete <session-id>...` 永久删除一个 daemon：它的记录**和它的对话**。无法恢复；仍在运行的 daemon 会被拒绝，要先停掉。列表变得很长时用它清理。
-
-`zettcode daemon log <session-id>` 打印 daemon 自己记的最后几行 —— 它跑过的工具、失败的 turn、生效的设置；`-n N` 指定行数。觉得它卡住了，先看这里。
-
-## 给它起名
-
-daemon 会给自己起名：第一次回答之后，模型从这段对话里写一个短标题，`daemon list`、`/resume` 和 `zettcode resume` 显示的都是它。已经有标题的会话会保留标题，所以这是每个会话一次模型调用，不是每条消息一次。
-
-`spawn --title` 可以在开始时就命名，`daemon update` 之后也能改：
-
-```
-zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --title "Auth refactor review"
-zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --name reviewer
-zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --name ""        # 清掉标签
-```
-
-`--name` 是 daemon 自己的标签，任何时候都能改，包括它运行的时候：daemon 会保留读者写进去的那份。`--title` 是**会话的**名字，而会话只有持有它锁的进程能写 —— 所以运行中的 daemon 会拒绝 `--title`（先停掉它；它自己已经在命名了）。两个一起给时，标题被拒也会先把标签写进去，并说明这一点。`--json` 打改动后的记录。
-
-## 改变它跑在什么上
-
-运行中的 daemon 可以换到另一个已配置的模型、或者另一个推理级别，会话不丢；改动从下一轮生效（空闲时几秒内生效）：
-
-```
-zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --model gpt-5 --effort high
-```
-
-模型可以用 `daemon model` 列出的名字，也可以用 id。这台机器没有的模型会被拒绝，模型不接受的级别也会被拒绝。没在运行的 daemon 不能换：下一次起的时候用 `spawn --model/--effort`。请求还没生效时，`daemon list` 会用 `next` 行显示它；如果 daemon 没法接（比如它启动时的配置和你这边不一样），会用 `error` 行说明，而且不会再重试这个请求。
+daemon 的对话就是一个普通的已存会话。`daemon kill` 之后可以用 `zettcode resume <id>` 接着手动聊。
 
 ## 和它说话
 
-daemon 不接受输入，它的输入就是 `send_message` —— 来自另一个会话的 agent，包括你在终端里用 `@` 点名 daemon 时由你的模型发出的那条：
+在提示里用 `@` 点它的名字，或者由另一个会话的模型用 `send_message(to="<id>", message="...")` 发送。
+在 shell 里，`zettcode daemon prompt <id> "..."` 不打开会话就发一条消息；daemon 不会回复 shell 发送者，
+但这一轮会存在会话里。
 
-```
-send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="看一下 src/api.py 的 diff，说你打算改什么。")
-```
+daemon 一次处理一条消息。它忙的时候最多排 64 条，之后合成一轮跑，每条上面有一行说明是谁发的；超过 64 条时由 broker
+保管，有空位再投递。它用 `send_message` 回答，所以问它的会话会把回答当成一条独立的消息收到。因超时、连接断开、
+限流这类可能过去的原因为失败的一轮，会从断点重试，最多三次。
 
-daemon 一次处理一条消息。忙的时候最多再排 64 条，空下来后会把排着的消息**合成一轮**处理，每条消息各自带一行说明是谁发的。超过 64 条时，broker 会替它保管这条消息，有空位就立刻投递，发送方不需要重试。它也用同样的方式回答 —— `send_message(to=<你的 session id>, ...)` —— 所以问它的 agent 会把回答当成一条消息收到。
+## 管理
 
-命令行也可以当发送方，用来给一条不想打开会话就能给的提示：
+| 命令 | 作用 |
+| --- | --- |
+| `zettcode daemon list` | 这台机器上的每个 daemon：状态、工作区、模型、上下文、shell。 |
+| `zettcode daemon log <id>` | 它自己记的最后几行；`-n N` 指定行数。 |
+| `zettcode daemon stop <id>` | 停掉它并保留记录（显示为 `dead`）；`spawn --resume` 可以再起。 |
+| `zettcode daemon kill <id>` | 停掉它并删掉记录。会话留着。 |
+| `zettcode daemon delete <id>` | 删掉记录**和**对话。无法撤销。 |
+| `zettcode daemon update <id>` | 改 `--model`、`--effort`、`--name`、`--title` 或 `--permission`。 |
+| `zettcode daemon model` | 列出 `spawn --model` 接受的模型；`--json` 给脚本用。 |
 
-```
-zettcode daemon prompt 01a1726a-3109-75a7-9285-390d9e381111 "看一下 src/api.py 的 diff，说你打算改什么。"
-```
+`stop` 和 `kill` 会拒绝正在跑一轮的 daemon；加 `--force` 才能照样停。换模型或级别从下一轮生效。
+换权限会重启进程，所以那一轮会丢。运行中的 daemon 拒绝 `--title`，因为跑着的进程持有会话的名字。
 
-它和别的消息一样走会话 broker。发送方是一个名字而不是会话，所以 daemon 不会回信：这一轮存在它自己的会话里，用 `zettcode resume <id>` 打开看，`daemon log` 说明它做了什么。
+## 下一步
 
-daemon 不会自己退出，闲置几个小时也不会：不用了就用 `daemon kill` 停掉，否则它会一直在那里，被列出来，有人写就回答。
-
-## 一轮失败时
-
-可能恢复的失败 —— 超时、连接断开、限流、服务端错误 —— 会自动再试，最多三次，两次之间短暂等待（总共约七秒，所以持续时间更长的限流仍然会以失败告终）。重试是**接着中断的请求继续**，不是把提示词重发一遍：库会告诉模型哪些工具被截断，由模型决定；daemon 不会自己重跑工具。再试也不会成功的失败（密钥错、模型不存在）不会重试。
-
-如果最后还是失败，能收到消息的发送方会被告知：聊天窗口看到失败那一行，发消息的会话会收到一条说明失败原因的回复。`daemon prompt` 是以名字而不是会话身份发的，收不到回复 —— 原因在日志里。daemon 本身继续跑，接着处理下一条消息；`daemon list` 里它回到 `idle`，做过的尝试和最后的原因都在 `daemon log <id>` 里。
-
-## 存在哪
-
-```
-~/.zettcode/sessions/<workspace>/<session-id>/    会话本身，和别的会话一样
-~/.zettcode/daemon/<workspace>/<session-id>/
-    state.json                                    pid、状态、模型、effort、开始时间，以及计数
-    heartbeat                                     每几秒写一次，证明还活着
-    log                                           出错的地方，以及它跑过的工具
-```
-
-`~/.zettcode/daemon/<workspace>/workspace.txt` 记录这个目录对应哪个路径，和会话存储的做法一样。`kill` 除了停进程，只做一件事：删掉 `daemon/` 里这个会话的目录。
-
-## 从一次评审开始
-
-大多数人用 daemon 的第一件事是找个“第二双眼睛”。`/code-review` 会为此启动（或复用）一个名为 `code-review` 的 daemon。
-这条命令一步一步怎么工作、评审者拿到什么 shell 级别，见[代码评审](/zh/guide/code-review)。
+- [会话之间互发消息](/zh/guide/messaging)：消息、群和 broker。
+- [网页网关](/zh/guide/gateway)：在页面里起、看、停 daemon。
+- [Codex 与 Claude Code](/zh/guide/code-agents)：作为群成员的其他 agent。

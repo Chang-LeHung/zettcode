@@ -1,37 +1,15 @@
 # Keys and mouse
 
-The composer behaves like a Readline prompt, because that is what people
-already know. The shell adds the keys that need the whole screen.
-
-## A few workflows to try
-
-- **Write a multi-line request:** type the first line, press `Shift-Enter`, add the
-  next line, then `Enter` to send the whole draft. A terminal cannot report
-  `Shift-Enter` unless it is asked to, so ZettCode asks — where the terminal knows
-  the request it arrives as its own key, and where it does not, `Alt-Enter` is the
-  one every terminal can send.
-- **Fix the start of a line:** `Ctrl-A` moves to its start; edit it, then
-  `Ctrl-E` returns to its end. This is line navigation, not select-all.
-- **Reuse a request:** from an empty draft, press `Up` or `Ctrl-P` to recall a
-  submitted input, edit it, then `Enter` to send a new request. `Ctrl-R` searches
-  that input history; it does not search the assistant's answers.
-- **Read an earlier answer:** scroll with the wheel or `Page Up`. `Esc` returns
-  to the bottom without changing your draft.
-- **Paste text or a picture:** use your terminal's usual paste shortcut for
-  text (`Cmd-V` on many macOS terminals, `Ctrl-Shift-V` on many others).
-  `Ctrl-V` inside ZettCode is specifically for image attachment, not text paste.
-
-Shortcuts depend on what has focus: `Enter` in a picker selects a row rather
-than sending a draft, and `Esc` closes that panel first. For interactive
-approval and question panels, read the hint printed at the bottom.
+The composer is a Readline prompt. A key belongs to what has focus: `Enter` in a panel chooses a row instead of
+sending a draft, and `Esc` closes the panel first. Each panel prints its own keys.
 
 ## Sending
 
 | Key | What it does |
 | --- | --- |
 | <kbd>Enter</kbd> | Send the draft, or run a slash command. |
-| <kbd>Alt</kbd>+<kbd>Enter</kbd>, <kbd>Shift</kbd>+<kbd>Enter</kbd> | Insert a newline. |
-| <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> | Complete the slash command being typed. |
+| <kbd>Alt</kbd>+<kbd>Enter</kbd>, <kbd>Shift</kbd>+<kbd>Enter</kbd> | Insert a newline. `Alt-Enter` works everywhere; `Shift-Enter` needs a terminal that reports it. |
+| <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> | Complete the slash command. |
 
 ## Editing
 
@@ -43,7 +21,6 @@ approval and question panels, read the hint printed at the bottom.
 | <kbd>Ctrl</kbd>+<kbd>Home</kbd> / <kbd>Ctrl</kbd>+<kbd>End</kbd>, <kbd>Alt</kbd>+<kbd>&lt;</kbd> / <kbd>Alt</kbd>+<kbd>&gt;</kbd> | Start or end of the whole draft. |
 | <kbd>Ctrl</kbd>+<kbd>U</kbd> / <kbd>Ctrl</kbd>+<kbd>K</kbd> | Delete to the start or end of the line. |
 | <kbd>Ctrl</kbd>+<kbd>W</kbd> / <kbd>Alt</kbd>+<kbd>Backspace</kbd>, <kbd>Alt</kbd>+<kbd>D</kbd> | Delete the previous or next word. |
-| <kbd>Ctrl</kbd>+<kbd>Y</kbd> | Paste the last text removed with a line or word deletion. |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>_</kbd> | Undo the latest edit. |
 | <kbd>Up</kbd> / <kbd>Down</kbd> | Move between draft lines, then through submitted input. |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> / <kbd>Ctrl</kbd>+<kbd>N</kbd> | Submitted input, directly. |
@@ -53,46 +30,41 @@ approval and question panels, read the hint printed at the bottom.
 
 | Key | What it does |
 | --- | --- |
-| <kbd>Ctrl</kbd>+<kbd>C</kbd> | Copy the selection and clear it; with nothing selected, stop the running request; on an empty request, clear the draft. |
-| <kbd>Ctrl</kbd>+<kbd>D</kbd> | Delete forward — or exit, when the composer is empty and nothing is running. |
+| <kbd>Ctrl</kbd>+<kbd>C</kbd> | Copy the selection and clear it; with nothing selected, stop the request; on an empty draft, clear it. |
+| <kbd>Ctrl</kbd>+<kbd>D</kbd> | Delete forward, or exit when the composer is empty and nothing runs. |
 | <kbd>Ctrl</kbd>+<kbd>L</kbd> | Redraw the screen, for a terminal that lost its contents. |
 | <kbd>Ctrl</kbd>+<kbd>T</kbd> | Expand or collapse the newest thinking block. |
-| <kbd>Ctrl</kbd>+<kbd>V</kbd> | Attach an image from the clipboard. |
+| <kbd>Ctrl</kbd>+<kbd>V</kbd> | Attach an image from the clipboard. A text paste uses the terminal's own key. |
 | <kbd>Page Up</kbd> / <kbd>Page Down</kbd> | Scroll the conversation, keeping the composer focused. |
-| <kbd>Alt</kbd>+<kbd>Up</kbd> / <kbd>Alt</kbd>+<kbd>Down</kbd> (also <kbd>Ctrl</kbd>+<kbd>Up</kbd> / <kbd>Ctrl</kbd>+<kbd>Down</kbd>) | Jump to the previous or next message you sent, putting it at the top of the view; after the last one, back to the newest line. While follow-ups are waiting the same keys walk that list instead (see below). |
-| <kbd>Esc</kbd> | Stop the running request; or, first, jump back to the newest line when scrolled up, close a panel or the command menu, or let go of a highlighted follow-up. Stopping keeps your follow-ups. |
+| <kbd>Alt</kbd>+<kbd>Up</kbd> / <kbd>Alt</kbd>+<kbd>Down</kbd> (also <kbd>Ctrl</kbd>+<kbd>Up</kbd> / <kbd>Ctrl</kbd>+<kbd>Down</kbd>) | Jump to your previous or next message, at the top of the view; while follow-ups wait, walk that list. |
+| <kbd>Esc</kbd> | Stop the request; or first, return to the newest line, close a panel or the menu, or let go of a highlighted follow-up. |
 | <kbd>Tab</kbd> | Accept the highlighted row in a panel or the command menu. |
 
 ## While a request runs
 
-Typing during a request asks whether the message should steer it or follow up after it.
-The follow-ups wait in a list above the composer, and these keys work on them. The list
-prints the same keys under itself, so they are shown at the moment they are useful.
-`Option` is the `⌥` key on a Mac, and `Alt` on other keyboards.
+Typing during a request asks whether it steers the task or follows up. `Option` is the `⌥` key on a Mac and `Alt`
+elsewhere.
 
 | Key | What it does |
 | --- | --- |
-| <kbd>Enter</kbd> | Ask what the typed message is. In the question: take the highlighted row. |
-| <kbd>F</kbd> / <kbd>S</kbd> | In the question: **f**ollow up or **s**teer, directly. `Esc` keeps the draft. |
-| <kbd>Option</kbd>+<kbd>Up</kbd> / <kbd>Option</kbd>+<kbd>Down</kbd> | With nothing highlighted: walk into the follow-up list. With a message highlighted: **move it** one place earlier or later. |
+| <kbd>Enter</kbd> | Ask what the message is; in the question, take the highlighted row. |
+| <kbd>F</kbd> / <kbd>S</kbd> | In the question: **f**ollow up or **s**teer directly. `Esc` keeps the draft. |
+| <kbd>Option</kbd>+<kbd>Up</kbd> / <kbd>Option</kbd>+<kbd>Down</kbd> | With nothing highlighted: walk into the follow-up list. With a message highlighted: **move it** one place. |
 | <kbd>Up</kbd> / <kbd>Down</kbd> | With a follow-up highlighted: move the highlight; `Down` past the last row returns to the composer. |
-| <kbd>Enter</kbd> | With a follow-up highlighted: take it into the composer to edit; sending it puts it back in its place. |
+| <kbd>Enter</kbd> | With a follow-up highlighted: take it into the composer; sending puts it back in its place. |
 | <kbd>Delete</kbd> / <kbd>Backspace</kbd> | With a follow-up highlighted: remove it. |
-| <kbd>Esc</kbd> | With a follow-up highlighted: let go. Without: stop the request — the follow-ups stay, held until your next reply completes. |
+| <kbd>Esc</kbd> | With a follow-up highlighted: let go. Without: stop the request; the follow-ups stay, held until your next reply. |
 
-A steering message cannot be changed once it is sent. See
-[Typing while a request runs](/guide/interface#typing-while-a-request-runs) for what the two
-kinds do and what happens to the list when a request is stopped.
+A steering message cannot be changed once sent. [Typing while a request runs](/guide/interface#typing-while-a-request-runs)
+has the rest.
 
 ## Answering a question
-
-While the model waits on a question, these belong to its panel:
 
 | Key | What it does |
 | --- | --- |
 | <kbd>Up</kbd> / <kbd>Down</kbd> | Move through the choices the model offered. |
-| <kbd>Enter</kbd> | Act on the highlighted row: choose it (a one-answer question sends it), tick or untick it, or — on the `send` row — finish a multiple-choice answer. When you have typed instead, it sends what you typed. |
-| Anything you type | Edits the answer line, which is what the model receives; the choices fold away for as long as you type, and `Up`/`Down` bring them back. |
+| <kbd>Enter</kbd> | Act on the highlighted row: choose, tick or untick, or finish a multiple-choice answer. When you have typed, it sends that. |
+| Anything you type | Edits the answer line; the choices fold away while you type, and `Up`/`Down` bring them back. |
 | <kbd>Esc</kbd>, <kbd>Ctrl</kbd>+<kbd>C</kbd> | Decline: the model is told the question was cancelled. |
 
 ## Mouse
@@ -101,11 +73,9 @@ While the model waits on a question, these belong to its panel:
 | --- | --- |
 | Wheel | Scroll the conversation. |
 | Click a Thinking or Tool row | Expand or collapse it. |
-| Drag in the transcript | Select text; the selection is copied on release, and dragging past the edge keeps extending it. |
-| Drag on a panel, the header, or the status line | Copy the text painted there, which those surfaces never offered before. |
+| Drag in the transcript | Select text; it is copied on release, and a pill confirms it. Dragging past the edge keeps extending. |
+| Drag on a panel, the header, or the status line | Copy the text painted there. |
 | Double-click | Select the whole row. |
 | <kbd>Shift</kbd>+click | Extend the current selection. |
 
-Hold your terminal's own modifier key (usually <kbd>Shift</kbd> or
-<kbd>Alt</kbd>) if you want the terminal emulator's selection instead of
-ZettCode's.
+Hold the terminal's own modifier key (usually <kbd>Shift</kbd> or <kbd>Alt</kbd>) for its selection instead.
