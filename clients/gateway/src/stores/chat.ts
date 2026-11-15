@@ -11,7 +11,7 @@ import { debounce, storage } from "../lib/storage";
 import { seenNow } from "../lib/unread";
 import type { ChatItem, Pending, Picture, Thread } from "../types";
 import { prefs } from "./prefs";
-import { seedStream } from "./stream";
+import { seedStream, streamMark } from "./stream";
 import { lobby, threadOf } from "./threads";
 
 export const chat = reactive({
@@ -64,12 +64,13 @@ async function load(id: string, all: boolean): Promise<void> {
   const opening = readingLine;
   if (opening) readingLine = false;
   try {
+    const heard = streamMark(id);
     const detail = await gateway.thread(id, showAll);
     if (mine !== generation || chat.id !== id) return;
     const grew = detail.items.length !== chat.items.length;
     const before = chat.items.length;
     chat.thread = detail.thread;
-    seedStream(id, detail.live);
+    seedStream(id, detail.live, heard);
     chat.items = detail.items;
     chat.total = detail.total;
     chat.truncated = detail.truncated;
