@@ -9,9 +9,7 @@ timeline). Daemons and models are still the SDK's local services; only the page'
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import os
 import secrets
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -45,6 +43,7 @@ from zettcode.sdk.types import (
 )
 
 from .backend import HOST_FILE, TITLE, Backend, GatewayStartError
+from .jsonfile import read_json, write_json
 
 #: The agent types a gateway offers with no plugin installed. The page can still browse and write.
 DEFAULT_TITLE = TITLE
@@ -401,18 +400,12 @@ class ExternalBackend(Backend):
         return BrokerReceipt(receipt.accepted, receipt.reason, receipt.disposition, receipt.busy)
 
     def _remembered(self) -> str | None:
-        try:
-            data = json.loads((self.directory / HOST_FILE).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
+        data = read_json(self.directory / HOST_FILE)
         session = data.get("session") if isinstance(data, dict) else None
         return session if isinstance(session, str) and session else None
 
     def _remember(self, session_id: str) -> None:
-        self.directory.mkdir(parents=True, exist_ok=True)
-        temporary = self.directory / f".{HOST_FILE}.{os.getpid()}.tmp"
-        temporary.write_text(json.dumps({"session": session_id}), encoding="utf-8")
-        os.replace(temporary, self.directory / HOST_FILE)
+        write_json(self.directory / HOST_FILE, {"session": session_id})
 
 
 def _gateway_error(status: int, code: str, message: str) -> Any:

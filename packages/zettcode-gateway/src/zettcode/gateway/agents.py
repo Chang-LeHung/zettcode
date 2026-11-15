@@ -11,9 +11,7 @@ kind once the broker owner adds it.
 from __future__ import annotations
 
 import base64
-import json
 import logging
-import os
 import secrets
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -23,6 +21,8 @@ from typing import Any
 
 from zettcode.broker.external import ExternalSession
 from zettcode.broker.protocol import sniff_image
+
+from .jsonfile import read_json, write_json
 
 logger = logging.getLogger("zettcode.gateway")
 
@@ -152,10 +152,7 @@ class AgentManager:
 
     def _roster(self) -> dict[str, dict[str, str]]:
         """Return the agents this gateway was asked to keep, by session id; an unreadable file is an empty roster."""
-        try:
-            data = json.loads(self._roster_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+        data = read_json(self._roster_path)
         if not isinstance(data, dict):
             return {}
         return {
@@ -166,10 +163,7 @@ class AgentManager:
 
     def _write_roster(self, roster: dict[str, dict[str, str]]) -> None:
         try:
-            self.directory.mkdir(parents=True, exist_ok=True)
-            temporary = self._roster_path.with_suffix(".tmp")
-            temporary.write_text(json.dumps(roster, indent=1), encoding="utf-8")
-            os.replace(temporary, self._roster_path)
+            write_json(self._roster_path, roster, indent=1)
         except OSError:
             # The agent is running; failing to remember it must not say otherwise.
             logger.exception("agents.roster_failed")

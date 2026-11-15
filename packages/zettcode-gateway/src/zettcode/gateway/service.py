@@ -17,9 +17,7 @@ import asyncio
 import base64
 import contextlib
 import itertools
-import json
 import logging
-import os
 import re
 import secrets
 import time
@@ -58,6 +56,7 @@ from .agents import AgentError, AgentManager
 from .backend import Backend
 from .chat import first_unread, items_of, preview, spoken, with_reply_request
 from .chat import picture_id as picture_name
+from .jsonfile import read_json, write_json
 from .settings import Settings
 
 #: Seconds between two looks at the daemons, the roster and the stored conversations when nothing woke the watcher.
@@ -592,10 +591,7 @@ class Gateway:
 
     # -- what a page asks -------------------------------------------------------------------------
     def _load_profiles(self) -> dict[str, dict[str, str]]:
-        try:
-            data = json.loads((self.settings.directory / PROFILE_FILE).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+        data = read_json(self.settings.directory / PROFILE_FILE)
         if not isinstance(data, dict):
             return {}
         found: dict[str, dict[str, str]] = {}
@@ -609,10 +605,7 @@ class Gateway:
         return found
 
     def _save_profiles(self) -> None:
-        self.settings.directory.mkdir(parents=True, exist_ok=True)
-        temporary = self.settings.directory / f".{PROFILE_FILE}.{os.getpid()}.tmp"
-        temporary.write_text(json.dumps(self._profiles, ensure_ascii=False), encoding="utf-8")
-        os.replace(temporary, self.settings.directory / PROFILE_FILE)
+        write_json(self.settings.directory / PROFILE_FILE, self._profiles, ensure_ascii=False)
 
     async def update_profile(self, session_id: str, data: Mapping[str, Any]) -> dict[str, Any]:
         """Set a thread's display name, picture, and whether it is pinned or archived; an empty value removes an override."""
@@ -1597,10 +1590,7 @@ class Gateway:
 
     def _load_inbox(self) -> None:
         """Take back what was kept for threads with no stored conversation, so a restart does not empty them."""
-        try:
-            data = json.loads(self._inbox_path().read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return
+        data = read_json(self._inbox_path())
         threads = data.get("threads") if isinstance(data, dict) else None
         if not isinstance(threads, dict):
             return
@@ -1627,7 +1617,6 @@ class Gateway:
         event loop each time a message arrives or is sent: small in practice, and the number to look at if it is not.
         """
         path = self._inbox_path()
-        temporary = path.with_name(f".inbox.{os.getpid()}.tmp")
         # Only what is kept for a thread nobody stores, and only what was delivered: a message still on its way (or
         # lost on the way) must not come back after a restart as if the session had taken it. The newest threads win.
         threads = {
@@ -1638,23 +1627,12 @@ class Gateway:
             for key, box in list(self._inbox.items())[-INBOX_THREADS:]
             if box
         }
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            # 0600: this is the one file the gateway keeps that holds what people said.
-            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            if hasattr(os, "fchmod"):  # POSIX only; a leftover temp of an earlier run keeps its old mode otherwise
-                os.fchmod(descriptor, 0o600)
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                handle.write(json.dumps({"threads": threads}, ensure_ascii=False))
-            os.replace(temporary, path)
-        except OSError:
-            pass
+        # 0600: this is the one file the gateway keeps that holds what people said.
+        with contextlib.suppress(OSError):
+            write_json(path, {"threads": threads}, private=True, ensure_ascii=False)
 
     def _load_seen(self) -> dict[str, int]:
-        try:
-            data = json.loads(self._seen_path().read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+        data = read_json(self._seen_path())
         seen = data.get("seen") if isinstance(data, dict) else None
         if not isinstance(seen, dict):
             return {}
@@ -1662,14 +1640,8 @@ class Gateway:
 
     def _save_seen(self) -> None:
         """Write which messages have been read; a failure only costs the marks, so it is not raised."""
-        path = self._seen_path()
-        temporary = path.with_name(f".ui.{os.getpid()}.tmp")
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            temporary.write_text(json.dumps({"seen": self._seen}), encoding="utf-8")
-            os.replace(temporary, path)
-        except OSError:
-            pass
+        with contextlib.suppress(OSError):
+            write_json(self._seen_path(), {"seen": self._seen})
 
 
 def _short(text: str, limit: int = 90) -> str:
