@@ -78,8 +78,8 @@ zettcode daemon stop <session-id>
 
 ## Graph 页面
 
-网页网关的一个页面：会话是节点，群是区域，每条消息是一条指向接收者的线。多个智能体在交谈、你想知道谁在跟谁说话时用它。
-**Replay** 重放过去的一段时间，最多 20,000 条消息，不会重新发送任何东西。
+网页网关的一个页面：会话是节点，群是区域，每条消息是一个飞向收件人的光点。多个智能体在交谈、你想知道谁在跟谁说话时用它。
+**Replay** 重放过去的一段时间，不会重新发送任何东西。
 
 ```bash
 zettcode gateway start
@@ -87,7 +87,7 @@ zettcode gateway start
 
 在导航里打开 **Graph**。
 
-**详情。** [会话之间互发消息：图](/zh/guide/messaging#关系图)。
+**详情。** [网页网关：关系图](/zh/guide/gateway#the-graph)。
 
 ## 网页网关
 

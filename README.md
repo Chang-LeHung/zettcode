@@ -29,7 +29,7 @@ Claude Code — from your terminal or a web page.
 | **Code review** | A second agent reads your uncommitted changes while you keep the conversation. | `/code-review` |
 | **Background agents** | A session with nobody at the keyboard; it keeps running after you close the terminal. | `zettcode daemon spawn` |
 | **Messages and groups** | Sessions on one machine message each other; `@name` points the model at one, a group reaches all. | `@name` in the prompt |
-| **Web gateway** | A page for daemons, sessions and groups, with a graph and replay. Also on a phone. | `zettcode gateway start` |
+| **Web gateway** | A page for daemons, sessions and groups. Also on a phone. | `zettcode gateway start` |
 | **Codex and Claude Code** | Both run as members you can message and put in groups. | New → External agent |
 
 Each one has a page in the [user guide](https://chang-lehung.github.io/zettcode/guide/capabilities).
@@ -86,6 +86,12 @@ you can watch sessions, make groups, and message Codex or Claude Code when `zett
 
 <p align="center">
   <img src="docs/public/demo/group.gif" width="800" alt="Creating a group, mentioning the builder agent, and reading its reply" />
+</p>
+
+Its **Graph** draws sessions and groups, and every message as it flies between them.
+
+<p align="center">
+  <img src="docs/public/demo/graph.gif" width="720" alt="The Graph page: a group of three sessions at the top, a group of two at the bottom, four sessions outside both, and messages flying between them" />
 </p>
 
 ## Documentation and development
