@@ -185,6 +185,9 @@ class Plugins:
             itself (see :class:`~zettcode.engine.plugins.triggers.TriggerHost`).
         taken: The plugins that lost a name to one loaded before them, each as ``(name, why)``; they are not failures
             of the plugin that kept it, and a list shows them without a switch.
+        default_off: The origins of the plugins this process left out only because they say they are off by default
+            (:meth:`Plugin.default_enabled`). A list draws each as off and says which line turns it on; it is not a
+            failure, since the reader never asked for it.
     """
 
     host: PluginExtension | None = None
@@ -197,6 +200,7 @@ class Plugins:
     builtins: tuple[str, ...] = ()
     triggers: tuple[TriggerRegistration, ...] = ()
     taken: tuple[tuple[str, str], ...] = ()
+    default_off: tuple[str, ...] = ()
 
     @property
     def failures(self) -> tuple[str, ...]:

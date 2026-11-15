@@ -636,7 +636,11 @@ class PluginCommand(TuiPlugin):
 
         installed = {name: enabled for name, enabled in written.items() if name not in runtime.plugins.builtins}
         if installed:
-            runtime.config = applied_installed(runtime.config, installed)
+            # A plugin that is off until `[plugins] enable` names it is turned on by a line, not by the absence of
+            # one; the running settings object follows what the file says.
+            runtime.config = applied_installed(
+                runtime.config, installed, by_default=set(runtime.plugins.default_off) & set(installed)
+            )
         return written, problems
 
 

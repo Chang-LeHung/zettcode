@@ -714,6 +714,22 @@ async def test_a_plugin_with_a_plain_status_helper_is_not_captured(tmp_path: Pat
     assert all(row.left == () and row.right == () for row in plugins.rows)
 
 
+async def test_the_terminal_bundle_keeps_the_plugins_that_are_off_by_default(tmp_path: Path):
+    """The terminal rebuilds the engine's bundle field by field; a field it forgets makes the page call them on."""
+
+    class Off(TuiPlugin):
+        name = "off"
+
+        @classmethod
+        def default_enabled(cls) -> bool:
+            return False
+
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("off", Off)])
+
+    assert plugins.plugins == ()
+    assert plugins.default_off == ("off",), "the page reads this to draw the row off, so it has to survive here"
+
+
 async def test_a_plugin_overrides_a_builtin_segment_by_name(tmp_path: Path):
     """Bare ``load_plugins`` merges the builtin rows in first, so a same-named
     registration replaces that segment instead of adding a second one."""

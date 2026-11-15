@@ -320,6 +320,7 @@ class FakeConfig:
     pet_position: tuple[float, float] | None = None
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
+    enabled_plugins: tuple[str, ...] = ()
     plugins_file: Path = Path("/tmp/zettcode-plugins.json")
     plugins_dir: Path = Path("/tmp/zettcode-plugins")
     harness_dir: Path = Path("/tmp/zettcode-harness")

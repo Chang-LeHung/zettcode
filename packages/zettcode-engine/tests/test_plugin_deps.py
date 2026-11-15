@@ -137,14 +137,39 @@ def test_a_disabled_plugin_takes_its_dependents_with_it(tmp_path: Path):
 def test_a_default_off_plugin_is_left_out_until_the_configuration_names_it(tmp_path: Path):
     points = [Point("quiet", plugin("quiet", default=False)), Point("loud", plugin("loud"))]
 
-    assert [p.name for p in load_plugins(config(tmp_path), builtins=(), entry_points=points).plugins] == ["loud"]
-    assert [
-        p.name
-        for p in load_plugins(config(tmp_path, enabled_plugins=("quiet",)), builtins=(), entry_points=points).plugins
-    ] == ["quiet", "loud"]
+    quiet = load_plugins(config(tmp_path), builtins=(), entry_points=points)
+    asked = load_plugins(config(tmp_path, enabled_plugins=("quiet",)), builtins=(), entry_points=points)
+
+    assert [p.name for p in quiet.plugins] == ["loud"]
+    assert quiet.default_off == ("quiet",), "a list can say the plugin is off because it asks to be"
+    assert [p.name for p in asked.plugins] == ["quiet", "loud"]
+    assert asked.default_off == (), "nothing was left out for that reason once the configuration named it"
+
+
+def test_a_default_off_row_is_drawn_off_and_says_which_line_turns_it_on(tmp_path: Path):
+    from zettcode.engine.plugins.switches import catalog
+
+    points = [Point("quiet", plugin("quiet", default=False)), Point("loud", plugin("loud"))]
+    settings = config(tmp_path)
+    bundle = load_plugins(settings, builtins=(), entry_points=points)
+
+    rows = {row.origin: row for row in catalog(settings, bundle, entry_points=points)}
+
+    assert rows["quiet"].enabled is False and rows["quiet"].switchable, "a switch is what turns it on"
+    assert "[plugins] enable" in rows["quiet"].note
+    assert rows["quiet"].failure == "", "off by default is not a failure"
+    assert rows["loud"].enabled is True and rows["loud"].note == ""
+
+    named = config(tmp_path, enabled_plugins=("quiet",))
+    asked = load_plugins(named, builtins=(), entry_points=points)
+    rows = {row.origin: row for row in catalog(named, asked, entry_points=points)}
+
+    assert rows["quiet"].enabled is True and rows["quiet"].note == "", "a name in [plugins] enable is on"
 
 
 def test_a_default_off_dependency_of_a_required_plugin_is_pulled_in(tmp_path: Path):
+    from zettcode.engine.plugins.switches import catalog
+
     points = [
         Point("provider", plugin("provider", default=False)),
         Point("consumer", plugin("consumer", "provider")),
@@ -154,6 +179,49 @@ def test_a_default_off_dependency_of_a_required_plugin_is_pulled_in(tmp_path: Pa
 
     assert [p.name for p in bundle.plugins] == ["provider", "consumer"]
     assert bundle.failed == ()
+    assert bundle.default_off == (), "it was kept for the plugin that needs it, not dropped for its default"
+    rows = {row.origin: row for row in catalog(config(tmp_path), bundle, entry_points=points)}
+    assert rows["provider"].enabled is True and rows["provider"].note == ""
+
+
+def test_a_file_that_loaded_a_class_is_not_called_off_by_default(tmp_path: Path):
+    """A file may define one class that wants to be on and one that does not; the file itself is doing work."""
+    from zettcode.engine.plugins.switches import catalog
+
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    (folder / "mixed.py").write_text(
+        "from zettcode.engine.plugins import Plugin\n\n\n"
+        "class Loud(Plugin):\n"
+        '    name = "loud"\n\n'
+        "class Quiet(Plugin):\n"
+        '    name = "quiet"\n\n'
+        "    @classmethod\n"
+        "    def default_enabled(cls) -> bool:\n"
+        "        return False\n",
+        encoding="utf-8",
+    )
+    settings = config(tmp_path)
+
+    bundle = load_plugins(settings, builtins=(), entry_points=())
+
+    assert [p.name for p in bundle.plugins] == ["loud"]
+    assert bundle.default_off == (), "the file loaded, so a list must not say the file is off by default"
+    row = next(entry for entry in catalog(settings, bundle, entry_points=()) if entry.origin == "mixed")
+    assert row.enabled is True and row.note == ""
+
+
+def test_a_default_off_plugin_the_reader_disabled_is_off_without_claiming_its_default(tmp_path: Path):
+    from zettcode.engine.plugins.switches import catalog
+
+    points = [Point("quiet", plugin("quiet", default=False))]
+    off = config(tmp_path, disabled_plugins=("quiet",))
+
+    bundle = load_plugins(off, builtins=(), entry_points=points)
+    row = next(entry for entry in catalog(off, bundle, entry_points=points) if entry.origin == "quiet")
+
+    assert bundle.default_off == (), "a plugin the reader switched off is not offered, so nothing was dropped"
+    assert row.enabled is False and row.note == "", "the row says off, and does not blame the plugin's default"
 
 
 def test_a_plugin_whose_need_fails_to_activate_is_not_activated(tmp_path: Path):

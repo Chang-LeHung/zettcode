@@ -1561,7 +1561,9 @@ class Client:
         if result is not None:
             runtime.config = applied(runtime.config, result, enabled)
         else:
-            runtime.config = applied_installed(runtime.config, {name: enabled})
+            runtime.config = applied_installed(
+                runtime.config, {name: enabled}, by_default=set(runtime.plugins.default_off) & {name}
+            )
         found = next(
             (entry for entry in self._plugin_catalog() if name in (entry.origin, entry.name)),
             None,
