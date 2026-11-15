@@ -15,7 +15,7 @@ from zett_agent.messages import ImageContent, TextContent
 
 from zettcode.tools.files import edit, glob, grep, read, read_file, write_file
 from zettcode.tools.output import MAX_OUTPUT_BYTES
-from zettcode.tools.workspace import MAX_FILE_BYTES
+from zettcode.tools.workspace import FRAGMENT_CHARACTERS, MAX_FILE_BYTES
 
 
 def _png(path: Path) -> Path:
@@ -81,6 +81,30 @@ async def test_a_range_says_how_to_go_on_when_there_is_more(here: Path):
     text = await read_file.handler(file_path="long.txt", offset=3, limit=2)
 
     assert text == "3\tline 3\n4\tline 4\n\n... [more lines; continue with offset=5]"
+
+
+@pytest.mark.parametrize("size", [FRAGMENT_CHARACTERS, FRAGMENT_CHARACTERS * 2, FRAGMENT_CHARACTERS * 2 + 10])
+async def test_a_line_read_in_fragments_carries_its_number_once(here: Path, size: int):
+    body = "x" * size
+    (here / "long-line.txt").write_text(body + "\nsecond\n")
+
+    text = await read_file.handler(file_path="long-line.txt", limit=2)
+
+    assert text.count("1\t") == 1, "a prefix per fragment would repeat the number inside the content"
+    assert text.split("\t", 1)[1].split("\n", 1)[0] == body
+
+
+@pytest.mark.parametrize("first", [15, 16, 17])
+async def test_a_budget_that_runs_out_inside_a_line_number_emits_no_bare_number(here: Path, monkeypatch, first: int):
+    from zettcode.tools import workspace as workspace_module
+
+    monkeypatch.setattr(workspace_module, "MAX_OUTPUT_BYTES", 20)
+    (here / "budget.txt").write_text("x" * first + "\n" + "y" * 10 + "\n")
+
+    text = await read_file.handler(file_path="budget.txt", limit=2)
+
+    assert "\n2" not in text.split("...")[0], "a cut inside the prefix must not look like line 2's content"
+    assert "output truncated; continue with offset=2" in text
 
 
 async def test_a_line_too_long_to_return_is_cut_and_the_reader_is_sent_to_the_shell(here: Path):
@@ -261,6 +285,12 @@ async def test_edit_says_what_is_wrong_with_old_string(here: Path):
     with pytest.raises(ValueError, match="File does not exist: ghost.txt"):
         await edit.handler(file_path="ghost.txt", old_string="a", new_string="b")
     assert (here / "dup.txt").read_text() == "a\na\n", "a failed edit writes nothing"
+
+
+async def test_an_edit_of_numbered_lines_says_the_numbers_are_not_in_the_file(here: Path):
+    with pytest.raises(ValueError, match="number and a tab"):
+        await edit.handler(file_path="a.txt", old_string="1\tone\n2\ttwo", new_string="x")
+    assert (here / "a.txt").read_text() == "one\ntwo\nthree\n", "a failed edit writes nothing"
 
 
 async def test_edit_refuses_an_edit_with_nothing_to_find_and_a_call_with_a_field_it_does_not_know(here: Path):

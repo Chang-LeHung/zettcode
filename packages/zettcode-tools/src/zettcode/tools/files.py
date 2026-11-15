@@ -111,7 +111,7 @@ def read_file(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> st
     Guidelines:
         - Use line ranges for large files.
         - Inspect the current content before editing a file.
-        - The line numbers are for reference; do not copy them into an edit.
+        - The line numbers are for reference; do not copy them into an edit or a write.
     """
     located = Located.of(file_path)
     located.require_file()
