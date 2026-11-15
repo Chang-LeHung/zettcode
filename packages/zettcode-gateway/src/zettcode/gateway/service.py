@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
-import itertools
 import logging
 import re
 import secrets
@@ -57,6 +56,7 @@ from .backend import Backend
 from .chat import first_unread, items_of, preview, spoken, with_reply_request
 from .chat import picture_id as picture_name
 from .jsonfile import read_json, write_json
+from .live import LiveTurns
 from .settings import Settings
 
 #: Seconds between two looks at the daemons, the roster and the stored conversations when nothing woke the watcher.
@@ -70,13 +70,6 @@ PROFILE_TTL = 24 * 60 * 60
 
 #: How long a probe of "does another process have this session open" is kept before it is asked again.
 LOCK_PROBE_SECONDS = 5.0
-
-#: The most of one turn's answer kept to show a page that opens in the middle of it, and how many tool calls.
-LIVE_TEXT_LIMIT = 200_000
-LIVE_TOOL_LIMIT = 40
-
-#: A turn that has said nothing for this long while its session says it is idle is taken to have ended unseen.
-LIVE_STALE_SECONDS = 4.0
 
 #: How many notes about a session's failed direct turns a chat keeps.
 NOTE_LIMIT = 4
@@ -305,10 +298,10 @@ class Gateway:
         self.poll = poll
         self.clock = clock
         self._probes: dict[str, tuple[float, bool]] = {}
-        #: What the turn running in each session has said so far, by session: for a page that opens in the middle of it.
-        self._live: dict[str, dict[str, Any]] = {}
+        #: What the turn running in each session has said so far, for a page that opens in the middle of it. It reads the
+        #: clock through ``self.clock`` each time, so a clock replaced after construction is the one it sees.
+        self._live = LiveTurns(lambda: self.clock())
         self._finishing: set[asyncio.Task[None]] = set()
-        self._turns = itertools.count(1)
         #: What a session said when a direct turn of ours ended without an answer: shown in its chat until we write again.
         self._notes: dict[str, list[str]] = {}
         #: The pictures of the chats last read, by chat and then by name, oldest chat first.
@@ -430,7 +423,7 @@ class Gateway:
                         await self._learn(session_id, workspace, stamp, meta, wanted=True)
                         moved.append(session_id)
                 views[session_id] = self._view(session_id, daemon, peer, meta)
-            expired = self._expire_live(peers)
+            expired = self._live.expire(peers)
             for gone in {*self._meta, *self._probes, *self._notes} - views.keys():
                 self._meta.pop(gone, None)
                 self._probes.pop(gone, None)
@@ -457,9 +450,8 @@ class Gateway:
             if reachable and self._reachable is False:
                 # Pieces of every turn were missed while the broker was away: a bubble resumed mid-answer would be a
                 # truncated one, so what is shown live is dropped and the next ``begin`` starts it again.
-                for lost in list(self._live):
-                    dropped = self._live.pop(lost)
-                    self._publish({"type": "stream", "id": lost, "event": {"kind": "end", "turn": dropped["turn"]}})
+                for lost, number in self._live.drop_all():
+                    self._publish({"type": "stream", "id": lost, "event": {"kind": "end", "turn": number}})
             self._reachable = reachable
             self._publish({"type": "threads", "threads": self.threads(), "status": self.status()})
         for session_id in moved:
@@ -777,7 +769,7 @@ class Gateway:
             "total": total,
             "truncated": total > len(items),
             "unread_from": unread_from,
-            "live": self._live_view(session_id),
+            "live": self._live.view(session_id),
         }
 
     async def read(self, session_id: str) -> None:
@@ -1164,7 +1156,7 @@ class Gateway:
         self._senders.pop(session_id, None)
         self._pictures.pop(session_id, None)
         self._notes.pop(session_id, None)
-        self._live.pop(session_id, None)
+        self._live.drop(session_id)
         if self._seen.pop(session_id, None) is not None:
             self._save_seen()
 
@@ -1258,49 +1250,12 @@ class Gateway:
         session_id = event.session_id
         if session_id == self.backend.gateway_id:
             return
-        live = self._live.get(session_id)
-        kind = event.kind
-        if kind == "begin":
-            live = self._live[session_id] = self._new_turn()
-        elif kind == "end":
-            self._finish_later(session_id, live["turn"] if live is not None else None)
+        if event.kind == "end":
+            self._finish_later(session_id, self._live.number_of(session_id))
             return
-        elif live is None:
-            live = self._live[session_id] = self._new_turn()
-        live["at"] = self.clock()
-        wire: dict[str, Any] = {"kind": kind, "turn": live["turn"]}
-        if kind == "text":
-            live["thinking"] = False
-            live["text"] = (live["text"] + event.text)[-LIVE_TEXT_LIMIT:]
-            wire["text"] = event.text
-        elif kind == "thinking":
-            live["thinking"] = True
-        elif kind == "tool":
-            live["thinking"] = False
-            live["tools"] = [
-                *live["tools"],
-                {"id": event.call_id, "name": event.name, "brief": event.brief, "ok": None},
-            ][-LIVE_TOOL_LIMIT:]
-            wire.update(id=event.call_id, name=event.name, brief=event.brief)
-        elif kind == "tool_end":
-            for tool in live["tools"]:
-                if tool["id"] == event.call_id:
-                    tool["ok"] = event.ok
-            wire.update(id=event.call_id, ok=event.ok)
-        self._publish({"type": "stream", "id": session_id, "event": wire})
-
-    def _new_turn(self) -> dict[str, Any]:
-        """Return the state of a turn that has just been seen to begin, marked so its end is told from the next one's."""
-        return {"turn": next(self._turns), "text": "", "thinking": False, "tools": [], "at": self.clock()}
-
-    def _live_view(self, session_id: str) -> dict[str, Any] | None:
-        """Return the turn running in a session as a page reads it (without the gateway's own bookkeeping).
-
-        ``turn`` stays: it is the number the pieces and the end of the same turn carry, so a page can tell a snapshot of
-        a turn that has since ended from one that is still running.
-        """
-        live = self._live.get(session_id)
-        return None if live is None else {key: value for key, value in live.items() if key != "at"}
+        wire = self._live.hear(event)
+        if wire is not None:
+            self._publish({"type": "stream", "id": session_id, "event": wire})
 
     def _finish_later(self, session_id: str, turn: int | None) -> None:
         task = asyncio.ensure_future(self._finish(session_id, turn))
@@ -1315,26 +1270,9 @@ class Gateway:
         """
         with contextlib.suppress(Exception):
             await self.refresh()
-        live = self._live.get(session_id)
-        if live is not None and live["turn"] == turn:
-            del self._live[session_id]
+        if self._live.finish(session_id, turn):
             self._publish({"type": "stream", "id": session_id, "event": {"kind": "end", "turn": turn}})
         self._publish({"type": "thread", "id": session_id})
-
-    def _expire_live(self, peers: dict[str, Peer]) -> list[tuple[str, int]]:
-        """Drop a live turn whose session has gone, or has been idle and silent: its end was never heard.
-
-        Returns the sessions it dropped with the turn each was running, for the caller to tell the pages once what was
-        stored has been announced.
-        """
-        now = self.clock()
-        expired: list[tuple[str, int]] = []
-        for session_id, live in list(self._live.items()):
-            peer = peers.get(session_id)
-            if peer is None or (peer.status != "working" and now - float(live["at"]) > LIVE_STALE_SECONDS):
-                del self._live[session_id]
-                expired.append((session_id, int(live["turn"])))
-        return expired
 
     # -- the graph --------------------------------------------------------------------------------
     def _traffic(self, line: dict[str, Any]) -> None:

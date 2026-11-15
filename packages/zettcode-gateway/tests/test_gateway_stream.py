@@ -89,7 +89,7 @@ async def test_what_the_gateway_itself_streams_is_not_a_thread(tmp_path):
 
     backend.stream(GATEWAY_ID, "text", text="x")
 
-    assert gateway._live == {}
+    assert len(gateway._live) == 0
 
 
 async def test_the_end_of_one_turn_does_not_end_the_next_one_that_began_while_it_was_being_read(tmp_path):
@@ -117,12 +117,16 @@ async def test_every_live_turn_is_dropped_when_the_broker_comes_back_because_pie
     await gateway.refresh()
     backend.stream(DAEMON, "begin")
     backend.stream(DAEMON, "text", text="half an ans")
+    queue = gateway.subscribe()
+    drained(queue)
     backend._reachable = False
     await gateway.refresh()
     backend._reachable = True
     await gateway.refresh()
 
     assert (await gateway.thread(DAEMON))["live"] is None
+    ends = [item["event"] for item in drained(queue) if item["type"] == "stream" and item["event"]["kind"] == "end"]
+    assert [end["turn"] for end in ends] == [1], "the page is told, so a truncated bubble does not stay"
 
 
 async def test_a_page_that_stopped_reading_is_told_to_go_instead_of_being_left_with_stale_data(tmp_path):
