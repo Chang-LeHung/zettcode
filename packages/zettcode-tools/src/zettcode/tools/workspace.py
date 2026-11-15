@@ -140,8 +140,8 @@ def write_text(path: Path, content: str) -> None:
 def read_lines(located: Located, offset: int, limit: int) -> str:
     """Return ``limit`` lines of a UTF-8 file from line ``offset``, with a note on how to continue when more remains.
 
-    Each line is prefixed with its 1-based number as ``<number>: <content>``; the prefix is for reference and is not
-    part of the file.
+    Each line is prefixed with its 1-based number and a tab (``<number>\\t<content>``); the prefix is for reference
+    and is not part of the file.
 
     The result is held to :data:`MAX_OUTPUT_BYTES`. A line longer than that is cut, and the note says so: the
     reader has no column to resume from, because one 2 MB line is not what the tool is for — the shell reads it.
