@@ -39,6 +39,8 @@ class FakeNotification {
 const bridge = globalThis as unknown as { window: { __zettcodeNative?: unknown } };
 /** The page's address, which a click on a notice moves: the test page has none of its own. */
 const place = { hash: "" };
+/** How many times a click brought the window to the front: jsdom has no window to focus. */
+let focused = 0;
 
 function visible(on: boolean): void {
   Object.defineProperty(document, "hidden", { value: !on, configurable: true });
@@ -63,6 +65,8 @@ beforeEach(() => {
   setWorker(null);
   place.hash = "";
   Object.assign(globalThis, { location: place });
+  focused = 0;
+  Object.defineProperty(window, "focus", { value: () => (focused += 1), configurable: true });
 });
 
 afterEach(() => {
@@ -75,13 +79,23 @@ test("a message for a conversation that is not being looked at is shown by the b
   assert.deepEqual(FakeNotification.made, [{ title: "builder", options: { body: "build is red", tag: "01a" } }]);
 });
 
-test("clicking the notice opens that conversation and closes the notice", () => {
+test("clicking the notice brings the window forward, opens that conversation and closes the notice", () => {
   notifyInbound(event);
 
   FakeNotification.last?.onclick?.();
 
   assert.equal(place.hash, "#/chats/01a");
+  assert.equal(focused, 1);
   assert.equal(FakeNotification.last?.closed, true);
+});
+
+test("the conversation a click opens is addressed the way the page parses it, whatever the id holds", () => {
+  applyThreads([{ id: "01a/b", archived: false, unread: 0, kind: "daemon", status: "idle" } as unknown as Thread]);
+
+  notifyInbound({ ...event, id: "01a/b" });
+  FakeNotification.last?.onclick?.();
+
+  assert.equal(place.hash, "#/chats/01a%2Fb");
 });
 
 test("nothing is shown when notifications are off", () => {
@@ -157,9 +171,14 @@ test("the permission is asked for only when the person has not answered yet", as
   assert.equal(await enableNotifications(), false);
   assert.equal(FakeNotification.asked, 1);
 
+  FakeNotification.permission = "default";
+  FakeNotification.answer = "default";
+  assert.equal(await enableNotifications(), false, "a prompt that was dismissed is not a yes");
+  assert.equal(FakeNotification.asked, 2);
+
   FakeNotification.permission = "granted";
   assert.equal(await enableNotifications(), true);
-  assert.equal(FakeNotification.asked, 1, "a granted permission is not asked again");
+  assert.equal(FakeNotification.asked, 2, "a granted permission is not asked again");
 
   Object.assign(globalThis, { Notification: undefined });
   assert.equal(await enableNotifications(), false);
