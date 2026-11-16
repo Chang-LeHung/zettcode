@@ -1,4 +1,4 @@
-"""``/hub``: who is here, what the daemons are doing, and who talked to whom, on one full-screen page with three tabs.
+"""``/hub``: who is here, what the daemons are doing, and who talked to whom, on one full-screen page with four tabs.
 
 The gateway's page shows this in a browser; this is the same picture where the work happens. What it reads is the
 broker's roster and message graph through the SDK, the sessions stored for this workspace, and the daemons' records
@@ -9,10 +9,11 @@ through :mod:`zettcode.sdk.daemons`, so nothing new is listened to and nothing i
   an arrow key selects the nearest box that way, which keeps its lines and dims the rest; ``Esc`` deselects.
 * **Sessions**: the sessions that are running, as the broker's roster has them, and nothing else. Only looked at here:
   it is a daemon that can be started.
-* **Daemons**: every daemon recorded on this machine, running or not, then the sessions of this workspace that are
-  only stored: a daemon is what can be started on them. Whatever has no process is ``offline`` — a daemon that was
-  stopped keeps its record and stays listed until it is deleted, and a stored session has none. ``s`` stops the one
+* **Daemons**: every daemon recorded on this machine, running or not, and nothing else, so the count is the
+  gateway's. A daemon that was stopped keeps its record and stays listed until it is deleted. ``s`` stops the one
   under the mark and keeps its record; ``Enter`` starts an offline one, resuming its session.
+* **History**: the sessions of this workspace that are only stored, with no process and no daemon record. ``Enter``
+  starts a daemon on one, resuming its session.
 
 Both lists are ordered by their ``LAST`` column, newest first, and the column says how long ago that was. What it
 counts differs by what the row is, because that is what there is to know: a running session's newest message through
@@ -51,15 +52,15 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 __all__ = ["HubCommand", "HubData", "HubPage"]
 
-#: The three tabs, in the order Tab walks them, and the position of each.
-TABS = ("Graph", "Sessions", "Daemons")
-GRAPH, SESSIONS, DAEMONS = range(len(TABS))
+#: The four tabs, in the order Tab walks them, and the position of each.
+TABS = ("Graph", "Sessions", "Daemons", "History")
+GRAPH, SESSIONS, DAEMONS, HISTORY = range(len(TABS))
 
 #: What a daemon's status says when its process is gone, or when nothing says it is running.
 GONE = ("dead", "unknown")
 
 #: The status of a row that is no daemon at all yet: a session stored in this workspace that nothing is running. It is
-#: on the Daemons tab because a daemon is what can be started on it, and ``Enter`` does that, resuming the session.
+#: on the History tab, never the Daemons tab (a row there is a record), and ``Enter`` starts a daemon on it, resuming it.
 OFFLINE = "offline"
 
 #: What ``Enter`` can start: a daemon whose process is gone, and a stored session with no daemon.
@@ -126,10 +127,13 @@ class Daemon:
 
 @dataclass(frozen=True, slots=True)
 class HubData:
-    """Everything the three tabs show, read once per refresh."""
+    """Everything the four tabs show, read once per refresh."""
 
     peers: tuple[Peer, ...] = ()
     daemons: tuple[Daemon, ...] = ()
+    #: The stored sessions of this workspace that nothing runs and no daemon record has (status ``offline``): the
+    #: History tab, kept apart so that the Daemons tab counts daemons and nothing else.
+    stored: tuple[Daemon, ...] = ()
     note: str = ""
     nodes: tuple[Node, ...] = ()
     links: tuple[Link, ...] = ()
@@ -224,7 +228,7 @@ def _ago(when: float, now: float) -> str:
 STEPS = ("peers", "daemons", "sessions", "graph", "build")
 
 #: The letters a narrow page writes the steps of a reading with:
-#: ``p0 d3 s1 g19 b0`` is peers 0 ms, daemons 3, sessions 1, graph 19 and the build 0.
+#: ``p0 d3 s1 g19 b0``: every figure is milliseconds, peers 0, daemons 3, sessions 1, graph 19 and the build 0.
 STEP_LETTERS = dict(zip(STEPS, ("p", "d", "s", "g", "b"), strict=True))
 
 
@@ -282,9 +286,18 @@ def _session_table(data: HubData) -> Table:
 
 
 def _daemon_table(data: HubData) -> Table:
-    """Return the Daemons tab: every record and every stored session nothing runs, most recently touched first."""
+    """Return the Daemons tab: every daemon record, running or not, most recently touched first."""
+    return _daemon_rows(data, data.daemons, notice=False)
+
+
+def _history_table(data: HubData) -> Table:
+    """Return the History tab: the stored sessions of this workspace no daemon has, newest conversation first."""
+    return _daemon_rows(data, data.stored, notice=True)
+
+
+def _daemon_rows(data: HubData, items: Sequence[Daemon], *, notice: bool) -> Table:
     rows = []
-    for daemon in sorted(data.daemons, key=lambda daemon: daemon.activity, reverse=True):
+    for daemon in sorted(items, key=lambda daemon: daemon.activity, reverse=True):
         # No process is one word, whether it was a daemon that was stopped or a session that was only stored: the
         # reader sees the same thing and `Enter` does the same thing, which is what STARTABLE says.
         state = OFFLINE if daemon.status in STARTABLE else hub_graph.state_of(daemon.status, "")
@@ -306,11 +319,11 @@ def _daemon_table(data: HubData) -> Table:
             )
         )
     table = _table(("NAME", "STATE", "LAST", "TITLE", "MODEL", "WORKSPACE"), rows)
-    if data.offline_cut:
+    if notice and data.offline_cut:
         # A row of words, not a session: it cannot be marked, so no key acts on it, and it has no `find`, so no search
         # keeps it. The two lists stay the same length.
-        notice = ListItem(None, "\u2026", f"only the {OFFLINE_LIMIT} newest stored sessions are listed", disabled=True)
-        table = Table([*table.items, notice], table.titles, table.widths, (*table.finds, ""))
+        cut = ListItem(None, "\u2026", f"only the newest {OFFLINE_LIMIT} stored sessions were looked at", disabled=True)
+        table = Table([*table.items, cut], table.titles, table.widths, (*table.finds, ""))
     return table
 
 
@@ -320,11 +333,11 @@ def _no_table(data: HubData) -> Table:
 
 
 #: What each tab lists, in the order :data:`TABS` names them.
-_TABLES: tuple[Callable[[HubData], Table], ...] = (_no_table, _session_table, _daemon_table)
+_TABLES: tuple[Callable[[HubData], Table], ...] = (_no_table, _session_table, _daemon_table, _history_table)
 
 
 class HubPage(ListPage):
-    """The three tabs, with the mark kept per tab and the keys that act on the row or node under it."""
+    """The four tabs, with the mark kept per tab and the keys that act on the row or node under it."""
 
     def __init__(
         self,
@@ -389,6 +402,8 @@ class HubPage(ListPage):
         )
         if self.tab == DAEMONS:
             return f"enter start an offline one {SEPARATOR} s stop {SEPARATOR} {common}"
+        if self.tab == HISTORY:
+            return f"enter resume it in a daemon {SEPARATOR} {common}"
         return common
 
     def layout(self, rect: Rect) -> None:
@@ -501,7 +516,8 @@ class HubPage(ListPage):
         first: the clock, the total and each step by name; without the clock; with the steps shortened to the
         letters of :data:`STEP_LETTERS` (``p0 d3 s1 g19 b0``); the same without the clock; the clock and the total;
         the total alone. The steps are the point of it, so they come before the clock in the narrower forms. Two
-        columns are kept clear of the last tab.
+        columns are kept clear of the last tab. With four tabs the steps first fit, by their initials, at 83 columns:
+        an 80-column page shows the clock and the total.
         """
         data = self.data
         if not data.took and not data.began:
@@ -511,9 +527,10 @@ class HubPage(ListPage):
         clock = f"read {data.began} \u00b7 {data.took} ms" if data.began else total
         forms = [clock, total]
         if data.steps:
-            named = ", ".join(f"{name} {ms}" for name, ms in data.steps)
+            # Every step carries its unit: a bare "daemons 40" reads as a count of daemons, and these are times.
+            named = ", ".join(f"{name} {ms} ms" for name, ms in data.steps)
             short = " ".join(f"{STEP_LETTERS.get(name, name[:3])}{ms}" for name, ms in data.steps)
-            forms[:0] = [f"{clock} ({named} ms)", f"{total} ({named} ms)", f"{clock} ({short})", f"{total} ({short})"]
+            forms[:0] = [f"{clock} ({named})", f"{total} ({named})", f"{clock} ({short})", f"{total} ({short})"]
         for text in forms:
             if display_width(text) + 2 <= room:
                 return text
@@ -708,17 +725,18 @@ class HubPage(ListPage):
             self.footer = self._footer()
             self._repaint()
             return True
-        if self.tab == DAEMONS and key == "enter":
+        if self.tab in (DAEMONS, HISTORY) and key == "enter":
             self._chosen()
+            return True
+        if self.tab == HISTORY and key == "s" and self.on_stop is not None:
+            # A stored session has no process: there is nothing to stop, and the SDK's sentence about a daemon that
+            # does not exist is not one for this page.
+            self.note("no daemon to stop on a stored session; enter starts one")
             return True
         if self.tab == DAEMONS and key == "s" and self.on_stop is not None:
             chosen = self._daemon()
             if chosen is None:
                 self.note("no daemon under the mark")
-            elif chosen.status == OFFLINE:
-                # A stored session no daemon ever had: there is nothing to stop, and the SDK's sentence about a daemon
-                # that does not exist is not one for this page.
-                self.note("no daemon to stop on this one; enter starts one")
             else:
                 self.note("stopping\u2026")
                 self.on_stop(chosen.session_id)
@@ -778,15 +796,15 @@ class HubPage(ListPage):
         if not (0 <= self.list.selected < len(items)):
             return None
         chosen = items[self.list.selected].value
-        return next((daemon for daemon in self.data.daemons if daemon.session_id == chosen), None)
+        return next((daemon for daemon in (*self.data.daemons, *self.data.stored) if daemon.session_id == chosen), None)
 
     def _chosen(self) -> None:
-        """Enter on the daemons tab starts what is under the mark when nothing is running it: a daemon whose process
-        is gone, or an offline session.
+        """Enter on the Daemons or History tab starts what is under the mark when nothing is running it: a daemon
+        whose process is gone, or a stored session.
 
         It says so on the page either way: that it is starting, or why nothing was started.
         """
-        if self.on_start is None or self.tab != DAEMONS:
+        if self.on_start is None or self.tab not in (DAEMONS, HISTORY):
             return None
         chosen = self._daemon()
         if chosen is None:
@@ -928,7 +946,9 @@ class HubCommand(TuiPlugin):
         """
         from zettcode.sdk.daemons import spawn_daemon
 
-        chosen = next((daemon for daemon in page.data.daemons if daemon.session_id == session_id), None)
+        chosen = next(
+            (daemon for daemon in (*page.data.daemons, *page.data.stored) if daemon.session_id == session_id), None
+        )
         if chosen is None:
             return
         if chosen.status not in STARTABLE:
@@ -970,16 +990,19 @@ class HubCommand(TuiPlugin):
                 )
             else:
                 note = f"started {started.session_id[:8]}"
+                if page.tab == HISTORY:
+                    note += "; it is on the Daemons tab now"  # the row leaves this tab: the spawn wrote a record
             await self._refresh(page, client)
         finally:
             self._starting.discard(session_id)
         page.note(note)
 
     async def _read(self, client: object) -> HubData:
-        """Read the three tabs: the broker's roster and graph, and the daemons' records, running or not.
+        """Read the four tabs: the broker's roster and graph, the daemons' records, running or not, and the stored
+        sessions of this workspace that nothing accounts for (the History tab).
 
-        The stored sessions of this workspace are read only for their titles, to name a session the graph has a line
-        to that is no longer in the roster; the Sessions tab lists what is running and nothing else.
+        The stored sessions also name a session the graph has a line to that is no longer in the roster; the Sessions
+        tab lists what is running and nothing else, and the Daemons tab records and nothing else.
         """
         from zettcode.sdk.daemons import list_daemons
 
@@ -1087,8 +1110,7 @@ class HubCommand(TuiPlugin):
         )
         # Offline: the stored sessions of this workspace that nothing accounts for — not the reader's own, not in the
         # roster, and not the session of any daemon record (which has its row already, running or stopped). They are
-        # listed with the daemons, and the tab sorts the whole of it by the same clock, so where they land is where
-        # their conversation last changed put them.
+        # the History tab's, kept out of `daemons`, and sorted there by when their conversation last changed.
         # Who is in the roster is the live graph's word, and the Sessions tab, the picture and the offline rows all take
         # it from there: a peer that has just disconnected lingers in the client's cache, and one tab would call a
         # session idle while another called it offline. The cached peers stand in only when the graph could not be read.
@@ -1132,7 +1154,8 @@ class HubCommand(TuiPlugin):
         lap("build")
         return HubData(
             peers=peers,
-            daemons=(*daemons, *offline),
+            daemons=daemons,
+            stored=offline,
             note=note,
             nodes=nodes,
             links=links,
