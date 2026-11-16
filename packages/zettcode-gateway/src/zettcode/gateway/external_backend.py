@@ -51,6 +51,10 @@ DEFAULT_TITLE = TITLE
 logger = logging.getLogger("zettcode.gateway")
 
 
+class _Unknown(Exception):
+    """The broker has never heard of a session: it is not registered and nothing was ever said to it."""
+
+
 class ExternalBackend(Backend):
     """The gateway as an external broker session, with owner-token reads for the page."""
 
@@ -165,19 +169,12 @@ class ExternalBackend(Backend):
         self.session.unwatch(session_id)
 
     def on_stream(self, callback: Callable[[StreamEvent], None]) -> None:
-        self.session.on_stream(
-            lambda session_id, event: callback(
-                StreamEvent(
-                    session_id=session_id,
-                    kind=str(event.get("kind", "")),
-                    text=str(event.get("text", "")),
-                    call_id=str(event.get("call_id", "")),
-                    name=str(event.get("name", "")),
-                    brief=str(event.get("brief", "")),
-                    ok=event.get("ok") if isinstance(event.get("ok"), bool) else None,
-                )
-            )
-        )
+        def relay(session_id: str, event: dict[str, Any]) -> None:
+            translated = StreamEvent.from_wire(session_id, event)
+            if translated is not None:
+                callback(translated)
+
+        self.session.on_stream(relay)
 
     def observe(self, callback: Callable[[dict[str, Any]], None] | None) -> None:
         self.session.observe(callback)
@@ -272,8 +269,11 @@ class ExternalBackend(Backend):
         """
         if not workspace.strip():
             # A peer without a workspace is an external session: it has no store, and opening one for the gateway's
-            # cwd would touch a folder that is not the peer's.
-            return await self._pair_history(session_id)
+            # cwd would touch a folder that is not the peer's. One never spoken to has an empty conversation.
+            try:
+                return await self._pair_history(session_id)
+            except _Unknown:
+                return []
         store = self._store(workspace)
         try:
             stored = await asyncio.to_thread(store.read, session_id)
@@ -283,12 +283,29 @@ class ExternalBackend(Backend):
             logger.warning("history.read_failed", extra={"session": session_id}, exc_info=error)
             raise SessionNotFoundError(f"Cannot read session {session_id}: {error}") from error
         if stored.header is None:
-            return await self._pair_history(session_id)
+            try:
+                return await self._pair_history(session_id)
+            except _Unknown:
+                # A session with a folder and no stored conversation, which the broker never heard of either: it has
+                # not been written to, which is what a reader of a stopped daemon is told.
+                raise SessionNotFoundError(f"No conversation is stored for {session_id}") from None
         return messages_of(stored, full=True)
 
     async def _pair_history(self, session_id: str) -> list[Message]:
-        """Return what this gateway and one session exchanged through the broker."""
-        body = await self._owner_get("/history", {"a": self.gateway_id, "b": session_id, "limit": 500})
+        """Return what this gateway and one session exchanged through the broker.
+
+        Raises:
+            _Unknown: The broker has never heard of ``session_id`` (it is not registered and nothing was said to it).
+        """
+        from .service import GatewayError
+
+        try:
+            body = await self._owner_get("/history", {"a": self.gateway_id, "b": session_id, "limit": 500})
+        except GatewayError as error:
+            # The refusal names the session it does not know; it is this one, not the gateway's own id.
+            if error.code == "unknown" and f"'{session_id}'" in str(error):
+                raise _Unknown(session_id) from None
+            raise
         messages = body.get("messages")
         if not isinstance(messages, list):
             return []

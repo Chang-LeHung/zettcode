@@ -29,6 +29,7 @@ import json
 import math
 import os
 import shlex
+import shutil
 import string
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -151,6 +152,11 @@ def _template(key: str, value: object) -> str:
     return text
 
 
+def _binary(value: str) -> str:
+    """Return the command as it is run: a path may start with ``~``, and a bare name is left for the PATH."""
+    return str(Path(value).expanduser()) if value.startswith("~") else value
+
+
 def resolve(tool: Tool, *, timeout: float = TIMEOUT) -> Settings:
     """Return the settings of one tool as they are now.
 
@@ -190,10 +196,35 @@ def resolve(tool: Tool, *, timeout: float = TIMEOUT) -> Settings:
         cwd=folder,
         permission=permission,
         timeout=float(limit),
-        binary=_text("bin", value("bin", os.environ.get(f"{tool.env}_BIN", tool.binary), shared=False)),
+        binary=_binary(_text("bin", value("bin", os.environ.get(f"{tool.env}_BIN", tool.binary), shared=False))),
         args=_template("args", value("args", os.environ.get(f"{tool.env}_ARGS", tool.args), shared=False)),
         resume_args=_template(
             "resume_args",
             value("resume_args", os.environ.get(f"{tool.env}_RESUME_ARGS", tool.resume_args), shared=False),
         ),
     )
+
+
+def missing(binary: str, tool: Tool) -> str:
+    """Return the sentence that says the program cannot be found, naming where it was looked for and how to point at it.
+
+    It is looked for the way a turn will run it: on the PATH of this process, or at the path given.
+    """
+    return (
+        f"{tool.name} was not found: '{binary}' is not an executable on this gateway's PATH. Install it, or set "
+        f'"bin" for "{tool.name}" in {config_path()} (or {tool.env}_BIN) to where it is.'
+    )
+
+
+def problem(tool: Tool) -> str:
+    """Return why the tool cannot be run now, or an empty string: a settings file that is wrong, or a program not found.
+
+    This does not start the program and does not look at whether it is logged in: the first turn says that.
+    """
+    try:
+        settings = resolve(tool)
+    except ConfigError as error:
+        return str(error)
+    if shutil.which(settings.binary) is None:
+        return missing(settings.binary, tool)
+    return ""

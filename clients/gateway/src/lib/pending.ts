@@ -32,6 +32,22 @@ export function pend(
   return entry;
 }
 
+/**
+ * The stored message that stands in for a pending one keeps the pending one's row key, so that the bubble is the same
+ * element before and after the conversation holds it: no remount, and so no flash. A claim is `text + target`, which is
+ * the occurrence of that text the stored conversation reaches when it shows the pending message.
+ */
+export function claimKey(text: string, occurrence: number): string {
+  return `${occurrence}\u0000${text}`;
+}
+
+/** Note, for each pending message the conversation now holds, which row key the stored copy takes over. */
+export function claim(waiting: readonly Pending[], items: readonly ChatItem[], into: Map<string, number>): void {
+  for (const p of waiting) {
+    if (p.state !== "failed" && held(items, p.text) >= p.target) into.set(claimKey(p.text, p.target), p.key);
+  }
+}
+
 /** Drop the pending messages the conversation now holds. A failed one stays: it was never sent. */
 export function settle(waiting: readonly Pending[], items: readonly ChatItem[]): Pending[] {
   const counts = new Map<string, number>();

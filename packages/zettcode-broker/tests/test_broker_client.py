@@ -1075,3 +1075,43 @@ def test_pictures_arrive_only_with_a_chat_message_and_only_if_they_are_what_they
         answer = client._deliver({**chat, "images": broken})
         assert answer["accepted"] is False and "pictures" in answer["reason"]
     assert len(seen) == before, "a message with a broken picture never reaches the session"
+
+
+async def test_a_broker_that_comes_back_as_old_as_the_one_ended_is_not_ended_again(tmp_path: Path, monkeypatch):
+    """A process that speaks a newer protocol than the code installed would end every broker that code starts, for ever,
+    and no session on the machine could keep one. After the first replacement comes back the same, it stops."""
+    from zettcode.broker import finder as broker_finder
+
+    old = PROTOCOL_VERSION - 1
+    ended: list[int] = []
+    holders = []
+
+    def end(pid: int, module: str, *, released: Any) -> bool:
+        ended.append(pid)
+        holders[-1].kill()
+        holders[-1].wait()
+        return True
+
+    def next_old_broker() -> None:
+        holder = hold_lock(tmp_path / LOCK_FILE)
+        holders.append(holder)
+        write_note(tmp_path, Note(pid=holder.pid, port=1, token="x", version=old))
+
+    monkeypatch.setattr(broker_finder.process, "end", end)
+    monkeypatch.setattr(broker_finder, "REPLACE_RETRY", 0.0)
+    finder = broker_finder.Finder(directory=tmp_path, spawn_wait=0.05)
+    try:
+        next_old_broker()
+        with pytest.raises(ConnectionError):
+            await finder.open(lambda: True)
+        assert len(ended) == 1
+
+        next_old_broker()  # started from the installed code, so it is as old as the first
+        with pytest.raises(ConnectionError):
+            await finder.open(lambda: True)
+        assert len(ended) == 1, "it is not ended a second time"
+        assert finder.incompatible and "restart this program" in finder.last_error
+    finally:
+        for holder in holders:
+            holder.kill()
+            holder.wait()

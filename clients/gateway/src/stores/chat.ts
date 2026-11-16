@@ -6,12 +6,12 @@ import { reactive } from "vue";
 import { gateway } from "../api/gateway";
 import { ApiError } from "../api/http";
 import { t } from "../i18n";
-import { pend, settle } from "../lib/pending";
+import { claim, pend, settle } from "../lib/pending";
 import { debounce, storage } from "../lib/storage";
 import { seenNow } from "../lib/unread";
 import type { ChatItem, Pending, Picture, Thread } from "../types";
 import { prefs } from "./prefs";
-import { seedStream, streamMark } from "./stream";
+import { clearQuiet, seedStream, streamMark } from "./stream";
 import { lobby, threadOf } from "./threads";
 
 export const chat = reactive({
@@ -46,6 +46,19 @@ let showAll = false;
  */
 let readingLine = true;
 
+/**
+ * Which stored message took over which pending row's key. A plain Map, not reactive: `rows` reads it, but only ever
+ * recomputes because `chat.items` or `chat.pending` changed in the same tick that `claim` ran (see `load`).
+ */
+const claims = new Map<string, Map<string, number>>();
+
+/** Which row key each stored message of a thread took over from the pending one it settled (see `claim`). */
+export function claimsOf(id: string): Map<string, number> {
+  let map = claims.get(id);
+  if (!map) claims.set(id, (map = new Map()));
+  return map;
+}
+
 function pendingFor(id: string): Pending[] {
   let list = waiting.get(id);
   if (!list) {
@@ -57,6 +70,8 @@ function pendingFor(id: string): Pending[] {
 
 async function load(id: string, all: boolean): Promise<void> {
   const mine = ++generation;
+  // Showing earlier messages renumbers every occurrence the claims were counted by; they are made again from here on.
+  if (all && !showAll) claimsOf(id).clear();
   if (all) showAll = true;
   // The first read of this visit: what was unread when the chat was opened, which is where it stops. The flag is used
   // up here, before the answer is awaited: a `thread` event arriving meanwhile starts a second read, and that one must
@@ -82,6 +97,8 @@ async function load(id: string, all: boolean): Promise<void> {
       chat.unreadFrom += detail.items.length - before;
     chat.error = "";
     const list = pendingFor(id);
+    // The stored copy of each message that settles takes over its row, so the bubble is not drawn anew.
+    claim(list, detail.items, claimsOf(id));
     const left = settle(list, detail.items);
     const settled = left.length !== list.length;
     if (settled) list.splice(0, list.length, ...left);
@@ -99,6 +116,8 @@ async function load(id: string, all: boolean): Promise<void> {
 /** Open a thread's conversation. */
 export async function openChat(id: string): Promise<void> {
   if (chat.id !== id) {
+    // What was claimed in the chat that was open is of no use to the next: kept, the map would only grow.
+    claims.clear();
     showAll = false;
     chat.id = id;
     chat.thread = threadOf(id) ?? null;
@@ -145,6 +164,8 @@ export async function sendMessage(text: string, reply: boolean, pictures: readon
   const id = chat.id;
   if (!id) return;
   const list = pendingFor(id);
+  // A new message starts a new turn: the dots held back after the last one's end are not about it.
+  clearQuiet(id);
   list.push(pend(++sequence, text, chat.items, list, Date.now(), pictures));
   const entry = list[list.length - 1]!;
   chat.revision += 1;

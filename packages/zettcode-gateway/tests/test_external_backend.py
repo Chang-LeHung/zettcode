@@ -129,3 +129,61 @@ async def test_stopping_a_daemon_keeps_its_record_so_it_can_be_started_again(tmp
 
     assert said == "stopped; its record was kept"
     assert asked == [{"session_id": "01d", "force": True, "keep": True}]
+
+
+async def test_a_watched_session_s_pieces_reach_the_gateway_as_stream_events(host, tmp_path):
+    heard = []
+    backend = ExternalBackend(tmp_path / "gw")
+    await backend.start(lambda message: Receipt(True, disposition="delivered"), lambda: None)
+    try:
+        backend.on_stream(heard.append)
+        streamer = client_for(host.directory, on_message=Inbox())
+        streamer.set_session(session(A, "Streamer"))
+        await streamer.start()
+        assert await streamer.wait_connected(3)
+        assert await streamer.wait_registered(3)
+        backend.watch(A)
+        await eventually(lambda: streamer.watched)
+        streamer.publish({"t": "text", "text": "hel"})
+        streamer.publish({"t": "tool", "id": "c1", "name": "read", "brief": "a.py"})
+        streamer.publish({"t": "tool_end", "id": "c1", "ok": True})
+        await eventually(lambda: len(heard) == 3)
+        assert [(item.kind, item.text, item.call_id, item.ok) for item in heard] == [
+            ("text", "hel", "", None),
+            ("tool", "", "c1", None),
+            ("tool_end", "", "c1", True),
+        ]
+        await streamer.close()
+    finally:
+        await backend.close()
+
+
+async def test_a_session_the_broker_has_never_heard_of_has_an_empty_conversation(host, tmp_path):
+    backend = ExternalBackend(tmp_path / "gw")
+    await backend.start(lambda message: Receipt(True, disposition="delivered"), lambda: None)
+    try:
+        assert await backend.history("01a1df6b-5f00-7596-8270-a5103e5ddf18", "") == []
+    finally:
+        await backend.close()
+
+
+async def test_a_stopped_daemon_with_no_stored_conversation_has_nothing_to_resume(host, tmp_path):
+    backend = ExternalBackend(tmp_path / "gw", tmp_path / "sessions")
+    await backend.start(lambda message: Receipt(True, disposition="delivered"), lambda: None)
+    try:
+        with pytest.raises(SessionNotFoundError):
+            await backend.history("01a1df6b-5f00-7596-8270-a5103e5ddf18", str(tmp_path))
+    finally:
+        await backend.close()
+
+
+async def test_a_broker_refusal_that_is_not_about_the_session_still_raises(host, tmp_path):
+    backend = ExternalBackend(tmp_path / "gw")
+    await backend.start(lambda message: Receipt(True, disposition="delivered"), lambda: None)
+    try:
+        backend._owner = None  # the owner client is gone: the read is refused as "broker", not as an unknown session
+        with pytest.raises(GatewayError) as refused:
+            await backend.history("01a1df6b-5f00-7596-8270-a5103e5ddf18", "")
+        assert refused.value.code == "broker"
+    finally:
+        await backend.close()

@@ -26,6 +26,34 @@ const restartable = computed(() => canRestart(props.thread));
 const startable = computed(() => canStartAgain(props.thread));
 const starting = computed(() => restarting.has(props.thread.id));
 
+/** An external agent this gateway keeps (Claude Code, Codex) that is not connected: it is started again under the same id.
+ *  Not offered while the broker is away: the panel says so above, and the start would only fail. */
+const revivable = computed(
+  () =>
+    !!props.thread.agent &&
+    !props.thread.online &&
+    props.thread.kind !== "daemon" &&
+    !auth.readOnly &&
+    lobby.status?.broker.reachable !== false,
+);
+const reviving = ref(false);
+async function revive(): Promise<void> {
+  reviving.value = true;
+  try {
+    await gateway.createAgent({
+      kind: props.thread.agent ?? "",
+      title: props.thread.title || props.thread.name,
+      session_id: props.thread.id,
+    });
+    await loadThreads();
+    toast(t("Started {name}", { name: props.thread.name }));
+  } catch (error) {
+    toast(error instanceof Error ? error.message : String(error), "bad");
+  } finally {
+    reviving.value = false;
+  }
+}
+
 /** The long way, to change something first: the New form, filled in from the daemon. */
 function change(): void {
   fromThread(props.thread);
@@ -51,6 +79,7 @@ async function recheck(): Promise<void> {
   <div class="locked">
     <span>{{ reason }}</span>
     <button v-if="thread.locked && !auth.readOnly" class="btn sm" :disabled="checking" @click="recheck"><span v-if="checking" class="spin" />{{ t("Check again") }}</button>
+    <button v-if="revivable" class="btn sm" :disabled="reviving" @click="revive"><span v-if="reviving" class="spin" />{{ t("Start it again") }}</button>
     <template v-if="startable">
       <button v-if="restartable" class="btn sm" :disabled="starting" @click="restartNow(thread)"><span v-if="starting" class="spin" />{{ t("Restart it") }}</button>
       <button class="btn sm" :class="{ ghost: restartable }" :disabled="starting" @click="change">{{ t("Change settings") }}</button>

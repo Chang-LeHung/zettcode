@@ -196,6 +196,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_daemon(commands)
     _add_broker(commands)
     _add_gateway(commands)
+    _add_services(commands)
     _add_plugin(commands)
     return parser
 
@@ -338,6 +339,19 @@ def _add_gateway(commands: Subcommands) -> None:
 #: before, kept for the scripts that already run it, and deliberately not advertised.
 PLUGIN_COMMAND = "plugin"
 PLUGIN_COMMANDS = (PLUGIN_COMMAND, "plugins")
+
+#: The words that start, stop or restart the background processes (see :mod:`zettcode.services`).
+SERVICE_COMMANDS = ("start", "stop", "restart")
+
+
+def _add_services(commands: Subcommands) -> None:
+    """Add ``start``, ``stop`` and ``restart``: the broker, the gateway, or both (``all``)."""
+    for word in SERVICE_COMMANDS:
+        commands.add_parser(
+            word,
+            help=f"{word} the broker, the gateway or all of them: {word} [broker|gateway|all]",
+            description=f"{word.capitalize()} the session broker, the web gateway, or both (the default).",
+        )
 
 
 def _add_plugin(commands: Subcommands) -> None:
@@ -889,7 +903,7 @@ def tune_collector() -> None:
 def main() -> None:
     """Installed console-script entry point."""
     argv = sys.argv[1:]
-    if argv[:1] != ["broker"]:
+    if argv[:1] != ["broker"] and (argv[0] if argv else "") not in SERVICE_COMMANDS:
         # After an upgrade the broker still running may speak the old protocol. A glance at its note and lock is all
         # this costs, and a process of its own replaces it only when it is older: the start never waits for it.
         from zettcode.broker.reload import check_in_background
@@ -914,6 +928,11 @@ def main() -> None:
 
         gateway_main(argv[1:])
         return
+    if argv[:1] and argv[0] in SERVICE_COMMANDS:
+        # `start`, `stop` and `restart` with broker, gateway or all: their own words, parsed by the command that runs them.
+        from zettcode.services import services_program
+
+        raise SystemExit(services_program(argv[0], argv[1:]))
     if argv and argv[0] in PLUGIN_COMMANDS:
         # The actions over the plugins, parsed by the command that installs and switches them. `plugins` is the
         # name this command had before; it is not listed in --help, and it still works for the scripts that use it.
@@ -933,6 +952,12 @@ def main() -> None:
         from zettcode.oneshot import prompt_program
 
         raise SystemExit(prompt_program(options))
+    if options.command in SERVICE_COMMANDS:
+        # Only reached when an option came before the word (`zettcode -w DIR start`), which the dispatch above does not
+        # see: these are not session options, and a session must not be opened in their place.
+        raise SystemExit(
+            f"zettcode {options.command}: put the word first, as `zettcode {options.command} [broker|gateway|all]`"
+        )
     if options.command == PLUGIN_COMMAND:
         # Only reached when another option came before the word (`zettcode -w DIR plugin`), which the dispatch above
         # does not see because it reads the first word alone. Its own parser prints the usage and asks for an action

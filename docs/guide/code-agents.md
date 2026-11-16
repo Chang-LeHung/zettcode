@@ -14,6 +14,15 @@ zettcode gateway restart                 # if a gateway is already running
 The `codex` and `claude` CLIs must be installed and signed in for the user who runs the gateway. The plugin is a
 gateway plugin: it adds nothing to the terminal.
 
+If a CLI cannot be found on the gateway's `PATH` (a gateway started from a desktop launcher or a service may have a
+different `PATH` than your shell), the New form greys that agent out and says so, and starting it is refused. Install
+it, or set `"bin"` for it in `~/.zettcode/code-agents/config.json` (a command name, or a path, `~` allowed); no restart
+is needed. Whether you are signed in is not checked ahead of time: the first message says if you are not.
+
+An agent you started stays in the Chats list after a restart. If the gateway could not bring it back (the CLI is gone,
+or the broker was away), it shows as offline with a **Start it again** button, and the gateway tries again by itself
+every few seconds.
+
 ## Start one
 
 Open `zettcode gateway start` in a browser, press **New**, choose the **External agent** tab, pick Codex or Claude Code,

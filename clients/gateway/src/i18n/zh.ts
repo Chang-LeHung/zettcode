@@ -316,6 +316,7 @@ export const ZH: Record<string, string> = {
   "This daemon is starting.": "此守护进程正在启动。",
   "This daemon is stopping.": "此守护进程正在停止。",
   "Restart it": "重新启动",
+  "Start it again": "重新连接",
   "Restart {name}": "重新启动 {name}",
   "Started {name}": "已重新启动 {name}",
   "Change settings": "改设置",

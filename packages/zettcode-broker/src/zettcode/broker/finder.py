@@ -102,6 +102,11 @@ class Finder:
         #: Each process asked to end: how many times, and when the last attempt began. A failed attempt is retried,
         #: but not on every look, and not for ever: the note may name a process that is not ours.
         self._tried: dict[int, tuple[int, float]] = {}
+        #: The protocol of the last older broker this finder ended. A broker that comes back with the same protocol was
+        #: started from code older than this process (an upgrade this process has not picked up, or a source tree that
+        #: was changed under it), and ending it again would only start another: a loop that takes the broker away from
+        #: every session on the machine every few seconds.
+        self._replaced: int | None = None
 
     async def open(self, giving_up: Callable[[], bool]) -> tuple[Any, Note]:
         """Return a connection to the broker and its note, for as long as ``giving_up()`` is false.
@@ -138,6 +143,15 @@ class Finder:
             # end, which is not a protocol to wait on: an attempt that fails is retried with the ordinary backoff,
             # not reported as an incompatibility and then left alone for seconds at a time.
             if note.version < PROTOCOL_VERSION:
+                if self._replaced == note.version:
+                    # Replaced once already and it came back the same: this process is the stale one, not the broker.
+                    self.last_error = (
+                        f"the session broker speaks protocol {note.version} and this process speaks "
+                        f"{PROTOCOL_VERSION}, but a broker started from the installed code speaks {note.version}: "
+                        "restart this program so it matches what is installed"
+                    )
+                    self.incompatible = True
+                    return None
                 await self._replace(directory, note)
                 return None
             # Incompatible only while one is still there in the way: a newer broker that was killed, or a note it
@@ -208,3 +222,5 @@ class Finder:
             return
         self._tried[note.pid] = (attempts + 1, time.monotonic())
         await asyncio.to_thread(process.end, note.pid, MODULE, released=lambda: not is_held(lock))
+        if not is_held(lock):
+            self._replaced = note.version

@@ -66,6 +66,12 @@ POLL_SECONDS = 1.5
 #: How long a probe of "does another process have this session open" is kept before it is asked again.
 LOCK_PROBE_SECONDS = 5.0
 
+#: How long after its process started a daemon that has not registered yet still counts as starting.
+STARTUP_GRACE_SECONDS = 30.0
+
+#: How often the watcher tries again to bring back an external agent on the roster that is not running.
+AGENT_RETRY_SECONDS = 10.0
+
 #: How many notes about a session's failed direct turns a chat keeps.
 NOTE_LIMIT = 4
 
@@ -326,6 +332,8 @@ class Gateway:
         self._wake = asyncio.Event()
         self._watcher: asyncio.Task[None] | None = None
         self._reachable: bool | None = None
+        #: The task that brings back external agents that are not running (see :meth:`_keep_agents`).
+        self._keeper: asyncio.Task[None] | None = None
         #: The last failed refresh, so a permanent fault does not append a
         #: traceback every poll interval.
         self._refresh_error: str | None = None
@@ -341,6 +349,7 @@ class Gateway:
         await self.refresh()
         if watch:
             self._watcher = asyncio.ensure_future(self._watch())
+            self._keeper = asyncio.ensure_future(self._keep_agents())
 
     async def close(self) -> None:
         """Stop watching and leave the broker."""
@@ -353,6 +362,10 @@ class Gateway:
         if watcher is not None:
             watcher.cancel()
             await asyncio.gather(watcher, return_exceptions=True)
+        keeper, self._keeper = self._keeper, None
+        if keeper is not None:
+            keeper.cancel()
+            await asyncio.gather(keeper, return_exceptions=True)
         await self.agents.close()
         await self.backend.close()
 
@@ -366,6 +379,27 @@ class Gateway:
                 await asyncio.wait_for(self._wake.wait(), self.poll)
             self._wake.clear()
             await asyncio.sleep(0.05)
+
+    async def _keep_agents(self) -> None:
+        """Bring back, every :data:`AGENT_RETRY_SECONDS`, an agent on the roster that is not running.
+
+        Its own task and not a step of the watcher: starting one waits for the broker, and a roster of agents that
+        cannot start must not hold up every thread update. Only while the broker can be reached, so a gateway that
+        started before its broker does not leave the person's agents offline until the next restart.
+        """
+        while True:
+            await asyncio.sleep(AGENT_RETRY_SECONDS)
+            if not self.backend.reachable:
+                continue
+            try:
+                back = await self.agents.restore()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - the keeper must outlive an agent that will not start
+                logger.exception("agents.restore_failed")
+                continue
+            if back:
+                self._wake_up()
 
     async def _poll_once(self) -> None:
         """Take one refresh step, recording only a failure transition and its recovery."""
@@ -400,7 +434,9 @@ class Gateway:
             for gone in self._watching - peers.keys():
                 self._watching.discard(gone)
                 self.backend.unwatch(gone)  # every run is a new id: they would add up, and the broker caps them
-            order = list(dict.fromkeys([*daemons, *peers, *self._inbox]))
+            # An external agent this gateway keeps is a thread of its own even when it is not connected, so that the page
+            # can say it is offline and offer to start it again instead of the agent vanishing from the list.
+            order = list(dict.fromkeys([*daemons, *peers, *self._inbox, *self.agents.kept()]))
             views: dict[str, dict[str, Any]] = {}
             moved: list[str] = []
             for session_id in order:
@@ -486,6 +522,8 @@ class Gateway:
             profiled.get("name")
             or (daemon.title if daemon is not None else None)
             or (peer.title if peer is not None else "")
+            # An agent this gateway keeps has the title it was given, also while it is not connected.
+            or self.agents.title_of(session_id)
         )
         name = (
             profiled.get("name")
@@ -552,14 +590,21 @@ class Gateway:
             raise GatewayError(404, "not_found", "No such session is listed")
         return view
 
-    @staticmethod
-    def _status(daemon: DaemonInfo | None, peer: Peer | None) -> str:
-        """Return what a thread is doing: the roster's word when it is registered, the daemon's own otherwise."""
+    def _status(self, daemon: DaemonInfo | None, peer: Peer | None) -> str:
+        """Return what a thread is doing: the roster's word when it is registered, the daemon's own otherwise.
+
+        A daemon whose process was started moments ago has not registered with the broker yet, and its state file may
+        not say ``starting`` yet either: that is starting, not "not connected".
+        """
         if peer is not None:
             return "stopping" if daemon is not None and daemon.status == "stopping" else peer.status
         if daemon is None:
             return "offline"
-        return daemon.status if daemon.status in ("starting", "stopping", "dead") else "offline"
+        if daemon.status in ("starting", "stopping", "dead"):
+            return daemon.status
+        if daemon.started_at and 0 <= self.clock() - daemon.started_at < STARTUP_GRACE_SECONDS:
+            return "starting"
+        return "offline"
 
     # -- what a page asks -------------------------------------------------------------------------
     async def update_profile(self, session_id: str, data: Mapping[str, Any]) -> dict[str, Any]:
@@ -1238,7 +1283,7 @@ class Gateway:
             raise GatewayError(404 if error.reason == "unknown" else 503, error.reason, str(error)) from error
 
     # -- external agents --------------------------------------------------------------------------
-    def agent_types(self) -> list[dict[str, str]]:
+    def agent_types(self) -> list[dict[str, Any]]:
         """Return the external agent types an installed plugin offers."""
         return [item.to_dict() for item in self.agents.available()]
 
@@ -1267,7 +1312,9 @@ class Gateway:
                     await self.backend.remove_group_member(group, session_id)
             raise GatewayError(400, "agent", str(error)) from error
         avatar = self.agents.avatar(kind)
-        if avatar:
+        # Only for an agent the person has not yet made anything of: a name, picture, pin or archive they set is theirs,
+        # and starting an agent again (a revive) must not put the type's logo over all of it.
+        if avatar and session.session_id not in self._profiles:
             try:
                 self._profiles.set_default_avatar(session.session_id, avatar)
             except OSError:

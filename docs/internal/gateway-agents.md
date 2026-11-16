@@ -40,6 +40,13 @@ class EchoAgent(AgentPlugin):
 registration, and calls `join_group` when the page asked for one. The manager closes the session when it is removed
 or the gateway stops.
 
+`AgentPlugin.probe()` is the gate before that: it returns an empty string when the agent can run, or the sentence that
+says why not (and what to do). It runs in the gateway process (so a program is looked for on the PATH a turn will use),
+must be quick, and must not start the program or check a login. `AgentManager._start` refuses with it before `create`,
+so nothing is registered, joined to a group or put on the roster for an agent that cannot run, and `available()` carries
+`runnable`/`reason` for the page to grey the type out. It is advice that can go stale: a turn that fails still answers
+with its own sentence. A roster entry that cannot start is retried by the gateway's keeper every few seconds.
+
 `kind="zettcode"` is a **claim**, not a verified identity: the broker takes the session's word for it, and it is
 equivalent to holding the broker token. Only a plugin the reader would trust with that token may use it. The code-agent
 plugins stay `kind="external"` and still receive/write groups when the owner adds them. An ordinary external script that connects by itself stays `kind="external"`

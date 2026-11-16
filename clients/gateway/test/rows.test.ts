@@ -57,3 +57,32 @@ test("a turn of the past is not taken for the running one", () => {
   assert.equal(settled.text, "ok");
   assert.equal(settled.tools.length, 0);
 });
+
+test("the stored copy of a message that was pending keeps the pending row's key, so the bubble is not drawn anew", async () => {
+  const { claim } = await import("../src/lib/pending");
+  const pending = [{ key: 7, text: "hi", target: 2, state: "started" as const, at: 0 }];
+  const items: ChatItem[] = [
+    { kind: "out", text: "hi" },
+    { kind: "in", text: "hello" },
+    { kind: "out", text: "hi" },
+  ];
+  const claims = new Map<string, number>();
+  claim(pending, items, claims);
+
+  const keys = buildRows(items, [], undefined, claims).map((row) => row.key);
+  assert.deepEqual(keys, ["m0", "m1", "p7"]);
+});
+
+test("a stored message that took over a pending row's key is still the place the unread line can go above", async () => {
+  const { lineRow } = await import("../src/lib/unread");
+  const { claim } = await import("../src/lib/pending");
+  const items: ChatItem[] = [
+    { kind: "in", text: "a" },
+    { kind: "out", text: "hi" },
+  ];
+  const claims = new Map<string, number>();
+  claim([{ key: 3, text: "hi", target: 1, state: "started" as const, at: 0 }], items, claims);
+  const rows = buildRows(items, [], undefined, claims);
+  assert.equal(rows[1]!.key, "p3");
+  assert.equal(lineRow(rows, 1), rows[1]);
+});

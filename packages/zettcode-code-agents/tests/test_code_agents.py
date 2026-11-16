@@ -327,3 +327,30 @@ async def test_a_picture_sent_to_a_cli_agent_is_refused_in_words_and_no_turn_sta
 
     assert receipt.accepted is False and "cannot take pictures" in receipt.reason
     assert not started and not agent._turns
+
+
+def test_a_missing_program_is_reported_before_an_agent_is_made_and_a_present_one_is_not(monkeypatch, tmp_path):
+    from zettcode.code_agents import CLAUDE, ClaudeCodeAgent
+    from zettcode.code_agents.config import problem
+
+    monkeypatch.setenv("ZETTCODE_CODE_AGENTS_CONFIG", str(tmp_path / "config.json"))
+    monkeypatch.setenv("ZETTCODE_CODE_AGENTS_DIR", str(tmp_path))
+    monkeypatch.setenv("ZETTCODE_CLAUDE_BIN", str(tmp_path / "no-such-claude"))
+    reason = ClaudeCodeAgent().probe()
+    assert "no-such-claude" in reason and "PATH" in reason and "ZETTCODE_CLAUDE_BIN" in reason
+
+    present = tmp_path / "claude"
+    present.write_text("#!/bin/sh\n")
+    present.chmod(0o755)
+    monkeypatch.setenv("ZETTCODE_CLAUDE_BIN", str(present))
+    assert problem(CLAUDE) == ""
+
+
+def test_a_settings_file_that_cannot_be_used_is_the_reason(monkeypatch, tmp_path):
+    from zettcode.code_agents import CODEX
+    from zettcode.code_agents.config import problem
+
+    broken = tmp_path / "config.json"
+    broken.write_text("{not json")
+    monkeypatch.setenv("ZETTCODE_CODE_AGENTS_CONFIG", str(broken))
+    assert "config.json" in problem(CODEX)

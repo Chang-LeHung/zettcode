@@ -77,3 +77,13 @@ test("a gateway that starts counting again is heard after the socket reconnects"
   applyStream("r", { kind: "begin", turn: 1 });
   assert.equal(streams.r?.turn, 1);
 });
+
+test("the end of a turn holds the typing dots back until something new is heard", async () => {
+  const { quiet } = await import("../src/stores/stream");
+  resetStreams();
+  applyStream("q", { kind: "begin", turn: 1 });
+  applyStream("q", { kind: "end", turn: 1 });
+  assert.equal(quiet.has("q"), true);
+  applyStream("q", { kind: "begin", turn: 2 });
+  assert.equal(quiet.has("q"), false);
+});

@@ -446,6 +446,27 @@ class StreamEvent:
     brief: str = ""
     ok: bool | None = None
 
+    @classmethod
+    def from_wire(cls, session_id: str, wire: Mapping[str, Any]) -> StreamEvent | None:
+        """Return the event a stream line of the broker says, or ``None`` for a line that names no kind.
+
+        The wire says ``t`` for the kind and ``id`` for the call. This is the one place that is read, so a client of the
+        broker (the SDK, the web gateway) cannot drift from it: they once did, and nothing streamed.
+        """
+        kind = wire.get("t")
+        if not isinstance(kind, str):
+            return None
+        text, call_id, name, brief, ok = (wire.get(key) for key in ("text", "id", "name", "brief", "ok"))
+        return cls(
+            session_id,
+            kind,
+            text if isinstance(text, str) else "",
+            call_id if isinstance(call_id, str) else "",
+            name if isinstance(name, str) else "",
+            brief if isinstance(brief, str) else "",
+            ok if isinstance(ok, bool) else None,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class SendLimits:

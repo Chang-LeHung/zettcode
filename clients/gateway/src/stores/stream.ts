@@ -17,6 +17,18 @@ const empty = (turn: number | undefined): LiveTurn =>
 /** The newest turn of each session whose end was heard. The gateway numbers turns upward, so anything at or below is over. */
 const ended = new Map<string, number>();
 
+/**
+ * Sessions whose turn just ended while the roster still says they are working: the roster catches up a moment after the
+ * stream's end, and the typing dots must not stay up for that moment. Cleared when anything new is heard or the roster
+ * says the session is not working.
+ */
+export const quiet = reactive(new Set<string>());
+
+/** The roster says a session is no longer working, or a new message was sent to it: what was held back is over. */
+export function clearQuiet(id: string): void {
+  quiet.delete(id);
+}
+
 /** How many pieces have been heard per session: the guard for a gateway that does not number its turns. */
 const heard = new Map<string, number>();
 
@@ -34,9 +46,13 @@ export function applyStream(id: string, piece: StreamPiece): void {
   if (piece.kind === "end") {
     if (number !== undefined) ended.set(id, number);
     // The end of an older turn leaves a newer one running.
-    if (number === undefined || current?.turn === undefined || current.turn <= number) delete streams[id];
+    if (number === undefined || current?.turn === undefined || current.turn <= number) {
+      delete streams[id];
+      quiet.add(id);
+    }
     return;
   }
+  quiet.delete(id);
   const newer = number !== undefined && current?.turn !== undefined && number > current.turn;
   const turn = piece.kind === "begin" || !current || newer ? (streams[id] = empty(number)) : current;
   if (turn.turn === undefined && number !== undefined) turn.turn = number;
@@ -76,4 +92,5 @@ export function resetStreams(): void {
   for (const id of Object.keys(streams)) delete streams[id];
   // A gateway that restarted counts its turns from the start again, so what was over before is not over now.
   ended.clear();
+  quiet.clear();
 }

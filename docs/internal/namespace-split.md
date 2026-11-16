@@ -94,6 +94,7 @@ distribution has a top-level import root of its own. A test holds that:
 | `table` | sdk | The daemon's output and the program's. |
 | `update` | app | The release check and its page are one feature; the program's `zettcode update` command imports it. |
 | `cli`, `plugin_cli`, `oneshot` | program | The console scripts. |
+| `services` | program | `zettcode start\|stop\|restart [broker\|gateway\|all]`. |
 
 ## What leaves the engine
 

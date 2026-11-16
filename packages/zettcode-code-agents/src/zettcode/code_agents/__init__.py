@@ -39,6 +39,8 @@ from zettcode.code_agents.config import (
     ConfigError,
     Settings,
     Tool,
+    missing,
+    problem,
     resolve,
     state_directory,
     work_directory,
@@ -132,6 +134,10 @@ def _events(stdout: str) -> tuple[str, str]:
     return text, session
 
 
+class _Said(RuntimeError):
+    """A failure whose text is already the whole sentence the person reads, not a detail to put after "failed:"."""
+
+
 class CliAgent(ExternalSession):
     """An external session whose one handler runs a CLI and keeps its session id."""
 
@@ -162,6 +168,8 @@ class CliAgent(ExternalSession):
             await self.set_status("working")
             try:
                 answer = await self._run(message.text)
+            except _Said as error:
+                answer = str(error)
             except Exception as error:  # noqa: BLE001 - the person gets the reason, the agent stays alive
                 answer = f"{self.title} failed: {error}"
             finally:
@@ -186,6 +194,13 @@ class CliAgent(ExternalSession):
             source.resume_flags[settings.permission],
         )
 
+    def _not_found(self, binary: str) -> str:
+        """Return the sentence for a program that is not there: the tool's own, or a bare command's."""
+        source = self.source
+        if isinstance(source, Tool):
+            return missing(binary, source)
+        return f"'{binary}' was not found on this gateway's PATH"
+
     async def _run(self, prompt: str) -> str:
         launch = self._resolve()
         command, timeout = launch.command, launch.timeout
@@ -205,13 +220,24 @@ class CliAgent(ExternalSession):
         options: dict[str, Any] = {}
         if os.name != "nt":
             options["start_new_session"] = True
-        self._process = await asyncio.create_subprocess_exec(
-            *argv,
-            cwd=str(launch.cwd),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            **options,
-        )
+        try:
+            self._process = await asyncio.create_subprocess_exec(
+                *argv,
+                cwd=str(launch.cwd),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                **options,
+            )
+        except (FileNotFoundError, PermissionError) as gone:
+            # Which of the three it was decides the sentence: the folder, a program that is there but not runnable, or
+            # a program that is not there (the settings now name one, or it was removed since the agent was started).
+            if not launch.cwd.is_dir():
+                raise _Said(f"{self.title} could not run: the folder {launch.cwd} does not exist any more") from gone
+            if isinstance(gone, PermissionError):
+                raise _Said(
+                    f"{self.title} could not run: '{command.binary}' cannot be executed ({gone.strerror})"
+                ) from gone
+            raise _Said(self._not_found(command.binary)) from gone
         process = self._process
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout)
@@ -318,6 +344,9 @@ class CodexAgent(AgentPlugin):
     description = "OpenAI Codex CLI, in the same session every time"
     avatar = _logo("codex.svg")
 
+    def probe(self) -> str:
+        return problem(CODEX)
+
     def create(self, session_id: str, title: str) -> ExternalSession:
         return CliAgent(session_id, title, CODEX)
 
@@ -327,6 +356,9 @@ class ClaudeCodeAgent(AgentPlugin):
     title = "Claude Code"
     description = "Anthropic Claude Code, in the same session every time"
     avatar = _logo("claude.svg")
+
+    def probe(self) -> str:
+        return problem(CLAUDE)
 
     def create(self, session_id: str, title: str) -> ExternalSession:
         return CliAgent(session_id, title, CLAUDE)

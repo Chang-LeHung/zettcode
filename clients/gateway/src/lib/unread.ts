@@ -28,11 +28,13 @@ export function unreadChats(threads: readonly { unread: number }[]): number {
  *
  * Rows are keyed `m<item>`, `s<item>` and `n<item>` for a bubble, a run of steps and a note, so the item a row was
  * drawn from is in its key. A message this page has sent and the conversation has not stored yet is keyed `p<n>` and
- * is never the place: it sits below everything the session said.
+ * is never the place: it sits below everything the session said. A stored message that took over such a key says the
+ * item it was drawn from in `at`.
  */
-export function lineRow<R extends { key: string }>(rows: readonly R[], from: number | null): R | undefined {
+export function lineRow<R extends { key: string; at?: number }>(rows: readonly R[], from: number | null): R | undefined {
   if (from === null) return undefined;
   return rows.find((row) => {
+    if (row.at !== undefined) return row.at >= from;
     const kind = row.key.charAt(0);
     if (kind !== "m" && kind !== "s" && kind !== "n") return false;
     return Number(row.key.slice(1)) >= from;

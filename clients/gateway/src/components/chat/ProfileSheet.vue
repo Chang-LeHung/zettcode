@@ -66,7 +66,10 @@ async function save(): Promise<void> {
 <style>
 .profile-edit { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px 16px 16px; }
 .profile-edit .profile-actions { display: flex; gap: 8px; }
-.profile-edit .field-row { width: 100%; display: flex; flex-direction: column; gap: 4px; }
-.profile-edit .field-row > span { color: var(--muted); font-size: 0.78rem; font-weight: 600; }
-.profile-edit input[type="text"] { min-height: 42px; padding: 8px 10px; border: 1px solid var(--divider); border-radius: 10px; background: var(--bg); color: var(--text); font: inherit; }
+/* The global `.field-row` is a settings row (label left, value right, centred, 52px tall). Here the label sits above a
+   full-width input, so the parts of it that would squeeze the input and clip the label are turned off. */
+.profile-edit .field-row { width: 100%; display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-height: 0; padding: 0; background: none; }
+.profile-edit .field-row:focus-within, .profile-edit .field-row:active { background: none; }
+.profile-edit .field-row > span { color: var(--muted); font-size: 0.78rem; font-weight: 600; text-align: left; }
+.profile-edit input[type="text"] { width: 100%; box-sizing: border-box; min-height: 42px; padding: 8px 10px; border: 1px solid var(--divider); border-radius: 10px; background: var(--bg); color: var(--text); font: inherit; }
 </style>
