@@ -281,6 +281,22 @@ async def test_a_command_answers_with_a_document_beside_the_old_fields():
     assert unknown.status_code == 404 and unknown.json()["error"] == "not_found"
 
 
+async def test_a_command_that_refuses_is_busy_while_a_run_holds_the_slot():
+    """The shell refuses a `when_busy="refuse"` command; the server must too, before its handler moves anything."""
+    from zettcode.sdk.errors import SessionBusyError
+    from zettcode.server.runner import Runner
+
+    runner = Runner(Settings(workspace=Path("/tmp/zettcode-server-test")), factory=lambda: FakeClient())
+    await runner.start()
+    try:
+        await runner.slot.lock.acquire()
+        with pytest.raises(SessionBusyError):
+            await runner.run_command("/hello", "")
+    finally:
+        runner.slot.lock.release()
+        await runner.close()
+
+
 async def test_a_command_preset_hands_its_cache_mode_to_the_client_that_runs_it():
     """A preset that one-off caching is right for says so, and the answer carries it to the client."""
     async with serve(FakeClient()) as http:

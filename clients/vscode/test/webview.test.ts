@@ -401,7 +401,7 @@ test("the command list can be scrolled by its scrollbar without the box losing f
   const down = new ui.window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });
   (ui.one("#input") as HTMLElement).dispatchEvent(down);
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.ok(ui.one("#menu .menu-item.active")?.textContent?.includes("/resume"));
+  assert.ok(ui.one("#menu .menu-item.active")?.textContent?.includes("/new"), "the row after /help is /new");
 });
 
 test("a slash command opens the model menu over the box", async () => {
@@ -881,7 +881,13 @@ test("a follow-up goes out by itself when the run ends well, and waits when it w
   await ui.type("then this");
   await ui.click("#send");
   await ui.send({ type: "state", state });
-  assert.deepEqual(ui.messages.at(-1), { type: "prompt", text: "then this", images: [] });
+  assert.deepEqual(ui.messages.at(-1), {
+    type: "prompt",
+    text: "then this",
+    images: [],
+    queueId: 1,
+    session: "session-1",
+  });
   assert.equal(ui.one("#queue"), null);
 
   const stopped = createTurn("second", [], 300, "turn-b");

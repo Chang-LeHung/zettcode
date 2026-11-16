@@ -33,11 +33,15 @@ from typing import TYPE_CHECKING
 
 from zettcode.plugin_api import (
     HOST_LINK,
+    LLM,
     CommandContext,
     CommandHost,
     CommandResult,
     HostLink,
+    ModelAccess,
+    PlainCommandContext,
     PluginContext,
+    TextCommandResult,
     TuiPlugin,
 )
 
@@ -100,6 +104,8 @@ class RecapPlugin(TuiPlugin):
     def __init__(self) -> None:
         """Start with nothing counted and no recap on its way."""
         self._link: HostLink | None = None
+        #: The front-end-neutral model service: a process with no screen still has one, bound by its SDK client.
+        self._llm: ModelAccess | None = None
         #: Bumped by every turn start: a wait armed for an older one is for a conversation that has moved on.
         self._generation = 0
         self._turns = 0
@@ -121,7 +127,11 @@ class RecapPlugin(TuiPlugin):
         self.min_messages = int(_number(given, "min_messages", least=1))
         self.min_since_recap = int(_number(given, "min_since_recap", least=1))
         self._link = ctx.find(HOST_LINK, HostLink)
+        self._llm = ctx.find(LLM, ModelAccess)
         if ctx.tui is None:
+            # A process with no screen still has the model service; `/recap` is one plain command, and the idle wait
+            # stays a terminal feature until the engine gives every front end turn hooks.
+            ctx.commands.register("/recap", "summarise where this session is", self.plain_recap, when_busy="refuse")
             return
         # `/recap` asks the shell's own side question, which takes seconds, so it returns the work to do and the shell
         # shows what it is doing until it is answered; Ctrl-C and Escape stop it.
@@ -218,16 +228,18 @@ class RecapPlugin(TuiPlugin):
             self._schedule()
 
     async def _ask(self) -> str:
-        """Ask the model for the summary, as the shell's own side question.
+        """Ask the model for the summary through the front end's model service.
 
         ``origin="recap"``: the question is the plugin's, not the reader's, so nothing of the exchange is drawn — the
         projector drops it live — and nothing of it comes back when the session is resumed. The one line the reader
         sees is the quote :meth:`_show` draws.
 
         Raises:
-            RuntimeError: The shell is not built yet.
+            RuntimeError: The model service is not ready yet.
             Exception: Whatever the ask raised — a run already going, the session locked, the provider failing.
         """
+        if self._llm is not None:
+            return await self._llm.ask(PROMPT, cache="read", timeout=TIMEOUT_SECONDS, origin="recap")
         host = self._host()
         if host is None:
             raise RuntimeError("The shell is not ready yet")
@@ -245,7 +257,7 @@ class RecapPlugin(TuiPlugin):
             Exception: What the session's ``ask`` raised — refused because a run is going, the session locked by
                 another process, the provider failing — for a caller with a reader to tell.
         """
-        if self._host() is None:
+        if self._llm is None and self._host() is None:
             return ""
         asking = asyncio.current_task() if cancellable else None
         if cancellable:
@@ -281,6 +293,18 @@ class RecapPlugin(TuiPlugin):
         if not text:
             return CommandResult(notification="Nothing to recap yet")
         return CommandResult(message=quote(text), notification=f"{PREFIX} ready")
+
+    async def plain_recap(self, context: PlainCommandContext) -> TextCommandResult:
+        """``/recap`` for a front end with no screen: one side question, answered as a Markdown document."""
+        try:
+            text = await self._recap(cancellable=False)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            raise ValueError(f"Could not write a recap: {error}") from error
+        if not text:
+            return TextCommandResult(notification="Nothing to recap yet")
+        return TextCommandResult(markdown=quote(text), notification=f"{PREFIX} ready")
 
     # -- helpers -----------------------------------------------------------------------------------
     def _show(self, text: str) -> None:

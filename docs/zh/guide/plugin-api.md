@@ -360,10 +360,11 @@ quiet = true
 | 没有屏幕也能跑 | 能 | 不能 |
 | handler | 同步或异步 | 异步 |
 | 名字 | 要带 `/` | `/` 可省 |
-| shell 访问 | `PlainCommandHost`（`compact`、`title`、`export`） | 完整的 `CommandHost` |
+| shell 访问 | `PlainCommandHost`（`compact`、`title`、`export`、`locked`、`session_id`、`workspace`、`hub`） | 完整的 `CommandHost` |
 | 页面/组件 | 没有 | `CommandResult.widget` |
 
 plain 命令的 `host` 可能是 `None`：终端适配器传 `None`，服务器传真的 `PlainCommandHost`。用它之前先判空。
+`hub()` 返回 `you`、`sessions`、`daemons`、`edges` 和 `error`；每个条目的字段写在 ABC 的 docstring 里。
 
 `CommandHost` 是终端命令的 shell API：`client`、`agent`、`transcript`、`commands`、
 `prompt(text, *, shown=None, cache=None)`、`close_page`、`request_layout`、`wait_for_frame`、`offer`、`quit`、
@@ -447,8 +448,10 @@ def notes(context: PlainCommandContext) -> TextCommandResult:
 
 在 `activate` 里用 `ctx.commands.register("/notes", "show the notes", notes)` 注册——plain 命令要带 `/`。
 它的 context 有 `argument`、`level`（`deny`/`ask`/`safe`/`full`），以及可选的 `host`（`compact()`、
-`title()`、`export()`）。终端适配器传 `host=None`；需要 host 的 plain 命令必须处理这种情况。`markdown` 是
-一个字段而不是第三种结果类型，所以对着旧契约写的东西不会有任何变化。各前端拿它怎么办：
+`title()`、`export()`、`locked`、`session_id`、`workspace`、`hub()`）。终端适配器传 `host=None`；需要 host 的
+plain 命令必须处理这种情况。`markdown` 是一个字段而不是新的结果类型，所以对着旧契约写的东西不会有任何变化：
+不认识这个字段的前端仍然运行命令、仍然显示 `message`；`TurnCommandResult` 是第二种结果类型，早于它的前端不认识。
+各前端拿文档怎么办：
 
 | 前端 | 文档去哪里 |
 | --- | --- |
@@ -903,13 +906,16 @@ hook 的签名和可变 context 来自 `zett-agent`。本身是 extension 的插
 ### 命令
 
 `ctx.commands.register(name, summary, handler, *, when_busy="refuse", subcommands=())` 加一个 plain
-命令。handler 收到 `PlainCommandContext`：
+命令。handler 收到 `PlainCommandContext`。`subcommands` 是 `Subcommand` 记录（`name`、`description`、`needs_more`）；
+标了 `needs_more` 的词由菜单补全、等后面的内容，而不是直接运行，`GET /commands` 同时带上名字和这个标记。
+
+字段是：
 
 | 字段 | 含义 |
 | --- | --- |
 | `argument` | 命令名后面原样、去掉首尾空白的文本 |
 | `level` | `deny`、`ask`、`safe` 或 `full` |
-| `host` | `PlainCommandHost \| None`；用它做 `compact`、`title`、`export` |
+| `host` | `PlainCommandHost \| None`；用它做 `compact`、`title`、`export`、`session_id`、`workspace`、`hub`；`locked` 表示另一个进程占着这个会话 |
 
 `TextCommandResult(message="", notification="", markdown="")` 用文字、toast 或文档回答。
 `TurnCommandResult(prompt, shown="", notification="", cache="")` 开一轮对话；`cache` 是 `"read"`、

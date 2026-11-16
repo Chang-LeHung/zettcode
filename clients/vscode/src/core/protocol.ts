@@ -1,6 +1,7 @@
 /** The messages the extension host and the chat webview exchange. */
 
 import type {
+  CacheMode,
   CommandInfo,
   ContextReport,
   CurrentSession,
@@ -95,12 +96,30 @@ export type HostMessage =
   | { type: "diff-rows"; turnId: string; path: string; rows: DiffRow[]; truncated: boolean }
   | { type: "history"; open: boolean }
   | { type: "find" }
-  | { type: "model-form"; open: boolean };
+  | { type: "model-form"; open: boolean }
+  /**
+   * A command's preset that could not start because a run is going: it waits in the same queue as a typed
+   * follow-up and is sent when the run ends. `text` is what the model reads; `shown` is the line the conversation
+   * keeps.
+   */
+  | { type: "queue-turn"; text: string; shown: string; cache?: CacheMode; queueId?: number; session?: string }
+  /** A side question that found a run in flight; it waits with the follow-ups and is asked when that run ends. */
+  | { type: "queue-ask"; question: string; queueId?: number; session?: string }
+  /** A typed follow-up that must wait — no model yet, or the reader moved to another conversation; it keeps its line. */
+  | { type: "queue-message"; text: string; images: ImageInput[]; queueId?: number; session?: string };
 
 export type WebviewMessage =
   | { type: "ready" }
   | { type: "focused"; focused: boolean }
-  | { type: "prompt"; text: string; images: ImageInput[] }
+  | {
+      type: "prompt";
+      text: string;
+      images: ImageInput[];
+      shown?: string;
+      cache?: CacheMode;
+      queueId?: number;
+      session?: string;
+    }
   /** A command a plugin registered, run with what the composer left after its name. */
   | { type: "run-command"; name: string; argument: string }
   | { type: "steer"; text: string }
@@ -117,10 +136,13 @@ export type WebviewMessage =
   | { type: "fork-session" }
   | { type: "compact" }
   | { type: "load-earlier" }
-  | { type: "export" }
+  | { type: "export"; path?: string }
   | { type: "usage" }
   | { type: "doctor" }
   | { type: "plugins" }
+  | { type: "set-plugin"; name: string; enabled: boolean }
+  /** A Markdown document a command built in the page, opened beside the chat by the host. */
+  | { type: "show-document"; title: string; markdown: string }
   | { type: "add-model"; model: ModelInput }
   | { type: "update-model"; name: string; changes: ModelUpdate }
   | { type: "remove-model"; name: string }
@@ -133,7 +155,7 @@ export type WebviewMessage =
   | { type: "refresh" }
   | { type: "restart-server" }
   | { type: "resume" }
-  | { type: "ask"; question: string }
+  | { type: "ask"; question: string; queueId?: number; session?: string }
   | { type: "mentions"; query: string }
   | { type: "pick-files" }
   /**

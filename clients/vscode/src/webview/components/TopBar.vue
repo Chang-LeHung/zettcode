@@ -101,7 +101,7 @@ function cancel(): void {
         id="rename-button"
         class="icon-btn"
         type="button"
-        title="Rename this session (/rename)"
+        title="Rename this session (/title)"
         aria-label="Rename this session"
         :disabled="state.ui?.busy === true"
         @click="state.renaming = true"

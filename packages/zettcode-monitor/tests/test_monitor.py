@@ -140,6 +140,48 @@ def test_the_command_takes_no_subcommands(tmp_path):
     MonitorPlugin(tmp_path / "mon").activate(ctx)
     (command,) = ctx.tui.registered_commands
     assert command.name == "/monitor" and not command.subcommands
+    assert ctx.commands.commands == (), "one name, one form: the plain command is not registered beside the panel"
+
+
+async def test_a_screenless_monitor_switches_and_exports(tmp_path):
+    from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine.plugins.context import PluginContext
+    from zettcode.plugin_api import PlainCommandContext, TextCommandResult
+
+    ctx = PluginContext(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)), {})
+    plugin = MonitorPlugin(tmp_path / "mon")
+    plugin.activate(ctx)
+    (command,) = ctx.commands.commands
+    assert command.name == "/monitor" and command.when_busy == "now"
+    assert [word.name for word in command.subcommands] == ["on", "off", "images", "export"]
+    assert [word.name for word in command.subcommands if word.needs_more] == ["images"]
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    host = SimpleNamespace(session_id=SESSION, workspace=workspace)
+    on = await command.handler(PlainCommandContext(argument="on", host=host))  # type: ignore[arg-type]
+    assert isinstance(on, TextCommandResult) and "on" in on.notification
+    assert plugin.extension.enabled(SESSION)
+
+    images = await command.handler(PlainCommandContext(argument="images on", host=host))  # type: ignore[arg-type]
+    assert isinstance(images, TextCommandResult) and plugin.extension.images(SESSION)
+
+    status = await command.handler(PlainCommandContext(argument="", host=host))  # type: ignore[arg-type]
+    assert isinstance(status, TextCommandResult) and "Monitor is **on**" in status.message
+
+    wrong = await command.handler(PlainCommandContext(argument="images maybe", host=host))  # type: ignore[arg-type]
+    assert isinstance(wrong, TextCommandResult) and "images on" in wrong.notification
+
+    empty = await command.handler(PlainCommandContext(argument="export", host=host))  # type: ignore[arg-type]
+    assert isinstance(empty, TextCommandResult) and "Nothing recorded" in empty.notification
+
+    await _call(plugin.extension)
+    exported = await command.handler(PlainCommandContext(argument="export", host=host))  # type: ignore[arg-type]
+    assert isinstance(exported, TextCommandResult) and "Exported 1 call" in exported.message
+    assert "zettcode-monitor-" in exported.message and "`" in exported.message
+
+    without = await command.handler(PlainCommandContext(argument="on"))  # type: ignore[arg-type]
+    assert isinstance(without, TextCommandResult) and "cannot do that" in without.notification
 
 
 def _runs_this_checkouts_zettcode() -> bool:

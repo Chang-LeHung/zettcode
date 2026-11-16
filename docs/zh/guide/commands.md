@@ -24,7 +24,7 @@
 | `/effort` | 设置模型思考多少，从下一个请求开始。 | `/effort high` |
 | `/permission` | 设置 shell 命令在多大范围内不用问。 | `/permission safe` |
 | `/plugins` | 打开或关掉一个插件，下次启动生效。 | `/plugins disable recap` |
-| `/harness` | 查看 harness、工具和文件；`gen` 最多接收 4000 个字符（行内显示前 120 个）。 | `/harness gen 一个列出 TODO 的工具` |
+| `/harness` | 终端里打开 harness、工具和文件的面板；聊天里是同一条命令的状态和 `gen` / `reset` 两个词。`gen` 最多接收 4000 个字符（行内显示前 120 个）。 | `/harness gen 一个列出 TODO 的工具` |
 | `/btw` | 问一件只在当场回答、不进入对话的事。 | `/btw 这里的幂等是什么意思？` |
 | `/code-review` | 评审尚未提交的改动；文字说明重点看什么。 | `/code-review 检查错误处理` |
 | `/bash` | 在工作区里打开一个全屏 shell。见[下文](#bash)。 | `/bash git status` |
@@ -32,6 +32,7 @@
 | `/pet` | 选择对话上方的宠物。 | `/pet whale` |
 | `/context` | 查看上下文窗口有多满、被什么占着，以及会话的工作目录和存储文件。 | `/context` |
 | `/usage` | 查看这个项目的会话花了多少。 | `/usage` |
+| `/hub` | 谁在这里、有哪些 daemon、谁和谁说过话；聊天里拿到的是会话、daemon 和消息对组成的文档，没有图的布局。 | `/hub` |
 | `/compact` | 立即总结对话，不用等窗口快满。 | `/compact` |
 | `/statusline` | 选择头部和状态行里哪些部分要显示。 | `/statusline hide ctx` |
 | `/title` | 给会话命名；不带参数时报告当前名字。 | `/title users endpoint` |

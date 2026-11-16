@@ -2,32 +2,38 @@
 
 import { formatTokens, permissionDescription } from "../core/format.js";
 import type { Permission } from "../../../typescript/src/types.js";
-import { openOverlay, post, state, toast } from "./store.js";
+import { enqueueAsk, openOverlay, post, state, toast } from "./store.js";
 
 export interface SlashCommand {
   name: string;
   description: string;
-  /** What follows the name, shown as a ghost hint once the name is typed; a command with one waits for it. */
+  /** What follows the name, shown as a ghost hint once the name is typed; `requiresArg` says whether running it bare is wrong. */
   args?: string;
+  /** Other spellings that reach this command, kept out of the menu so one command has one name in it. */
+  aliases?: readonly string[];
+  /** Whether the command cannot run without what follows, so choosing it completes the line instead of running it. */
+  requiresArg?: boolean;
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
+  { name: "help", description: "Show the commands and keys" },
   { name: "new", description: "Start a new session" },
-  { name: "resume", description: "Recent sessions" },
+  { name: "resume", description: "Recent sessions", args: "a session id, or pick from the list" },
   { name: "continue", description: "Carry on the request that was cut short" },
   { name: "compact", description: "Summarize the conversation now" },
   { name: "fork", description: "Fork this conversation into a new session" },
-  { name: "rename", description: "Rename this session", args: "a new name for this session" },
+  { name: "title", description: "Name this session", aliases: ["rename"], args: "a new name for this session" },
   { name: "name", description: "Let the model name this session" },
-  { name: "export", description: "Export the conversation as HTML" },
+  { name: "export", description: "Export the conversation as HTML", args: "a path, or pick one" },
   { name: "model", description: "Choose a model or add one" },
+  { name: "config", description: "Add, change or remove models", args: "add | edit <name> | remove <name> | list" },
+  { name: "plugins", description: "Switch a plugin on or off for the next start", args: "enable | disable <name>" },
   { name: "effort", description: "Choose the reasoning effort" },
   { name: "permission", description: "Choose the shell permission" },
-  { name: "harness", description: "Let the model write and run its own tools: on or off", args: "on or off" },
   { name: "usage", description: "Workspace usage and tokens" },
   { name: "context", description: "The context window and what fills it" },
   { name: "doctor", description: "Check that every model answers" },
-  { name: "btw", description: "Ask a side question that stays out of the conversation", args: "ask a side question…" },
+  { name: "btw", description: "Ask a side question that stays out of the conversation", args: "ask a side question…", requiresArg: true },
   { name: "stop", description: "Stop the run in progress" },
   { name: "clear", description: "Clear this view (the session is kept)" },
 ];
@@ -47,47 +53,59 @@ export function pluginCommands(): SlashCommand[] {
 
 /**
  * Every command the menu offers: the ones this view knows how to run, then the ones a plugin registered. A plugin that
- * takes a name one of these already has does not replace it — the view's own `/stop` still stops.
+ * takes a name one of these already has does not replace it — the view's own `/stop` still stops. An alias is not a
+ * second row: `/rename` reaches `/title`, and the menu keeps the terminal's name.
  */
 export function allCommands(): SlashCommand[] {
-  const own = new Set(SLASH_COMMANDS.map((command) => command.name));
+  const own = new Set(SLASH_COMMANDS.flatMap((command) => [command.name, ...(command.aliases ?? [])]));
   return [...SLASH_COMMANDS, ...pluginCommands().filter((command) => !own.has(command.name))];
 }
 
-/** The command with this name, if we know it. */
+/** The command with this name, if we know it; an alias finds the command it stands for. */
 export function commandOf(name: string): SlashCommand | undefined {
-  return allCommands().find((command) => command.name === name);
+  return allCommands().find((command) => command.name === name || command.aliases?.includes(name) === true);
 }
 
-/** The words a plugin command declares it takes first, in the order it declared them. */
-function pluginWords(name: string): string[] {
-  return state.ui?.commands.find((command) => command.name.replace(/^\//, "") === name)?.subcommands ?? [];
+/** The command a plugin registered, as the host last sent it. */
+function pluginDefinition(name: string) {
+  return state.ui?.commands.find((command) => command.name.replace(/^\//, "") === name);
 }
 
 export interface CommandArgument {
-  /** The word typed after the command, such as `on` for `/harness on`. */
+  /** The word typed after the command, such as `gen` for `/harness gen`. */
   word: string;
   /** What it does, in the line the menu shows beside it. */
   description: string;
+  /** Whether something follows the word, so choosing it fills the name in instead of running it. */
+  needsMore?: boolean;
 }
 
 /**
- * The words one command takes, when they can be listed: the levels, the models, `on` and `off`.
+ * The words one command takes, when they can be listed: the levels, the models, the harness words.
  *
- * A command whose argument is free text (`/rename`, `/btw`) has none, and gets no second-level menu; the list is read
+ * A command whose argument is free text (`/title`, `/btw`) has none, and gets no second-level menu; the list is read
  * from the state the host last sent, so `/model ` offers the models that are configured now.
  */
 export function argumentsOf(name: string): CommandArgument[] {
-  const words = pluginWords(name);
+  const plugin = pluginDefinition(name);
+  const words = plugin?.subcommands ?? [];
   if (words.length > 0) {
-    return words.map((word) => ({ word, description: "" }));
+    const needsMore = new Set(plugin?.needs_more ?? []);
+    return words.map((word) => ({ word, description: "", needsMore: needsMore.has(word) }));
   }
   const settings = state.ui?.settings ?? null;
   switch (name) {
-    case "harness":
+    case "config":
       return [
-        { word: "on", description: "Let the model write and run small Python tools of its own" },
-        { word: "off", description: "The model has only the tools ZettCode ships" },
+        { word: "add", description: "Add a model to the configuration file" },
+        { word: "edit", description: "Change one model's settings", needsMore: true },
+        { word: "remove", description: "Remove a model", needsMore: true },
+        { word: "list", description: "Show the models in the file" },
+      ];
+    case "plugins":
+      return [
+        { word: "enable", description: "Switch a plugin on at the next start", needsMore: true },
+        { word: "disable", description: "Leave a plugin out at the next start", needsMore: true },
       ];
     case "permission":
       return (settings?.permissions ?? []).map((level) => ({ word: level, description: permissionDescription(level) }));
@@ -106,31 +124,56 @@ export function argumentsOf(name: string): CommandArgument[] {
   }
 }
 
-/** `/name rest`, when `name` is a command we know; anything else is a message. */
+/** `/name rest`, when `name` is a command we know; anything else is a message. An alias is answered as its command. */
 export function parseSlash(text: string): { name: string; rest: string } | null {
   const match = /^\/([\w-]+)(?:\s+([\s\S]*))?$/.exec(text);
   if (match?.[1] === undefined) {
     return null;
   }
-  if (commandOf(match[1]) === undefined) {
+  const command = commandOf(match[1]);
+  if (command === undefined) {
     return null;
   }
-  return { name: match[1], rest: match[2] ?? "" };
+  return { name: command.name, rest: match[2] ?? "" };
+}
+
+/** The commands and what they take, as the `/help` document a reader can keep beside the chat. */
+export function helpText(): string {
+  const lines = [
+    "# Commands",
+    "",
+    "Type `/` to see them; `Tab` completes a name and `Enter` runs it. Text after a command is what it acts on.",
+    "",
+  ];
+  for (const command of allCommands()) {
+    const name = `/${command.name}${command.args ? ` ${command.args}` : ""}`;
+    lines.push(`- \`${name}\` — ${command.description}`);
+  }
+  return lines.join("\n");
 }
 
 export function runSlash(name: string, rest = ""): void {
-  if (!SLASH_COMMANDS.some((command) => command.name === name)) {
+  const command = commandOf(name);
+  const canonical = command?.name ?? name;
+  if (!SLASH_COMMANDS.some((entry) => entry.name === canonical)) {
     // A command a plugin registered: the host runs it against the server, the way the palette does, so what came back
     // (words, a toast, a preset for a turn) is handled in exactly one place.
-    post({ type: "run-command", name: `/${name}`, argument: rest.trim() });
+    post({ type: "run-command", name: `/${canonical}`, argument: rest.trim() });
     return;
   }
-  switch (name) {
+  switch (canonical) {
+    case "help":
+      post({ type: "show-document", title: "Commands", markdown: helpText() });
+      break;
     case "new":
       post({ type: "new-session" });
       break;
     case "resume":
-      openOverlay("drawer");
+      if (rest.trim()) {
+        post({ type: "open-session", id: rest.trim() });
+      } else {
+        openOverlay("drawer");
+      }
       break;
     case "continue":
       if (state.ui?.resumable?.resumable !== true) {
@@ -145,7 +188,7 @@ export function runSlash(name: string, rest = ""): void {
     case "fork":
       post({ type: "fork-session" });
       break;
-    case "rename":
+    case "title":
       if (rest.trim()) {
         post({ type: "rename-session", title: rest.trim() });
       } else {
@@ -156,7 +199,7 @@ export function runSlash(name: string, rest = ""): void {
       post({ type: "name-session" });
       break;
     case "export":
-      post({ type: "export" });
+      post({ type: "export", ...(rest.trim() ? { path: rest.trim() } : {}) });
       break;
     case "model":
       if (rest.trim() === "add") {
@@ -168,6 +211,47 @@ export function runSlash(name: string, rest = ""): void {
         openOverlay("models");
       }
       break;
+    case "config": {
+      const [word, ...tail] = rest.trim().split(/\s+/);
+      const name = tail.join(" ").trim();
+      const known = (state.ui?.models ?? []).some((model) => model.name === name);
+      if (word === undefined || word === "" || word === "list") {
+        openOverlay("models");
+      } else if (word === "add") {
+        state.editingModel = null;
+        openOverlay("add-model");
+      } else if (word === "edit" && name) {
+        if (!known) {
+          toast(`No model called ${name}.`, "info");
+          break;
+        }
+        state.editingModel = name;
+        openOverlay("edit-model");
+      } else if (word === "remove" && name) {
+        if (!known) {
+          toast(`No model called ${name}.`, "info");
+          break;
+        }
+        // The model menu's own row asks before it removes; a typed name opens that row in the same state.
+        state.confirmingModel = name;
+        openOverlay("models");
+      } else {
+        toast("Use /config, /config add, /config edit <name> or /config remove <name>.", "info");
+      }
+      break;
+    }
+    case "plugins": {
+      const [word, ...tail] = rest.trim().split(/\s+/);
+      const name = tail.join(" ").trim();
+      if (word === undefined || word === "") {
+        post({ type: "plugins" });
+      } else if ((word === "enable" || word === "disable") && name) {
+        post({ type: "set-plugin", name, enabled: word === "enable" });
+      } else {
+        toast("Use /plugins, /plugins enable <name> or /plugins disable <name>.", "info");
+      }
+      break;
+    }
     case "effort":
       if (rest.trim()) {
         post({ type: "set-effort", effort: rest.trim() });
@@ -182,18 +266,6 @@ export function runSlash(name: string, rest = ""): void {
         openOverlay("permission");
       }
       break;
-    case "harness": {
-      const word = rest.trim().toLowerCase();
-      const now = state.ui?.settings?.harness === true;
-      if (word === "on" || word === "off") {
-        post({ type: "set-harness", on: word === "on" });
-      } else if (word === "") {
-        toast(`The tool harness is ${now ? "on" : "off"}. Use /harness on or /harness off.`, "info");
-      } else {
-        toast("Use /harness on or /harness off.", "info");
-      }
-      break;
-    }
     case "usage":
       post({ type: "usage" });
       break;
@@ -205,7 +277,11 @@ export function runSlash(name: string, rest = ""): void {
       break;
     case "btw":
       if (rest.trim()) {
-        post({ type: "ask", question: rest.trim() });
+        if (state.ui?.busy === true) {
+          enqueueAsk(rest.trim());
+        } else {
+          post({ type: "ask", question: rest.trim() });
+        }
       } else {
         toast("Use /btw followed by a question.", "info");
       }

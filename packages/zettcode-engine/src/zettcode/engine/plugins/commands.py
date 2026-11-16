@@ -10,8 +10,9 @@ that has no terminal: the handler cannot reach for a shell it will not have.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TypeAlias
 
 __all__ = [
@@ -30,11 +31,36 @@ class PlainCommandHost(ABC):
     """What a front end offers a plain command that acts on the session rather than answering text.
 
     A command that only answers text needs nothing but its argument; one that acts on the conversation — compact it,
-    name it, write it out — says so here, and the front end that runs it supplies the three. A front end with no host
-    runs the command and the command answers that it cannot (see :class:`PlainCommandContext`). What a handler raises
-    is the front end's to report: a busy or locked session and a refused argument keep the meaning the rest of the API
-    gives them, so a host must not turn a failure into an answer.
+    name it, write it out, list who is here or what a recorded session did — says so here, and the front end that runs
+    it supplies it. A front end with no host runs the command and the command answers that it cannot (see
+    :class:`PlainCommandContext`). What a handler raises is the front end's to report: a busy or locked session and a
+    refused argument keep the meaning the rest of the API gives them, so a host must not turn a failure into an answer.
     """
+
+    @property
+    @abstractmethod
+    def locked(self) -> bool:
+        """Whether another process holds the session, so a turn cannot start in it."""
+
+    @property
+    @abstractmethod
+    def session_id(self) -> str:
+        """The conversation the command runs in."""
+
+    @property
+    @abstractmethod
+    def workspace(self) -> Path:
+        """The directory the session works in, for a command that writes a file there."""
+
+    @abstractmethod
+    async def hub(self) -> Mapping[str, object]:
+        """Return who is connected, the daemons recorded here, and the broker's message edges, as JSON-like data.
+
+        The snapshot has ``you`` (the reader's session id), ``sessions`` (``session_id``, ``handle``, ``title``,
+        ``workspace``, ``status``, ``kind``), ``daemons`` (``session_id``, ``name``, ``title``, ``workspace``,
+        ``status``), ``edges`` (``a``, ``b``, ``count``) and ``error`` (a sentence when the graph could not be read,
+        empty otherwise).
+        """
 
     @abstractmethod
     async def compact(self) -> str:

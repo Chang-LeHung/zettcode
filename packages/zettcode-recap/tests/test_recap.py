@@ -352,14 +352,43 @@ def test_a_setting_that_could_never_be_meant_is_refused_when_the_plugin_activate
 
 
 def test_the_plugin_also_activates_without_a_screen(tmp_path):
-    """Every process loads every plugin; one that only draws into a terminal must leave the others alone."""
+    """Every process loads every plugin; a screenless one gets the plain command, not the panel or the hooks."""
     config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),))
     from zettcode.engine.plugins.context import PluginContext
 
     plugin = RecapPlugin()
-    plugin.activate(PluginContext(config, {}))
+    ctx = PluginContext(config, {})
+    plugin.activate(ctx)
 
     assert plugin._link is None
+    (command,) = ctx.commands.commands
+    assert command.name == "/recap" and command.when_busy == "refuse"
+
+
+async def test_a_screenless_recap_asks_through_the_model_service(tmp_path):
+    """No shell is needed: the service the SDK binds is the side question, and the answer comes back as a document."""
+    from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult
+    from zettcode.engine.plugins.context import PluginContext
+    from zettcode.engine.plugins.llm import ModelAccess
+    from zettcode.engine.plugins.services import LLM
+
+    async def ask(question: str, **options: object) -> str:
+        assert question == PROMPT and options["origin"] == "recap"
+        return "Fixing the parser; next, run the tests."
+
+    access = ModelAccess(())
+    access.bind(ask)
+    config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),))
+    ctx = PluginContext(config, {LLM: access}, name="recap")
+    plugin = RecapPlugin()
+    plugin.activate(ctx)
+    (command,) = ctx.commands.commands
+    result = await command.handler(PlainCommandContext())
+
+    assert isinstance(result, TextCommandResult)
+    assert result.markdown.startswith("> **Recap**")
+    assert "Fixing the parser" in result.markdown
+    assert result.notification == "Recap ready"
 
 
 def test_the_zettcode_range_admits_the_release_the_plugin_runs_on():

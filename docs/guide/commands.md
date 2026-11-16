@@ -25,7 +25,7 @@ and `providers`, `/theme ` the palettes, `/model ` the configured models. `Enter
 | `/effort` | Set how much the model reasons, for the next request. | `/effort high` |
 | `/permission` | Set how much of the shell may run without asking. | `/permission safe` |
 | `/plugins` | Switch a plugin on or off; the change applies at the next start. | `/plugins disable recap` |
-| `/harness` | Browse harnesses, tools and files; `gen` takes up to 4000 characters (120 shown in the row). | `/harness gen a tool that lists TODOs` |
+| `/harness` | The terminal's panel browses harnesses, tools and files; the chat gets the same command's state and its `gen` / `reset` words. `gen` takes up to 4000 characters (120 shown in the row). | `/harness gen a tool that lists TODOs` |
 | `/btw` | Ask a side question that never joins the conversation. | `/btw what is idempotent here?` |
 | `/code-review` | Review the uncommitted changes; text says what to look for. | `/code-review check error handling` |
 | `/bash` | Open a full-screen shell over the workspace. See [below](#bash). | `/bash git status` |
@@ -33,6 +33,7 @@ and `providers`, `/theme ` the palettes, `/model ` the configured models. `Enter
 | `/pet` | Choose the pet over the conversation. | `/pet whale` |
 | `/context` | Show how full the context window is, what fills it, and the session's directory and file. | `/context` |
 | `/usage` | Show what this project's sessions have spent. | `/usage` |
+| `/hub` | Who is here, the daemons, and who talked to whom; the chat gets the sessions, daemons and message pairs as a document, without the graph layout. | `/hub` |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. | `/compact` |
 | `/statusline` | Choose which named parts of the header and status line are shown. | `/statusline hide ctx` |
 | `/title` | Name this session; on its own, report the current name. | `/title users endpoint` |

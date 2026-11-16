@@ -134,12 +134,14 @@ class CommandInfoOut(BaseModel):
         summary: One line, for a menu.
         when_busy: What a front end does with it while a request is in flight.
         subcommands: The words it takes first, for a menu that offers them.
+        needs_more: The words that cannot be run alone: a menu that picks one fills it in and waits for the rest.
     """
 
     name: str
     summary: str
     when_busy: str = "refuse"
     subcommands: list[str] = Field(default_factory=list)
+    needs_more: list[str] = Field(default_factory=list)
 
 
 class CommandsOut(BaseModel):

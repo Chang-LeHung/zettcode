@@ -1,18 +1,27 @@
 <script setup lang="ts">
+import { computed } from "vue";
+
 import { removeQueued, sendQueued, state } from "../store.js";
 import Icon from "./Icon.vue";
+
+/** Only this conversation's queue: a follow-up typed in another session waits there, not in this view. */
+const items = computed(() => {
+  const session = state.ui?.session?.id;
+  return state.queue.filter((item) => item.sessionId === session);
+});
 </script>
 
 <template>
-  <div v-if="state.queue.length" id="queue" class="queue">
+  <div v-if="items.length" id="queue" class="queue">
     <div class="queue-head">
       {{ state.ui?.busy === true ? "Follow-ups · sent when this run finishes" : "Waiting to send" }}
     </div>
-    <div v-for="item in state.queue" :key="item.id" class="queue-item" :data-queue="item.id">
+    <div v-for="item in items" :key="item.id" class="queue-item" :data-queue="item.id">
       <Icon name="follow" :size="13" class="queue-arrow" />
-      <span class="queue-text" :title="item.text">{{ item.text }}</span>
+      <span class="queue-text" :title="item.shown ?? item.text">{{ item.shown ?? item.text }}</span>
       <span v-if="item.images.length" class="badge">{{ item.images.length }} image{{ item.images.length === 1 ? "" : "s" }}</span>
       <button
+        v-if="!(state.ui?.busy === true && (item.preset === true || item.ask === true))"
         class="btn small queue-steer"
         type="button"
         :title="state.ui?.busy === true ? 'Inject it into the run that is going' : 'Send it now'"

@@ -210,7 +210,220 @@ test("every command is offered after a bare slash, and the list narrows as you t
   await ui.type("/");
   assert.ok(ui.labels().length >= 15);
   await ui.type("/c");
-  assert.deepEqual(ui.labels(), ["/continue", "/compact", "/context", "/clear"]);
+  assert.deepEqual(ui.labels(), ["/continue", "/compact", "/config", "/context", "/clear"]);
+});
+
+test("/title names the session, and /rename still reaches it as an alias", async () => {
+  const ui = await open();
+  await ui.type("/title Another name");
+  await ui.key("Enter");
+  assert.deepEqual(ui.messages.at(-1), { type: "rename-session", title: "Another name" });
+
+  await ui.type("/rename Third name");
+  await ui.key("Enter");
+  assert.deepEqual(ui.messages.at(-1), { type: "rename-session", title: "Third name" });
+});
+
+test("/resume with an id opens it, and without one opens the drawer", async () => {
+  const ui = await open();
+  await ui.type("/resume session-2");
+  await ui.key("Enter");
+  assert.deepEqual(ui.messages.at(-1), { type: "open-session", id: "session-2" });
+
+  await ui.type("/resume");
+  await ui.key("Enter");
+  assert.ok(ui.window.document.querySelector("#drawer"), "the recent-sessions drawer is the fallback");
+});
+
+test("/export takes a path and passes it to the host", async () => {
+  const ui = await open();
+  await ui.type("/export reports/review.html");
+  await ui.key("Enter");
+  assert.deepEqual(ui.messages.at(-1), { type: "export", path: "reports/review.html" });
+});
+
+test("/config opens the model list, adds, edits and removes", async () => {
+  const ui = await open();
+  await ui.type("/config list");
+  await ui.key("Enter");
+  assert.ok(ui.window.document.querySelector("#model-menu"), "the list is the model menu");
+
+  await ui.type("/config add");
+  await ui.key("Enter");
+  assert.ok(ui.window.document.querySelector("#add-model-panel"), "the add form opens");
+
+  await ui.type("/config edit fast");
+  await ui.key("Enter");
+  assert.ok(ui.window.document.querySelector("#add-model-panel"), "the same form edits one");
+
+  await ui.type("/config remove fast");
+  await ui.key("Enter");
+  assert.ok(ui.window.document.querySelector("#model-menu .confirm"), "the row asks before it removes");
+  assert.equal(ui.messages.some((message) => message.type === "remove-model"), false);
+  ui.window.document.querySelector<HTMLElement>('[data-confirm="remove"]')?.click();
+  await settle();
+  assert.deepEqual(ui.messages.at(-1), { type: "remove-model", name: "fast" });
+});
+
+test("/config does not invent a model from a typo", async () => {
+  const ui = await open();
+
+  await ui.type("/config remove typo");
+  await ui.key("Enter");
+  assert.equal(ui.window.document.querySelector("#model-menu"), null);
+  assert.ok(ui.window.document.querySelector("#toasts")?.textContent?.includes("No model called typo"));
+
+  await ui.type("/config edit typo");
+  await ui.key("Enter");
+  assert.equal(ui.window.document.querySelector("#add-model-panel"), null, "a typo does not open the add form");
+  assert.ok(ui.window.document.querySelector("#toasts")?.textContent?.includes("No model called typo"));
+});
+
+test("/plugins opens the panel, and enable or disable writes the switch", async () => {
+  const ui = await open();
+  await ui.type("/plugins");
+  await ui.key("Enter");
+  assert.deepEqual(ui.messages.at(-1), { type: "plugins" });
+
+  await ui.type("/plugins disable recap");
+  await ui.key("Enter");
+  assert.deepEqual(ui.messages.at(-1), { type: "set-plugin", name: "recap", enabled: false });
+});
+
+test("/help opens the command document beside the chat", async () => {
+  const ui = await open();
+  await ui.type("/help");
+  await ui.key("Enter");
+  const message = ui.messages.at(-1) as { type: string; title: string; markdown: string };
+  assert.equal(message.type, "show-document");
+  assert.equal(message.title, "Commands");
+  assert.ok(message.markdown.includes("# Commands") && message.markdown.includes("/title"));
+});
+
+test("a command's preset waits in the follow-up queue and is sent as a turn of its own", async () => {
+  const ui = await open([], { ...state, busy: true });
+  ui.window.dispatchEvent(
+    new ui.window.MessageEvent("message", {
+      data: { type: "queue-turn", text: "Review the uncommitted changes.", shown: "/code-review", cache: "read" },
+    }),
+  );
+  await settle();
+
+  assert.ok(ui.window.document.querySelector("#queue")?.textContent?.includes("/code-review"));
+  assert.equal(ui.window.document.querySelector("#queue .queue-steer"), null, "a preset is not steered into a run");
+
+  ui.window.dispatchEvent(
+    new ui.window.MessageEvent("message", { data: { type: "state", state: { ...state, busy: false } } }),
+  );
+  await settle();
+
+  assert.deepEqual(ui.messages.at(-1), {
+    type: "prompt",
+    text: "Review the uncommitted changes.",
+    images: [],
+    queueId: 1,
+    session: "session-1",
+    shown: "/code-review",
+    cache: "read",
+  });
+});
+
+test("a side question asked during a run waits, then goes as a side question", async () => {
+  const ui = await open([], { ...state, busy: true });
+  await ui.type("/btw what is a mutex");
+  await ui.key("Enter");
+
+  assert.ok(ui.window.document.querySelector("#queue")?.textContent?.includes("/btw what is a mutex"));
+  assert.equal(ui.window.document.querySelector("#queue .queue-steer"), null, "a side question is not a steer");
+
+  ui.window.dispatchEvent(
+    new ui.window.MessageEvent("message", { data: { type: "state", state: { ...state, busy: false } } }),
+  );
+  await settle();
+
+  assert.deepEqual(ui.messages.at(-1), {
+    type: "ask",
+    question: "what is a mutex",
+    queueId: 1,
+    session: "session-1",
+  });
+});
+
+test("a queued question waits for a model and goes when the page becomes ready", async () => {
+  const ui = await open([], { ...state, busy: false, ready: false });
+  ui.window.dispatchEvent(
+    new ui.window.MessageEvent("message", { data: { type: "queue-ask", question: "what is a mutex" } }),
+  );
+  await settle();
+
+  assert.ok(ui.window.document.querySelector("#queue")?.textContent?.includes("what is a mutex"));
+  assert.equal(ui.messages.some((message) => message.type === "ask"), false);
+
+  ui.window.dispatchEvent(
+    new ui.window.MessageEvent("message", { data: { type: "state", state: { ...state, busy: false, ready: true } } }),
+  );
+  await settle();
+
+  assert.deepEqual(ui.messages.at(-1), {
+    type: "ask",
+    question: "what is a mutex",
+    queueId: 1,
+    session: "session-1",
+  });
+});
+
+test("a typed follow-up queued without a model keeps its pictures", async () => {
+  const ui = await open([], { ...state, busy: false, ready: false });
+  const images = [
+    { data: "aW1nMQ==", mediaType: "image/png" },
+    { data: "aW1nMg==", mediaType: "image/gif" },
+  ];
+  ui.window.dispatchEvent(
+    new ui.window.MessageEvent("message", {
+      data: { type: "queue-message", text: "look at these", images, queueId: 7, session: "session-1" },
+    }),
+  );
+  await settle();
+
+  assert.ok(ui.window.document.querySelector("#queue")?.textContent?.includes("look at these"));
+  assert.ok(ui.window.document.querySelector("#queue .badge")?.textContent?.includes("2 images"));
+  assert.equal(ui.messages.some((message) => message.type === "prompt"), false);
+
+  ui.window.dispatchEvent(
+    new ui.window.MessageEvent("message", { data: { type: "state", state: { ...state, busy: false, ready: true } } }),
+  );
+  await settle();
+
+  assert.deepEqual(ui.messages.at(-1), {
+    type: "prompt",
+    text: "look at these",
+    images,
+    queueId: 7,
+    session: "session-1",
+  });
+});
+
+test("a queued question waits in its own conversation and does not follow a session switch", async () => {
+  const ui = await open([], { ...state, busy: true });
+  await ui.type("/btw what is a mutex");
+  await ui.key("Enter");
+  assert.ok(ui.window.document.querySelector("#queue")?.textContent?.includes("what is a mutex"));
+
+  const other = { ...state, busy: false, ready: true, session: { ...state.session!, id: "session-2" } };
+  ui.window.dispatchEvent(new ui.window.MessageEvent("message", { data: { type: "state", state: other } }));
+  await settle();
+  assert.equal(ui.messages.some((message) => message.type === "ask"), false);
+  assert.equal(ui.window.document.querySelector("#queue"), null, "another session's queue is not shown");
+
+  const back = { ...state, busy: false, ready: true, session: { ...state.session!, id: "session-1" } };
+  ui.window.dispatchEvent(new ui.window.MessageEvent("message", { data: { type: "state", state: back } }));
+  await settle();
+  assert.deepEqual(ui.messages.at(-1), {
+    type: "ask",
+    question: "what is a mutex",
+    queueId: 1,
+    session: "session-1",
+  });
 });
 
 const sent = (...prompts: string[]): unknown[] =>
@@ -235,16 +448,27 @@ test("a command that takes words offers them once the name and a space are typed
 });
 
 test("a word is completed with Tab and run with Enter, as a command name is", async () => {
-  const ui = await open();
+  const commands = [
+    {
+      name: "/harness",
+      summary: "the just-in-time harness",
+      when_busy: "refuse",
+      subcommands: ["gen", "reset"],
+      needs_more: ["gen", "reset"],
+    },
+  ];
+  const ui = await open([], { commands });
   await ui.type("/harness ");
-  assert.deepEqual(ui.labels(), ["/harness on", "/harness off"]);
+  assert.deepEqual(ui.labels(), ["/harness gen", "/harness reset"]);
 
   await ui.key("Tab");
-  assert.equal(ui.input.value, "/harness on", "filled in, not run");
-  assert.equal(ui.messages.some((message) => message.type === "set-harness"), false);
+  assert.equal(ui.input.value, "/harness gen ", "filled in, not run");
+  assert.equal(ui.messages.some((message) => message.type === "run-command"), false);
 
   await ui.key("Enter");
-  assert.deepEqual(ui.messages.filter((message) => message.type === "set-harness"), [{ type: "set-harness", on: true }]);
+  assert.deepEqual(ui.messages.filter((message) => message.type === "run-command"), [
+    { type: "run-command", name: "/harness", argument: "gen" },
+  ]);
 });
 
 test("a command whose argument is free text offers no list", async () => {
@@ -276,6 +500,7 @@ test("a plugin's commands are offered beside the view's own, and run through the
 
 test("a plugin command that names the words it takes offers them, and one that does not runs at once", async () => {
   const ui = await open([], { commands: pluginCommands });
+
   await ui.type("/greet ");
   assert.deepEqual(ui.labels(), ["/greet formal", "/greet casual"]);
 

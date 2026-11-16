@@ -72,7 +72,6 @@ from zettcode.app.ui.widgets import (
 from zettcode.app.ui.widgets.follow_up import OPTION
 from zettcode.commands.context import ContextPagePlugin
 from zettcode.commands.context_page import ContextPage
-from zettcode.commands.handlers import CodeReview
 from zettcode.commands.plugin import CommandsPlugin
 from zettcode.commands.usage import UsageCommand
 from zettcode.config import ModelConfig, ZettCodeConfig
@@ -114,6 +113,8 @@ from zettcode.presenters.text import (
     elapsed_text,
     terminal_safe,
 )
+from zettcode.sdk.commandline import CommandLine
+from zettcode.sdk.review import CodeReview
 from zettcode.sdk.types import ModelInfo
 from zettcode.sdk.types import SessionInfo as ListedSession
 from zettcode.tui import (
@@ -565,6 +566,8 @@ def rows_and_commands(
         plugin.activate(ctx)
         for region, side, name, builder in plugin.ui_slots():
             ctx.tui.slots.add(region, side, name, builder)
+    # `/code-review` is the SDK's plain command now: it has no rows, so it is activated outside the TUI loop.
+    CommandLine().activate(ctx)
     for region, side, builder in extra:
         getattr(ctx.tui, f"register_{region}_{side}")(builder)
     for region, side, name, builder in override:
@@ -1355,6 +1358,11 @@ async def test_code_review_runs_a_turn_that_asks_for_a_review_of_the_change():
     assert "reads and does not change" in read, "the reviewer is told the edits are the main agent's"
     assert "reuse it rather than starting another" in read, "an earlier reviewer of this workspace is preferred"
     assert f"{CodeReview.command()} list" in read, "the model is told how to find one"
+    assert f"{CodeReview.command()} spawn --name REVIEW_NAME" in read, "the daemon's name is a token it fills in"
+    assert "spawn --name <name>" not in read, "angle brackets in a shell word are a redirect, not a placeholder"
+    assert "spawn --name code-review" not in read, "one fixed name made every daemon in the list read the same"
+    assert "choose a short name for this reviewer" in read, "the model chooses a name that says what it reviews"
+    assert "same name for every review" in read, "and it is told not to reuse the same name for all of them"
     assert "round after round, until nothing it found is left" in read
     assert "go round again until it has nothing left to say" in read, "the reviewer outlives the first round"
     assert "it must answer" in read, "the reviewer is told that a round without a word is not an answer"

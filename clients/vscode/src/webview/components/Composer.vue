@@ -136,7 +136,7 @@ function choose(index: number, completeOnly = false): void {
   }
   if (slash.value !== null) {
     const command = commandOf(item.id);
-    if (completeOnly || command?.args !== undefined) {
+    if (completeOnly || command?.requiresArg === true) {
       state.draft = `/${item.id} `;
       caretToEnd();
       return;
@@ -150,9 +150,11 @@ function choose(index: number, completeOnly = false): void {
     if (name === undefined || word === undefined) {
       return;
     }
-    if (completeOnly) {
-      // Tab fills the word in, so the reader can go on editing it; Enter runs it, the way choosing a row in a menu does.
-      state.draft = `/${name} ${word}`;
+    const chosen = argumentsOf(name).find((entry) => entry.word === word);
+    if (completeOnly || chosen?.needsMore === true) {
+      // The trailing space is what closes the menu: the argument pattern no longer matches, so the next Enter sends
+      // the word rather than choosing it again.
+      state.draft = `/${name} ${word}${chosen?.needsMore === true ? " " : ""}`;
       caretToEnd();
       return;
     }

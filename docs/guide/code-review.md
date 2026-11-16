@@ -1,7 +1,7 @@
 # Code review
 
 `/code-review` has a second agent read the uncommitted changes in the workspace, while you keep the conversation. It
-reuses a reviewer that is already running for this workspace, so a later round knows what the earlier one found.
+reuses a reviewer that is already running for this change, so a later round knows what the earlier one found.
 
 ```text
 /code-review
@@ -15,7 +15,9 @@ The transcript shows what you typed, not the brief the model writes.
 
 1. The model collects the change with `git status --short`, `git diff HEAD`, and reads any untracked file that belongs
    to it.
-2. It finds a reviewer for this workspace or starts one with `zettcode daemon spawn --name code-review`.
+2. It finds a reviewer for this change or starts one with `zettcode daemon spawn --name <name-of-this-review>` — the
+   name is a short one the model chooses for this review, such as `review-parser`, `review-api`, or a word from the
+   change — so the daemon list says which review is which. It keeps that name for every round.
 3. It sends the reviewer the request with `send_message`. The reviewer reports findings as `file:line`: correctness,
    error handling, tests, naming, what to change and why.
 4. You make the fixes. The model sends the new state to the same reviewer, and they go round until it has nothing left.
@@ -27,12 +29,14 @@ The reviewer is told to read, not change: no edits, no writes, no commits. That 
 ## Which shell level the reviewer gets
 
 The reviewer runs at your shell level, or at `safe` when yours is `ask`, because a background process has nobody to ask.
+In the editor, `ask` means "ask me", but the reviewer is still a background session with nobody to answer for it: it
+runs in the `safe` sandbox, and it is read-only by instruction rather than by the sandbox.
 
 | Your level | The reviewer |
 | --- | --- |
 | `full` | `full` |
 | `safe` | `safe` |
-| `ask` | `safe` |
+| `ask` | `safe` (it has nobody to ask, even when you do) |
 | `deny` | Not started; the model reads the files and says which ones |
 
 ## When not to use it

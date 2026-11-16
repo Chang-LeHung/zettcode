@@ -57,8 +57,11 @@ VS Code 会先请你信任这个文件夹：agent 要在里面跑命令、改文
 | 附一张图 | 粘贴、拖到视图里，或者点回形针 |
 | 附别的东西 | 点回形针选择：PDF、压缩包之类会以**路径**写进消息，agent 用工具自己打开 |
 | 粘贴复制的文件 | 在资源管理器或文件管理器里复制文件再粘贴，写进输入框的是完整**路径**，不再是单独的文件名。网页拿得到文件名和内容，拿不到路径，所以插件直接向系统剪贴板要真实路径（macOS、Windows、Linux；任意大小、任意位置的文件都行，比如桌面上的 PDF）。要不到时，用工作区里内容完全相同的那个文件，再不行就把内容在插件自己的存储里存一份；超过 10 MB 的文件只能按名字查找。远程窗口（SSH、WSL、容器）里的剪贴板不是你复制文件时的那个，所以直接用内容 |
-| 运行命令 | 输入 `/`：`new`、`resume`、`continue`、`compact`、`fork`、`rename`、`export`、`model`、`effort`、`permission`、`harness`、`usage`、`context`、`doctor`、`btw` |
+| 运行命令 | 输入 `/`：`help`、`new`、`resume`、`continue`、`compact`、`fork`、`title`、`name`、`export`、`model`、`config`、`plugins`、`effort`、`permission`、`harness`、`usage`、`context`、`doctor`、`btw`、`stop`、`clear`、`code-review`、`hub` |
 | 不加入对话地问一句 | `/btw 你的问题` |
+
+`/code-review` 会在后台起一个评审者。你的档位是 `ask` 时，它在 `safe` 沙箱里跑，因为后台会话没有人替它回答问题；
+它只读是提示词的要求，不是沙箱的保证。
 
 附上的图片会发给能看图的模型，并随会话保存，所以重新打开会话时显示的是图片本身，而不是只数一数有几张。
 
@@ -148,7 +151,7 @@ Reasoning Effort** 和 **Select Shell Permission**。**Add Model** 会往终端�
 | 设置 | 默认 | 含义 |
 | --- | --- | --- |
 | `zettcode.permission` | `ask` | 没有手动选过时，会话启动用的 shell 权限：`deny`、`ask`、`safe`（沙箱）或 `full` |
-| `zettcode.harness` | 未设置 | 启动服务端时打开或关闭工具 harness：模型可以自己写小的 Python 工具并运行，代码跑在子进程里，低于 `full` 的 shell 级别时跑在 `safe` 的沙箱中。不设置时跟随配置里的 `[harness] jit`，除非写成 false 否则开启。`/harness on` 或 `/harness off` 在一个会话里切换 |
+| `zettcode.harness` | 未设置 | 启动服务端时打开或关闭工具 harness：模型可以自己写小的 Python 工具并运行，代码跑在子进程里，低于 `full` 的 shell 级别时跑在 `safe` 的沙箱中。不设置时跟随配置里的 `[harness] jit`，除非写成 false 否则开启。**ZettCode: Turn the Tool Harness On or Off** 切换正在运行的服务端；`/harness gen` 和 `/harness reset` 是聊天和终端共用的两个词 |
 | `zettcode.restoreSession` | `true` | 重新打开这个文件夹上次的会话 |
 | `zettcode.autoTitle` | `true` | 让模型在第一次回答后给没有标题的会话起名 |
 | `zettcode.answerTimeout` | `90` | 审批等待的秒数 |

@@ -1,14 +1,26 @@
 """``/monitor``: record each model call of a session, and export the record as an HTML report.
 
-``/monitor`` takes no arguments: it opens a panel with the recording and image switches and the export action.
+A terminal gets a panel with the recording and image switches and the export action; a process with no screen gets the
+same name and the words ``on``/``off``/``images on|off``/``export``.
 """
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zettcode.plugin_api import CommandContext, CommandHost, CommandResult, CommandUi, PluginContext, TuiPlugin
+from zettcode.plugin_api import (
+    CommandContext,
+    CommandHost,
+    CommandResult,
+    CommandUi,
+    PlainCommandContext,
+    PluginContext,
+    Subcommand,
+    TextCommandResult,
+    TuiPlugin,
+)
 
 from .recorder import MonitorExtension, default_root
 from .report import render_report, write_report
@@ -26,8 +38,21 @@ def _calls(count: int) -> str:
     return f"{count} call{'' if count == 1 else 's'}"
 
 
+#: The words the screenless `/monitor` takes. `images` needs the word after it; the others say everything.
+SUBCOMMANDS: tuple[Subcommand, ...] = (
+    Subcommand("on", "record each model call"),
+    Subcommand("off", "stop recording"),
+    Subcommand("images", "include pictures in the report", needs_more=True),
+    Subcommand("export", "write the report into the workspace"),
+)
+
+
 class MonitorPlugin(TuiPlugin):
-    """Registers the recorder as an agent extension and the ``/monitor`` command."""
+    """Registers the recorder as an agent extension and the ``/monitor`` command.
+
+    A terminal gets the panel; a process with no screen gets the same name as a plain command, with the switches and
+    the export as words. Both read the one extension, so a recording started in one front end is there for the other.
+    """
 
     name = "monitor"
     description = "Every model call, exported as HTML"
@@ -38,6 +63,13 @@ class MonitorPlugin(TuiPlugin):
     def activate(self, ctx: PluginContext) -> None:
         ctx.agent.register_extension(self.extension)
         if ctx.tui is None:
+            ctx.commands.register(
+                "/monitor",
+                "record every model call: /monitor [on|off|images on|off|export]",
+                self.plain_monitor,
+                when_busy="now",
+                subcommands=SUBCOMMANDS,
+            )
             return
         ctx.tui.register_command(
             "monitor",
@@ -58,6 +90,46 @@ class MonitorPlugin(TuiPlugin):
         target = workspace / f"zettcode-monitor-{session_id[:8]}.html"
         page = render_report(session_id, calls, workspace=str(workspace))
         return len(calls), write_report(target, page)
+
+    async def plain_monitor(self, context: PlainCommandContext) -> TextCommandResult:
+        """``/monitor`` with no screen: report, switch recording or images, or export the report."""
+        host = context.host
+        if host is None:
+            return TextCommandResult(notification="This front end cannot do that; run it in the terminal or server.")
+        session_id = host.session_id
+        workspace = host.workspace
+        word, _, rest = context.argument.strip().partition(" ")
+        word = word.lower()
+        if not word:
+            return TextCommandResult(
+                message=(
+                    f"Monitor is **{'on' if self.extension.enabled(session_id) else 'off'}**; images are "
+                    f"**{'on' if self.extension.images(session_id) else 'off'}**; "
+                    f"{_calls(self.extension.count(session_id))} recorded.\n\n"
+                    "- `/monitor on|off` — record model calls\n"
+                    "- `/monitor images on|off` — include pictures in the report\n"
+                    "- `/monitor export` — write the report into the workspace"
+                )
+            )
+        if word in {"on", "off"}:
+            self.extension.set_enabled(session_id, word == "on")
+            return TextCommandResult(notification=f"Monitor recording is {word}.")
+        if word == "images":
+            choice = rest.strip().lower()
+            if choice not in {"on", "off"}:
+                return TextCommandResult(notification="Use /monitor images on or /monitor images off.")
+            self.extension.set_images(session_id, choice == "on")
+            return TextCommandResult(notification=f"Monitor images are {choice}.")
+        if word == "export":
+            try:
+                count, written = await asyncio.to_thread(self.export, session_id, workspace)
+            except ValueError as error:
+                return TextCommandResult(notification=str(error))
+            return TextCommandResult(
+                message=f"Exported {_calls(count)} to `{written}`.",
+                notification="Monitor exported",
+            )
+        return TextCommandResult(notification="Use /monitor on|off|images on|off|export.")
 
     async def monitor(self, context: CommandContext) -> CommandResult:
         """Open the panel; whatever follows the command is ignored."""
