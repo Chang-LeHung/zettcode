@@ -1,4 +1,4 @@
-"""`/hub`: the three tabs, the mark kept per tab, the keys that act on a node or a row, and the reading behind them."""
+"""`/hub`: the four tabs, the mark kept per tab, the keys that act on a node or a row, and the reading behind them."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import pytest
 from zettcode.commands.hub import (
     DAEMONS,
     GRAPH,
+    HISTORY,
     NEVER,
     SESSIONS,
     TABLE_TITLE_WIDTH,
@@ -58,8 +59,8 @@ def _key(name: str) -> object:
 
 
 def test_the_tabs_are_named_once_and_the_constants_agree_with_them():
-    assert TABS == ("Graph", "Sessions", "Daemons")
-    assert (GRAPH, SESSIONS, DAEMONS) == (0, 1, 2)
+    assert TABS == ("Graph", "Sessions", "Daemons", "History")
+    assert (GRAPH, SESSIONS, DAEMONS, HISTORY) == (0, 1, 2, 3)
     assert page().tab == GRAPH
 
 
@@ -72,7 +73,7 @@ def test_the_sessions_tab_lists_only_the_sessions_that_are_running():
     assert "offline" not in "".join(item.description for item in opened.list.items)
 
 
-def test_tab_walks_the_three_and_keeps_a_mark_per_tab():
+def test_tab_walks_the_four_and_keeps_a_mark_per_tab():
     opened = page(peers=(Peer("main", "t", "idle", "/w"), Peer("second", "t", "idle", "/w")))
     opened.capture_event(_key("tab"), None)
     opened.list.selected = 1
@@ -80,6 +81,9 @@ def test_tab_walks_the_three_and_keeps_a_mark_per_tab():
     opened.capture_event(_key("tab"), None)
     assert opened.tab == DAEMONS
     assert [item.label for item in opened.list.items] == ["watcher"]
+
+    opened.capture_event(_key("tab"), None)
+    assert opened.tab == HISTORY and not opened.list.items, "nothing is only stored here"
 
     opened.capture_event(_key("tab"), None)
     assert opened.tab == GRAPH
@@ -553,22 +557,20 @@ def test_the_sessions_tab_is_the_roster_and_no_stored_session_is_added_to_it(tmp
     assert not hasattr(reading, "offline")
 
 
-def test_the_daemons_tab_lists_every_record_and_the_stored_sessions_nothing_runs(tmp_path, daemons_on_disk):
+def test_the_daemons_tab_lists_every_record_and_the_history_tab_the_stored_sessions_nothing_runs(
+    tmp_path, daemons_on_disk
+):
     """Offline: stored in this workspace, and nothing runs it. The reader's own session, a registered peer and the
-    session of a daemon record (`run-1`, `dead-1`, whatever its status) are each accounted for already. They are
-    listed by the same clock as everything else on the tab, so a year-old session comes after the daemons."""
+    session of a daemon record (`run-1`, `dead-1`, whatever its status) are each accounted for already. A Daemons row
+    is a record and nothing else; a stored session is only ever History's."""
     reading = _read(_FakeClient(tmp_path))
 
     by_id = {daemon.session_id: daemon.status for daemon in reading.daemons}
 
-    assert by_id == {
-        "run-1": "idle",
-        "dead-1": "dead",
-        "dead-9": "dead",
-        "old-9": "offline",
-    }, "every record of the machine, and the stored session nothing runs"
-    assert list(by_id)[-1] == "old-9", "the oldest thing on the tab is last"
-    assert [daemon.workspace for daemon in reading.daemons if daemon.status == "offline"] == [str(tmp_path.resolve())]
+    assert by_id == {"run-1": "idle", "dead-1": "dead", "dead-9": "dead"}, "the Daemons tab is the records, only"
+    stored = {daemon.session_id: daemon.status for daemon in reading.stored}
+    assert stored == {"old-9": "offline"}, "the stored session nothing runs is the History tab's"
+    assert [daemon.workspace for daemon in reading.stored] == [str(tmp_path.resolve())]
 
 
 def test_a_peer_that_has_just_left_the_roster_is_offline_even_while_the_client_still_remembers_it(
@@ -580,9 +582,7 @@ def test_a_peer_that_has_just_left_the_roster_is_offline_even_while_the_client_s
     reading = _read(client)
 
     assert [peer.session_id for peer in reading.peers] == [], "the Sessions tab does not call it idle"
-    assert "p-1" in {daemon.session_id for daemon in reading.daemons if daemon.status == "offline"}, (
-        "while Daemons says offline"
-    )
+    assert "p-1" in {daemon.session_id for daemon in reading.stored}, "while History says offline"
 
 
 def test_the_cached_peers_stand_in_for_the_roster_only_when_the_graph_could_not_be_read(tmp_path, daemons_on_disk):
@@ -590,7 +590,7 @@ def test_the_cached_peers_stand_in_for_the_roster_only_when_the_graph_could_not_
 
     assert [peer.session_id for peer in reading.peers] == ["p-1"], "the Sessions tab shows what the client remembers"
     assert "p-1" not in {daemon.session_id for daemon in reading.daemons}, "the best word there is says it runs"
-    assert "old-9" in {daemon.session_id for daemon in reading.daemons if daemon.status == "offline"}
+    assert "old-9" in {daemon.session_id for daemon in reading.stored}
 
 
 def test_enter_and_s_act_on_the_row_under_the_mark_by_its_id_not_by_its_position_in_a_filtered_table():
@@ -646,7 +646,7 @@ def test_an_offline_session_is_started_end_to_end_from_the_reading_through_enter
         reading = await command._read(client)
         opened = HubPage(reading, on_close=lambda: None)
         opened.on_start = lambda session_id: command._start(command._resume(opened, client, session_id), opened)
-        opened._show(DAEMONS)
+        opened._show(HISTORY)
         row = next(i for i, item in enumerate(opened.list.items) if item.value == "old-9")
         opened.list.selected = row
 
@@ -674,12 +674,12 @@ def test_a_table_cut_at_the_limit_says_so_and_the_saying_is_not_a_row_anything_a
 
     reading = _read(client)
 
-    offline = [daemon for daemon in reading.daemons if daemon.status == "offline"]
-    assert reading.offline_cut and len(offline) == hub.OFFLINE_LIMIT, "one more was asked for, and not shown"
+    assert not [daemon for daemon in reading.daemons if daemon.status == "offline" and daemon.session_id in many]
+    assert reading.offline_cut and len(reading.stored) == hub.OFFLINE_LIMIT, "one more was asked for, and not shown"
 
     started: list[str] = []
     opened = HubPage(reading, on_close=lambda: None, on_start=started.append)
-    opened._show(DAEMONS)
+    opened._show(HISTORY)
     last = opened.list.items[-1]
     assert last.disabled and str(hub.OFFLINE_LIMIT) in last.description
     opened.list.selected = len(opened.list.items) - 1
@@ -712,26 +712,25 @@ def test_an_offline_row_is_muted_and_enter_on_it_starts_a_daemon_on_that_session
     started: list[str] = []
     opened = HubPage(
         data(
-            daemons=(
-                Daemon("run", "live", "idle"),
-                Daemon("off", "an old conversation", "offline", workspace="/work"),
-            )
+            daemons=(Daemon("run", "live", "idle"),),
+            stored=(Daemon("off", "an old conversation", "offline", workspace="/work"),),
         ),
         on_close=lambda: None,
         on_start=started.append,
     )
     opened._show(DAEMONS)
-
-    rows = {item.label: item for item in opened.list.items}
-    assert "offline" in rows["an old conversation"].description
-    assert rows["an old conversation"].parts(Theme())[0][1] == graph_colours()["offline"], "in the offline colour"
     assert "start an offline one" in opened.footer
-
     opened.list.selected = 0
     opened.capture_event(_key("enter"), None)
     assert started == [] and "is running" in (opened.subtitle or "")
 
-    opened.list.selected = 1
+    opened._show(HISTORY)
+    rows = {item.label: item for item in opened.list.items}
+    assert "offline" in rows["an old conversation"].description
+    assert rows["an old conversation"].parts(Theme())[0][1] == graph_colours()["offline"], "in the offline colour"
+    assert "resume it in a daemon" in opened.footer and "s stop" not in opened.footer, "History offers no `s`"
+
+    opened.list.selected = 0
     opened.capture_event(_key("enter"), None)
     assert started == ["off"] and opened.subtitle == "starting\u2026"
 
@@ -740,12 +739,13 @@ def test_starting_an_offline_session_resumes_it_in_the_readers_workspace_on_the_
     calls: list[tuple[object, dict[str, object]]] = []
     _fake_spawn(monkeypatch, calls)
     client = type("Client", (), {"workspace": tmp_path / "project"})()
-    opened = page(daemons=(Daemon("off", "an old conversation", "offline", workspace=str(tmp_path / "project")),))
+    opened = page(stored=(Daemon("off", "an old conversation", "offline", workspace=str(tmp_path / "project")),))
+    opened._show(HISTORY)
 
     asyncio.run(HubCommand()._resume(opened, client, "off"))
 
     assert calls == [(str(tmp_path / "project"), {"model": None, "resume": "off"})]
-    assert opened.subtitle == "started abcdef12"
+    assert opened.subtitle == "started abcdef12; it is on the Daemons tab now"
 
 
 def graph_colours() -> dict[str, str]:
@@ -903,7 +903,7 @@ def test_starting_a_dead_daemon_resumes_its_session_on_the_workspace_and_model_i
     asyncio.run(HubCommand()._resume(opened, client, "nobody"))
 
     assert calls == [("/work", {"model": "m", "resume": "d-2"})], "its own workspace and model, nothing else"
-    assert opened.subtitle == "started abcdef12"
+    assert opened.subtitle == "started abcdef12", "already on the Daemons tab: nothing to say about where it went"
 
 
 def test_a_daemon_with_no_recorded_workspace_resumes_in_the_clients(monkeypatch, tmp_path):
@@ -1041,26 +1041,32 @@ def test_a_refresh_replaces_refreshing_with_the_new_readings_time_and_keeps_a_fa
     monkeypatch.setattr(HubCommand, "_read", read_ok)
     asyncio.run(HubCommand()._refresh(opened, object()))
     assert opened.subtitle is None, "refreshing is gone once the read is done"
-    assert "read 12:34:56 \u00b7 23 ms" in _rendered(opened, 140, 32)[1], "and the time is at the top right"
+    assert "read 12:34:56 \u00b7 23 ms" in _rendered(opened, 170, 32)[1], "and the time is at the top right"
 
     monkeypatch.setattr(HubCommand, "_read", read_bad)
     asyncio.run(HubCommand()._refresh(opened, object()))
     assert opened.subtitle == "the message graph cannot be read: no broker"
 
 
-def test_the_stamp_is_the_fullest_account_that_fits_and_an_80_column_page_shows_where_the_time_went():
+def test_the_stamp_is_the_fullest_account_that_fits_and_at_80_columns_it_is_the_clock_and_the_total():
+    """Four tabs take about 11 columns more than three did, so each form first appears at the width pinned here (and
+    not one column earlier): at 80 columns the steps are gone and the clock and the total are what is left."""
     opened = HubPage(data(began="12:34:56", took=23, steps=STEPS), on_close=lambda: None)
 
     def tab_line(width: int) -> str:
         return _rendered(opened, width, 32)[1].rstrip()
 
-    full = tab_line(130)
-    assert full.endswith("graph 19, build 0 ms)") and "peers 0" in full, "with the unit after the steps"
-    assert "12:34:56" in full and full.index("read") > full.index("Daemons")
-    assert tab_line(86).endswith("read 12:34:56 \u00b7 23 ms (p0 d3 s1 g19 b0)"), "initials where names do not fit"
-    assert tab_line(80).endswith("read 23 ms (p0 d3 s1 g19 b0)"), "an 80-column page sees the steps, not the clock"
-    assert tab_line(66).endswith("read 12:34:56 \u00b7 23 ms"), "narrower: the clock and the total"
-    assert tab_line(55).endswith("read 23 ms"), "narrower still: the total alone"
+    def first_width(form: str) -> int:
+        return next(width for width in range(40, 200) if tab_line(width).endswith(form))
+
+    named = "(peers 0 ms, daemons 3 ms, sessions 1 ms, graph 19 ms, build 0 ms)"
+    assert first_width("read 23 ms") == 65, "the total alone"
+    assert first_width("read 12:34:56 \u00b7 23 ms") == 76, "the clock and the total"
+    assert first_width("read 23 ms (p0 d3 s1 g19 b0)") == 83, "initials, in place of the clock"
+    assert first_width("read 12:34:56 \u00b7 23 ms (p0 d3 s1 g19 b0)") == 94, "initials and the clock"
+    assert first_width(f"read 23 ms {named}") == 132, "names, with the unit on every step"
+    assert tab_line(80).endswith("read 12:34:56 \u00b7 23 ms"), "at 80 columns: the clock and the total"
+    assert "12:34:56" in tab_line(170) and tab_line(170).index("read") > tab_line(170).index("Daemons")
     assert "read" not in tab_line(44) and "Daemons" in tab_line(44), "too narrow for any: left out, not cut"
 
 
@@ -1070,7 +1076,7 @@ def test_a_page_drops_steps_it_has_no_letter_for_to_three_characters_and_a_total
     opened = HubPage(data(began="12:34:56", took=9, steps=(("tail", 4), ("peers", 5))), on_close=lambda: None)
 
     assert "tail" not in STEP_LETTERS
-    assert _rendered(opened, 70, 32)[1].rstrip().endswith("read 9 ms (tai4 p5)")
+    assert _rendered(opened, 81, 32)[1].rstrip().endswith("read 9 ms (tai4 p5)")
     assert _rendered(HubPage(data(took=9), on_close=lambda: None), 80, 32)[1].rstrip().endswith("read 9 ms")
 
 
@@ -1162,17 +1168,21 @@ def test_the_sessions_tab_is_newest_first_and_says_how_long_ago_each_one_was():
     assert NEVER in rows[6], "a session nothing is known about says so and goes last"
 
 
-def test_the_daemons_tab_is_newest_first_across_running_stopped_and_stored_rows():
-    """The order is one order: a stored session is not pushed to the bottom for being stored, it is placed by its
-    own last change, and only a row nothing says anything about falls to the end."""
+def test_the_daemons_and_history_tabs_are_each_newest_first_and_a_row_with_no_time_goes_last():
+    """Each tab is ordered by its rows' own last change, and only a row nothing says anything about falls to the
+    end. A stored session is History's, never a Daemons row."""
     opened = HubPage(
         data(
             daemons=(
-                Daemon("stored", "stored", "offline", activity=NOW - 10 * 86_400),
                 Daemon("run", "run", "working", activity=NOW - 5),
                 Daemon("dead", "dead", "dead", activity=NOW - 600),
                 Daemon("unknown", "unknown", "idle"),
-            )
+            ),
+            stored=(
+                Daemon("old", "old", "offline", activity=NOW - 10 * 86_400),
+                Daemon("new", "new", "offline", activity=NOW - 60),
+                Daemon("never", "never", "offline"),
+            ),
         ),
         on_close=lambda: None,
     )
@@ -1180,9 +1190,15 @@ def test_the_daemons_tab_is_newest_first_across_running_stopped_and_stored_rows(
 
     rows = _rendered(opened, 110, 24)
 
-    assert [item.label for item in opened.list.items] == ["run", "dead", "stored", "unknown"]
-    assert "just now" in rows[4] and "10m ago" in rows[5] and "10d ago" in rows[6]
-    assert NEVER in rows[7]
+    assert [item.label for item in opened.list.items] == ["run", "dead", "unknown"], "records only"
+    assert "just now" in rows[4] and "10m ago" in rows[5]
+    assert NEVER in rows[6]
+
+    opened._show(HISTORY)
+    rows = _rendered(opened, 110, 24)
+
+    assert [item.label for item in opened.list.items] == ["new", "old", "never"], "stored sessions, newest first"
+    assert "1m ago" in rows[4] and "10d ago" in rows[5] and NEVER in rows[6]
 
 
 def test_a_reading_dates_a_session_by_the_brokers_messages_or_its_own_conversation_whichever_is_newer(
@@ -1371,13 +1387,13 @@ def test_a_late_failure_does_not_land_on_the_page_that_was_opened_in_place_of_th
 
 
 def test_a_mark_that_a_refresh_leaves_on_the_cut_row_moves_to_the_last_session_before_it():
-    five = tuple(Daemon(f"d{i}", f"daemon {i}", "idle") for i in range(5))
-    opened = HubPage(data(daemons=five, offline_cut=True), on_close=lambda: None)
-    opened._show(DAEMONS)
+    five = tuple(Daemon(f"d{i}", f"daemon {i}", "offline") for i in range(5))
+    opened = HubPage(data(stored=five, offline_cut=True), on_close=lambda: None)
+    opened._show(HISTORY)
     opened.list.selected = 4
-    opened.marks[DAEMONS] = 4
+    opened.marks[HISTORY] = 4
 
-    opened.set_data(data(daemons=five[:4], offline_cut=True))  # 4 daemons and the cut row: index 4 is the words
+    opened.set_data(data(stored=five[:4], offline_cut=True))  # 4 daemons and the cut row: index 4 is the words
 
     assert opened.list.items[-1].disabled
     assert opened.list.selected == 3, "the band is not drawn on the row nothing can act on"
@@ -1409,9 +1425,9 @@ def _searchable() -> HubPage:
     daemons = (
         Daemon("01b1-1111", "code-review", "idle", workspace="/w"),
         Daemon("01b2-2222", "was running", "dead", workspace="/w"),
-        Daemon("01b3-3333", "an old conversation", "offline", workspace="/w"),
     )
-    return HubPage(data(peers=peers, daemons=daemons), on_close=lambda: None)
+    stored = (Daemon("01b3-3333", "an old conversation", "offline", workspace="/w"),)
+    return HubPage(data(peers=peers, daemons=daemons, stored=stored), on_close=lambda: None)
 
 
 def _labels(opened: HubPage) -> list[str]:
@@ -1459,13 +1475,18 @@ def test_every_word_has_to_match_and_the_order_does_not_matter():
     assert _labels(opened) == [], "no row has both"
 
 
-def test_the_daemons_tab_searches_offline_rows_by_title_and_id_too():
+def test_the_history_tab_searches_stored_sessions_by_title_and_id_and_the_daemons_tab_does_not_have_them():
     opened = _searchable()
-    opened._show(DAEMONS)
+    opened._show(HISTORY)
     opened.capture_event(_text("/"), None)
 
     _typed(opened, "01b3")
-    assert _labels(opened) == ["an old conversation"], "an offline session, by its id"
+    assert _labels(opened) == ["an old conversation"], "a stored session, by its id"
+    opened.capture_event(_key("escape"), None)
+    opened._show(DAEMONS)
+    opened.capture_event(_text("/"), None)
+    _typed(opened, "01b3")
+    assert _labels(opened) == [], "not a record"
     for _ in "01b3":
         opened.capture_event(_key("backspace"), None)
     _typed(opened, "running")
@@ -1531,7 +1552,7 @@ def test_each_tab_has_its_own_search_and_leaving_a_tab_ends_the_typing_but_keeps
 
     opened.capture_event(_key("tab"), None)  # to the daemons tab
     assert not opened.searching and opened.tab == DAEMONS
-    assert _labels(opened) == ["code-review", "was running", "an old conversation"], "its own table, not filtered"
+    assert _labels(opened) == ["code-review", "was running"], "its own table, not filtered"
 
     opened.capture_event(_key("backtab"), None)
     assert opened.tab == SESSIONS and _labels(opened) == ["docs"], "the sessions filter is where it was left"
@@ -1553,7 +1574,7 @@ def test_the_titles_still_line_up_with_the_cells_while_typing_and_the_search_has
 
     rows = _rendered(opened, 110, 24)
 
-    assert rows[2].lstrip().startswith("/ was") and "1 of 3" in rows[2], "the search and how many it keeps"
+    assert rows[2].lstrip().startswith("/ was") and "1 of 2" in rows[2], "the search and how many it keeps"
     assert rows[3].split()[:2] == ["NAME", "STATE"], "the titles are where they were: the row under the search"
     assert rows[3].index("STATE") == rows[4].index("\u25cf"), "and over the cells of the rows that are left"
     assert rows[3].index("MODEL") == rows[4].index("no model")
@@ -1754,7 +1775,8 @@ def test_the_notice_that_older_sessions_were_left_out_keeps_the_lists_the_same_l
     from zettcode.commands import hub
 
     many = tuple(Daemon(f"o{n}", f"stored {n}", "offline", workspace="/w") for n in range(3))
-    whole = hub._daemon_table(data(daemons=many, offline_cut=True))
+    whole = hub._history_table(data(stored=many, offline_cut=True))
+    assert hub._daemon_table(data(daemons=(), stored=many, offline_cut=True)).items == [], "Daemons counts daemons"
 
     assert len(whole.items) == len(whole.finds) == 4, "three sessions and the notice, each with a `find`"
     assert whole.items[-1].disabled and whole.finds[-1] == ""
@@ -1765,9 +1787,9 @@ def test_the_notice_that_older_sessions_were_left_out_keeps_the_lists_the_same_l
 
 def test_a_table_that_is_only_the_notice_marks_nothing_and_enter_has_no_daemon_to_start():
     started: list[str] = []
-    opened = HubPage(data(daemons=(), offline_cut=True), on_close=lambda: None, on_start=started.append)
+    opened = HubPage(data(stored=(), offline_cut=True), on_close=lambda: None, on_start=started.append)
 
-    opened._show(DAEMONS)
+    opened._show(HISTORY)
 
     assert [item.disabled for item in opened.list.items] == [True], "the only row is the notice"
     assert opened.list.selected == -1, "and it is not marked"
@@ -1811,7 +1833,7 @@ def test_a_stored_session_with_no_record_starts_on_the_sdks_defaults(monkeypatch
     calls: list[tuple[object, dict[str, object]]] = []
     _fake_spawn(monkeypatch, calls)
     client = type("Client", (), {"workspace": tmp_path})()
-    opened = page(daemons=(Daemon("off", "an old conversation", "offline", workspace=str(tmp_path)),))
+    opened = page(stored=(Daemon("off", "an old conversation", "offline", workspace=str(tmp_path)),))
 
     asyncio.run(HubCommand()._resume(opened, client, "off"))
 
@@ -1830,7 +1852,7 @@ def test_a_session_another_process_has_open_is_not_started_and_the_page_says_why
 
     client = type("Client", (), {"workspace": tmp_path, "sessions": Sessions()})()
     opened = page(
-        daemons=(
+        stored=(
             Daemon("held", "open in a terminal", "offline", workspace=str(tmp_path)),
             Daemon("free", "not open anywhere", "offline", workspace=str(tmp_path)),
         )
@@ -1877,16 +1899,16 @@ def test_a_daemon_is_found_by_its_title_as_well_as_its_name_and_id():
 def test_s_on_a_stored_session_no_daemon_ever_had_says_so_and_does_not_ask_the_sdk():
     asked: list[str] = []
     opened = HubPage(
-        data(daemons=(Daemon("off", "an old conversation", "offline"),)),
+        data(stored=(Daemon("off", "an old conversation", "offline"),)),
         on_close=lambda: None,
         on_stop=asked.append,
     )
-    opened._show(DAEMONS)
+    opened._show(HISTORY)
 
     opened.capture_event(_text("s"), None)
 
     assert asked == [], "nothing to stop, so the SDK is not asked about a daemon that does not exist"
-    assert opened.subtitle == "no daemon to stop on this one; enter starts one"
+    assert opened.subtitle == "no daemon to stop on a stored session; enter starts one"
 
 
 def test_the_first_s_on_a_working_daemon_says_what_stopping_costs_and_the_second_stops_it_anyway(monkeypatch):
