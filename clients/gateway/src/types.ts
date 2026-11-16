@@ -182,6 +182,10 @@ export interface AgentType {
   title: string;
   description: string;
   avatar?: string;
+  /** Whether this gateway can run it now; absent from a gateway older than the check. */
+  runnable?: boolean;
+  /** When it cannot, the sentence that says why and what to do. */
+  reason?: string;
 }
 
 export interface AgentReply {

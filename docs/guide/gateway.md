@@ -10,6 +10,7 @@ zettcode gateway                 # serve in the foreground until Ctrl-C
 zettcode gateway start           # detach, print the address
 zettcode gateway stop            # stop the one that is running
 zettcode gateway restart         # stop it and start again
+zettcode restart all             # the broker and the gateway, in the order that works (also: start, stop, broker, gateway)
 ```
 
 It listens on `127.0.0.1:8765` by default; `--port` and `--host` change that. `start` writes its output to

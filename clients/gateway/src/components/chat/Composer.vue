@@ -125,7 +125,10 @@ async function submit(): Promise<void> {
   const body = text.value.trim();
   if (!body && !pictures.value.length) return;
   const thread = props.thread;
-  if (thread.kind !== "daemon" && prefs.confirmSession && !confirmed.has(thread.id)) {
+  // Only a ZettCode session can have a person at it: an agent this gateway runs (Claude Code, Codex) and an outside
+  // program answer for themselves, so asking "are you sure?" there would only be in the way.
+  const personMayBeThere = thread.kind === "session" && !thread.agent;
+  if (personMayBeThere && prefs.confirmSession && !confirmed.has(thread.id)) {
     const go = await confirmAction({
       title: t("Write to {name}?", { name: thread.name }),
       text: t("This session may have a person at it. Your message starts a turn there and uses that session's tokens."),

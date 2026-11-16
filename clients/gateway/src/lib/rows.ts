@@ -2,12 +2,23 @@
 // one row however long it is, because what an agent did between two sentences is not what the reader came to read.
 
 import type { ChatItem, LiveTurn, Pending } from "../types";
+import { claimKey } from "./pending";
 
 export type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 export type SpokenItem = Exclude<ChatItem, { kind: "tool" | "note" }>;
 
 export type Row =
-  | { type: "bubble"; key: string; side: "in" | "out"; item: SpokenItem; cont: boolean; tail: boolean; pending?: Pending }
+  | {
+      type: "bubble";
+      key: string;
+      /** The stored item it was drawn from; absent for a message this page has sent and the conversation lacks. */
+      at?: number;
+      side: "in" | "out";
+      item: SpokenItem;
+      cont: boolean;
+      tail: boolean;
+      pending?: Pending;
+    }
   | { type: "steps"; key: string; tools: ToolItem[] }
   | { type: "note"; key: string; text: string };
 
@@ -52,9 +63,15 @@ export function settleLive(items: readonly ChatItem[], turn: LiveTurn | undefine
   return { items: merged, tools, text: text.trim() };
 }
 
-export function buildRows(items: readonly ChatItem[], pending: readonly Pending[], turn?: LiveTurn): Row[] {
+export function buildRows(
+  items: readonly ChatItem[],
+  pending: readonly Pending[],
+  turn?: LiveTurn,
+  claims?: ReadonlyMap<string, number>,
+): Row[] {
   const rows: Row[] = [];
   const settled = settleLive(items, turn);
+  const seenText = new Map<string, number>();
   let side: "in" | "out" | null = null;
   let run: ToolItem[] = [];
   let from = 0;
@@ -79,7 +96,14 @@ export function buildRows(items: readonly ChatItem[], pending: readonly Pending[
     }
     // What the person said, from this page or typed in the session itself, or sent to it by another session, is on the right; the agent is on the left.
     const current = item.kind === "out" || item.kind === "user" || item.kind === "from" ? "out" : "in";
-    rows.push({ type: "bubble", key: `m${at}`, side: current, item, cont: side === current, tail: true });
+    let key = `m${at}`;
+    if (item.kind === "out" || item.kind === "user") {
+      const occurrence = (seenText.get(item.text) ?? 0) + 1;
+      seenText.set(item.text, occurrence);
+      const taken = claims?.get(claimKey(item.text, occurrence));
+      if (taken !== undefined) key = `p${taken}`;
+    }
+    rows.push({ type: "bubble", key, at, side: current, item, cont: side === current, tail: true });
     side = current;
   });
   // The tools still running join the run they continue, so the turn is one group of steps and not two.

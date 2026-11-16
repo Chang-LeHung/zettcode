@@ -15,13 +15,23 @@ const group = ref("");
 const busy = ref(false);
 const loading = ref(true);
 const failure = ref("");
-const ready = computed(() => !!kind.value && !busy.value);
+const ready = computed(() => !!kind.value && !busy.value && usable(kind.value));
+
+/** A type a gateway older than the check offers has no `runnable`: it is taken as usable. */
+function usable(name: string): boolean {
+  const type = types.value.find((one) => one.name === name);
+  return !!type && type.runnable !== false;
+}
+
+/** The sentence under the form for the type that is chosen, when this gateway cannot run it. */
+const unusable = computed(() => types.value.find((one) => one.name === kind.value && one.runnable === false)?.reason ?? "");
 
 onMounted(async () => {
   try {
     const answer = await gateway.agents();
     types.value = answer.agents;
-    kind.value = answer.agents[0]?.name ?? "";
+    // The first one this gateway can run; when none can, the first, so that its reason is what the person reads.
+    kind.value = (answer.agents.find((one) => one.runnable !== false) ?? answer.agents[0])?.name ?? "";
   } catch (error) {
     failure.value = error instanceof ApiError ? error.message : String(error);
   } finally {
@@ -76,7 +86,7 @@ function initial(agent: AgentType): string {
           :key="agent.name"
           type="button"
           class="agent-type"
-          :class="{ on: kind === agent.name }"
+          :class="{ on: kind === agent.name, off: agent.runnable === false }"
           role="radio"
           :aria-checked="kind === agent.name"
           @click="kind = agent.name"
@@ -102,6 +112,7 @@ function initial(agent: AgentType): string {
         </label>
       </div>
 
+      <p v-if="unusable" class="agent-unusable" role="status">{{ unusable }}</p>
       <p v-if="failure" class="errcard" role="alert">{{ failure }}</p>
 
       <div class="agent-actions">
@@ -136,6 +147,9 @@ function initial(agent: AgentType): string {
 .agent-radio { position: relative; width: 20px; height: 20px; flex: none; border: 1.5px solid var(--divider); border-radius: 50%; transition: border-color 0.15s; }
 .agent-type.on .agent-radio { border-color: var(--accent); }
 .agent-type.on .agent-radio::after { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: var(--accent); }
+/* Not runnable by this gateway: still listed (a settings change needs no restart), but plainly not the first choice. */
+.agent-type.off .agent-avatar, .agent-type.off .agent-copy { opacity: 0.5; }
+.agent-unusable { margin: 8px 6px 0; padding: 9px 12px; border-radius: 12px; background: var(--chip-bg-warn, var(--surface-2)); color: var(--warn); font-size: 0.85rem; line-height: 1.45; }
 
 .agent-fields { display: flex; flex-direction: column; margin-top: 6px; border-top: 1px solid var(--divider); }
 .agent-field { display: flex; flex-direction: column; gap: 7px; padding: 12px 12px 8px; }

@@ -29,9 +29,9 @@ const wanted = computed(() => query.value.trim().toLowerCase());
 const matches = (...fields: string[]): boolean =>
   !wanted.value || fields.some((field) => field.toLowerCase().includes(wanted.value));
 
-/** A type with a running agent is represented by that agent in the list instead of a second "start" row. */
+/** A type with a connected agent is represented by that agent in the list instead of a second "start" row. */
 function anyRunning(type: AgentType): boolean {
-  return lobby.threads.some((thread) => thread.agent === type.name);
+  return lobby.threads.some((thread) => thread.agent === type.name && thread.online);
 }
 
 const agentTypes = computed(() =>
@@ -39,7 +39,7 @@ const agentTypes = computed(() =>
 );
 const running = computed(() =>
   lobby.threads.filter(
-    (thread) => !!thread.agent && !held.value.has(thread.id) && matches(thread.name, thread.title),
+    (thread) => !!thread.agent && thread.online && !held.value.has(thread.id) && matches(thread.name, thread.title),
   ),
 );
 const sessions = computed(() =>
@@ -89,14 +89,15 @@ async function start(type: AgentType): Promise<void> {
         :key="type.name"
         type="button"
         class="invite-row"
-        :disabled="busy === type.name"
+        :disabled="busy === type.name || type.runnable === false"
+        :title="type.runnable === false ? type.reason : undefined"
         @click="start(type)"
       >
         <img v-if="type.avatar" class="invite-logo" :src="type.avatar" alt="" />
         <span v-else class="invite-logo fallback">{{ type.title.slice(0, 1) }}</span>
         <span class="invite-copy">
           <b>{{ type.title }}</b>
-          <small>{{ type.description }}</small>
+          <small>{{ type.runnable === false ? type.reason : type.description }}</small>
         </span>
         <span class="invite-add">
           {{ busy === type.name ? "…" : t("Start & invite") }}

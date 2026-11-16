@@ -475,3 +475,14 @@ async def test_a_real_run_says_begin_its_text_and_end_to_whoever_watches_it(tmp_
     assert kinds[0] == "begin" and kinds[-1] == "end" and "text" in kinds
     assert "".join(fields["text"] for kind, fields in said if kind == "text") == "hello there"
     await client.aclose()
+
+
+def test_a_stream_line_of_the_broker_is_read_in_one_place():
+    from zettcode.sdk.types import StreamEvent
+
+    assert StreamEvent.from_wire("s", {"t": "tool", "id": "c1", "name": "read", "brief": "a.py"}) == StreamEvent(
+        "s", "tool", "", "c1", "read", "a.py", None
+    )
+    assert StreamEvent.from_wire("s", {"t": "tool_end", "id": "c1", "ok": True}).ok is True  # type: ignore[union-attr]
+    assert StreamEvent.from_wire("s", {"text": "no kind"}) is None
+    assert StreamEvent.from_wire("s", {"t": "text", "text": 5}).text == ""  # type: ignore[union-attr]

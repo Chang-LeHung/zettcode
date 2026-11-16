@@ -10,6 +10,7 @@ zettcode gateway                 # 在前台运行，Ctrl-C 结束
 zettcode gateway start           # 转入后台，打印地址
 zettcode gateway stop            # 停掉正在运行的那个
 zettcode gateway restart         # 先停，再启动
+zettcode restart all             # broker 和 gateway 按正确顺序一起重启（还有 start、stop，也可以只写 broker 或 gateway）
 ```
 
 默认监听 `127.0.0.1:8765`；`--port` 和 `--host` 可以改。`start` 把输出写进 `~/.zettcode/gateway`（或 `--directory`）

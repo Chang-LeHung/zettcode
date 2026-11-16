@@ -4,13 +4,14 @@ import { t } from "../../i18n";
 import Skeleton from "../common/Skeleton.vue";
 import { buildRows } from "../../lib/rows";
 import { lineRow } from "../../lib/unread";
-import { chat, loadEarlier, markRead } from "../../stores/chat";
+import { chat, claimsOf, loadEarlier, markRead } from "../../stores/chat";
 import { currentKey, find, search } from "../../stores/chatSearch";
 import Icon from "../common/Icon.vue";
 import MessageBubble from "./MessageBubble.vue";
 import NoteBubble from "./NoteBubble.vue";
 import StepsGroup from "./StepsGroup.vue";
-import { streams } from "../../stores/stream";
+import { clearQuiet, quiet, streams } from "../../stores/stream";
+import { threadOf } from "../../stores/threads";
 import LiveTurn from "./LiveTurn.vue";
 import TypingBubble from "./TypingBubble.vue";
 
@@ -18,9 +19,19 @@ const scroller = ref<HTMLElement | null>(null);
 const body = ref<HTMLElement | null>(null);
 const following = ref(true);
 const unseen = ref(0);
-const rows = computed(() => buildRows(chat.items, chat.pending, streams[chat.id]));
+const rows = computed(() => buildRows(chat.items, chat.pending, streams[chat.id], claimsOf(chat.id)));
 const live = computed(() => streams[chat.id]);
-const typing = computed(() => chat.thread?.status === "working" && !live.value);
+// What the thread is doing now. The list the socket keeps up to date, not `chat.thread`: that one is a copy taken when the
+// conversation was last read, so a session that went idle after that read would be shown typing until the next read.
+const status = computed(() => (threadOf(chat.id) ?? chat.thread)?.status);
+const typing = computed(() => status.value === "working" && !live.value && !quiet.has(chat.id));
+// The roster no longer says working: what was held back is over, so the next turn may show its dots again.
+watch(
+  () => [chat.id, status.value] as const,
+  ([id, now]) => {
+    if (id && now !== "working") clearQuiet(id);
+  },
+);
 /** The row the unread line goes above: the first row drawn from the item the unread stretch begins at. */
 const unreadRow = computed(() => lineRow(rows.value, chat.unreadFrom));
 

@@ -898,21 +898,9 @@ class Client:
             return
 
         def relay(session_id: str, wire: dict[str, Any]) -> None:
-            kind = wire.get("t")
-            if not isinstance(kind, str):
-                return
-            text, call_id, name, brief, ok = (wire.get(key) for key in ("text", "id", "name", "brief", "ok"))
-            callback(
-                StreamEvent(
-                    session_id,
-                    kind,
-                    text if isinstance(text, str) else "",
-                    call_id if isinstance(call_id, str) else "",
-                    name if isinstance(name, str) else "",
-                    brief if isinstance(brief, str) else "",
-                    ok if isinstance(ok, bool) else None,
-                )
-            )
+            event = StreamEvent.from_wire(session_id, wire)
+            if event is not None:
+                callback(event)
 
         messenger.on_stream = relay
 

@@ -80,6 +80,17 @@ async def test_daemons_and_sessions_are_listed_with_what_each_is_and_the_gateway
     assert (external["kind"], external["name"]) == ("external", "ci-bot")
 
 
+async def test_a_daemon_just_started_and_not_yet_registered_is_starting_not_offline(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.add_daemon("01fresh", "/w", status="idle", online=False, started_at=990.0)
+    backend.add_daemon("01old", "/w", status="idle", online=False, started_at=100.0)
+    await gateway.refresh()
+
+    status = {view["id"]: view["status"] for view in gateway.threads()}
+
+    assert status["01fresh"] == "starting" and status["01old"] == "offline"
+
+
 async def test_a_daemon_the_broker_does_not_list_is_offline_or_dead_and_cannot_be_written_to(tmp_path):
     gateway, backend = await make(tmp_path)
     backend.add_daemon("01starting", "/w", status="starting", online=False)
@@ -1501,3 +1512,128 @@ async def test_a_message_not_yet_taken_is_not_written_out(tmp_path):
 
     saved = json.loads(gateway._inbox_path().read_text(encoding="utf-8"))["threads"][AGENT]["items"]
     assert [item["text"] for item in saved] == ["kept"]
+
+
+async def test_an_agent_on_the_roster_is_listed_offline_with_its_type_so_a_page_can_start_it_again(tmp_path):
+    class Plugin(AgentPlugin):
+        name = "echo"
+        title = "Echo"
+
+        def probe(self) -> str:
+            return "echo was not found"
+
+        def create(self, session_id: str, title: str):  # type: ignore[override]
+            raise AssertionError("never created: the probe refuses it")
+
+    manager = AgentManager(tmp_path / "agents", [Plugin()])
+    manager._write_roster({"web-aaa": {"kind": "echo", "title": "Echo"}})
+    gateway = Gateway(FakeBackend(), settings(tmp_path), clock=lambda: 1000.0, agents=manager)
+    await gateway.start(watch=False)
+
+    listed = {view["id"]: view for view in gateway.threads()}
+
+    assert listed["web-aaa"]["online"] is False and listed["web-aaa"]["agent"] == "echo"
+
+
+class _Revivable(AgentPlugin):
+    name = "echo"
+    title = "Echo"
+    runs = False
+
+    def probe(self) -> str:
+        return "" if type(self).runs else "echo was not found"
+
+    def create(self, session_id: str, title: str):  # type: ignore[override]
+        class Session:
+            kind = "external"
+            handle = "echo"
+
+            def __init__(self) -> None:
+                self.session_id = session_id
+
+            async def connect(self) -> None:
+                pass
+
+            async def close(self) -> None:
+                pass
+
+        return Session()
+
+
+async def test_a_listed_roster_agent_keeps_its_name_and_picture_and_a_plugin_that_is_gone_is_not_listed(tmp_path):
+    _Revivable.avatar = "data:image/png;base64,AAAA"
+    manager = AgentManager(tmp_path / "agents", [_Revivable()])
+    manager._write_roster(
+        {"web-aaa": {"kind": "echo", "title": "Echo one"}, "web-bbb": {"kind": "uninstalled", "title": "Gone"}}
+    )
+    gateway = Gateway(FakeBackend(), settings(tmp_path), clock=lambda: 1000.0, agents=manager)
+    await gateway.start(watch=False)
+
+    listed = {view["id"]: view for view in gateway.threads()}
+
+    assert listed["web-aaa"]["name"] == "Echo one" and listed["web-aaa"]["title"] == "Echo one"
+    assert listed["web-aaa"]["avatar"] == "data:image/png;base64,AAAA"
+    assert "web-bbb" not in listed
+
+
+async def test_the_keeper_brings_back_an_agent_once_it_can_run_and_stops_with_the_gateway(tmp_path, monkeypatch):
+    monkeypatch.setattr(service_module, "AGENT_RETRY_SECONDS", 0.01)
+    _Revivable.runs = False
+    manager = AgentManager(tmp_path / "agents", [_Revivable()])
+    manager._write_roster({"web-aaa": {"kind": "echo", "title": "Echo one"}})
+    backend = FakeBackend()
+    gateway = Gateway(backend, settings(tmp_path), clock=lambda: 1000.0, agents=manager)
+    await gateway.start()
+    try:
+        await asyncio.sleep(0.05)
+        assert manager.running() == {}, "it cannot run yet, and the keeper keeps trying"
+
+        backend.set_reachable(False)
+        _Revivable.runs = True
+        await asyncio.sleep(0.05)
+        assert manager.running() == {}, "nothing is started while the broker cannot be reached"
+
+        backend.set_reachable(True)
+        for _ in range(50):
+            if manager.running():
+                break
+            await asyncio.sleep(0.02)
+        assert list(manager.running()) == ["web-aaa"]
+    finally:
+        await gateway.close()
+    assert gateway._keeper is None
+
+
+async def test_starting_an_agent_that_already_runs_is_not_a_refusal(tmp_path):
+    _Revivable.runs = True
+    manager = AgentManager(tmp_path / "agents", [_Revivable()])
+    gateway = Gateway(FakeBackend(), settings(tmp_path), clock=lambda: 1000.0, agents=manager)
+    await gateway.start(watch=False)
+
+    first = await gateway.create_agent({"kind": "echo", "title": "Echo", "session_id": "web-aaa"})
+    again = await gateway.create_agent({"kind": "echo", "title": "other", "session_id": "web-aaa"})
+
+    assert first["agent"]["session_id"] == again["agent"]["session_id"] == "web-aaa"
+    assert manager._roster()["web-aaa"]["title"] == "Echo", "the title it was given is not overwritten"
+
+
+async def test_starting_an_agent_again_keeps_what_the_person_made_of_it_and_joins_the_group_again(tmp_path):
+    _Revivable.runs = True
+    _Revivable.avatar = "data:image/png;base64,BBBB"
+    joined: list[str] = []
+    manager = AgentManager(tmp_path / "agents", [_Revivable()])
+    gateway = Gateway(FakeBackend(), settings(tmp_path), clock=lambda: 1000.0, agents=manager)
+    await gateway.start(watch=False)
+    made = await gateway.create_agent({"kind": "echo", "title": "Echo", "session_id": "web-aaa"})
+    running = manager.running()["web-aaa"]
+    running.join_group = lambda group: joined.append(group) or asyncio.sleep(0)  # type: ignore[attr-defined]
+    await gateway.update_profile("web-aaa", {"name": "Docs bot", "pinned": True})
+
+    again = await gateway.create_agent({"kind": "echo", "title": "Echo", "session_id": "web-aaa", "group": "review"})
+
+    assert made["agent"]["session_id"] == again["agent"]["session_id"]
+    profile = gateway._profiles.read("web-aaa")
+    assert profile.get("name") == "Docs bot" and profile.get("pinned") == "1", "the person's own settings are theirs"
+    assert joined == ["review"], "a retry of a create whose answer was lost still joins the group"
+    with pytest.raises(GatewayError):
+        await gateway.create_agent({"kind": "other", "session_id": "web-aaa"})
