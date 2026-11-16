@@ -84,12 +84,26 @@ async def test_a_range_says_how_to_go_on_when_there_is_more(here: Path):
 
 
 async def test_a_call_that_names_no_limit_gets_a_page_of_two_thousand_lines(here: Path):
-    (here / "page.txt").write_text("".join(f"line {n}\n" for n in range(1, 301)))
+    (here / "page.txt").write_text("".join(f"line {n}\n" for n in range(1, 2_006)))
 
-    text = await read_file.handler(file_path="page.txt")
+    for reader in (read, read_file):
+        text = await reader.handler(file_path="page.txt")
 
-    assert text.startswith("1\tline 1\n")
-    assert "300\tline 300" in text and "more lines" not in text
+        assert text.startswith("1\tline 1\n")
+        assert "2000\tline 2000" in text
+        assert "2001\tline 2001" not in text
+        assert text.rstrip().endswith("... [more lines; continue with offset=2001]")
+
+
+async def test_a_default_page_is_also_held_to_the_byte_budget(here: Path):
+    (here / "wide.txt").write_text("".join("x" * 39 + "\n" for _ in range(2_000)))
+
+    text = await read_file.handler(file_path="wide.txt")
+
+    assert "output truncated; continue with offset=" in text
+    assert "line truncated" not in text and "read it with the shell" not in text
+    assert text.count("\n") < 2_000, "the byte budget, not the line default, is what cuts this page"
+    assert len(text.encode("utf-8")) <= MAX_OUTPUT_BYTES + 200
 
 
 @pytest.mark.parametrize("size", [FRAGMENT_CHARACTERS, FRAGMENT_CHARACTERS * 2, FRAGMENT_CHARACTERS * 2 + 10])
