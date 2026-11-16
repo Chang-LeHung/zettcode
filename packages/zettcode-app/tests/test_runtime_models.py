@@ -73,6 +73,7 @@ def test_the_system_prompt_tells_the_model_to_read_with_the_file_tool_and_in_lin
     for refused in ("cat", "sed", "head", "tail", "nl", "awk"):
         assert refused in flat.split("Reading files:")[1], refused
     assert "start_line and line_count" not in flat and "read takes file_path, offset and limit" in flat
+    assert "2,000 lines a call and never more, or 50 KB, whichever comes first" in flat
     assert "A read prefixes each line with its number and a tab" in flat
     assert "leave it out of old_string" in flat
     assert "a long file is read in the parts you need rather than whole" in flat

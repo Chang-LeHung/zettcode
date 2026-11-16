@@ -88,6 +88,7 @@ def test_the_limits_in_a_schema_are_the_ones_the_tools_enforce():
 
     assert props["limit"]["maximum"] == 2000 and props["limit"]["default"] == 2000
     assert props["offset"]["minimum"] == 1
+    assert read_file.parameters["properties"]["limit"]["maximum"] == 2000
     assert read_file.parameters["properties"]["limit"]["default"] == 2000
     assert "start_column" not in props, "a read has one range, not a range and a column"
     assert grep.parameters["properties"]["max_results"]["maximum"] == 5000
