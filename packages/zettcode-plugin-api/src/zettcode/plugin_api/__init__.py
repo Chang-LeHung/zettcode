@@ -143,7 +143,7 @@ _EXPORTS = {
     "ShellContext": ".state",
     "Span": "zettcode.tui",
     "Style": "zettcode.tui",
-    "Subcommand": ".commands",
+    "Subcommand": ".subcommand",
     "TextCommandResult": "zettcode.engine.plugins.commands",
     "TextEntry": ".entries",
     "TextLine": "zettcode.tui",

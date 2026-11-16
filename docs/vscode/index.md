@@ -63,8 +63,11 @@ VS Code asks you to trust the folder first: the agent runs commands and edits fi
 | Attach a picture | Paste it, drop it on the view, or press the paperclip |
 | Attach any other file | Press the paperclip and pick it: a PDF or an archive goes into the message as its **path**, which the agent opens with its own tools |
 | Paste a copied file | Copy a file in the explorer or the file manager and paste it: its full **path** goes into the box, not its bare name. A page is given a file's name and contents but no path, so the extension asks the system's clipboard for the real one (macOS, Windows and Linux; a file of any size, from anywhere, such as a PDF on the Desktop). Failing that it uses the workspace file with the very same contents, else keeps a copy of the contents in its own storage; a file over 10 MB can only be found by name. In a remote window (SSH, WSL, a container) the clipboard is not the one you copied on, so the contents are used |
-| Run a command | Type `/`: `new`, `resume`, `continue`, `compact`, `fork`, `rename`, `export`, `model`, `effort`, `permission`, `harness`, `usage`, `context`, `doctor`, `btw` |
+| Run a command | Type `/`: `help`, `new`, `resume`, `continue`, `compact`, `fork`, `title`, `name`, `export`, `model`, `config`, `plugins`, `effort`, `permission`, `harness`, `usage`, `context`, `doctor`, `btw`, `stop`, `clear`, `code-review`, `hub` |
 | Ask without adding to the conversation | `/btw your question` |
+
+`/code-review` starts a reviewer in the background. At `ask` it runs in the `safe` sandbox, because a background
+session has nobody to answer for it; it is read-only by instruction, not by the sandbox.
 
 The pictures you attach are sent to a model that can see images, and are kept with the conversation, so reopening the
 session shows them again instead of only counting them.
@@ -169,7 +172,7 @@ Search for *ZettCode* in Settings:
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `zettcode.permission` | `ask` | The shell permission a session starts with when you have not chosen one: `deny`, `ask`, `safe` (a sandbox) or `full` |
-| `zettcode.harness` | unset | Start the server with the tool harness on or off: the model may write small Python tools of its own and run them, in a child process inside the safe sandbox below the `full` shell level. Unset follows `[harness] jit` in your configuration, which starts it on unless it says false. `/harness on` or `/harness off` switches it for a session |
+| `zettcode.harness` | unset | Start the server with the tool harness on or off: the model may write small Python tools of its own and run them, in a child process inside the safe sandbox below the `full` shell level. Unset follows `[harness] jit` in your configuration, which starts it on unless it says false. **ZettCode: Turn the Tool Harness On or Off** switches it for the running server; `/harness gen` and `/harness reset` are the words the chat and the terminal share |
 | `zettcode.restoreSession` | `true` | Reopen the conversation this folder had last |
 | `zettcode.autoTitle` | `true` | Let the model name an untitled conversation after its first answer |
 | `zettcode.answerTimeout` | `90` | Seconds an approval waits |

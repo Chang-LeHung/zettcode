@@ -1033,10 +1033,10 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
     # The program's own commands come first, in the order /help lists them, and the installed plugin's after them.
     assert [command.name for command in runtime.plugins.builtin_commands] == [
         # `/harness` is registered by the harness part itself. The shell's own plugins load first, then the agent's
-        # parts, and the terminal's command plugin (where `/code-review` and the rest come from) last, so the part's
-        # command is listed before them.
+        # parts, and the terminal's command plugin last; `/code-review` is a plain command, merged ahead of the ones
+        # registered on the terminal group.
         "/harness",
-        "/code-review",  # a plain command, which the loader merges ahead of the ones registered on the terminal group
+        "/code-review",  # the SDK's plain command: a preset for a turn, so every front end gets it
         "/help",
         "/plugins",
         "/resume",
@@ -1489,11 +1489,14 @@ def test_a_clash_in_a_file_plugin_names_the_class(tmp_path: Path):
     assert any("Two:" in failure for failure in plugins.failures)
 
 
-def test_the_headless_commands_do_not_reach_a_terminal(tmp_path: Path):
-    """The terminal has its own `/compact`, `/title` and `/export`; the plain ones are registered only without a screen.
+def test_the_headless_commands_do_not_replace_a_terminal_s_own_but_the_review_stays(tmp_path: Path):
+    """The terminal has its own `/compact`, `/title`, `/export` and `/hub`; those plain ones need no screen.
 
-    A regression would be silent for two of them: `/title` would be refused by the clash check, but `/compact` and
-    `/export` would replace the terminal's versions in the shell's registry before they are noticed.
+    `/code-review` is the exception, because it is a preset for a turn rather than a page: the SDK registers it in
+    every process, and the shell runs it beside its own commands. `/hub` is the other kind: the plain document and the
+    terminal's graph are one name with two forms, and the exact list below is what says the page kept its own. A
+    regression would be silent for the other two headless commands: `/title` would be refused by the clash check, but
+    `/compact` and `/export` would replace the terminal's versions in the shell's registry before they are noticed.
     """
     from zettcode.app.plugins.loader import terminal_context
     from zettcode.sdk.commandline import CommandLine
@@ -1502,7 +1505,8 @@ def test_the_headless_commands_do_not_reach_a_terminal(tmp_path: Path):
 
     CommandLine().activate(ctx)
 
-    assert ctx.commands.commands == (), "a screen keeps the terminal's own versions"
+    assert [command.name for command in ctx.commands.commands] == ["/code-review"], "the review needs no screen"
+    assert ctx.tui.registered_commands == (), "a screen keeps the terminal's own versions of the other three"
 
 
 def test_the_terminal_s_contract_bases_are_concrete():

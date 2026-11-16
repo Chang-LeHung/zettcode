@@ -1,6 +1,7 @@
 /** The chat view: one webview, the state it shows, and the server calls behind its buttons. */
 
 import { createHash, randomBytes } from "node:crypto";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
@@ -94,6 +95,10 @@ interface PromptRequest {
   refuseWhenBusy?: boolean;
   /** How the turn may use the provider's prompt cache, when the command that started it has a preference. */
   cache?: CacheMode;
+  /** The page's queue item this came from, so a re-queue puts it back where it was. */
+  queueId?: number;
+  /** The conversation the queue item was typed in; a switch must not send it into another one. */
+  session?: string;
 }
 
 const IMMEDIATE_EVENTS = new Set([
@@ -534,6 +539,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.settings = await this.client.settings();
   }
 
+  /**
+   * Read back the settings a command may have changed. A command with words of its own speaks for the change, so it
+   * is not announced a second time; one that answers with a turn has no words to carry it, and the settings line
+   * is what the reader sees before that turn.
+   */
+  private async refreshAfterCommand(announce = true): Promise<void> {
+    if (this.client === null || this.health?.ready !== true) {
+      return;
+    }
+    const before = this.settings;
+    try {
+      this.settings = await this.client.settings();
+    } catch {
+      return;
+    }
+    this.postState();
+    if (announce) {
+      this.announceChanges(before, this.settings);
+    }
+  }
+
   private async restoreSession(client: ZettCodeClient): Promise<void> {
     const enabled = vscode.workspace.getConfiguration("zettcode").get<boolean>("restoreSession", true);
     const wanted = this.context.workspaceState.get<string>(SESSION_KEY);
@@ -610,7 +636,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         this.setFocused(message.focused);
         return;
       case "prompt":
-        await this.sendPrompt({ text: message.text, images: message.images });
+        await this.sendPrompt({
+          text: message.text,
+          images: message.images,
+          ...(message.shown === undefined ? {} : { shown: message.shown, refuseWhenBusy: true }),
+          ...(message.cache === undefined ? {} : { cache: message.cache }),
+          ...(message.queueId === undefined ? {} : { queueId: message.queueId }),
+          ...(message.session === undefined ? {} : { session: message.session }),
+        });
         return;
       case "run-command":
         await this.runCommand(message.name, message.argument);
@@ -646,7 +679,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         await this.newSession();
         return;
       case "open-session":
-        await this.openSession(message.id);
+        try {
+          await this.openSession(message.id);
+        } catch (error) {
+          this.post({ type: "notice", level: "warn", text: `Could not open ${message.id}: ${messageOf(error)}` });
+        }
         return;
       case "refresh-sessions":
         await this.refreshSessions(true);
@@ -664,7 +701,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         await this.compactSession();
         return;
       case "export":
-        await this.exportSession();
+        await this.exportSession(message.path);
         return;
       case "usage":
         await this.showUsage();
@@ -674,6 +711,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         return;
       case "plugins":
         await this.showPlugins();
+        return;
+      case "set-plugin":
+        await this.setPlugin(message.name, message.enabled);
+        return;
+      case "show-document":
+        await this.showDocument(message.markdown, message.title);
         return;
       case "add-model":
         await this.addModel(message.model);
@@ -713,7 +756,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         await this.resumeRun();
         return;
       case "ask":
-        await this.askAside(message.question);
+        await this.askAside(message.question, message.queueId, message.session);
         return;
       case "mentions":
         await this.lookupMentions(message.query);
@@ -749,15 +792,72 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (!shown) {
       return;
     }
+    if (request.session !== undefined && request.session !== this.session?.id) {
+      // The queue drained in the conversation on show a moment before the reader switched. Put it back there;
+      // running it here would draw its turn in one transcript while the prompt went to the other session.
+      if (request.shown !== undefined) {
+        this.post({
+          type: "queue-turn",
+          text,
+          shown,
+          ...(request.cache === undefined ? {} : { cache: request.cache }),
+          ...(request.queueId === undefined ? {} : { queueId: request.queueId }),
+          session: request.session,
+        });
+      } else {
+        this.post({
+          type: "queue-message",
+          text,
+          images: request.images ?? [],
+          ...(request.queueId === undefined ? {} : { queueId: request.queueId }),
+          session: request.session,
+        });
+      }
+      return;
+    }
+    const session = this.session?.id;
+    const queued = {
+      ...(request.queueId === undefined ? {} : { queueId: request.queueId }),
+      ...(session === undefined ? {} : { session }),
+    };
     if (this.busy) {
       if (request.refuseWhenBusy === true) {
-        this.say("warn", "A run is already going; try the command again when it ends.");
+        if (request.shown !== undefined) {
+          // The queue drained an instant before a new run began. The item was taken out of the page's queue, so put
+          // it back rather than dropping it or steering the command's brief into the run that won the race.
+          this.post({
+            type: "queue-turn",
+            text,
+            shown,
+            ...(request.cache === undefined ? {} : { cache: request.cache }),
+            ...queued,
+          });
+          // The page may have believed the run was over when it sent this; tell it the run is still going so the
+          // item waits for the state that ends it.
+          this.postState();
+        } else {
+          this.say("warn", "A run is already going; try the command again when it ends.");
+        }
         return;
       }
       await this.steer(shown);
       return;
     }
     if (!this.readyForPrompt()) {
+      if (request.shown !== undefined) {
+        // A queued preset reached a host with no model to run it. Keep it; adding a model makes the page ready and
+        // drains the queue again.
+        this.post({
+          type: "queue-turn",
+          text,
+          shown,
+          ...(request.cache === undefined ? {} : { cache: request.cache }),
+          ...queued,
+        });
+      } else if (request.queueId !== undefined) {
+        // A typed follow-up drained from the queue: keep the line and the pictures, not only the model notice.
+        this.post({ type: "queue-message", text, images: request.images ?? [], ...queued });
+      }
       return;
     }
     const images = request.images ?? [];
@@ -1118,17 +1218,36 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     await this.client.cancelRun().catch(() => false);
   }
 
-  private async askAside(question: string): Promise<void> {
+  private async askAside(question: string, queueId?: number, fromSession?: string): Promise<void> {
     const text = question.trim();
     if (!text) {
       return;
     }
+    if (fromSession !== undefined && fromSession !== this.session?.id) {
+      // The side question was queued in the conversation the reader just left; keep it there.
+      this.post({
+        type: "queue-ask",
+        question: text,
+        ...(queueId === undefined ? {} : { queueId }),
+        session: fromSession,
+      });
+      return;
+    }
+    const session = this.session?.id;
+    const queued = {
+      ...(queueId === undefined ? {} : { queueId }),
+      ...(session === undefined ? {} : { session }),
+    };
     if (this.health?.ready !== true) {
+      // Same as a preset: the question waits for the model that is being added, and the page drains when it is ready.
+      this.post({ type: "queue-ask", question: text, ...queued });
       this.readyForPrompt();
       return;
     }
     if (this.busy) {
-      this.post({ type: "notice", level: "warn", text: "A run is in progress; ask on the side when it ends." });
+      // The queue sent it just as this run began; keep it for the end rather than losing the question.
+      this.post({ type: "queue-ask", question: text, ...queued });
+      this.postState();
       return;
     }
     const client = await this.ensureClient();
@@ -1310,20 +1429,48 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     await this.refreshContext();
   }
 
-  async exportSession(): Promise<void> {
-    const client = await this.ensureClient();
-    const html = await client.session.export();
+  async exportSession(file?: string): Promise<void> {
+    if (this.busy) {
+      this.post({ type: "notice", level: "warn", text: "A run is already going; try the export when it ends." });
+      return;
+    }
+    let wanted = file;
+    if (wanted !== undefined && (wanted === "~" || wanted.startsWith(`~${path.sep}`) || wanted.startsWith("~/"))) {
+      wanted = path.join(os.homedir(), wanted.slice(1));
+    }
     const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
-    const target = await vscode.window.showSaveDialog({
-      filters: { HTML: ["html"] },
-      saveLabel: "Export session",
-      ...(folder ? { defaultUri: vscode.Uri.joinPath(folder, "zettcode-session.html") } : {}),
-    });
+    let target: vscode.Uri | undefined;
+    if (wanted !== undefined && wanted !== "") {
+      if (isRooted(wanted)) {
+        target = vscode.Uri.file(wanted);
+      } else if (folder === undefined) {
+        this.post({ type: "notice", level: "warn", text: "Open a folder to export to a relative path." });
+        return;
+      } else {
+        target = vscode.Uri.joinPath(folder, wanted);
+      }
+    } else {
+      target = await vscode.window.showSaveDialog({
+        filters: { HTML: ["html"] },
+        saveLabel: "Export session",
+        ...(folder ? { defaultUri: vscode.Uri.joinPath(folder, "zettcode-session.html") } : {}),
+      });
+    }
     if (target === undefined) {
       return;
     }
-    await vscode.workspace.fs.writeFile(target, Buffer.from(html, "utf8"));
-    this.post({ type: "notice", level: "info", text: `Exported to ${target.fsPath}` });
+    try {
+      const client = await this.ensureClient();
+      const html = await client.session.export();
+      const parent = path.dirname(target.fsPath);
+      if (parent && parent !== target.fsPath) {
+        await vscode.workspace.fs.createDirectory(vscode.Uri.file(parent));
+      }
+      await vscode.workspace.fs.writeFile(target, Buffer.from(html, "utf8"));
+      this.post({ type: "notice", level: "info", text: `Exported to ${target.fsPath}` });
+    } catch (error) {
+      this.post({ type: "notice", level: "error", text: `Could not export: ${messageOf(error)}` });
+    }
   }
 
   private async setSelfCompaction(choice: boolean | null): Promise<void> {
@@ -2143,6 +2290,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     await showPluginsPanel(() => this.ensureClient(), this.extensionUri, this.workspaceName());
   }
 
+  /** Switch one plugin for the next server start, as `/plugins enable|disable` asks. Nothing loads or unloads here. */
+  private async setPlugin(name: string, enabled: boolean): Promise<void> {
+    try {
+      const client = await this.ensureClient();
+      const entry = await client.setPluginEnabled(name, enabled);
+      this.post({
+        type: "notice",
+        level: "info",
+        text: `${entry.name} will be ${enabled ? "on" : "off"} for the next server start.`,
+      });
+    } catch (error) {
+      this.post({ type: "notice", level: "warn", text: `Could not switch ${name}: ${messageOf(error)}` });
+    }
+  }
+
   /**
    * Offer the commands a plugin registered on `ctx.commands` and run the one the reader picks.
    *
@@ -2218,6 +2380,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       return;
     }
     const answer = await client.runCommand(command.name, argument);
+    // A command can move the run's settings (`/harness gen|reset` does); read them back before the turn. A command
+    // that answers with words says so itself; one that starts a turn has no words, so the settings line is the notice.
+    await this.refreshAfterCommand(answer.message === "");
     if (answer.notification !== "") {
       void vscode.window.showInformationMessage(`ZettCode: ${answer.notification}`);
     }
@@ -2227,6 +2392,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         answer.shown || `${command.name} ${argument}`.trim(),
         // Empty is what a server sends for "no preference": it must not become a mode the caller never asked for.
         answer.cache ? (answer.cache as CacheMode) : undefined,
+        command.when_busy === "queue",
       );
       return;
     }
@@ -2264,9 +2430,34 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   /**
    * Start a command's preset as a turn: the command is what the conversation shows, the preset is what the model
    * reads. The chat is opened first, because a preset is worth a window of its own whereas words are not.
+   *
+   * A command that says `when_busy="queue"` waits in the composer's follow-up queue instead: the preset is a turn of
+   * its own, so it must not be steered into the request that is going.
    */
-  private async startCommandTurn(instructions: string, shown: string, cache?: CacheMode): Promise<void> {
+  private async startCommandTurn(
+    instructions: string,
+    shown: string,
+    cache?: CacheMode,
+    queueWhenBusy = false,
+  ): Promise<void> {
     if (this.busy) {
+      if (queueWhenBusy) {
+        // A queue lives in the page, so a command run from the palette while the chat is closed still has a page to
+        // wait in. `initialize()` is idempotent and the view is opened first, as a preset of its own would be.
+        if (this.view === null) {
+          await vscode.commands.executeCommand("zettcode.openChat");
+        }
+        await this.initialize();
+        const session = this.session?.id;
+        this.post({
+          type: "queue-turn",
+          text: instructions,
+          shown,
+          ...(cache === undefined ? {} : { cache }),
+          ...(session === undefined ? {} : { session }),
+        });
+        return;
+      }
       this.say("warn", "A run is already going; try the command again when it ends.");
       return;
     }

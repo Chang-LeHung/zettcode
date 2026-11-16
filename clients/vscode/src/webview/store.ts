@@ -2,7 +2,7 @@
 
 import { reactive } from "vue";
 
-import type { MentionInfo } from "../../../typescript/src/types.js";
+import type { CacheMode, MentionInfo } from "../../../typescript/src/types.js";
 import type { DiffRow } from "../core/diff.js";
 import type { ChangeSummary } from "../core/ledger.js";
 import { withPaths } from "../core/paths.js";
@@ -28,6 +28,15 @@ export interface QueuedMessage {
   id: number;
   text: string;
   images: AttachedImage[];
+  /** The conversation it was typed in; another session's queue must not be sent into this one. */
+  sessionId?: string;
+  /** The line the conversation keeps when this is a command's preset; `text` is what the model reads. */
+  shown?: string;
+  cache?: CacheMode;
+  /** A command's preset waits for the run to end; it is never steered into the request that is going. */
+  preset?: boolean;
+  /** A side question waits for the run to end; it is not a message of the conversation and is not steered either. */
+  ask?: boolean;
 }
 
 export interface Toast {
@@ -67,6 +76,8 @@ export const state = reactive({
   overlay: null as Overlay,
   /** The model whose settings the form is editing, by the name the picker shows; null while adding one. */
   editingModel: null as string | null,
+  /** The model whose row should ask "remove it?" when the picker opens, as `/config remove <name>` sets. */
+  confirmingModel: null as string | null,
   sessionsLoading: false,
   renaming: false,
   dragging: false,
@@ -145,6 +156,7 @@ export function openOverlay(overlay: Overlay): void {
 export function closeOverlay(): void {
   state.overlay = null;
   state.editingModel = null;
+  state.confirmingModel = null;
 }
 
 /** Open the search bar and put the cursor in it; a short selection in the view becomes the query. */
@@ -264,8 +276,37 @@ function endCompaction(text: string, failed: boolean, summary?: string): void {
 // -- follow-ups ------------------------------------------------------------
 
 /** Hold a message typed while a request runs; it goes when the run ends, or right now when you steer it in. */
-export function enqueue(text: string, images: AttachedImage[]): void {
-  state.queue.push({ id: (nextId += 1), text, images });
+export function enqueue(
+  text: string,
+  images: AttachedImage[],
+  extra: Pick<QueuedMessage, "shown" | "cache" | "preset" | "ask"> = {},
+  queueId?: number,
+  session?: string,
+): void {
+  const id = queueId ?? (nextId += 1);
+  if (queueId !== undefined && queueId >= nextId) {
+    nextId = queueId + 1;
+  }
+  const item: QueuedMessage = {
+    id,
+    text,
+    images,
+    sessionId: session ?? state.ui?.session?.id,
+    ...extra,
+  };
+  // A re-queued item keeps its id and its place; a new one goes last.
+  const at = state.queue.findIndex((queued) => queued.id > id);
+  state.queue.splice(at < 0 ? state.queue.length : at, 0, item);
+}
+
+/** Hold a command's preset behind a running request: it is a turn of its own, so it waits rather than steering. */
+export function enqueueTurn(text: string, shown: string, cache?: CacheMode, queueId?: number, session?: string): void {
+  enqueue(text, [], { shown, preset: true, ...(cache === undefined ? {} : { cache }) }, queueId, session);
+}
+
+/** Hold a side question behind a running request; the terminal's `/btw` queues the same way. */
+export function enqueueAsk(question: string, queueId?: number, session?: string): void {
+  enqueue(question, [], { shown: `/btw ${question}`, ask: true }, queueId, session);
 }
 
 export function removeQueued(id: number): void {
@@ -281,7 +322,28 @@ export function sendQueued(id: number): void {
   if (item === undefined) {
     return;
   }
+  if (state.ui?.ready !== true) {
+    // No model yet: keep it, and say why the Send button did nothing. A state that becomes ready drains it.
+    toast("Add a model first.", "warn");
+    openOverlay("models");
+    return;
+  }
+  if (state.ui?.busy === true && (item.preset === true || item.ask === true)) {
+    // A preset is a turn of its own and a side question is not a message of the conversation: steering either would
+    // put its text into this request instead. Let the queue drain.
+    return;
+  }
   removeQueued(id);
+  if (item.ask === true) {
+    post({
+      type: "ask",
+      question: item.text,
+      queueId: item.id,
+      ...(item.sessionId === undefined ? {} : { session: item.sessionId }),
+    });
+    state.tick += 1;
+    return;
+  }
   if (state.ui?.busy === true) {
     post({ type: "steer", text: item.text });
     return;
@@ -290,14 +352,23 @@ export function sendQueued(id: number): void {
     type: "prompt",
     text: item.text,
     images: item.images.map((image) => ({ data: image.data, mediaType: image.mediaType })),
+    queueId: item.id,
+    ...(item.sessionId === undefined ? {} : { session: item.sessionId }),
+    ...(item.shown === undefined ? {} : { shown: item.shown }),
+    ...(item.cache === undefined ? {} : { cache: item.cache }),
   });
   state.tick += 1;
 }
 
 /** The run ended: the next follow-up goes, unless the run was stopped or failed, when they wait for a hand. */
 function drainQueue(): void {
-  const first = state.queue[0];
-  if (first === undefined || state.ui === null || state.ui.busy) {
+  if (state.ui === null || state.ui.busy || state.ui.ready !== true) {
+    return;
+  }
+  const session = state.ui.session?.id;
+  // A queue item belongs to the conversation it was typed in; switching sessions must not send it into another.
+  const first = state.queue.find((item) => item.sessionId === session);
+  if (first === undefined) {
     return;
   }
   // A line announcing a change is not a request: it must not hide how the last request ended.
@@ -328,13 +399,29 @@ export function handleHost(message: HostMessage): void {
       state.tick += 1;
       break;
     case "state": {
-      const wasBusy = state.ui?.busy === true;
       state.ui = message.state;
-      if (wasBusy && !message.state.busy) {
+      // An idle state is always a chance to send what is waiting. It covers a run that ended, a model that was just
+      // added after a queued preset found none, and a queue corrected by a host that was busier than the page knew.
+      if (!message.state.busy) {
         drainQueue();
       }
       break;
     }
+    case "queue-turn":
+      enqueueTurn(message.text, message.shown, message.cache, message.queueId, message.session);
+      break;
+    case "queue-ask":
+      enqueueAsk(message.question, message.queueId, message.session);
+      break;
+    case "queue-message":
+      enqueue(
+        message.text,
+        message.images.map((image) => ({ ...image, name: "" })),
+        {},
+        message.queueId,
+        message.session,
+      );
+      break;
     case "turn": {
       const index = state.turns.findIndex((turn) => turn.id === message.turn.id);
       if (index === -1) {

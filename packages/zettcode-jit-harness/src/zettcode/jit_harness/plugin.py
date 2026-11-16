@@ -29,9 +29,9 @@ class Harness(Plugin[PluginContext]):
     The extension is always registered and inert until the switch is on, so a switch written by ``/plugins`` reaches the
     next request of a client that was already built. Each session keeps its tools in its own folder under
     ``config.harness_dir``, which is ``~/.zettcode/harness`` unless the configuration object says otherwise. The page
-    ``/harness`` opens (:mod:`.page`) and the command that opens it (:mod:`.command`) ship with the part; the command
-    is registered here, only for a process that has a screen and the shell's link, so the SDK and the server hold
-    nothing of the terminal.
+    ``/harness`` opens (:mod:`.page`) and the terminal's preset (:mod:`.command`) ship with the part; a process with no
+    screen gets the same name as a plain command (:mod:`.plain`), so ``gen`` and ``reset`` reach the editor without
+    importing the widgets.
     """
 
     name = "harness"
@@ -95,9 +95,14 @@ class Harness(Plugin[PluginContext]):
 
         ctx.agent.register_extension_factory("SwitchedHarness", build)
 
-        # The page and the command that opens it are this part's; only a terminal can hold a command, and only the
-        # shell attaches the link a command runs against, so a process without a screen registers nothing here.
-        if ctx.tui is not None and ctx.find(HOST_LINK, HostLink) is not None:
+        # The page and the preset are the terminal's; a process without a screen gets the same command name as a
+        # plain command, so `gen` and `reset` work in the editor too. `command.py` imports widgets and is loaded only
+        # for a screen, where the shell's link is there for it to run against.
+        if ctx.tui is None:
+            from .plain import register_plain
+
+            register_plain(ctx)
+        elif ctx.find(HOST_LINK, HostLink) is not None:
             from .command import HarnessCommand
 
             HarnessCommand().activate(ctx)

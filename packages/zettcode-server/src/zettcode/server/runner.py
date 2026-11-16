@@ -24,6 +24,7 @@ import base64
 import inspect
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 from zettcode.modes import MODE_STEER
@@ -204,8 +205,10 @@ class NoModelError(RuntimeError):
 class _SessionHost(PlainCommandHost):
     """What the session commands do here: the same things the terminal's own versions do, without a screen.
 
-    Nothing is caught: a busy or locked session, a blank title and a file that cannot be written keep the status the
-    rest of the API gives them, and a command that could do nothing answers with the line the session gave it.
+    The session actions catch nothing: a busy or locked session, a blank title and a file that cannot be written keep
+    the status the rest of the API gives them, and a command that could do nothing answers with the line the session
+    gave it. The one exception is :meth:`hub`, which keeps a graph it could not read as a sentence in the snapshot:
+    the sessions and daemons are still worth listing, and a page is not a reason to fail the request.
     """
 
     def __init__(self, client: Client) -> None:
@@ -214,6 +217,74 @@ class _SessionHost(PlainCommandHost):
     @property
     def _session(self) -> Session:
         return self._client.session
+
+    @property
+    def locked(self) -> bool:
+        return self._session.locked
+
+    @property
+    def session_id(self) -> str:
+        return self._session.id
+
+    @property
+    def workspace(self) -> Path:
+        return self._client.workspace
+
+    async def hub(self) -> dict[str, object]:
+        from zettcode.sdk.daemons import list_daemons
+        from zettcode.sdk.errors import ConfigurationError
+
+        me = self._session.id
+        error = ""
+        try:
+            graph = await self._client.traffic_graph()
+        except ConfigurationError:
+            graph, error = {}, "Sessions are switched off."
+        except Exception as failure:  # noqa: BLE001 - a page still lists sessions and daemons without the graph
+            graph, error = {}, f"The message graph could not be read: {failure}"
+        if error:
+            sessions = [
+                {
+                    "session_id": peer.session_id,
+                    "handle": peer.handle,
+                    "title": peer.title,
+                    "workspace": peer.workspace,
+                    "status": peer.status,
+                    "kind": peer.kind,
+                }
+                for peer in self._client.peers()
+            ]
+        else:
+            # The graph is the live roster: a peer the client cached may have disconnected already.
+            sessions = [
+                {
+                    "session_id": str(entry.get("session_id", "")),
+                    "handle": str(entry.get("handle", "")),
+                    "title": str(entry.get("title", "")),
+                    "workspace": str(entry.get("workspace", "")),
+                    "status": str(entry.get("status", "")),
+                    "kind": str(entry.get("kind", "")),
+                }
+                for entry in graph.get("sessions", ())
+                if isinstance(entry, dict) and str(entry.get("session_id", "")) != me
+            ]
+        daemons = [
+            {
+                "session_id": daemon.session_id,
+                "name": daemon.name,
+                "title": daemon.title,
+                "workspace": daemon.workspace,
+                "status": daemon.status,
+            }
+            for daemon in await asyncio.to_thread(list_daemons)
+        ]
+        return {
+            "you": me,
+            "sessions": sessions,
+            "daemons": daemons,
+            "edges": list(graph.get("edges", ())),
+            "error": error,
+        }
 
     async def compact(self) -> str:
         done = await self._session.compact()
@@ -379,6 +450,11 @@ class Runner:
                 "summary": command.summary,
                 "when_busy": command.when_busy,
                 "subcommands": [getattr(word, "name", str(word)) for word in command.subcommands],
+                "needs_more": [
+                    getattr(word, "name", str(word))
+                    for word in command.subcommands
+                    if getattr(word, "needs_more", False)
+                ],
             }
             for command in self.client.plugins.plain_commands
         ]
@@ -391,6 +467,7 @@ class Runner:
 
         Raises:
             KeyError: No plugin registered that name.
+            SessionBusyError: The command refuses to run while a request is in flight, as the shell refuses it.
         """
         from zettcode.sdk.commands import PlainCommandContext, TextCommandResult, TurnCommandResult
 
@@ -399,6 +476,8 @@ class Runner:
         command = next((item for item in commands if item.name == wanted), None)
         if command is None:
             raise KeyError(wanted)
+        if command.when_busy == "refuse" and self.busy:
+            raise SessionBusyError("A run is already in progress; wait for it or cancel it")
         context = PlainCommandContext(argument=argument, level=self.client.permission, host=_SessionHost(self.client))
         result = command.handler(context)
         if inspect.isawaitable(result):

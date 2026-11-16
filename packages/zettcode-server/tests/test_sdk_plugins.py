@@ -310,18 +310,34 @@ async def test_the_server_sends_where_each_trigger_is_once_the_runtime_has_start
 
 
 async def test_the_commands_a_front_end_without_a_screen_can_run(tmp_path: Path):
-    """`/compact`, `/title` and `/export` are listed for any front end, and ask its host for the work.
+    """`/code-review`, `/compact`, `/title` and `/export` are listed for any front end, and ask its host for the work.
 
-    The terminal has richer versions of the same names and loads those instead, so a headless client — the server, and
-    the editor behind it — gets these three and nothing changes for a process with a screen.
+    The review is a preset for a turn and needs no host, so the terminal runs the same command. The terminal has
+    richer versions of the other three and loads those instead, so a headless client — the server, and the editor
+    behind it — gets these three and nothing changes for a process with a screen.
     """
-    from zettcode.sdk.commands import PlainCommandContext, PlainCommandHost
+    from zettcode.sdk.commands import PlainCommandContext, PlainCommandHost, TurnCommandResult
 
     class Host(PlainCommandHost):
         """A front end that remembers what it was asked to do."""
 
         def __init__(self) -> None:
             self.done: list[str] = []
+
+        @property
+        def locked(self) -> bool:
+            return False
+
+        @property
+        def session_id(self) -> str:
+            return "session-1"
+
+        @property
+        def workspace(self) -> Path:
+            return tmp_path
+
+        async def hub(self) -> dict[str, object]:
+            return {"you": "session-1", "sessions": [], "daemons": [], "edges": [], "error": ""}
 
         async def compact(self) -> str:
             self.done.append("compact")
@@ -338,13 +354,93 @@ async def test_the_commands_a_front_end_without_a_screen_can_run(tmp_path: Path)
     async with zc.Client(config=config_for(tmp_path)) as client:
         listed = {command.name: command for command in client.plugins.plain_commands}
 
-        assert {"/compact", "/title", "/export"} <= set(listed)
+        assert {"/code-review", "/compact", "/title", "/export", "/harness", "/hub"} <= set(listed)
         assert "/continue" not in listed, (
             "carrying a request on belongs to the front end that owns the run, not a command"
         )
+        review = listed["/code-review"].handler(PlainCommandContext(argument="the parser", level="safe"))
+        assert isinstance(review, TurnCommandResult)
+        assert review.shown == "/code-review the parser"
+        assert review.prompt.startswith("Review the uncommitted changes") and "the parser" in review.prompt
+        assert "git diff HEAD" in review.prompt and "daemon spawn" in review.prompt
+
         host = Host()
         answered = await listed["/title"].handler(PlainCommandContext(argument="x", host=host))
         assert host.done == ["title:x"] and "called" in answered.notification
 
         without = await listed["/compact"].handler(PlainCommandContext())
         assert "cannot do that" in without.notification
+
+
+async def test_the_harness_words_that_need_more_cross_the_wire(tmp_path: Path):
+    """`needs_more` is what stops a menu Enter from starting a paid turn; the editor reads it from `/commands`."""
+    import httpx
+
+    from zettcode.server.app import create_app
+    from zettcode.server.settings import Settings
+
+    async with zc.Client(config=config_for(tmp_path)) as client:
+        app = create_app(Settings(workspace=tmp_path), client_factory=lambda: client)
+        async with app.router.lifespan_context(app):
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http:
+                body = (await http.get("/commands")).json()
+
+    harness = next(entry for entry in body["commands"] if entry["name"] == "/harness")
+    assert harness["subcommands"] == ["gen", "reset"]
+    assert harness["needs_more"] == ["gen", "reset"]
+
+
+async def test_hub_opens_the_document_and_names_a_disabled_graph(tmp_path: Path):
+    """`/hub` still lists what it can when sessions are off, and says why the message graph is missing."""
+    import httpx
+
+    from zettcode.server.app import create_app
+    from zettcode.server.settings import Settings
+
+    async with zc.Client(config=config_for(tmp_path, sessions_enabled=False)) as client:
+        app = create_app(Settings(workspace=tmp_path), client_factory=lambda: client)
+        async with app.router.lifespan_context(app):
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http:
+                response = await http.post("/commands/hub", json={"argument": ""})
+
+    assert response.status_code == 200
+    markdown = response.json()["markdown"]
+    assert markdown.startswith("# Who is here")
+    assert "## Sessions" in markdown and "## Daemons" in markdown
+    assert "Sessions are switched off." in markdown
+
+
+async def test_the_hub_takes_the_graphs_sessions_not_the_stale_roster(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A peer lingers in the client's cache after it leaves; the graph is the live roster, as the terminal's page says."""
+    from types import SimpleNamespace
+
+    from zettcode.sdk.types import Peer
+    from zettcode.server.runner import _SessionHost
+
+    async def traffic_graph() -> dict[str, object]:
+        return {
+            "sessions": [
+                {"session_id": "me", "handle": "me", "title": "Mine", "status": "idle", "kind": "zettcode"},
+                {"session_id": "live", "handle": "live", "title": "Live", "status": "working", "kind": "zettcode"},
+            ],
+            "edges": [{"a": "me", "b": "live", "count": 2}],
+        }
+
+    client = SimpleNamespace(
+        session=SimpleNamespace(id="me", locked=False),
+        workspace=tmp_path,
+        peers=lambda: (
+            Peer(session_id="gone", handle="gone", title="Gone", status="idle", kind="zettcode"),
+            Peer(session_id="live", handle="live", title="Live", status="idle", kind="zettcode"),
+        ),
+        traffic_graph=traffic_graph,
+    )
+    monkeypatch.setattr("zettcode.sdk.daemons.list_daemons", lambda: [])
+
+    snapshot = await _SessionHost(client).hub()  # type: ignore[arg-type]
+
+    assert [entry["session_id"] for entry in snapshot["sessions"]] == ["live"]
+    assert snapshot["you"] == "me"
+    assert snapshot["edges"] == [{"a": "me", "b": "live", "count": 2}]

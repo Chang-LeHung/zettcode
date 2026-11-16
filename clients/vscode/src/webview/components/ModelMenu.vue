@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 
 import { formatTokens } from "../../core/format.js";
 import { closeOverlay, openOverlay, post, state } from "../store.js";
@@ -19,13 +19,38 @@ function inUse(model: { name: string; active: boolean }): boolean {
   return named === null ? model.active : model.name === named;
 }
 /** The model whose row is asking "remove it?" right where it sits; there is no dialog for this. */
-const confirming = ref<string | null>(null);
+const confirming = ref<string | null>(state.confirmingModel);
 const cancel = ref<HTMLButtonElement[] | HTMLButtonElement | null>(null);
+
+/** Put the focus on "Cancel", the safe answer, once the confirm row is drawn. */
+async function focusCancel(): Promise<void> {
+  await nextTick();
+  (Array.isArray(cancel.value) ? cancel.value[0] : cancel.value)?.focus();
+}
+
+onMounted(() => {
+  // A name `/config remove` left for the row it should confirm; the menu takes it once and forgets it.
+  state.confirmingModel = null;
+  if (confirming.value !== null) {
+    void focusCancel();
+  }
+});
+
+watch(
+  () => state.confirmingModel,
+  (name) => {
+    if (name === null) {
+      return;
+    }
+    confirming.value = name;
+    state.confirmingModel = null;
+    void focusCancel();
+  },
+);
 
 async function ask(name: string): Promise<void> {
   confirming.value = name;
-  await nextTick();
-  (Array.isArray(cancel.value) ? cancel.value[0] : cancel.value)?.focus();
+  await focusCancel();
 }
 
 function remove(name: string): void {

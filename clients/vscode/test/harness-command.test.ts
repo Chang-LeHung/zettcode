@@ -2,7 +2,21 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { open } from "./harness.js";
+import { baseState, open } from "./harness.js";
+
+/** The server's plain `/harness`, as `GET /commands` lists it: the words the editor offers and the host runs. */
+const harnessState = {
+  ...baseState,
+  commands: [
+    {
+      name: "/harness",
+      summary: "the just-in-time harness",
+      when_busy: "refuse",
+      subcommands: ["gen", "reset"],
+      needs_more: ["gen", "reset"],
+    },
+  ],
+};
 
 /** Type a line into the real composer and press Enter, the way a person would. */
 async function submit(ui: Awaited<ReturnType<typeof open>>, text: string): Promise<void> {
@@ -15,8 +29,8 @@ async function submit(ui: Awaited<ReturnType<typeof open>>, text: string): Promi
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-test("/harness is offered after a slash, with the words it takes", async () => {
-  const ui = await open();
+test("/harness is offered after a slash, with the words the server declares", async () => {
+  const ui = await open([], harnessState);
   const input = ui.window.document.querySelector<HTMLTextAreaElement>("#input");
   assert.ok(input);
   input.value = "/harn";
@@ -26,26 +40,52 @@ test("/harness is offered after a slash, with the words it takes", async () => {
   const items = [...ui.window.document.querySelectorAll("#menu .menu-item")].map((node) => node.textContent ?? "");
   assert.equal(items.length, 1);
   assert.ok(items[0]?.includes("/harness"), "the composer offers it");
+
+  input.value = "/harness ";
+  input.dispatchEvent(new ui.window.Event("input", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const words = [...ui.window.document.querySelectorAll("#menu .menu-label")].map((node) => node.textContent ?? "");
+  assert.deepEqual(words, ["/harness gen", "/harness reset"]);
 });
 
-test("/harness on and off ask the host to switch it", async () => {
-  const ui = await open();
+test("a harness word that needs more is filled in, and a second Enter runs it", async () => {
+  const ui = await open([], harnessState);
+  const input = ui.window.document.querySelector<HTMLTextAreaElement>("#input");
+  assert.ok(input);
+  input.value = "/harness ";
+  input.dispatchEvent(new ui.window.Event("input", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
-  await submit(ui, "/harness on");
-  assert.deepEqual(ui.messages.at(-1), { type: "set-harness", on: true });
-  await submit(ui, "/harness off");
-  assert.deepEqual(ui.messages.at(-1), { type: "set-harness", on: false });
+  input.dispatchEvent(new ui.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(input.value, "/harness gen ", "the word is filled in, not run");
+  assert.equal(ui.messages.some((message) => message.type === "run-command"), false);
+
+  input.dispatchEvent(new ui.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(ui.messages.at(-1), { type: "run-command", name: "/harness", argument: "gen" });
 });
 
-test("a harness word that is neither on nor off changes nothing and says how to write it", async () => {
-  const ui = await open();
+test("bare /harness runs the command with no word, and the server reports the switch", async () => {
+  const ui = await open([], harnessState);
 
-  await submit(ui, "/harness on");
-  const before = ui.messages.length;
-  await submit(ui, "/harness maybe");
+  await submit(ui, "/harness");
 
-  assert.equal(ui.messages.length, before, "nothing was posted");
-  assert.ok(ui.window.document.querySelector(".toast")?.textContent?.includes("/harness on"));
+  assert.deepEqual(ui.messages.at(-1), { type: "run-command", name: "/harness", argument: "" });
+});
+
+test("/harness gen and reset are the server's command, with the words after it", async () => {
+  const ui = await open([], harnessState);
+
+  await submit(ui, "/harness gen a tool for TODOs");
+  assert.deepEqual(ui.messages.at(-1), { type: "run-command", name: "/harness", argument: "gen a tool for TODOs" });
+
+  await submit(ui, "/harness reset");
+  const input = ui.window.document.querySelector<HTMLTextAreaElement>("#input");
+  assert.ok(input);
+  input.dispatchEvent(new ui.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(ui.messages.at(-1), { type: "run-command", name: "/harness", argument: "reset" });
 });
 
 test("the host turns the setting into the server's flag, and registers the palette command it declares", async () => {

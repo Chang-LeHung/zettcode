@@ -29,7 +29,7 @@ install zettcode`, which leaves out the plugins most of the differentiating feat
 | Capability | What is true (checked in code/docs) |
 | --- | --- |
 | JIT harness | `[harness] jit = true` or `/harness gen`; the model writes a Python tool into `~/.zettcode/harness/...`, `repo_load` imports it in a child process; below `full` it runs in the `safe` sandbox; `BAN_TOOLS` forbids names. |
-| Code review | `/code-review [focus]`: the model starts or reuses a daemon named `code-review` (read-only by instruction, at the reader's own shell level, never above it), sends it the diff request, loops until it has nothing to change; if a round gets no answer it reads the reviewer's last assistant message. |
+| Code review | `/code-review [focus]`: the model starts or reuses a daemon with a short name it chooses for the change (read-only by instruction, at the reader's own shell level, never above it), sends it the diff request, loops until it has nothing to change; if a round gets no answer it reads the reviewer's last assistant message. |
 | Daemons | `zettcode daemon spawn/list/stop/kill/delete/update/prompt/log`; a session with nobody at the keyboard; reached by `send_message`; survives the terminal; restartable (`stop` keeps the record). |
 | Messaging | Every session registers with a local broker (127.0.0.1, token file). `@name` references a session; the model sends with `send_message`. steer vs follow-up while busy. |
 | Groups | `#name`, `manage_group` tool or `POST /groups`; message goes to every connected member; limits 64/20/200. |

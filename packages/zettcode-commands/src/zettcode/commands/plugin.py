@@ -14,7 +14,6 @@ from zettcode.plugin_api.plugin import TuiPlugin
 
 from .handlers import (
     BashCommand,
-    CodeReview,
     HelpCommand,
     ModelCommands,
     PluginCommand,
@@ -29,20 +28,20 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 
 class CommandsPlugin(TuiPlugin):
-    """``/help``, ``/plugins``, ``/resume``, ``/model``, ``/btw``, ``/review``, ``/bash``, ``/clear``…"""
+    """``/help``, ``/plugins``, ``/resume``, ``/model``, ``/btw``, ``/bash``, ``/clear``…"""
 
     name = "commands"
     description = "The slash commands that act on the application"
 
     def __init__(self) -> None:
-        #: The command groups, in the order ``/help`` lists them.
+        #: The command groups, in the order ``/help`` lists them. ``/code-review`` is not here: it is a preset for a
+        #: turn rather than a page, so the SDK registers it for every front end (see `zettcode.sdk.review`).
         self.groups: tuple[TuiPlugin, ...] = (
             HelpCommand(),
             PluginCommand(),
             SessionCommands(),
             ModelCommands(),
             SideQuestion(),
-            CodeReview(),
             BashCommand(),
             ShellControl(),
             HubCommand(),

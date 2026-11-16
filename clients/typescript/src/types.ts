@@ -280,6 +280,8 @@ export interface CommandInfo {
   summary: string;
   when_busy: string;
   subcommands: string[];
+  /** The words that cannot be run alone; a menu that picks one fills it in and waits for the rest. */
+  needs_more?: string[];
 }
 
 /** What a command answered with: words, a document, or a prompt to send next. */

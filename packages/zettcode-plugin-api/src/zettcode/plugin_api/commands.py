@@ -12,6 +12,8 @@ from zettcode.plugin_api.entries import ThinkingEntry
 from zettcode.registry import Provider
 from zettcode.tui import Widget
 
+from .subcommand import Subcommand
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent and the config are not imported by this module
     from zettcode.engine.core import ZettCodeEngine
     from zettcode.sdk.client import Client
@@ -312,26 +314,6 @@ class CommandResult:
     relayout: bool = False
     intro: str = ""
     run: Awaitable[CommandResult] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class Subcommand:
-    """One word a command takes first, offered by the completion menu once the command is typed.
-
-    Attributes:
-        name: The word as typed (``"add"``); it replaces what the reader has typed after the command.
-        description: One-line summary shown beside it in the menu.
-        needs_more: The word is only the start of an argument (``/config add`` still asks which
-            provider). Enter on it fills it in and leaves the rest to the reader; without this,
-            Enter on it runs the command with it, as for a model or a level that says everything.
-        current: The word names what is in force now. The menu marks it and opens with it highlighted,
-            so Enter straight after the space changes nothing.
-    """
-
-    name: str
-    description: str = ""
-    needs_more: bool = False
-    current: bool = False
 
 
 #: What a command offers after its name: a fixed list, or a function asked each time the menu opens, for a

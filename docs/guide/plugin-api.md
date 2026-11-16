@@ -395,11 +395,12 @@ command that needs a terminal page, the shell, a live row or the `CommandHost` o
 | Works without a screen | yes | no |
 | Handler | sync or async | async |
 | Name | needs the leading `/` | leading `/` is optional |
-| Shell access | `PlainCommandHost` (`compact`, `title`, `export`) | full `CommandHost` |
+| Shell access | `PlainCommandHost` (`compact`, `title`, `export`, `locked`, `session_id`, `workspace`, `hub`) | full `CommandHost` |
 | Page/widget | no | `CommandResult.widget` |
 
 A plain command's `host` may be `None`: the terminal adapter passes `None`, while the server passes a real
-`PlainCommandHost`. Check it before using it.
+`PlainCommandHost`. Check it before using it. `hub()` answers with `you`, `sessions`, `daemons`, `edges` and `error`;
+the per-entry keys are on the ABC's docstring.
 
 `CommandHost` is the terminal command's shell API: `client`, `agent`, `transcript`, `commands`,
 `prompt(text, *, shown=None, cache=None)`, `close_page`, `request_layout`, `wait_for_frame`, `offer`, `quit`,
@@ -488,11 +489,12 @@ def notes(context: PlainCommandContext) -> TextCommandResult:
 ```
 
 Register it in `activate` with `ctx.commands.register("/notes", "show the notes", notes)` — a plain command needs the
-leading slash. Its context has `argument`, `level` (`deny`/`ask`/`safe`/`full`) and an optional `host` with `compact()`,
-`title()` and `export()`. The terminal adapter passes `host=None`; a plain command that needs one must handle that and
-say which front end cannot do it. `markdown` is a field rather than a third result type, so nothing written against the
-older contract changes: a front end that does not know the field still runs the command and still shows `message`. What
-each one does with it:
+leading slash. Its context has `argument`, `level` (`deny`/`ask`/`safe`/`full`) and an optional `host` with
+`compact()`, `title()`, `export()`, `locked`, `session_id`, `workspace` and `hub()`. The terminal adapter passes
+`host=None`; a plain command that needs one must handle that and say which front end cannot do it. `markdown` is a
+field rather than a new result type, so nothing written against the older contract changes: a front end that does not
+know the field still runs the command and still shows `message`; `TurnCommandResult` is a second result type, so a
+front end that predates it does not know it. What each one does with a document:
 
 | Front end | Where a document goes |
 | --- | --- |
@@ -981,13 +983,17 @@ import/build until the agent is built.
 ### Commands
 
 `ctx.commands.register(name, summary, handler, *, when_busy="refuse", subcommands=())` adds a plain command. The handler
-receives `PlainCommandContext`:
+receives `PlainCommandContext`. `subcommands` are `Subcommand` records (`name`, `description`, `needs_more`); a word
+marked `needs_more` is filled in by a menu and waits for the rest rather than running, and `GET /commands` carries both
+the names and that mark.
+
+The fields are:
 
 | Field | Meaning |
 | --- | --- |
 | `argument` | raw trimmed text after the command name |
 | `level` | `deny`, `ask`, `safe` or `full` |
-| `host` | `PlainCommandHost \| None`; use it for `compact`, `title`, `export` |
+| `host` | `PlainCommandHost \| None`; use it for `compact`, `title`, `export`, `session_id`, `workspace`, and `hub`; `locked` says another process holds the session |
 
 `TextCommandResult(message="", notification="", markdown="")` answers with words, a toast or a document.
 `TurnCommandResult(prompt, shown="", notification="", cache="")` starts a conversation turn; `cache` is `"read"`,
