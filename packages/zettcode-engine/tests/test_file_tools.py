@@ -86,7 +86,9 @@ def test_the_search_tools_a_subagent_has_keep_their_schemas_free_of_references_t
 def test_the_limits_in_a_schema_are_the_ones_the_tools_enforce():
     props = read.parameters["properties"]
 
-    assert props["limit"]["maximum"] == 2000 and props["offset"]["minimum"] == 1
+    assert props["limit"]["maximum"] == 2000 and props["limit"]["default"] == 2000
+    assert props["offset"]["minimum"] == 1
+    assert read_file.parameters["properties"]["limit"]["default"] == 2000
     assert "start_column" not in props, "a read has one range, not a range and a column"
     assert grep.parameters["properties"]["max_results"]["maximum"] == 5000
     shell = CodingBundle().tools[-1].parameters["properties"]

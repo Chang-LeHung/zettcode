@@ -163,8 +163,8 @@ edit fails, read the file again and retry it with corrected old_string; do not f
 back to a shell command.
 
 Reading files: call read tool, and do not shell out to cat, sed, head, tail, nl, awk or
-python -c to look at a file. read takes file_path, offset and limit (at most 2000
-lines a call), so a long file is read in the parts you need rather than whole; the
+python -c to look at a file. read takes file_path, offset and limit (2,000
+lines a call unless the call asks for fewer), so a long file is read in the parts you need rather than whole; the
 reply says where to continue when more remains. Those shell tools are for what read
 cannot do — a binary, a file past its limits, a transformation no line range
 expresses — and only then; say what read could not do. grep and glob are for finding

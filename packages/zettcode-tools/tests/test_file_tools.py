@@ -83,6 +83,15 @@ async def test_a_range_says_how_to_go_on_when_there_is_more(here: Path):
     assert text == "3\tline 3\n4\tline 4\n\n... [more lines; continue with offset=5]"
 
 
+async def test_a_call_that_names_no_limit_gets_a_page_of_two_thousand_lines(here: Path):
+    (here / "page.txt").write_text("".join(f"line {n}\n" for n in range(1, 301)))
+
+    text = await read_file.handler(file_path="page.txt")
+
+    assert text.startswith("1\tline 1\n")
+    assert "300\tline 300" in text and "more lines" not in text
+
+
 @pytest.mark.parametrize("size", [FRAGMENT_CHARACTERS, FRAGMENT_CHARACTERS * 2, FRAGMENT_CHARACTERS * 2 + 10])
 async def test_a_line_read_in_fragments_carries_its_number_once(here: Path, size: int):
     body = "x" * size
