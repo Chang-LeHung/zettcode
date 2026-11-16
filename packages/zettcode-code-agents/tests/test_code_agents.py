@@ -339,7 +339,8 @@ def test_a_missing_program_is_reported_before_an_agent_is_made_and_a_present_one
     reason = ClaudeCodeAgent().probe()
     assert "no-such-claude" in reason and "PATH" in reason and "ZETTCODE_CLAUDE_BIN" in reason
 
-    present = tmp_path / "claude"
+    # Windows finds a program by its extension, so a file with none is not there.
+    present = tmp_path / ("claude.exe" if os.name == "nt" else "claude")
     present.write_text("#!/bin/sh\n")
     present.chmod(0o755)
     monkeypatch.setenv("ZETTCODE_CLAUDE_BIN", str(present))
