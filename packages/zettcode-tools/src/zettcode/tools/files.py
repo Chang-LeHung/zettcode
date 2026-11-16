@@ -53,13 +53,13 @@ def _image_type_of(path: Path) -> str | None:
 
 
 @tool
-def read(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> ReadResult:
+def read(file_path: FilePath, offset: Offset = 1, limit: Limit = 2_000) -> ReadResult:
     """Read a local file: UTF-8 text as a line range, or a PNG, JPEG, GIF, or WebP image as an image.
 
     Args:
         file_path: Absolute path or a path relative to the current working directory.
         offset: One-based line number to start reading from; ignored for images.
-        limit: Maximum number of lines to return; ignored for images.
+        limit: Maximum number of lines to return, 2,000 unless the call asks for fewer; ignored for images.
 
     Returns:
         The requested line range, each line prefixed with its 1-based number and a tab (``<line>\\t<content>``), or the
@@ -93,13 +93,13 @@ def read(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> ReadRes
 
 
 @tool
-def read_file(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> str:
+def read_file(file_path: FilePath, offset: Offset = 1, limit: Limit = 2_000) -> str:
     """Read a line range from a UTF-8 text file.
 
     Args:
         file_path: Absolute path or a path relative to the current working directory.
         offset: One-based line number to start reading from.
-        limit: Maximum number of lines to return.
+        limit: Maximum number of lines to return, 2,000 unless the call asks for fewer.
 
     Returns:
         The requested line range, each line prefixed with its 1-based number and a tab (``<line>\\t<content>``); a
@@ -107,7 +107,7 @@ def read_file(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> st
         file.
 
     Snippet:
-        read_file(file_path="src/app.py", offset=1, limit=200)
+        read_file(file_path="src/app.py", offset=1, limit=2_000)
 
     Guidelines:
         - Use line ranges for large files.
