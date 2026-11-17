@@ -19,11 +19,12 @@ A daemon is a separate process, so none of this is bound by the one-workspace-pe
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .errors import ConfigurationError, DaemonStartError, SessionNotFoundError
-from .types import DaemonInfo
+from .types import DaemonInfo, SessionStatsInfo
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.daemon.state import Record
@@ -34,6 +35,7 @@ __all__ = [
     "default_effort",
     "delete_daemon",
     "list_daemons",
+    "session_totals",
     "spawn_daemon",
     "stop_daemon",
     "update_daemon",
@@ -120,6 +122,58 @@ def list_daemons() -> list[DaemonInfo]:
 
     found = sorted(Registry().all(), key=lambda record: record.state.started_at if record.state else 0.0, reverse=True)
     return [_info(record) for record in found]
+
+
+def session_totals(
+    wanted: Mapping[str, Sequence[str]], *, store: str | Path | None = None, unplaced: Sequence[str] = ()
+) -> dict[str, SessionStatsInfo]:
+    """Return what sessions have spent, whichever workspace each works in: requests, tokens and the cached share.
+
+    Args:
+        wanted: The session ids to look up, by the directory they work in. A daemon's ``workspace`` is that directory.
+        store: The session store, or ``None`` for the user's own.
+        unplaced: Ids whose directory is not known (a daemon that was deleted leaves its conversation behind). They are
+            looked for in every workspace's folder of the store.
+
+    A session that is not counted (a subagent's) or cannot be read has no entry. Reading is incremental and kept in the
+    store's own summary, so asking often is cheap; it does file I/O, so call it off the event loop.
+    """
+    from zettcode.engine.storage.ledger import LedgerReader
+    from zettcode.engine.storage.records import SAFE_SESSION_ID, STORE_FILE
+    from zettcode.paths import DEFAULT_STORE
+
+    from .translation import stats_from
+
+    root = Path(store).expanduser() if store is not None else DEFAULT_STORE
+    found: dict[str, SessionStatsInfo] = {}
+    for workspace, ids in wanted.items():
+        if not workspace or not ids:
+            continue
+        try:
+            stats = LedgerReader(root, workspace).stats(ids)
+        except OSError:
+            continue
+        found.update({session_id: stats_from(item) for session_id, item in stats.items()})
+    lost = [
+        session_id
+        for session_id in unplaced
+        if session_id not in found and SAFE_SESSION_ID.match(session_id) and ".." not in session_id
+    ]
+    if lost:
+        try:
+            folders = [item for item in root.iterdir() if item.is_dir()]
+        except OSError:
+            folders = []
+        for folder in folders:
+            here = [session_id for session_id in lost if (folder / session_id / STORE_FILE).is_file()]
+            if not here:
+                continue
+            try:
+                stats = LedgerReader(root, folder, folder=folder).stats(here)
+            except OSError:
+                continue
+            found.update({session_id: stats_from(item) for session_id, item in stats.items()})
+    return found
 
 
 async def spawn_daemon(

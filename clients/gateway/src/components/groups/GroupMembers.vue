@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { t } from "../../i18n";
+import { tokens } from "../../lib/format";
+import { percent, usage } from "../../stores/usage";
 import { href } from "../../stores/route";
 import { lobby } from "../../stores/threads";
 import type { Member } from "../../stores/groups";
@@ -13,6 +15,13 @@ defineEmits<{ close: []; invite: []; remove: [member: Member] }>();
 
 const word = (member: Member): string =>
   member.me ? t("you") : member.status === "working" ? t("typing…") : member.online ? t("online") : t("offline");
+
+/** What a member has spent, from the Dashboard's numbers: its tokens in and out and its cached share. Empty until they are read. */
+const spent = (member: Member): string => {
+  const row = usage.data?.sessions.find((item) => item.id === member.id);
+  if (!row) return "";
+  return `${tokens(row.input_tokens + row.output_tokens)} · ${percent(row.cache_rate)}`;
+};
 
 /** The stopped daemon a member is, when it can be started again from here with one press. */
 const stopped = (member: Member): Thread | undefined => {
@@ -40,7 +49,7 @@ const stopped = (member: Member): Thread | undefined => {
           />
           <span class="member-body">
             <span class="member-name">{{ member.name }}</span>
-            <span class="member-state" :class="{ on: member.online }">{{ word(member) }}</span>
+            <span class="member-state" :class="{ on: member.online }">{{ word(member) }}<template v-if="spent(member)"> · {{ spent(member) }}</template></span>
           </span>
         </component>
         <button

@@ -45,6 +45,7 @@ from zettcode.sdk.types import (
     Peer,
     Receipt,
     SendLimits,
+    SessionStatsInfo,
     StreamEvent,
     is_direct_notice,
 )
@@ -126,6 +127,32 @@ def _group_name(raw: object) -> str:
     broker's own function, so the two cannot drift apart.
     """
     return spell_group(raw)
+
+
+def _totals_of(stats: SessionStatsInfo) -> dict[str, Any]:
+    """Return one session's totals as a page reads them; ``cache_rate`` is ``None`` when its replies did not say."""
+    return {
+        "requests": stats.requests,
+        "input_tokens": stats.input_tokens,
+        "output_tokens": stats.output_tokens,
+        "cache_read_tokens": stats.cache_read_tokens,
+        "reasoning_tokens": stats.reasoning_tokens,
+        "cache_rate": stats.cache_share,
+    }
+
+
+def _sum_totals(items: Sequence[SessionStatsInfo]) -> dict[str, Any]:
+    """Return the totals of several sessions. The cached share is taken over the sessions that measured it."""
+    measured = [item for item in items if item.cache_reported]
+    sent = sum(item.input_tokens for item in measured)
+    return {
+        "requests": sum(item.requests for item in items),
+        "input_tokens": sum(item.input_tokens for item in items),
+        "output_tokens": sum(item.output_tokens for item in items),
+        "cache_read_tokens": sum(item.cache_read_tokens for item in items),
+        "reasoning_tokens": sum(item.reasoning_tokens for item in items),
+        "cache_rate": sum(item.cache_read_tokens for item in measured) / sent if sent else None,
+    }
 
 
 def read_pictures(raw: object, limits: SendLimits) -> list[Image]:
@@ -1263,6 +1290,76 @@ class Gateway:
             return await self.backend.graph()
         except SendError as error:
             raise GatewayError(503, error.reason, str(error)) from error
+
+    async def usage(self) -> dict[str, Any]:
+        """Return what every listed session and every group has spent: replies, tokens and the cached share of the input.
+
+        The rows are the sessions this gateway lists that work in a folder (a daemon, or a terminal session); an external
+        agent is the program's own and has no ledger. A group is the sum of its members that were measured, and says
+        how many that is, because a member that is gone from the list cannot be looked up. The numbers are read back from
+        the stored conversations, so they also cover what a session spent before it was last started.
+        """
+        views = dict(self._views)
+        wanted: dict[str, list[str]] = {}
+        for session_id, view in views.items():
+            if view["kind"] in ("daemon", "session") and view["workspace"] and not view["agent"]:
+                wanted.setdefault(view["workspace"], []).append(session_id)
+        groups_known = True
+        try:
+            graph = await self.backend.graph()
+        except SendError:
+            graph, groups_known = {}, False  # the broker is away: say the groups are unknown, not that there are none
+        # A member that is not listed (a daemon that was deleted leaves its conversation behind) has no folder to look in,
+        # so the store is searched for it: a group's total is what its members spent, listed or not.
+        unplaced = sorted(
+            {
+                str(item)
+                for group in graph.get("groups") or []
+                for item in group.get("members") or []
+                if item not in views and item != self.backend.gateway_id
+            }
+        )
+        found = await asyncio.to_thread(self.backend.session_totals, wanted, unplaced)
+        daemons = {item.session_id: item for item in await asyncio.to_thread(self.backend.daemons)}
+        rows: dict[str, dict[str, Any]] = {}
+        # Every listed session is a row, also one with no stored conversation yet (a daemon started and not used): it spent
+        # nothing, and is where its Restart button is.
+        for session_id in [item for ids in wanted.values() for item in ids]:
+            stats = found.get(session_id) or SessionStatsInfo(session_id)
+            view, daemon = views[session_id], daemons.get(session_id)
+            rows[session_id] = {
+                "id": session_id,
+                "name": view["name"],
+                "kind": view["kind"],
+                "status": view["status"],
+                "online": view["online"],
+                "workspace": view["workspace"],
+                "model": view["model"],
+                "context_tokens": daemon.context_tokens if daemon is not None else None,
+                "context_window": daemon.context_window if daemon is not None else None,
+                **_totals_of(stats),
+            }
+        groups: list[dict[str, Any]] = []
+        for group in graph.get("groups") or []:
+            if not group.get("name"):
+                continue  # a group with no name is the broker's mistake; a card for it could not be opened
+            # The person at this gateway is in a group they write to, and spends nothing a ledger holds: not counted.
+            members = [str(item) for item in group.get("members") or [] if item != self.backend.gateway_id]
+            measured = [found[item] for item in members if item in found]
+            groups.append(
+                {
+                    "name": str(group.get("name", "")),
+                    "members": len(members),
+                    "measured": len(measured),
+                    "offline": [
+                        item for item in members if item in views and views[item]["status"] in ("dead", "offline")
+                    ],
+                    **_sum_totals(measured),
+                }
+            )
+        ordered = sorted(rows.values(), key=lambda row: (-row["input_tokens"] - row["output_tokens"], row["name"]))
+        listed = [found[session_id] for session_id in rows if session_id in found]
+        return {"sessions": ordered, "groups": groups, "groups_known": groups_known, "total": _sum_totals(listed)}
 
     async def older(self, before: object, limit: object, group: object = None) -> dict[str, Any]:
         """Return the stored messages before id ``before``, oldest first: what a feed loads as it is scrolled back.

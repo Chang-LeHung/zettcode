@@ -28,6 +28,7 @@ from zettcode.sdk.types import (
     Peer,
     Receipt,
     SendLimits,
+    SessionStatsInfo,
     StreamEvent,
 )
 
@@ -179,6 +180,17 @@ class Backend(ABC):
     @abstractmethod
     def daemons(self) -> list[DaemonInfo]:
         """Return every daemon on this machine, newest first."""
+
+    def session_totals(self, wanted: dict[str, list[str]], unplaced: Sequence[str] = ()) -> dict[str, SessionStatsInfo]:
+        """Return what sessions have spent (requests, tokens, cached share), given the ids by the folder they work in.
+
+        ``unplaced`` are ids whose folder is not known; they are looked for in the store. It reads stored conversations,
+        so a caller runs it off the event loop.
+        """
+        return sdk_daemons.session_totals(wanted, store=self.store_root, unplaced=unplaced)
+
+    #: Where the sessions are stored, or ``None`` for the user's own.
+    store_root: Path | None = None
 
     @abstractmethod
     async def spawn(

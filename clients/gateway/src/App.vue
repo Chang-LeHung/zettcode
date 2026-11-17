@@ -20,7 +20,8 @@ import Rail from "./components/shell/Rail.vue";
 import SectionPane from "./components/shell/SectionPane.vue";
 import ServerGate from "./components/shell/ServerGate.vue";
 import WelcomeMain from "./components/shell/WelcomeMain.vue";
-import { CONFIG_SECTIONS, SETTINGS_SECTIONS } from "./sections";
+import DashboardPage from "./components/dashboard/DashboardPage.vue";
+import { CONFIG_SECTIONS, DASHBOARD_SECTIONS, SETTINGS_SECTIONS } from "./sections";
 import { t } from "./i18n";
 import { auth } from "./stores/auth";
 import { route } from "./stores/route";
@@ -40,6 +41,8 @@ const pane = computed<{ component: Component; props: Record<string, unknown> }>(
       return { component: LogsPane, props: {} };
     case "graph":
       return { component: GraphPane, props: {} };
+    case "dashboard":
+      return { component: SectionPane, props: { nav: "dashboard", title: t("Dashboard"), sections: DASHBOARD_SECTIONS } };
     case "settings":
       return {
         component: SectionPane,
@@ -58,6 +61,8 @@ const main = computed<{ component: Component; props: Record<string, unknown>; ke
       return { component: ConfigPage, props: {}, key: "config" };
     case "graph":
       return { component: GraphView, props: {}, key: "graph" };
+    case "dashboard":
+      return { component: DashboardPage, props: {}, key: "dashboard" };
     case "settings":
       return { component: SettingsPage, props: {}, key: "settings" };
     case "logs":

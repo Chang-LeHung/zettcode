@@ -61,6 +61,7 @@ class ExternalBackend(Backend):
     def __init__(self, directory: Path, sessions_root: Path | None = None) -> None:
         self.directory = directory
         self.sessions_root = sessions_root.expanduser().resolve() if sessions_root is not None else None
+        self.store_root = self.sessions_root
         self._session: ExternalSession | None = None
         self._owner: httpx.AsyncClient | None = None
         self._on_message: Callable[[IncomingMessage], Receipt] | None = None

@@ -9,7 +9,7 @@ import { auth } from "../../stores/auth";
 import { settings } from "../../stores/config";
 import { go, route } from "../../stores/route";
 import { fromThread } from "../../stores/spawn";
-import { loadThreads } from "../../stores/threads";
+import { loadThreads, lobby } from "../../stores/threads";
 import { openSheet, toast } from "../../stores/ui";
 import type { Thread } from "../../types";
 import { confirmAction, showMenu, type MenuEntry } from "../sheets/sheets";
@@ -81,6 +81,17 @@ export async function restartNow(thread: Thread): Promise<boolean> {
   } finally {
     restarting.delete(thread.id);
   }
+}
+
+/** Start every stopped daemon among `ids` again, one after another, and return how many started. Ids that cannot be
+ * restarted from here (a terminal session, a daemon with nothing to continue) are skipped. */
+export async function restartAll(ids: string[]): Promise<number> {
+  let started = 0;
+  for (const id of ids) {
+    const thread = lobby.threads.find((item) => item.id === id);
+    if (canRestart(thread) && (await restartNow(thread))) started += 1;
+  }
+  return started;
 }
 
 /** The long way, for changing something: the New form filled in from the daemon, started on the same conversation. */

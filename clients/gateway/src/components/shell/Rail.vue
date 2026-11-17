@@ -13,6 +13,7 @@ const tabs: { nav: Nav; label: string; icon: IconName }[] = [
   { nav: "config", label: "Config", icon: "config" },
   { nav: "logs", label: "Logs", icon: "logs" },
   { nav: "graph", label: "Graph", icon: "graph" },
+  { nav: "dashboard", label: "Dashboard", icon: "chart" },
   { nav: "settings", label: "Settings", icon: "settings" },
 ];
 

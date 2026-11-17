@@ -561,4 +561,30 @@ export const ZH: Record<string, string> = {
     "此页面由单个网关提供。桌面端和手机端应用可以保存多个网关。",
   "The token stays on this device. Switching reloads the page, so nothing from one gateway is drawn beside another's.":
     "令牌保存在此设备上。切换服务器会重新加载页面,因此不会把一个网关的内容画在另一个网关旁边。",
+  // The Dashboard page and the group's restart strip.
+  Dashboard: "仪表盘",
+  Overview: "总览",
+  "Terminal sessions": "终端会话",
+  Requests: "请求数",
+  "Input tokens": "输入 token",
+  "Output tokens": "输出 token",
+  Input: "输入",
+  Output: "输出",
+  "Cache hit": "缓存命中率",
+  "There are no groups.": "还没有群组。",
+  "{count} not measured": "{count} 个未统计",
+  "{count} offline": "{count} 个离线",
+  "Restart offline": "重启离线成员",
+  "Restart all": "全部重启",
+  "{name} is stopped and can be restarted.": "{name} 已停止,可以重启。",
+  "{count} daemons are stopped and can be restarted.": "{count} 个 daemon 已停止,可以重启。",
+  "context {share}": "上下文 {share}",
+  "Cached tokens": "缓存 token",
+  "The session broker did not answer, so the groups are not known right now.": "会话 broker 没有响应,暂时无法得知群组情况。",
+  "The part of the input the provider served from its cache. Higher is cheaper and faster.":
+    "输入中由模型服务商缓存直接提供的比例,越高越省钱、越快。",
+  "What this group's members have spent, from their stored conversations": "本群成员的消耗,取自已保存的对话记录",
+  "No session is listed.": "没有列出任何会话。",
+  "What the listed sessions have spent, read back from their stored conversations. A cached share is the part of the input the provider served from its cache.":
+    "列表中各会话的消耗,取自已保存的对话记录。缓存命中率是输入中由模型服务商缓存直接提供的比例。",
 };

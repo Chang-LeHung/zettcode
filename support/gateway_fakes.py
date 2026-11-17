@@ -56,6 +56,10 @@ class FakeBackend(Backend):
         self.model_list = [model("fast", "low", "high"), model("deep", "low", "medium", "high", multimodal=True)]
         self.model_edits: list[tuple[Any, ...]] = []
         self.daemon_list: dict[str, DaemonInfo] = {}
+        #: What each session has spent, as the ledger would say, and the folders the last lookup was asked about.
+        self.totals: dict[str, Any] = {}
+        self.totals_asked: dict[str, list[str]] = {}
+        self.unplaced_asked: list[str] = []
         self.peer_list: dict[str, Peer] = {}
         self.histories: dict[str, list[Message]] = {}
         self.stamps: dict[str, int] = {}
@@ -373,6 +377,12 @@ class FakeBackend(Backend):
 
     def daemons(self) -> list[DaemonInfo]:
         return sorted(self.daemon_list.values(), key=lambda item: -item.started_at)
+
+    def session_totals(self, wanted: dict[str, list[str]], unplaced: Sequence[str] = ()) -> dict[str, Any]:
+        self.totals_asked = wanted
+        self.unplaced_asked = list(unplaced)
+        asked = [session_id for ids in wanted.values() for session_id in ids] + list(unplaced)
+        return {session_id: self.totals[session_id] for session_id in asked if session_id in self.totals}
 
     async def spawn(
         self,
