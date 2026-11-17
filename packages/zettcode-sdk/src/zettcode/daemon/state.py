@@ -151,6 +151,10 @@ class State:
     #: fell back to their defaults.
     plugin_arguments: dict[str, dict[str, object]] | None = None
     keep: bool = False
+    #: Written by ``kill``, the one stop that wants the record gone (``delete`` refuses a live daemon, and removes the
+    #: record of a dead one itself). Without it a daemon that is told to stop leaves
+    #: its record as a dead one, whoever told it: a reboot or a Ctrl-C is nobody asking for the daemon to be forgotten.
+    remove: bool = False
     protocol: int = PROTOCOL
 
     @classmethod

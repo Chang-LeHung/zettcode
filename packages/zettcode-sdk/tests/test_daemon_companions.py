@@ -35,11 +35,13 @@ class FakeDaemons:
     def __init__(self, records: list[FakeRecord], fail: set[str] | None = None) -> None:
         self.registry = type("R", (), {"all": lambda _self: tuple(records)})()
         self.stopped: list[str] = []
+        self.kept: list[bool] = []
         self.started: list[dict] = []
         self.fail = fail or set()
 
-    def stop(self, record: FakeRecord) -> str:
+    def stop(self, record: FakeRecord, *, keep: bool = False) -> str:
         self.stopped.append(record.session_id)
+        self.kept.append(keep)
         return "stopped"
 
     def start(self, workspace: Path, **options) -> None:
@@ -67,6 +69,9 @@ def test_stopped_daemons_are_started_again_on_the_same_session_with_the_same_set
     result = made.start()
 
     assert fake.stopped == ["a", "c"] and len(stopped) == 2
+    assert fake.kept == [True, True], (
+        "the records stay, so a restart that dies half way leaves them listed and startable"
+    )
     assert all(worked for worked, _ in result)
     assert [(s["resume"], s["name"], s["permission"], s["model"], s["effort"]) for s in fake.started] == [
         ("a", "review", "full", "fast", "high"),

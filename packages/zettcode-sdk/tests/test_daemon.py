@@ -283,6 +283,49 @@ def test_stopping_a_running_daemon_with_keep_leaves_its_record_listed_as_dead(ho
     assert Registry().all() == (), "and a stop without keep removes it as before"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a SIGTERM there is TerminateProcess: the daemon runs no handler")
+def test_a_daemon_that_is_sent_a_bare_sigterm_leaves_its_record_listed_as_dead(home):
+    """What the system sends when the machine shuts down, or a person at `kill <pid>`: nobody asked for the record to
+    go, so it stays, and the daemon is there to be started again after the reboot."""
+    import signal
+
+    record = process.Daemons().start(home)
+    try:
+        found = Registry().find(record.session_id)
+        assert found is not None and found.state is not None and found.alive
+        os.kill(found.state.pid, signal.SIGTERM)
+
+        deadline = time.monotonic() + 15
+        kept = found
+        while time.monotonic() < deadline:
+            kept = Registry().find(record.session_id)
+            if kept is None or not kept.alive:
+                break
+            time.sleep(0.1)
+
+        assert kept is not None, "the record survived the signal"
+        assert not kept.alive and kept.status == "dead"
+        assert not kept.beating(), "and the daemon took its heartbeat away, so a reused pid cannot make it alive again"
+    finally:
+        left = Registry().find(record.session_id)
+        if left is not None:
+            process.Daemons().stop(left)
+
+
+def test_a_start_whose_daemon_was_killed_after_its_first_write_is_a_failure_not_a_start(home):
+    """The record a killed daemon leaves is dead and listed, so the last look of a start that ended must not take it for
+    the start's own success: it used to be removed on the way out, and `_ours` found nothing."""
+
+    class Gone:
+        def exited(self) -> bool:
+            return True
+
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home, pid=2**22 + 17, status="starting"), token="mine"))
+
+    assert process.Daemons()._await(Gone(), "mine", 5) is None
+
+
 def test_a_record_with_no_heartbeat_reads_as_dead_even_while_its_pid_still_answers(home):
     """A zombie its parent has not reaped answers signal zero, so the pid alone cannot say a daemon has stopped."""
     record = Registry().record(home, "01a1", create=True)
@@ -385,18 +428,64 @@ async def test_a_status_written_between_the_stop_and_its_signal_does_not_lose_th
     await daemon.mark("stopping")  # the daemon's last write
 
     assert daemon.record.state is not None and daemon.record.state.keep is True
-    assert daemon._kept() is True, "so the daemon leaves the record it was asked to leave"
+    assert daemon._asked_to_remove(daemon.record.state) is False, (
+        "so the daemon leaves the record it was asked to leave"
+    )
+
+
+async def test_a_kill_that_asks_for_removal_is_the_only_stop_that_makes_the_daemon_remove_its_own_record(home):
+    """The ask is a field the stop writes before it signals, and the daemon's own later writes carry it. A signal nobody
+    wrote an ask for (a reboot, Ctrl-C) leaves the record: a daemon set up on purpose must still be listed afterwards."""
+    from zettcode.daemon.run import Daemon
+
+    class Client(_Client):
+        usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0, "context_tokens": 0})()
+
+    daemon = Daemon(Client(), Options(workspace=home, token="t"))
+    daemon.record.save(replace(state_for(home, status="idle")))
+    assert daemon._asked_to_remove(daemon.record.state) is False, "no ask: the record stays"
+
+    daemon.record.change(lambda current: replace(current, status="stopping", remove=True))  # what `kill` writes
+    await daemon.mark("working")  # a turn that was already starting, writing over the stop's status
+    daemon.stopping.set()
+    await daemon.mark("stopping")  # the daemon's last write
+
+    assert daemon.record.state is not None and daemon.record.state.remove is True
+    assert daemon._asked_to_remove(daemon.record.state) is True
 
 
 async def test_a_start_whose_first_state_write_missed_the_lock_does_not_inherit_an_old_keep(home):
-    """`_kept` reads the file without the guard `mark` has: a start that never got its own state written would find
-    the old record's field and leave a record behind on Ctrl-C that it would otherwise remove."""
+    """The asks are read from the file without the guard `mark` has: a start that never got its own state written
+    would find an earlier start's `keep` or `remove` there and act on it as if it were its own stop's."""
     from zettcode.daemon.run import Daemon
 
     daemon = Daemon(_Client(), Options(workspace=home, token="a new start"))
     daemon.record.save(replace(state_for(home, pid=2**22 + 17, status="stopping"), keep=True, token="an earlier start"))
+    assert daemon._asked_to_keep(daemon.record.state) is False, "an earlier start's keep is not this one's"
 
-    assert daemon._kept() is False, "an earlier start's field is not this one's"
+    daemon.record.save(
+        replace(state_for(home, pid=os.getpid(), status="stopping"), remove=True, token="an earlier start")
+    )
+
+    assert daemon._asked_to_remove(daemon.record.state) is False, "an earlier start's ask is not this one's"
+
+
+@pytest.mark.parametrize("ask", ["keep", "remove"])
+async def test_an_ask_is_this_processs_only_when_both_its_token_and_its_pid_say_so(home, ask):
+    """Each half of the guard on its own: the token alone is not enough (an earlier start's field, written by a process
+    the system gave this one's pid), and neither is the pid (the same pid in the state of an earlier start)."""
+    from zettcode.daemon.run import Daemon
+
+    daemon = Daemon(_Client(), Options(workspace=home, token="mine"))
+    decide = daemon._asked_to_keep if ask == "keep" else daemon._asked_to_remove
+
+    def written(*, token: str, pid: int) -> State:
+        return replace(state_for(home, pid=pid, status="stopping"), token=token, **{ask: True})
+
+    assert decide(written(token="mine", pid=os.getpid())) is True, "both say so: the ask is this process's"
+    assert decide(written(token="mine", pid=2**22 + 17)) is False, "a foreign pid: not this process's"
+    assert decide(written(token="an earlier start", pid=os.getpid())) is False, "a foreign token: not this start's"
+    assert decide(None) is False
 
 
 class _OpeningClient:

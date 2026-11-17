@@ -40,7 +40,9 @@ class DaemonCompanions(Companions):
         records = [r for r in self.daemons.registry.all() if r.state is not None and not r.dead]
         # What is started again is exactly what was stopped here, not what a second look at the folder finds.
         self._stopped = [r.state for r in records if r.state is not None]
-        return [f"{record.session_id}  {self.daemons.stop(record)}" for record in records]
+        # The record stays: it is the only durable copy of what a daemon was started with, so a restart that fails
+        # halfway (a "no" at the prompt, a failed start, Ctrl-C) leaves each daemon listed, offline and startable.
+        return [f"{record.session_id}  {self.daemons.stop(record, keep=True)}" for record in records]
 
     def start(self) -> list[tuple[bool, str]]:
         """Start each stopped daemon again on its own session."""

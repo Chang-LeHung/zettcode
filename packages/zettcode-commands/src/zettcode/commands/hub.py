@@ -10,8 +10,10 @@ through :mod:`zettcode.sdk.daemons`, so nothing new is listened to and nothing i
 * **Sessions**: the sessions that are running, as the broker's roster has them, and nothing else. Only looked at here:
   it is a daemon that can be started.
 * **Daemons**: every daemon recorded on this machine, running or not, and nothing else, so the count is the
-  gateway's. A daemon that was stopped keeps its record and stays listed until it is deleted. ``s`` stops the one
-  under the mark and keeps its record; ``Enter`` starts an offline one, resuming its session.
+  gateway's. A daemon that was stopped, or whose machine was restarted, keeps its record and stays listed (offline)
+  until it is deleted. ``s`` stops the one under the mark and keeps its record; ``Enter`` starts an offline one,
+  resuming its session; ``t`` restarts it (a running one is stopped first); ``d`` deletes it with its conversation,
+  after a second ``d`` on the same row, and refuses a running one.
 * **History**: the sessions of this workspace that are only stored, with no process and no daemon record. ``Enter``
   starts a daemon on one, resuming its session.
 
@@ -346,6 +348,8 @@ class HubPage(ListPage):
         on_close: Callable[[], None],
         on_stop: Callable[[str], None] | None = None,
         on_start: Callable[[str], None] | None = None,
+        on_restart: Callable[[str], None] | None = None,
+        on_delete: Callable[[str], None] | None = None,
         on_refresh: Callable[[], None] | None = None,
     ) -> None:
         """Start on the graph, with the first row of each list marked and no node selected."""
@@ -367,6 +371,11 @@ class HubPage(ListPage):
         self.closed = False
         self.on_stop = on_stop
         self.on_start = on_start
+        self.on_restart = on_restart
+        self.on_delete = on_delete
+        #: The daemon a first ``d`` asked about: deleting takes its conversation too, so a second ``d`` on the same row,
+        #: with no other key between, is what deletes. Any other key forgets it.
+        self._delete_asked: str | None = None
         self.on_refresh = on_refresh
         self._picture = Picture()
         self._picture_key: tuple[object, ...] | None = None
@@ -401,7 +410,7 @@ class HubPage(ListPage):
             f"{'esc clear the filter' if filtered else 'esc close'}"
         )
         if self.tab == DAEMONS:
-            return f"enter start an offline one {SEPARATOR} s stop {SEPARATOR} {common}"
+            return f"enter start {SEPARATOR} t restart {SEPARATOR} s stop {SEPARATOR} d delete {SEPARATOR} {common}"
         if self.tab == HISTORY:
             return f"enter resume it in a daemon {SEPARATOR} {common}"
         return common
@@ -695,6 +704,11 @@ class HubPage(ListPage):
     def capture_event(self, event, host) -> bool:
         """Take Tab and Shift-Tab (the only keys that change tab), the search, the node selection and the daemon keys."""
         key = event_key(event)
+        if key != "d":
+            # A question about a delete is answered by the next key being the same `d` on the same row, and by nothing
+            # else. Every way to somewhere a `d` is not a delete (`/` for a search, Tab for another page) is another key,
+            # so it is cleared before the `d` that follows.
+            self._delete_asked = None
         if self.searching and self.tab != GRAPH and key not in ("tab", "backtab"):
             # What is typed is the query, whatever it spells: `s` and `r` are letters here, not stop and refresh.
             return self._type(event, key) or super().capture_event(event, host)
@@ -733,6 +747,21 @@ class HubPage(ListPage):
             # does not exist is not one for this page.
             self.note("no daemon to stop on a stored session; enter starts one")
             return True
+        if self.tab == HISTORY and key in ("t", "d"):
+            # A stored session has no daemon record: there is nothing to restart or delete here, and enter starts one.
+            self.note("a stored session has no daemon to restart or delete; enter starts one")
+            return True
+        if self.tab == DAEMONS and key == "t" and self.on_restart is not None:
+            chosen = self._daemon()
+            if chosen is None:
+                self.note("no daemon under the mark")
+            else:
+                self.note("restarting\u2026")
+                self.on_restart(chosen.session_id)
+            return True
+        if self.tab == DAEMONS and key == "d" and self.on_delete is not None:
+            self._ask_to_delete()
+            return True
         if self.tab == DAEMONS and key == "s" and self.on_stop is not None:
             chosen = self._daemon()
             if chosen is None:
@@ -742,6 +771,29 @@ class HubPage(ListPage):
                 self.on_stop(chosen.session_id)
             return True
         return super().capture_event(event, host)
+
+    def _ask_to_delete(self) -> None:
+        """``d`` on the Daemons tab: ask, and delete on the second press of the same row.
+
+        Deleting removes the record and the conversation, which cannot be brought back, so one key press only asks. A
+        daemon whose process is running is not asked about: it is stopped first.
+        """
+        chosen = self._daemon()
+        if chosen is None or self.on_delete is None:
+            self.note("no daemon under the mark")
+            return
+        label = chosen.label or chosen.session_id[:8]
+        if chosen.status == "stopping":
+            self.note(f"{label} is stopping; delete it once it has")
+        elif chosen.status not in STARTABLE:
+            self.note(f"{label} is running; stop it with s before deleting it")
+        elif self._delete_asked == chosen.session_id:
+            self._delete_asked = None
+            self.note("deleting\u2026")
+            self.on_delete(chosen.session_id)
+        else:
+            self._delete_asked = chosen.session_id
+            self.note(f"delete {label} and its conversation for good? press d again")
 
     def _type(self, event: object, key: str | None) -> bool:
         """Take one key while the search is being typed; return whether it was taken (``False`` leaves it to the list,
@@ -861,6 +913,8 @@ class HubCommand(TuiPlugin):
             on_refresh=lambda: self._start(self._refresh(page, client), page),
             on_stop=lambda session_id: self._start(self._stop(page, client, session_id), page),
             on_start=lambda session_id: self._start(self._resume(page, client, session_id), page),
+            on_restart=lambda session_id: self._start(self._restart(page, client, session_id), page),
+            on_delete=lambda session_id: self._start(self._delete(page, client, session_id), page),
         )
         self._page = page
         return CommandResult(widget=page)
@@ -925,11 +979,65 @@ class HubCommand(TuiPlugin):
             self._forced.add(session_id)
             chosen = next((daemon for daemon in page.data.daemons if daemon.session_id == session_id), None)
             label = chosen.label if chosen is not None else session_id[:8]
-            page.note(f"{label} is working on a turn: press s again to stop it anyway and throw that turn away")
+            page.note(f"{label} is working on a turn: press s or t again to stop it anyway and throw that turn away")
             return
         self._forced.discard(session_id)
         await self._refresh(page, client)
         page.note(said)
+
+    async def _restart(self, page: HubPage, client: object, session_id: str) -> None:
+        """Start a daemon again: one that is stopped is started, and one that is running is stopped first, then started.
+
+        It starts as the record says (see :meth:`_resume`), on the same conversation. A daemon in the middle of a turn
+        is not stopped by the first ``t``: that throws the turn away, so the page says so and the next ``t`` on it
+        goes ahead (the same rule as ``s``).
+        """
+        from zettcode.sdk.daemons import stop_daemon
+        from zettcode.sdk.errors import ConfigurationError
+
+        chosen = next((daemon for daemon in page.data.daemons if daemon.session_id == session_id), None)
+        if chosen is None:
+            page.note("no daemon under the mark")
+            return
+        if session_id in self._starting:
+            page.note("already restarting that one")  # a second press must not stop what the first one just started
+            return
+        # Whatever the reading says: it can be minutes old, and a daemon started from a terminal since would be told
+        # it is "open in another process". Stopping one that is already gone only says so.
+        self._starting.add(session_id)
+        try:
+            try:
+                await stop_daemon(session_id, keep=True, force=session_id in self._forced)
+            except ConfigurationError:
+                self._forced.add(session_id)
+                page.note(
+                    f"{chosen.label or session_id[:8]} is working on a turn: "
+                    "press s or t again to stop it anyway and throw that turn away"
+                )
+                return
+            self._forced.discard(session_id)
+            await self._refresh(page, client)
+        finally:
+            self._starting.discard(session_id)
+        await self._resume(page, client, session_id)
+
+    async def _delete(self, page: HubPage, client: object, session_id: str) -> None:
+        """Delete one stopped daemon for good, its record and its conversation, then show what that changed.
+
+        The page asked twice before it got here. A daemon that is running is refused by the SDK in its own words
+        (stop it first), and a session another process has open is not deleted; both come back as the page's note.
+        """
+        from zettcode.sdk.daemons import delete_daemon
+        from zettcode.sdk.errors import ConfigurationError, SessionNotFoundError
+
+        try:
+            said = await delete_daemon(session_id)
+        except (ConfigurationError, SessionNotFoundError) as error:
+            await self._refresh(page, client)
+            page.note(f"not deleted: {error}")
+            return
+        await self._refresh(page, client)
+        page.note(f"deleted: {said}")
 
     async def _resume(self, page: HubPage, client: object, session_id: str) -> None:
         """Start a daemon on an offline session, resuming it: one whose daemon was stopped, or one that is only stored.

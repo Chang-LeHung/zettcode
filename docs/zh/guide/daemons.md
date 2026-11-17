@@ -53,6 +53,10 @@ daemon 一次处理一条消息。它忙的时候最多排 64 条，之后合成
 | `zettcode daemon update <id>` | 改 `--model`、`--effort`、`--name`、`--title` 或 `--permission`。 |
 | `zettcode daemon model` | 列出 `spawn --model` 接受的模型；`--json` 给脚本用。 |
 
+daemon 以其他方式退出（比如重启电脑、Ctrl-C）时，记录也会保留：它在 `daemon list`、`/hub` 的 Daemons 页和网关的聊天
+列表里都显示为 `dead`，在任何一处都能再启动。只有 `kill` 和 `delete` 会删掉记录。在 `/hub` 里，`s` 停止、`t` 重启、
+`d` 删除（要按两次）。
+
 `stop` 和 `kill` 会拒绝正在跑一轮的 daemon；加 `--force` 才能照样停。换模型或级别从下一轮生效。
 换权限会重启进程，所以那一轮会丢。运行中的 daemon 拒绝 `--title`，因为跑着的进程持有会话的名字。
 
@@ -60,4 +64,4 @@ daemon 一次处理一条消息。它忙的时候最多排 64 条，之后合成
 
 - [会话之间互发消息](/zh/guide/messaging)：消息、群和 broker。
 - [网页网关](/zh/guide/gateway)：在页面里起、看、停 daemon。
-- [Codex 与 Claude Code](/zh/guide/code-agents)：作为群成员的其他 agent。
+- [Codex 与 Claude Code](/zh/guide/code-agents)：其他厂商的 agent。

@@ -174,8 +174,10 @@ class Daemons:
             if record is not None and record.status in ("idle", "working"):
                 return record
             if child.exited():
-                # One last look: it may have said hello and then gone, and that is the truth to report.
-                return self._ours(token)
+                # One last look: it may have said hello and then gone. A record that reads dead is not a start: it
+                # stays listed, as any stopped daemon does, and the failure path reports what the log says.
+                record = self._ours(token)
+                return record if record is not None and record.status in ("idle", "working") else None
             time.sleep(POLL_SECONDS)
         return None
 
@@ -223,7 +225,9 @@ class Daemons:
             raise StillWorking("it is working on a turn; stop it anyway with --force, or wait until it is idle")
         pid = state.pid
         try:
-            record.change(lambda current: dataclasses.replace(current or state, status="stopping", keep=keep))
+            record.change(
+                lambda current: dataclasses.replace(current or state, status="stopping", keep=keep, remove=not keep)
+            )
         except OSError as error:
             # The status is a courtesy to a reader looking while the signal lands; a state another writer holds
             # must not keep `kill` from sending it.
@@ -232,8 +236,8 @@ class Daemons:
             return self._gone(record, keep, "was already gone")
         deadline = time.monotonic() + grace
         while time.monotonic() < deadline:
-            # The daemon removes its own record on the way out (unless asked to keep it), so the folder going is the
-            # proof it stopped — a pid can outlive the process it named, as a zombie its parent has not reaped. A
+            # The daemon removes its own record on the way out when this stop asked it to (``keep`` unset), so the
+            # folder going is the proof it stopped — a pid can outlive the process it named, as a zombie its parent has not reaped. A
             # record that was asked to stay has no folder to go, and its proof is the heartbeat the daemon takes away.
             gone = not record.folder.exists()
             if gone or not pid_runs(pid) or (keep and not record.beating()):
