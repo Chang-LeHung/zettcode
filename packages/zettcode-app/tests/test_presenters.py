@@ -38,7 +38,7 @@ from zettcode.presenters.presenters import (
 from zettcode.presenters.pulse import PULSE_FRAMES, RUNNING_GLYPHS, move_frames
 from zettcode.presenters.text import COMPACTING_LABEL, STOP_HINT
 from zettcode.tui import DARK, LIGHT, SEPARATOR, TextLine
-from zettcode.tui.render import display_width
+from zettcode.tui.render import contrast, display_width
 
 
 def _rows(source, width: int = 40) -> list[str]:
@@ -914,13 +914,11 @@ def test_an_enormous_message_is_kept_bounded_like_any_tool_output():
 
 def test_every_tool_hue_can_be_read_on_the_surfaces_a_row_sits_on():
     """A hue that vanishes on a palette's own surface would hide the very rows it is meant to sort."""
-    from test_theme_config import _contrast
-
     for theme in (DARK, LIGHT):
         for role in ("read", "search", "image", "write", "delete", "shell", "plan", "subagent", "message"):
             colour = getattr(theme.tools, role)
-            assert _contrast(colour, theme.surface) >= 3.4, (theme.name, role, "on surface")
-            assert _contrast(colour, theme.surface_alt) >= 3.4, (theme.name, role, "on the alternate surface")
+            assert contrast(colour, theme.surface) >= 3.4, (theme.name, role, "on surface")
+            assert contrast(colour, theme.surface_alt) >= 3.4, (theme.name, role, "on the alternate surface")
 
 
 # -- whose presenter draws a row: the built-ins are the default, at the lowest priority -----------------

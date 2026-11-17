@@ -82,6 +82,46 @@ def blend(first: str, second: str, amount: float) -> str:
     return "#" + "".join(f"{channel:02x}" for channel in channels)
 
 
+def _channel_luminance(value: float) -> float:
+    """Return one channel's share of a WCAG relative luminance, its sRGB value in ``0..1``."""
+    return (value / 12.92) if value <= 0.03928 else (((value + 0.055) / 1.055) ** 2.4)
+
+
+def relative_luminance(colour: str | None) -> float | None:
+    """Return the WCAG 2.1 relative luminance of a colour, or None when there is no colour to read.
+
+    Args:
+        colour: A ``#rrggbb`` colour, or None — a palette role nobody set, such as a page the terminal
+            draws itself — which has no luminance at all.
+    """
+    channels = parse_hex(colour) if colour is not None else None
+    if channels is None:
+        return None
+    red, green, blue = (_channel_luminance(channel / 255) for channel in channels)
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
+def contrast(first: str | None, second: str | None) -> float:
+    """Return the WCAG contrast ratio between two colours, ``1`` when either cannot be read.
+
+    Args:
+        first: One ``#rrggbb`` colour, or None.
+        second: The other.
+
+    ``1`` is no contrast at all and ``21`` the most there is; body text is read
+    against 4.5 and a secondary or large one against 3. A colour that is absent
+    or unreadable has no luminance to compare, and the answer is the lowest
+    ratio rather than a crash: a palette is data, and a floor over it is
+    checked, not assumed. A page the terminal paints itself is therefore the
+    worst case and not a guess.
+    """
+    one, other = relative_luminance(first), relative_luminance(second)
+    if one is None or other is None:
+        return 1.0
+    high, low = sorted((one, other), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
 @lru_cache(maxsize=4096)
 def rgb_to_ansi256(red: int, green: int, blue: int) -> int:
     """Return the closest fixed index in the standard 256-color palette.

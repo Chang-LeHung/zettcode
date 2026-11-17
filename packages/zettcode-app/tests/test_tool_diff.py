@@ -20,7 +20,8 @@ from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui.widgets import TranscriptSource
 from zettcode.plugin_api.entries import EditEntry, EntryStatus, ToolEntry, WriteEntry
 from zettcode.presenters.text import TOOL_EXPANDED_ROWS, TOOL_PREVIEW_ROWS
-from zettcode.tui import DARK, LIGHT
+from zettcode.tui import DARK, LIGHT, TextLine, Theme
+from zettcode.tui.render import contrast
 
 
 def _edit(old: str, new: str) -> tuple[str, str]:
@@ -194,6 +195,25 @@ def _styled(transcript: Transcript, width: int = 70):
     return [source.line(i, width) for i in range(source.count(width))]
 
 
+def _row(transcript: Transcript, text: str, *, theme: Theme = DARK, width: int = 70) -> TextLine:
+    """Return the one row that reads ``text`` on the screen, once its indentation and hook are stripped.
+
+    A row is painted in several pieces (the sign, the part of the line the change kept, the words it
+    rewrote, the rest of the band), so the tests that are about a piece read the row and then its spans.
+    Two rows that read alike are a failure rather than a silent pick of the first: a test that meant the
+    second one would pass while checking the wrong line.
+    """
+    source = TranscriptSource(transcript, theme=theme)
+    matches = [
+        line
+        for index in range(source.count(width))
+        for line in (source.line(index, width),)
+        if line.text.lstrip(" \u2514").rstrip() == text
+    ]
+    assert len(matches) == 1, f"{len(matches)} rows read {text!r}"
+    return matches[0]
+
+
 def _edit_transcript(edits, *, status=EntryStatus.COMPLETED, output="Replaced 1 occurrence in a.py"):
     """A transcript with one edit row: the call carries a single change unless the test gives it a stored list."""
     if len(edits) == 1:
@@ -222,26 +242,75 @@ def test_the_diff_stands_in_for_the_tools_own_one_line_answer():
 
 
 def test_additions_are_painted_as_additions_and_deletions_as_deletions():
-    lines = _styled(_edit_transcript([_edit("x = 1", "x = 2")]))
-    colours = {span.text.strip(): span.style.foreground for line in lines for span in line.spans}
+    transcript = _edit_transcript([_edit("x = 1", "x = 2")])
+    removed, added = _row(transcript, "- x = 1"), _row(transcript, "+ x = 2")
 
-    assert colours["- x = 1"] == DARK.deletion and colours["+ x = 2"] == DARK.addition
+    # The sign and the part of the line the edit kept wear the change's colour; the word it rewrote is marked.
+    assert [span.style.foreground for span in removed.spans[1:3]] == [DARK.deletion] * 2
+    assert [span.style.foreground for span in added.spans[1:3]] == [DARK.addition] * 2
 
 
 def test_added_and_removed_lines_sit_on_a_band_that_runs_the_width_of_the_row():
     """The sign and the text are not enough on their own: each changed line is a band, so it reads as a line."""
     for theme in (DARK, LIGHT):
-        source = TranscriptSource(_edit_transcript([_edit("x = 1", "x = 2")]), theme=theme)
-        lines = [source.line(i, 70) for i in range(source.count(70))]
-        spans = {span.text.strip(): span for line in lines for span in line.spans}
+        transcript = _edit_transcript([_edit("x = 1", "x = 2")])
+        removed, added = _row(transcript, "- x = 1", theme=theme), _row(transcript, "+ x = 2", theme=theme)
 
-        assert spans["+ x = 2"].style.background == theme.addition_fill != theme.deletion_fill
-        assert spans["- x = 1"].style.background == theme.deletion_fill
-        assert spans["+ x = 2"].width == spans["- x = 1"].width, "both bands are the same width"
+        assert removed.spans[1].style.background == theme.deletion_fill
+        assert added.spans[1].style.background == theme.addition_fill != theme.deletion_fill
+        assert removed.width == added.width == 68, "both bands run as wide as the row, marked words or not"
         context = _edit_transcript([_edit("a\nb\nc", "a\nB\nc")])
-        quiet = TranscriptSource(context, theme=theme)
-        rows = [quiet.line(i, 70) for i in range(quiet.count(70))]
-        assert all(span.style.background is None for row in rows for span in row.spans if span.text.strip() == "b")
+        assert all(span.style.background is None for span in _row(context, "a", theme=theme).spans)
+
+
+def test_only_the_words_an_edit_rewrote_sit_on_the_deeper_band():
+    """A line that replaces another is marked word by word, so a one-word change says which word it is."""
+    transcript = _edit_transcript([_edit("x = 1 # keeps", "x = 2 # keeps")])
+    removed, added = _row(transcript, "- x = 1 # keeps"), _row(transcript, "+ x = 2 # keeps")
+
+    assert (removed.spans[2].text, removed.spans[2].style.background) == ("x = ", DARK.deletion_fill)
+    assert (removed.spans[3].text, removed.spans[3].style.background) == ("1", DARK.deletion_emphasis_fill)
+    assert (added.spans[2].text, added.spans[2].style.background) == ("x = ", DARK.addition_fill)
+    assert (added.spans[3].text, added.spans[3].style.background) == ("2", DARK.addition_emphasis_fill)
+    # The word keeps the colour its line has and is not set in bold: the band is the whole of the mark.
+    assert removed.spans[3].style.foreground == DARK.deletion and not removed.spans[3].style.bold
+    assert added.spans[3].style.foreground == DARK.addition and not added.spans[3].style.bold
+    assert added.spans[-1].style.background == DARK.addition_fill, "the band after the word is the line's own"
+
+
+def test_a_line_added_whole_is_a_plain_addition_and_not_a_marked_one():
+    """A line with no line to be compared with *is* the change; marking all of it would say nothing more."""
+    transcript = _edit_transcript([_edit("x = 1", "x = 2\ny = 3")])
+    added = _row(transcript, "+ y = 3")
+
+    assert {span.style.background for span in added.spans[1:]} == {DARK.addition_fill}
+    assert {span.style.foreground for span in added.spans[1:-1]} == {DARK.addition}
+
+
+def test_a_preview_that_stops_between_a_removal_and_its_addition_still_marks_the_removal():
+    """The preview can end on the last removal of a rewritten block; the words are still known to be changed."""
+    old = "\n".join(f"a = {i}" for i in range(TOOL_PREVIEW_ROWS))
+    new = "\n".join(f"a = {i + 10}" for i in range(TOOL_PREVIEW_ROWS))
+    removed = _row(_edit_transcript([_edit(old, new)]), "- a = 0")
+
+    assert [span.text for span in removed.spans if span.style.background == DARK.deletion_emphasis_fill] == ["0"]
+
+
+def test_a_wide_glyph_line_is_cut_on_a_cell_boundary_and_the_band_still_ends_at_the_edge():
+    """A CJK glyph is two cells: neither the cut nor the band's padding may run past the row's end.
+
+    The space before the run keeps it out of the marked token, so the cut and the band after it are the
+    line's own and a padding painted in the marked style would show.
+    """
+    transcript = _edit_transcript([_edit("值 = 1 " + "宽" * 40, "值 = 2 " + "宽" * 40)])
+    source = TranscriptSource(transcript, theme=DARK)
+    rows = [source.line(i, 70) for i in range(source.count(70))]
+    removed = next(row for row in rows if row.text.lstrip(" \u2514").startswith("- 值"))
+
+    assert removed.width == 68
+    assert "\u2026" in removed.text, "the row is cut, not wrapped"
+    assert [span.text for span in removed.spans if span.style.background == DARK.deletion_emphasis_fill] == ["1"]
+    assert removed.spans[-1].style.background == DARK.deletion_fill, "what the cut left is the line's own band"
 
 
 def test_a_palette_can_name_the_band_and_otherwise_it_is_the_line_colour_mixed_into_the_page():
@@ -249,6 +318,29 @@ def test_a_palette_can_name_the_band_and_otherwise_it_is_the_line_colour_mixed_i
     assert replace(DARK, diff_added_fill="#102030").addition_fill == "#102030"
     assert replace(DARK, diff_removed_fill="#302010").deletion_fill == "#302010"
     assert replace(DARK, background="#000000").addition_fill != DARK.addition_fill, "it follows the page"
+
+
+def test_a_palette_can_name_the_deeper_band_and_otherwise_it_is_the_line_colour_mixed_further_in():
+    for theme in (DARK, LIGHT):
+        assert theme.addition_emphasis_fill not in (theme.addition_fill, theme.addition)
+        assert theme.deletion_emphasis_fill not in (theme.deletion_fill, theme.deletion)
+    assert replace(DARK, diff_added_emphasis_fill="#102030").addition_emphasis_fill == "#102030"
+    assert replace(DARK, diff_removed_emphasis_fill="#302010").deletion_emphasis_fill == "#302010"
+
+    named = replace(DARK, diff_added_fill="#101010")
+    assert named.addition_emphasis_fill != DARK.addition_emphasis_fill, "a palette's own band is what it deepens"
+
+
+@pytest.mark.parametrize("theme", [DARK, LIGHT], ids=["dark", "light"])
+def test_the_deeper_band_costs_the_marked_word_at_most_a_third_of_its_contrast(theme):
+    """The word keeps the colour its line has, so every point of the step is contrast taken from that word."""
+    sides = (
+        (theme.addition, theme.addition_fill, theme.addition_emphasis_fill),
+        (theme.deletion, theme.deletion_fill, theme.deletion_emphasis_fill),
+    )
+
+    for ink, band, marked in sides:
+        assert contrast(ink, marked) >= contrast(ink, band) * 2 / 3
 
 
 def test_context_lines_are_quiet_and_the_break_between_edits_is_quieter_still():
@@ -329,9 +421,11 @@ def test_a_long_line_is_cut_at_the_width_not_wrapped_into_the_rows_below():
 
 
 def test_control_characters_in_an_edit_cannot_reach_the_canvas():
-    screen = "\n".join(_screen(_edit_transcript([_edit("a", "b\x1b[31m red \x07")])))
+    """The two lines differ *inside* an escape sequence, which is where a row split into runs would leak it."""
+    screen = "\n".join(_screen(_edit_transcript([_edit('print("\x1b[31m")\x07', 'print("\x1b[32m")\x07')])))
 
     assert "\x1b" not in screen and "\x07" not in screen
+    assert "31m" not in screen and "32m" not in screen, "an escape goes with its parameter bytes, not in halves"
 
 
 def test_a_write_row_shows_the_count_in_the_addition_colour_and_no_body():
@@ -410,19 +504,20 @@ def test_changing_the_accent_changes_the_diff_with_it_until_the_diff_is_given_a_
 
 def test_a_diff_is_painted_in_the_light_palette_in_the_light_palettes_colours():
     transcript = _edit_transcript([_edit("x = 1", "x = 2")])
-    source = TranscriptSource(transcript, theme=LIGHT)
-    lines = [source.line(i, 70) for i in range(source.count(70))]
-    colours = {span.text.strip(): span.style.foreground for line in lines for span in line.spans}
 
-    assert colours["- x = 1"] == LIGHT.deletion and colours["+ x = 2"] == LIGHT.addition
+    assert _row(transcript, "- x = 1", theme=LIGHT).spans[1].style.foreground == LIGHT.deletion
+    assert _row(transcript, "+ x = 2", theme=LIGHT).spans[1].style.foreground == LIGHT.addition
 
 
 def test_a_theme_file_can_change_the_diff_colours():
     from zettcode.tui.theme_file import theme_from_toml
 
-    theme = theme_from_toml('[ui]\ndiff_added = "#00ff00"\ndiff_removed = "#ff0000"\n')
+    theme = theme_from_toml(
+        '[ui]\ndiff_added = "#00ff00"\ndiff_removed = "#ff0000"\ndiff_added_emphasis_fill = "#001100"\n'
+    )
 
     assert (theme.addition, theme.deletion) == ("#00ff00", "#ff0000")
+    assert theme.addition_emphasis_fill == "#001100", "the deeper band is a colour of its own too"
     assert theme.accent == DARK.accent, "and nothing else moved"
 
 
@@ -478,11 +573,11 @@ def test_the_write_diff_stands_in_for_the_tools_own_answer():
 
 
 def test_written_lines_are_painted_in_the_addition_colour_and_nothing_is_painted_as_removed():
-    lines = _styled(_write_transcript("a\nb\n"))
-    colours = {span.text.strip(): span.style.foreground for line in lines for span in line.spans}
+    transcript = _write_transcript("a\nb\n")
 
-    assert colours["+ a"] == DARK.addition and colours["+ b"] == DARK.addition
-    assert not any(c == DARK.deletion for c in colours.values())
+    for text in ("+ a", "+ b"):
+        assert {span.style.foreground for span in _row(transcript, text).spans[1:-1]} == {DARK.addition}
+    assert not any(span.style.foreground == DARK.deletion for line in _styled(transcript) for span in line.spans)
 
 
 def test_a_failed_write_shows_its_error_and_not_the_file_it_did_not_write():

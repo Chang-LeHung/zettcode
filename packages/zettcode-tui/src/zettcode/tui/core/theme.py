@@ -10,6 +10,13 @@ from ..render.color import blend, parse_hex
 #: How much of a diff line's colour is mixed into the page to make the fill behind that line.
 DIFF_FILL_SHARE = 0.16
 
+#: How much of it is mixed into that fill again for the words of a line that actually changed. It is a share of the
+#: band and not of the page, so a palette that names its own band gets the same visible step up from it. The step is
+#: held to what it costs: a marked word keeps the colour its line has, so every point of it is contrast taken from the
+#: word the band points at, and the two are not far apart to begin with
+#: (`test_the_deeper_band_costs_the_marked_word_at_most_a_third_of_its_contrast`).
+DIFF_EMPHASIS_SHARE = 0.2
+
 
 @dataclass(frozen=True, slots=True)
 class ToolTheme:
@@ -119,10 +126,15 @@ class Theme:
             (:attr:`background`, or :attr:`surface` when the page is the terminal's), so the band follows the
             palette. Read it through :attr:`addition_fill`.
         diff_removed_fill: The same for a removed line; read it through :attr:`deletion_fill`.
+        diff_added_emphasis_fill: The deeper band behind the words of an added line that changed, as opposed to
+            the line it changed. ``None`` mixes :attr:`addition` further into :attr:`addition_fill`, so the tokens a
+            change rewrote stand out from the rest of the line. Read it through :attr:`addition_emphasis_fill`.
+        diff_removed_emphasis_fill: The same for a removed line; read it through :attr:`deletion_emphasis_fill`.
         border: Frame glyphs and separators.
         focus: Focus ring colour; reserved, no built-in widget draws a ring yet.
         selection: Background of a selected or emphasised cell, used by list
-            rows and diff segments; text selection uses reverse video instead.
+            rows and the panels a mark moves through; text selection uses
+            reverse video instead.
         tools: Per-tool palette for agent rows; see :class:`ToolTheme`.
         code: Per-token palette for fenced code blocks.
     """
@@ -144,6 +156,8 @@ class Theme:
     diff_removed: str | None = None
     diff_added_fill: str | None = None
     diff_removed_fill: str | None = None
+    diff_added_emphasis_fill: str | None = None
+    diff_removed_emphasis_fill: str | None = None
     border: str = "#3d484d"
     focus: str = "#83c092"
     selection: str = "#4a5f52"
@@ -159,6 +173,16 @@ class Theme:
     def deletion_fill(self) -> str:
         """Return the fill behind a removed line: ``diff_removed_fill`` if set, else the deletion colour mixed in."""
         return self.diff_removed_fill or blend(self.background or self.surface, self.deletion, DIFF_FILL_SHARE)
+
+    @property
+    def addition_emphasis_fill(self) -> str:
+        """Return the fill behind the words an added line changed: ``diff_added_emphasis_fill`` if set, else a deeper mix."""
+        return self.diff_added_emphasis_fill or blend(self.addition_fill, self.addition, DIFF_EMPHASIS_SHARE)
+
+    @property
+    def deletion_emphasis_fill(self) -> str:
+        """Return the fill behind the words a removed line changed: ``diff_removed_emphasis_fill`` if set, else a deeper mix."""
+        return self.diff_removed_emphasis_fill or blend(self.deletion_fill, self.deletion, DIFF_EMPHASIS_SHARE)
 
     @property
     def addition(self) -> str:

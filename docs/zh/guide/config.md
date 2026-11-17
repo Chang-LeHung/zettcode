@@ -657,13 +657,16 @@ inline = "#9bddad"            # Markdown `行内代码`
 
 | 段落 | 颜色参数 |
 | --- | --- |
-| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `surface_peer`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `diff_added_fill`, `diff_removed_fill`, `border`, `focus`, `selection` |
+| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `surface_peer`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `diff_added_fill`, `diff_removed_fill`, `diff_added_emphasis_fill`, `diff_removed_emphasis_fill`, `border`, `focus`, `selection` |
 | `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent`, `message`, `web-search`, `ask-user` |
 | `code` | `inline`, `text`, `keyword`, `string`, `comment`, `number`, `function`, `builtin`, `operator`, `punctuator` |
 
 `diff_added` 和 `diff_removed` 给编辑 diff 的行和文件旁边的 `+N -M` 上色。不写时分别跟随 `accent` 和 `error`，
 所以改了这两个，diff 也会跟着变；想让 diff 单独换颜色就设置它们。`diff_added_fill` 和 `diff_removed_fill` 是这些行后面的底色；
-不写时就是行的颜色混进页面底色得到的，所以底色会跟着配色走。
+不写时就是行的颜色混进页面底色得到的，所以底色会跟着配色走。`diff_added_emphasis_fill` 和
+`diff_removed_emphasis_fill` 是被改的那一行里真正被改写的那几个词后面的更重底色；不写时就是行的颜色再往这块底色里混一层，
+所以一个词的小改动能让人一眼看出改的是哪个词。被标记的词保持它那一行的颜色，标记本身不再加粗，全靠底色：
+所以把底色本身设成行色就没有再深一层的余地了，词也就不再被标出来。
 
 颜色使用带引号的六位十六进制，例如 `"#83c092"`。不能填 `"green"`、三位十六进制，
 也不能用 TOML 字符串 `"None"` 表示透明；省略 `background` 就会保留终端背景。
