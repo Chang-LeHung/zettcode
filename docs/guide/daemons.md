@@ -57,6 +57,10 @@ dropped connection, a rate limit — is retried up to three times from where it 
 | `zettcode daemon update <id>` | Change `--model`, `--effort`, `--name`, `--title`, or `--permission`. |
 | `zettcode daemon model` | List the models `spawn --model` accepts; `--json` for scripts. |
 
+A daemon that exits any other way, such as a reboot or Ctrl-C, keeps its record too: it is listed as `dead` in
+`daemon list`, in `/hub` (Daemons tab) and in the gateway's chats, and can be started again from any of them. Only
+`kill` and `delete` remove it. In `/hub`, `s` stops, `t` restarts, and `d` deletes (press it twice).
+
 `stop` and `kill` refuse a daemon in the middle of a turn; add `--force` to stop it anyway. A model or effort change
 takes effect from the next turn. A permission change restarts the process, so the turn in flight is lost. `--title`
 is refused while it runs, because the running process owns the session's name.
@@ -65,4 +69,4 @@ is refused while it runs, because the running process owns the session's name.
 
 - [Talking between sessions](/guide/messaging): messages, groups and the broker.
 - [Web gateway](/guide/gateway): start, watch and stop daemons from a page.
-- [Codex & Claude Code](/guide/code-agents): other agents as group members.
+- [Codex & Claude Code](/guide/code-agents): other vendors' agents.

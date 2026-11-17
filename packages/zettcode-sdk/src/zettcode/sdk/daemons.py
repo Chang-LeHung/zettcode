@@ -112,7 +112,8 @@ def _info(record: Record) -> DaemonInfo:
 def list_daemons() -> list[DaemonInfo]:
     """Return every daemon recorded on this machine, whichever workspace it works in, newest first.
 
-    A daemon whose process is gone is listed with the status ``dead`` until it is stopped, which removes the record.
+    A daemon whose process is gone, however it went (a stop, a reboot, Ctrl-C), is listed with the status ``dead``
+    until it is killed or deleted, which remove the record.
     This reads a few small files per daemon, so it is cheap to call often.
     """
     from zettcode.daemon.state import Registry

@@ -719,7 +719,8 @@ def test_an_offline_row_is_muted_and_enter_on_it_starts_a_daemon_on_that_session
         on_start=started.append,
     )
     opened._show(DAEMONS)
-    assert "start an offline one" in opened.footer
+    for action in ("enter start", "t restart", "s stop", "d delete"):
+        assert action in opened.footer, f"Daemons offers {action}"
     opened.list.selected = 0
     opened.capture_event(_key("enter"), None)
     assert started == [] and "is running" in (opened.subtitle or "")
@@ -1932,12 +1933,200 @@ def test_the_first_s_on_a_working_daemon_says_what_stopping_costs_and_the_second
     opened = page(daemons=(Daemon("busy", "the builder", "working"),))
 
     asyncio.run(command._stop(opened, object(), "busy"))
-    assert asked == [False] and "press s again" in (opened.subtitle or ""), "told, and nothing stopped yet"
+    assert asked == [False] and "press s or t again" in (opened.subtitle or ""), "told, and nothing stopped yet"
     assert "--force" not in (opened.subtitle or ""), "the page does not name a flag it cannot pass"
 
     asyncio.run(command._stop(opened, object(), "busy"))
     assert asked == [False, True], "the second s forces it"
     assert opened.subtitle == "stopped; its record was kept" and not command._forced
+
+
+def test_d_asks_first_and_deletes_a_stopped_daemon_on_the_second_press_of_the_same_row():
+    deleted: list[str] = []
+    opened = HubPage(
+        data(daemons=(Daemon("d-1", "old", "dead", workspace="/w"), Daemon("d-2", "other", "dead", workspace="/w"))),
+        on_close=lambda: None,
+        on_delete=deleted.append,
+    )
+    opened._show(DAEMONS)
+
+    opened.capture_event(_key("d"), None)
+    assert deleted == [] and "press d again" in (opened.subtitle or ""), "the first d only asks"
+
+    opened.capture_event(_key("s"), None)  # any other key forgets the question
+    opened.capture_event(_key("d"), None)
+    assert deleted == [] and "press d again" in (opened.subtitle or ""), "with a key between, it asks again"
+
+    opened.list.selected = 1  # another row is asked about on its own
+    opened.capture_event(_key("d"), None)
+    assert deleted == [], "a different row is asked about first"
+
+    opened.capture_event(_key("d"), None)
+    assert deleted == ["d-2"], "the second d on the same row deletes it"
+
+
+def test_d_does_not_delete_a_running_daemon_and_says_to_stop_it_first_and_history_has_none():
+    deleted: list[str] = []
+    opened = HubPage(
+        data(daemons=(Daemon("d-1", "watcher", "idle", workspace="/w"),), stored=(Daemon("s-1", "old", "offline"),)),
+        on_close=lambda: None,
+        on_delete=deleted.append,
+        on_restart=deleted.append,
+    )
+    opened._show(DAEMONS)
+    opened.capture_event(_key("d"), None)
+    opened.capture_event(_key("d"), None)
+    assert deleted == [] and "stop it with s" in (opened.subtitle or "")
+
+    opened._show(HISTORY)
+    for key in ("d", "t"):
+        opened.capture_event(_key(key), None)
+        assert deleted == [] and "no daemon to restart or delete" in (opened.subtitle or "")
+
+
+def test_t_restarts_the_daemon_under_the_mark_whether_it_runs_or_not():
+    restarted: list[str] = []
+    for status in ("dead", "idle"):
+        opened = HubPage(
+            data(daemons=(Daemon("d-1", "watcher", status, workspace="/w"),)),
+            on_close=lambda: None,
+            on_restart=restarted.append,
+        )
+        opened._show(DAEMONS)
+        opened.capture_event(_key("t"), None)
+    assert restarted == ["d-1", "d-1"]
+
+
+def test_restarting_a_running_daemon_stops_it_then_starts_it_and_a_working_one_is_warned_first(monkeypatch):
+    from zettcode.sdk import daemons
+    from zettcode.sdk.errors import ConfigurationError
+
+    calls: list[str] = []
+
+    async def stop(session_id, *, force=False, keep=False):
+        calls.append(f"stop force={force} keep={keep}")
+        if not force and session_id == "busy":
+            raise ConfigurationError("it is working on a turn")
+        return "stopped; its record was kept"
+
+    async def read(self, client):
+        return data()
+
+    async def resume(self, page, client, session_id):
+        calls.append(f"start {session_id}")
+
+    monkeypatch.setattr(daemons, "stop_daemon", stop)
+    monkeypatch.setattr(HubCommand, "_read", read)
+    monkeypatch.setattr(HubCommand, "_resume", resume)
+    command = HubCommand()
+
+    opened = page(daemons=(Daemon("up", "up", "idle"),))
+    asyncio.run(command._restart(opened, object(), "up"))
+    assert calls == ["stop force=False keep=True", "start up"], "stopped with its record kept, then started"
+
+    calls.clear()
+    busy = page(daemons=(Daemon("busy", "builder", "working"),))
+    asyncio.run(command._restart(busy, object(), "busy"))
+    assert calls == ["stop force=False keep=True"] and "press s or t again" in (busy.subtitle or "")
+    asyncio.run(command._restart(busy, object(), "busy"))
+    assert calls[1:] == ["stop force=True keep=True", "start busy"], "the second t goes ahead"
+
+    calls.clear()
+    stale = page(daemons=(Daemon("up", "up", "dead"),))
+    asyncio.run(command._restart(stale, object(), "up"))
+    assert calls == ["stop force=False keep=True", "start up"], "a row that reads dead is stopped too: it may run now"
+
+
+def test_a_second_t_while_the_first_is_restarting_does_not_stop_what_the_first_started(monkeypatch):
+    from zettcode.sdk import daemons
+
+    calls: list[str] = []
+
+    async def stop(session_id, *, force=False, keep=False):
+        calls.append("stop")
+        return "stopped"
+
+    async def read(self, client):
+        return data()
+
+    async def resume(self, page, client, session_id):
+        calls.append("start")
+
+    monkeypatch.setattr(daemons, "stop_daemon", stop)
+    monkeypatch.setattr(HubCommand, "_read", read)
+    monkeypatch.setattr(HubCommand, "_resume", resume)
+    command = HubCommand()
+    opened = page(daemons=(Daemon("up", "up", "idle"),))
+    command._starting.add("up")  # the first press is on its way
+
+    asyncio.run(command._restart(opened, object(), "up"))
+
+    assert calls == [] and "already restarting" in (opened.subtitle or ""), "the second press does nothing"
+
+
+def test_d_and_t_are_letters_while_a_search_is_typed_and_do_not_keep_a_delete_armed():
+    deleted: list[str] = []
+    restarted: list[str] = []
+    opened = HubPage(
+        data(daemons=(Daemon("d-1", "old", "dead", workspace="/w"),)),
+        on_close=lambda: None,
+        on_delete=deleted.append,
+        on_restart=restarted.append,
+    )
+    opened._show(DAEMONS)
+    opened.capture_event(_key("d"), None)  # armed
+    opened.capture_event(_key("/"), None)
+    for letter in "dt":
+        opened.capture_event(_key(letter), None)
+    assert opened.queries[DAEMONS] == "dt" and deleted == [] and restarted == [], "letters, not actions"
+
+    opened.capture_event(_key("enter"), None)  # keeps the filter, and nothing is left armed
+    opened.queries[DAEMONS] = ""
+    opened._show(DAEMONS)
+    opened.capture_event(_key("d"), None)
+    assert deleted == [] and "press d again" in (opened.subtitle or ""), "asks again: a d typed into a search is no yes"
+
+    # that last d armed it again: now to History and back, where going away is another key
+    opened.capture_event(_key("tab"), None)
+    opened.capture_event(_key("backtab"), None)
+    opened.capture_event(_key("d"), None)
+    assert deleted == [], "leaving the tab and coming back does not keep the question open"
+
+
+def test_d_on_a_daemon_that_is_stopping_says_so_rather_than_that_it_is_running():
+    opened = HubPage(
+        data(daemons=(Daemon("d-1", "old", "stopping", workspace="/w"),)),
+        on_close=lambda: None,
+        on_delete=lambda session_id: None,
+    )
+    opened._show(DAEMONS)
+    opened.capture_event(_key("d"), None)
+    assert "is stopping" in (opened.subtitle or "")
+
+
+def test_deleting_a_daemon_says_what_was_removed_or_why_it_was_not(monkeypatch):
+    from zettcode.sdk import daemons
+    from zettcode.sdk.errors import ConfigurationError
+
+    async def delete(session_id):
+        if session_id == "open":
+            raise ConfigurationError("another process has the session open")
+        return "its record and its conversation were removed"
+
+    async def read(self, client):
+        return data()
+
+    monkeypatch.setattr(daemons, "delete_daemon", delete)
+    monkeypatch.setattr(HubCommand, "_read", read)
+    command = HubCommand()
+
+    done = page(daemons=(Daemon("gone", "old", "dead"),))
+    asyncio.run(command._delete(done, object(), "gone"))
+    assert done.subtitle == "deleted: its record and its conversation were removed"
+
+    refused = page(daemons=(Daemon("open", "old", "dead"),))
+    asyncio.run(command._delete(refused, object(), "open"))
+    assert "not deleted: another process has the session open" in (refused.subtitle or "")
 
 
 def test_a_refresh_forgets_which_working_daemons_were_warned(monkeypatch):

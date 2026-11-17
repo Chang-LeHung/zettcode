@@ -139,7 +139,8 @@ class Daemon:
     """One background agent, held by the process that runs it: its client, its record, its inbox and its log.
 
     ``serve`` is the whole life of the process: join the broker, say it is idle, answer messages until a signal
-    arrives, and take the record away on the way out. Everything else here is one step of that.
+    arrives, and leave the record behind as a dead one on the way out (a ``kill`` asked for it to go, and then it is
+    removed). Everything else here is one step of that.
     """
 
     def __init__(self, client: Client, options: Options) -> None:
@@ -199,8 +200,10 @@ class Daemon:
             await self.mark("stopping")
             # The record goes with the process: a daemon that stopped cleanly is not an entry a reader has to clean
             # up, and the `kill` that asked it to stop waits for this rather than for a pid, which a zombie still
-            # answers. A stop that asked to keep it leaves it, as a dead one the reader can start again or delete.
-            if not self._kept():
+            # answers. Only a stop that asked for the record to go (``kill``) removes it. Any other end — a ``stop``, a
+            # Ctrl-C, the machine shutting down — leaves it, as a dead one the reader can start again or delete: a
+            # daemon someone set up on purpose has to still be there after a reboot.
+            if self._asked_to_remove(State.load(self.record.folder)):
                 self.record.remove()
             else:
                 # Nothing removes the folder now, so the daemon says it is gone the one way that does not depend on
@@ -208,9 +211,18 @@ class Daemon:
                 self.record.end_beat()
         return EXIT_OK
 
-    def _kept(self) -> bool:
-        """Return whether the stop that is ending this process asked for the record to stay."""
-        return self._asked_to_keep(State.load(self.record.folder))
+    def _asked_to_remove(self, current: State | None) -> bool:
+        """Return whether ``current`` carries a ``kill``'s ask, made of *this* process, to remove the record.
+
+        The token and the pid are checked as for :meth:`_asked_to_keep`: a field left by an earlier start of the same
+        session is not this process's ask.
+        """
+        return bool(
+            current is not None
+            and current.remove
+            and current.token == self.options.token
+            and current.pid == os.getpid()
+        )
 
     def _asked_to_keep(self, current: State | None) -> bool:
         """Return whether ``current`` carries the ask to keep the record that was made of *this* process.
@@ -218,8 +230,8 @@ class Daemon:
         A stop writes ``keep`` into the state before it signals, and every later write of this process carries it, so
         the daemon's last write cannot put it back: whatever status a turn that was already starting wrote over the
         stop's, the field survives it. What may not be believed is a field left in the folder by an earlier start of
-        the same session (a daemon started again on a kept record finds it there, and would leave a record behind on
-        Ctrl-C that it used to remove). The token is this start's own and the pid is this process's: the token alone
+        the same session (a daemon started again on a kept record finds it there; it is not this start's ask). The
+        token is this start's own and the pid is this process's: the token alone
         names the state this process wrote, and the pid alone could be a stopped daemon's pid the system gave to the
         new one, so both have to say so.
         """
@@ -472,6 +484,7 @@ class Daemon:
                         # daemon's last: built afresh, the state would say "do not keep" and the daemon would remove
                         # the record it was asked to leave. What counts as this process's ask is `_asked_to_keep`.
                         keep=self._asked_to_keep(current),
+                        remove=self._asked_to_remove(current),
                     ),
                     wait=0,
                 )
