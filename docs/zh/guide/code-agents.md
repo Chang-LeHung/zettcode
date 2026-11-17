@@ -1,6 +1,6 @@
 # Codex 与 Claude Code
 
-`zettcode-code-agents` 插件把 **Codex** 和 **Claude Code** 作为群的成员运行。每个各有一段命令行会话，会话 id 保存在
+`zettcode-code-agents` 插件把 **Codex** 和 **Claude Code** 作为智能体运行，用 `@` 呼叫。每个各有一段命令行会话，会话 id 保存在
 `~/.zettcode/code-agents/`（`$ZETTCODE_CODE_AGENTS_DIR` 可指向别的目录），所以每条消息都接着同一段对话。
 插件只启动你已经装好的 CLI。
 
@@ -16,8 +16,10 @@ zettcode gateway restart                 # 网关已在运行时
 ## 启动一个
 
 运行 `zettcode gateway start`，在浏览器里打开它打印的地址，点 **New**，选 **External agent**（外部智能体），挑
-Codex 或 Claude Code，需要的话在 **Join group**（加入群组）里填群名（不带 `#`），再点 **Start external agent**
+Codex 或 Claude Code，再点 **Start external agent**
 （启动外部智能体）。智能体会出现在 Chats 里，你用 `@` 呼叫它，在页面里或终端会话里都行。
+目前外部智能体不能拉进群聊：两个外部智能体会无休止地互相回复。旧版本留下的群里如果已有外部智能体，它仍在群里，
+可能继续互相回复：打开该群的成员列表，把它移出去。
 **New** 说没有安装外部智能体插件时，装好插件再重启网关。
 
 ## 信任与设置

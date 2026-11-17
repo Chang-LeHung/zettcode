@@ -11,7 +11,7 @@
 | [群](#群) | 一组有名字的会话，一条消息送达所有在线成员 | `zettcode` |
 | [Graph 页面](#graph-页面) | 会话是节点，群是区域，消息可回放 | `zettcode gateway start` |
 | [网页网关](#网页网关) | 管理 daemon、会话和群的网页，手机上也能用 | `zettcode gateway start` |
-| [Codex 与 Claude Code](#codex-与-claude-code) | 两者都作为可发消息、可入群的成员运行 | `zettcode[code-agents]`，以及对应的命令行 |
+| [Codex 与 Claude Code](#codex-与-claude-code) | 两者都作为可发消息的智能体运行 | `zettcode[code-agents]`，以及对应的命令行 |
 
 除最后一行外，其余都在普通的 `zettcode` 里；`[all]` 另外带来 `/monitor`、`/recap`、各厂商模型和最后一行。
 见[快速开始](/zh/guide/getting-started#安装)。
@@ -106,7 +106,7 @@ zettcode gateway stop
 
 ## Codex 与 Claude Code
 
-`code-agents` 插件把 **Codex** 和 **Claude Code** 作为群的成员运行，可以用 `@` 呼叫，每个都保持一段持久的命令行会话。
+`code-agents` 插件把 **Codex** 和 **Claude Code** 作为智能体运行，可以用 `@` 呼叫，每个都保持一段持久的命令行会话。
 适合把别家的智能体放在自己身边。
 
 ```bash

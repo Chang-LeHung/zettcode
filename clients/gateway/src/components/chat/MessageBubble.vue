@@ -9,10 +9,12 @@ import { setReply } from "../../stores/reply";
 import { jumpToQuoted } from "../../lib/jump";
 import { currentKey, find } from "../../stores/chatSearch";
 import { canWrite, threadOf } from "../../stores/threads";
+import { go } from "../../stores/route";
 import { toast } from "../../stores/ui";
 import { copyText } from "../../lib/clipboard";
 import { longPress } from "../../lib/press";
 import { showMenu } from "../sheets/sheets";
+import { showInfo } from "./threadActions";
 import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
 import UserAvatar from "../common/UserAvatar.vue";
@@ -120,7 +122,9 @@ function again(): void {
 <template>
   <div class="msg" :class="[row.side, { cont: row.cont, found, current }]" :data-row="row.key" @contextmenu="onContext" @pointerdown="press.down" @pointermove="press.move" @pointerup="press.end" @pointercancel="press.end" @pointerleave="press.end">
     <template v-if="row.side === 'in'">
-      <Avatar v-if="row.tail && owner" class="msg-avatar" :thread="owner" size="sm" />
+      <button v-if="row.tail && owner" type="button" class="msg-avatar msg-avatar-btn" :aria-label="t('Profile')" :title="t('Profile')" @pointerdown.stop @click="showInfo(owner)">
+        <Avatar :thread="owner" size="sm" />
+      </button>
       <div v-else class="msg-avatar" />
     </template>
     <div class="bubble" :class="{ reply: row.item.kind === 'reply', err: state === 'failed' }">
@@ -156,7 +160,9 @@ function again(): void {
       </div>
     </div>
     <template v-if="row.side === 'out'">
-      <UserAvatar v-if="row.tail" class="msg-avatar" size="sm" />
+      <button v-if="row.tail" type="button" class="msg-avatar msg-avatar-btn" :aria-label="t('Settings')" :title="t('Settings')" @pointerdown.stop @click="go('settings')">
+        <UserAvatar size="sm" />
+      </button>
       <div v-else class="msg-avatar" />
     </template>
     <Teleport to="body">
@@ -172,6 +178,8 @@ function again(): void {
 .msg.out { justify-content: flex-end; }
 .msg.out.cont { margin-top: 3px; }
 .msg-avatar { flex: none; width: 40px; height: 40px; }
+.msg-avatar-btn { padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; }
+.msg-avatar-btn:hover { filter: brightness(1.06); }
 .bubble {
   position: relative; min-width: 0; max-width: min(78%, 34rem); padding: 7px 11px 6px; border-radius: var(--bubble-radius);
   box-shadow: var(--shadow); line-height: 1.38; overflow-wrap: anywhere; word-break: break-word; animation: pop 0.16s ease-out;

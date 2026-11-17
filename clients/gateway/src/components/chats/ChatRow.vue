@@ -5,10 +5,22 @@ import { folderName, listTime } from "../../lib/format";
 import { badge } from "../../lib/unread";
 import { href } from "../../stores/route";
 import type { Thread } from "../../types";
+import { showRowMenu } from "../chat/threadActions";
 import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
 
 const props = defineProps<{ thread: Thread; current: boolean }>();
+
+// A long press on a touch screen is a right click that may be followed by a click on release: that click must not open the
+// conversation under the menu that was just shown.
+let menuAt = 0;
+function onContext(): void {
+  menuAt = Date.now();
+  showRowMenu(props.thread);
+}
+function onClick(event: MouseEvent): void {
+  if (Date.now() - menuAt < 700) event.preventDefault();
+}
 
 const typing = computed(() => props.thread.status === "working");
 const kindIcon = computed(() => (props.thread.kind === "daemon" ? "bot" : props.thread.kind === "external" ? "plug" : "term"));
@@ -24,7 +36,7 @@ const line = computed(() => {
 </script>
 
 <template>
-  <a class="row" :href="href('chats', thread.id)" :aria-current="current ? 'true' : undefined">
+  <a class="row" :href="href('chats', thread.id)" :aria-current="current ? 'true' : undefined" @contextmenu.prevent="onContext" @click="onClick">
     <Avatar :thread="thread" />
     <div class="row-body">
       <div class="row-top">

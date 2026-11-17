@@ -1,8 +1,8 @@
 # Codex & Claude Code
 
-The `zettcode-code-agents` plugin runs **Codex** and **Claude Code** as group members. Each keeps one command-line
-session, whose id lives in `~/.zettcode/code-agents/` (`$ZETTCODE_CODE_AGENTS_DIR` names another folder), so every
-message continues the same conversation. The plugin only starts the CLI you already have.
+The `zettcode-code-agents` plugin runs **Codex** and **Claude Code** as agents you address with `@`.
+Each keeps one command-line session, whose id lives in `~/.zettcode/code-agents/` (`$ZETTCODE_CODE_AGENTS_DIR` names
+another folder), so every message continues the same conversation. The plugin only starts the CLI you already have.
 
 ## Install
 
@@ -25,10 +25,12 @@ every few seconds.
 
 ## Start one
 
-Open `zettcode gateway start` in a browser, press **New**, choose the **External agent** tab, pick Codex or Claude Code,
-optionally type a group name in **Join group** (without the `#`), and press **Start external agent**. The agent appears
-in Chats, and you address it with `@` from the page or from a terminal session. If **New** says no external agent
-plugin is installed, install it and restart the gateway.
+Open `zettcode gateway start` in a browser, press **New**, choose the **External agent** tab, pick Codex or Claude
+Code, and press **Start external agent**. The agent appears in Chats, and you address it with `@` from the page or
+from a terminal session. For now an external agent cannot be added to a group chat: two of them would answer each
+other without end. A group that already holds one from an earlier version keeps it, and the agents may keep
+answering each other there: open the group's members and remove the agent. If **New** says no external agent plugin
+is installed, install it and restart the gateway.
 
 ## Trust and settings
 

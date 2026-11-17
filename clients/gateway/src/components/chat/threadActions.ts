@@ -12,7 +12,7 @@ import { fromThread } from "../../stores/spawn";
 import { loadThreads } from "../../stores/threads";
 import { openSheet, toast } from "../../stores/ui";
 import type { Thread } from "../../types";
-import { confirmAction, showMenu } from "../sheets/sheets";
+import { confirmAction, showMenu, type MenuEntry } from "../sheets/sheets";
 import ThreadInfo from "./ThreadInfo.vue";
 
 async function copyId(thread: Thread): Promise<void> {
@@ -114,18 +114,26 @@ async function setFlag(thread: Thread, flag: "pinned" | "archived", on: boolean)
   }
 }
 
+/** The two entries of a thread's menus that keep a list tidy, so the header's menu and the list's cannot differ. */
+const pinEntry = (thread: Thread): MenuEntry => ({
+  icon: "pin",
+  label: thread.pinned ? t("Unpin") : t("Pin to the top"),
+  run: () => void setFlag(thread, "pinned", !thread.pinned),
+});
+const archiveEntry = (thread: Thread): MenuEntry => ({
+  icon: "archive",
+  label: thread.archived ? t("Move back to the list") : t("Archive"),
+  run: () => void setFlag(thread, "archived", !thread.archived),
+});
+
 /** The menu behind the dots in a conversation's header. */
 export function showThreadMenu(thread: Thread): void {
   const daemon = thread.kind === "daemon";
   const alive = daemon && thread.online;
   showMenu(thread.name, [
     { icon: "info", label: t("Info"), run: () => showInfo(thread) },
-    { icon: "pin", label: thread.pinned ? t("Unpin") : t("Pin to the top"), run: () => void setFlag(thread, "pinned", !thread.pinned) },
-    {
-      icon: "archive",
-      label: thread.archived ? t("Move back to the list") : t("Archive"),
-      run: () => void setFlag(thread, "archived", !thread.archived),
-    },
+    pinEntry(thread),
+    archiveEntry(thread),
     daemon && { icon: "logs", label: t("Logs"), run: () => go("logs", thread.id) },
     { icon: "copy", label: t("Copy session id"), run: () => void copyId(thread) },
     canRestart(thread) && { icon: "refresh", label: t("Restart it"), run: () => void restartNow(thread) },
@@ -133,6 +141,11 @@ export function showThreadMenu(thread: Thread): void {
     alive && { icon: "stop", label: t("Stop daemon"), run: () => void stopDaemon(thread), danger: true },
     daemon && !alive && { icon: "trash", label: t("Delete daemon"), run: () => void deleteDaemon(thread), danger: true },
   ]);
+}
+
+/** The menu a right click on a row of the chat list opens: the two things a list is kept tidy with. */
+export function showRowMenu(thread: Thread): void {
+  showMenu(thread.name, [pinEntry(thread), archiveEntry(thread)]);
 }
 
 export { stopDaemon, deleteDaemon, restart as restartDaemon };

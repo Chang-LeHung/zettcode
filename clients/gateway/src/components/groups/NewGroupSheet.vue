@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { ApiError } from "../../api/http";
 import { t } from "../../i18n";
-import { createGroup, GROUP_NAME, spellGroup } from "../../stores/groups";
+import { canJoinGroup, createGroup, GROUP_NAME, spellGroup } from "../../stores/groups";
 import { go } from "../../stores/route";
 import { lobby } from "../../stores/threads";
 import { toast } from "../../stores/ui";
@@ -22,7 +22,9 @@ const wanted = computed(() => query.value.trim().toLowerCase());
 const candidates = computed(() =>
   lobby.threads.filter(
     (thread) =>
-      thread.online && (!wanted.value || [thread.name, thread.title, thread.handle].some((field) => field.toLowerCase().includes(wanted.value))),
+      thread.online &&
+      canJoinGroup(thread) &&
+      (!wanted.value || [thread.name, thread.title, thread.handle].some((field) => field.toLowerCase().includes(wanted.value))),
   ),
 );
 
@@ -59,7 +61,7 @@ async function create(): Promise<void> {
     <small v-if="hint" class="ng-hint">{{ hint }}</small>
 
     <div class="invite-group">{{ t("Members") }} · {{ t("{count} chosen", { count: chosen.length }) }}</div>
-    <input v-model="query" type="search" :placeholder="t('Search sessions or agents')" :aria-label="t('Search sessions or agents')" />
+    <input v-model="query" type="search" :placeholder="t('Search sessions')" :aria-label="t('Search sessions')" />
     <div class="ng-list">
       <button v-for="thread in candidates" :key="thread.id" type="button" class="invite-row" :aria-pressed="chosen.includes(thread.id)" @click="toggle(thread.id)">
         <Avatar :thread="thread" size="sm" />
