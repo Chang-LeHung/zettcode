@@ -11,7 +11,6 @@ import type { AgentType } from "../../types";
 const types = ref<AgentType[]>([]);
 const kind = ref("");
 const title = ref("");
-const group = ref("");
 const busy = ref(false);
 const loading = ref(true);
 const failure = ref("");
@@ -44,7 +43,7 @@ async function start(): Promise<void> {
   busy.value = true;
   failure.value = "";
   try {
-    const made = await gateway.createAgent({ kind: kind.value, title: title.value.trim(), group: group.value.trim() });
+    const made = await gateway.createAgent({ kind: kind.value, title: title.value.trim() });
     await loadThreads();
     toast(t("External agent started"));
     go("chats", made.thread?.id ?? made.agent.session_id);
@@ -64,7 +63,7 @@ function initial(agent: AgentType): string {
   <div class="agent-setup">
     <header class="agent-lead">
       <p>
-        {{ t("An installed gateway plugin starts a session that answers on its own. It appears in Chats and can join a group on start.") }}
+        {{ t("An installed gateway plugin starts a session that answers on its own. It appears in Chats.") }}
       </p>
     </header>
 
@@ -105,10 +104,6 @@ function initial(agent: AgentType): string {
         <label class="agent-field">
           <span>{{ t("Title") }} <em>{{ t("Optional") }}</em></span>
           <input v-model="title" type="text" autocomplete="off" :placeholder="t('What this agent is for')" maxlength="120" />
-        </label>
-        <label class="agent-field">
-          <span>{{ t("Join group") }} <em>{{ t("Optional, without #") }}</em></span>
-          <input v-model="group" type="text" autocomplete="off" placeholder="frontend" maxlength="40" />
         </label>
       </div>
 

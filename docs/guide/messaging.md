@@ -104,4 +104,4 @@ stored history. [Web gateway: the graph](/guide/gateway#the-graph) shows how to 
 
 - [Web gateway](/guide/gateway): watch sessions and groups, and replay the graph.
 - [Background agents](/guide/daemons): sessions with nobody at the keyboard.
-- [Codex & Claude Code](/guide/code-agents): other agents in the same groups.
+- [Codex & Claude Code](/guide/code-agents): other vendors' agents you address with `@`.

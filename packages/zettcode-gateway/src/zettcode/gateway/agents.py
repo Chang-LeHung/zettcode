@@ -4,8 +4,9 @@ A plugin is a class under the ``zettcode.gateway.external`` entry-point group. I
 :class:`~zettcode.broker.external.ExternalSession`; the gateway starts it, and the broker lists it like any other
 session. The plugin runs in the gateway process, so only installed, trusted code is loaded.
 
-An agent may register as ``kind="external"`` or as the trusted ``kind="zettcode"``; groups are available to either
-kind once the broker owner adds it.
+An agent may register as ``kind="external"`` or as the trusted ``kind="zettcode"``. The gateway does not put one in a
+group (two of them would answer each other), so the manager has no group to join; ``ExternalSession.join_group`` stays
+on the contract for when that is lifted.
 """
 
 from __future__ import annotations
@@ -140,7 +141,7 @@ class AgentPlugin(ABC):
 
         Called in the gateway's own process (so a program is looked for on the PATH it will be run with), before a
         session is created and each time the types are listed. It must be quick and must not start the program. An
-        agent that is not runnable is never registered, joined to a group or put on the roster by a page; one already
+        agent that is not runnable is never registered or put on the roster by a page; one already
         on the roster is tried again later. The check can go stale between this call and a turn: a turn still answers
         with its own failure.
         """
@@ -210,7 +211,7 @@ class AgentManager:
             if session_id in self._running or session_id in self._starting:
                 continue
             try:
-                await self._start(entry["kind"], entry["title"], session_id, "", restoring=True)
+                await self._start(entry["kind"], entry["title"], session_id, restoring=True)
             except AgentError as error:
                 # Asked again every few seconds by the gateway's watcher: say it once, not at every look.
                 if session_id not in self._unstartable:
@@ -272,7 +273,7 @@ class AgentManager:
         """Return the agents this gateway started, by session id."""
         return dict(self._running)
 
-    async def create(self, kind: str, title: str = "", session_id: str = "", group: str = "") -> ExternalSession:
+    async def create(self, kind: str, title: str = "", session_id: str = "") -> ExternalSession:
         """Start one agent and return its session.
 
         Raises:
@@ -289,13 +290,6 @@ class AgentManager:
         if running is not None:
             if self._kinds.get(session_id) != kind:
                 raise AgentError(f"the external agent {session_id!r} runs as another type, not {kind!r}")
-            if group:
-                # A retry of a create whose answer was lost: the join may be what never happened, and it is a no-op
-                # at the broker for a member that is already in.
-                try:
-                    await running.join_group(group)
-                except Exception as error:  # noqa: BLE001 - becomes the sentence the page shows
-                    raise AgentError(str(error)) from error
             # Starting an agent that already runs is not an error: "start it again" is what the person asked for, and
             # it is on the roster by now (a page that raced the keeper only has to hear that it is there).
             roster = self._roster()
@@ -303,15 +297,13 @@ class AgentManager:
                 roster[session_id] = {"kind": kind, "title": title or plugin.title or kind}
                 self._write_roster(roster)
             return running
-        session = await self._start(kind, title, session_id, group)
+        session = await self._start(kind, title, session_id)
         roster = self._roster()
         roster[session_id] = {"kind": kind, "title": title or self._plugins[kind].title or kind}
         self._write_roster(roster)
         return session
 
-    async def _start(
-        self, kind: str, title: str, session_id: str, group: str, *, restoring: bool = False
-    ) -> ExternalSession:
+    async def _start(self, kind: str, title: str, session_id: str, *, restoring: bool = False) -> ExternalSession:
         plugin = self._plugins.get(kind)
         if plugin is None:
             raise AgentError(f"there is no external agent type {kind!r}")
@@ -332,8 +324,6 @@ class AgentManager:
         try:
             session = plugin.create(session_id, title or plugin.title or kind)
             await session.connect()
-            if group:
-                await session.join_group(group)
             if restoring and session_id not in self._roster():
                 # Removed while it was coming up: the page was told it is gone, so it must not come up behind it.
                 raise AgentError(f"the external agent {session_id!r} was removed while it was starting")

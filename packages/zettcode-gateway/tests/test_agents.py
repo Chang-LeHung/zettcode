@@ -49,11 +49,11 @@ async def test_a_manager_starts_lists_and_removes_one_agent(tmp_path: pathlib.Pa
     manager = AgentManager(tmp_path, [plugin])
 
     assert manager.available()[0].name == "echo"
-    session = await manager.create("echo", "Echo one", "agent-1", "review")
+    session = await manager.create("echo", "Echo one", "agent-1")
 
     assert session is plugin.created[0]
     assert session.connected and session.handle == "agent-1"
-    assert session.joined == ["review"]
+    assert session.joined == [], "the manager joins no group"
     assert manager.running() == {"agent-1": session}
 
     assert await manager.remove("agent-1")
@@ -148,7 +148,7 @@ async def test_an_agent_that_cannot_start_stays_on_the_roster(tmp_path: pathlib.
 async def test_an_agent_on_the_roster_that_is_not_running_still_has_its_type_and_comes_back_when_it_can(tmp_path):
     plugin = FakePlugin()
     first = AgentManager(tmp_path, [plugin])
-    await first.create("echo", "Echo one", "agent-1", "")
+    await first.create("echo", "Echo one", "agent-1")
     await first.close()
 
     second = AgentManager(tmp_path, [plugin])
@@ -199,7 +199,7 @@ async def test_an_agent_that_cannot_run_is_listed_with_why_and_is_never_register
     assert listed.to_dict()["runnable"] is False
 
     with pytest.raises(AgentError, match="not found on this gateway's PATH"):
-        await manager.create("echo", "Echo", "agent-1", "review")
+        await manager.create("echo", "Echo", "agent-1")
     assert plugin.created == [], "no session was made, so none was registered or put in the group"
     assert manager.running() == {} and not (tmp_path / "agents.json").exists(), "and none is on the roster"
 
@@ -240,7 +240,7 @@ async def test_a_page_and_the_keeper_cannot_both_start_the_same_agent(tmp_path):
 
     keeper = asyncio.ensure_future(manager.restore())
     await asyncio.sleep(0)
-    page = asyncio.ensure_future(manager.create("echo", "Echo", "agent-1", ""))
+    page = asyncio.ensure_future(manager.create("echo", "Echo", "agent-1"))
     await asyncio.sleep(0)
     assert not page.done(), "the page waits for the start in flight instead of being refused or starting a second one"
     assert await manager.restore() == [], "the keeper does not start what is being started"

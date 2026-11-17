@@ -5,7 +5,7 @@ import { computed, reactive } from "vue";
 import { gateway } from "../api/gateway";
 import { ApiError } from "../api/http";
 import { mentionName } from "../lib/messages";
-import type { GraphGroup, GraphMessage } from "../types";
+import type { GraphGroup, GraphMessage, Thread } from "../types";
 import { graph, loadGraph, onGraphApplied } from "./graph";
 import { lobby, threadOf } from "./threads";
 
@@ -18,6 +18,13 @@ export const groupArg = (name: string): string => `#${name}`;
 export const isGroupArg = (arg: string): boolean => arg.startsWith("#");
 /** The group a page address names, spelled as the broker holds it, so `#Straße` typed or bookmarked finds `strasse`. */
 export const groupNameOf = (arg: string): string => (isGroupArg(arg) ? spellGroup(arg.slice(1)) : arg);
+
+/**
+ * Whether a session may be put in a group. An external agent may not (two of them would answer each other without
+ * end): a program that registered as external, or one the gateway runs for a plugin (`agent` is its type). The
+ * gateway refuses the same, so this only keeps the pages from offering what it would turn down.
+ */
+export const canJoinGroup = (thread: Pick<Thread, "kind" | "agent">): boolean => thread.kind !== "external" && !thread.agent;
 
 /** A member of a group, as the member list draws it. */
 export interface Member {

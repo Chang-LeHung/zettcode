@@ -4,6 +4,7 @@ import "./dom-setup";
 import { applyGraph, graph, onGraphApplied, resetGraph } from "../src/stores/graph";
 import {
   applyGroupTraffic,
+  canJoinGroup,
   GROUP_NAME,
   groupChat,
   groupList,
@@ -214,4 +215,11 @@ test("a message written in the open group is shown there; in another it is count
 test("a group name is what the broker accepts: letters of any script, digits, - and _, 1 to 40, not starting with a symbol", () => {
   for (const good of ["review", "a", "team-1", "x_y", "0day", "a".repeat(40), "组"]) assert.ok(GROUP_NAME.test(good), good);
   for (const bad of ["", "-lead", "_x", "two words", "a".repeat(41), "#review"]) assert.ok(!GROUP_NAME.test(bad), bad);
+});
+
+test("a session may join a group unless it is an external agent: a program that registered as external, or one the gateway runs for a plugin", () => {
+  assert.ok(canJoinGroup({ kind: "session" }));
+  assert.ok(canJoinGroup({ kind: "daemon" }));
+  assert.ok(!canJoinGroup({ kind: "external" }));
+  assert.ok(!canJoinGroup({ kind: "session", agent: "claude" }), "a plugin agent the broker lists as an ordinary session is still an agent");
 });

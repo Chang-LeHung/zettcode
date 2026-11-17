@@ -1315,7 +1315,7 @@ async def test_a_group_message_must_have_text_and_the_group_must_exist(tmp_path)
     assert empty.value.status == 400 and unknown.value.status == 404 and backend.group_sent == []
 
 
-async def test_an_external_agent_started_for_a_group_is_listed_with_its_type(tmp_path):
+async def test_an_external_agent_is_listed_with_its_type(tmp_path):
     class Session:
         session_id = "agent-1"
         title = "Scribe"
@@ -1347,53 +1347,55 @@ async def test_an_external_agent_started_for_a_group_is_listed_with_its_type(tmp
     gateway = Gateway(backend, settings(tmp_path), clock=lambda: 1000.0, agents=manager)
     await gateway.start(watch=False)
 
-    made = await gateway.create_agent({"kind": "echo", "title": "Scribe", "session_id": "agent-1", "group": "review"})
+    made = await gateway.create_agent({"kind": "echo", "title": "Scribe", "session_id": "agent-1"})
 
     assert made["thread"]["agent"] == "echo"
     assert made["thread"]["name"] == "Scribe"
     assert made["thread"]["avatar"] == "data:image/png;base64,AAAA", "the type's picture is kept as the profile's"
     assert gateway._profiles.read("agent-1") == {"avatar": "data:image/png;base64,AAAA"}
     assert manager.kind_of("agent-1") == "echo"
-    assert Session.joined == ["review"]
 
 
-async def test_a_failed_agent_join_is_taken_back_out_of_the_group(tmp_path):
-    class Session:
-        session_id = ""
-        title = "Broken"
-        kind = "external"
-        handle = "broken"
-
-        async def connect(self) -> None:
-            pass
-
-        async def close(self) -> None:
-            pass
-
-        async def join_group(self, group: str) -> None:
-            raise RuntimeError("the broker lost the answer")
-
-    class Plugin(AgentPlugin):
-        name = "echo"
-        title = "Echo"
-
-        def create(self, session_id: str, title: str) -> Session:  # type: ignore[override]
-            session = Session()
-            session.session_id = session_id
-            return session
-
+async def test_an_external_agent_is_not_put_in_a_group_however_it_is_asked(tmp_path):
     backend = FakeBackend()
+    backend.add_daemon("01a", str(tmp_path), name="a", started_at=100.0)
+    backend.add_peer("ext-1", "ext", title="Scribe", kind="external")
     backend.graph_data["groups"] = [{"name": "review", "created": 1.0, "members": [], "last": None}]
-    manager = AgentManager(tmp_path / "agents", [Plugin()])
-    gateway = Gateway(backend, settings(tmp_path), clock=lambda: 1000.0, agents=manager)
+    gateway = Gateway(backend, settings(tmp_path), clock=lambda: 1000.0)
     await gateway.start(watch=False)
 
-    with pytest.raises(GatewayError):
+    with pytest.raises(GatewayError) as invited:
+        await gateway.invite_group("review", "ext-1")
+    with pytest.raises(GatewayError) as created:
+        await gateway.create_group("team", ["01a", "ext-1"])
+    with pytest.raises(GatewayError) as started:
         await gateway.create_agent({"kind": "echo", "group": "review"})
+    await gateway.invite_group("review", "01a")
 
-    assert len(backend.removed_members) == 1
-    assert backend.removed_members[0][0] == "review"
-    assert backend.removed_members[0][1].startswith("web-")
+    assert {invited.value.status, created.value.status, started.value.status} == {400}
+    assert invited.value.code == created.value.code == started.value.code == "external_in_group"
+    assert backend.invited == [("review", "01a")] and backend.created_groups == []
+
+
+async def test_an_agent_this_gateway_runs_is_refused_for_a_group_even_when_it_is_not_a_connected_external_peer(
+    tmp_path,
+):
+    _Revivable.runs = True
+    backend = FakeBackend()
+    backend.graph_data["groups"] = [{"name": "review", "created": 1.0, "members": [], "last": None}]
+    manager = AgentManager(tmp_path / "agents", [_Revivable()])
+    gateway = Gateway(backend, settings(tmp_path), clock=lambda: 1000.0, agents=manager)
+    await gateway.start(watch=False)
+    await gateway.create_agent({"kind": "echo", "title": "Echo", "session_id": "web-aaa"})
+    assert gateway._views["web-aaa"]["kind"] != "external", "no peer says it is external: only the roster knows"
+
+    with pytest.raises(GatewayError) as invited:
+        await gateway.invite_group("review", "web-aaa")
+    with pytest.raises(GatewayError) as created:
+        await gateway.create_group("team", ["web-aaa"])
+
+    assert invited.value.code == created.value.code == "external_in_group"
+    assert backend.invited == [] and backend.created_groups == []
 
 
 async def test_pinned_and_archived_survive_a_restart(tmp_path):
@@ -1617,23 +1619,19 @@ async def test_starting_an_agent_that_already_runs_is_not_a_refusal(tmp_path):
     assert manager._roster()["web-aaa"]["title"] == "Echo", "the title it was given is not overwritten"
 
 
-async def test_starting_an_agent_again_keeps_what_the_person_made_of_it_and_joins_the_group_again(tmp_path):
+async def test_starting_an_agent_again_keeps_what_the_person_made_of_it(tmp_path):
     _Revivable.runs = True
     _Revivable.avatar = "data:image/png;base64,BBBB"
-    joined: list[str] = []
     manager = AgentManager(tmp_path / "agents", [_Revivable()])
     gateway = Gateway(FakeBackend(), settings(tmp_path), clock=lambda: 1000.0, agents=manager)
     await gateway.start(watch=False)
     made = await gateway.create_agent({"kind": "echo", "title": "Echo", "session_id": "web-aaa"})
-    running = manager.running()["web-aaa"]
-    running.join_group = lambda group: joined.append(group) or asyncio.sleep(0)  # type: ignore[attr-defined]
     await gateway.update_profile("web-aaa", {"name": "Docs bot", "pinned": True})
 
-    again = await gateway.create_agent({"kind": "echo", "title": "Echo", "session_id": "web-aaa", "group": "review"})
+    again = await gateway.create_agent({"kind": "echo", "title": "Echo", "session_id": "web-aaa"})
 
     assert made["agent"]["session_id"] == again["agent"]["session_id"]
     profile = gateway._profiles.read("web-aaa")
     assert profile.get("name") == "Docs bot" and profile.get("pinned") == "1", "the person's own settings are theirs"
-    assert joined == ["review"], "a retry of a create whose answer was lost still joins the group"
     with pytest.raises(GatewayError):
         await gateway.create_agent({"kind": "other", "session_id": "web-aaa"})

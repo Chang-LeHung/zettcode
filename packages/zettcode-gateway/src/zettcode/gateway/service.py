@@ -18,7 +18,6 @@ import base64
 import contextlib
 import logging
 import re
-import secrets
 import time
 import unicodedata
 from collections import deque
@@ -115,6 +114,8 @@ SEND_STATUS = {
     "invalid": 400,
     "duplicate": 409,
 }
+#: Why an external agent is not put in a group: two of them would answer each other without end.
+EXTERNAL_IN_GROUP = "An external agent cannot be in a group yet: two of them would answer each other without end"
 
 
 def _group_name(raw: object) -> str:
@@ -1297,19 +1298,11 @@ class Gateway:
             raise GatewayError(400, "invalid", "kind names an external agent type")
         if not isinstance(title, str) or not isinstance(session_id, str) or not isinstance(group, str):
             raise GatewayError(400, "invalid", "title, session_id and group are strings")
-        group = _group_name(group)
-        generated = bool(group) and not session_id
-        if generated:
-            # Keep the id here as well, so a join that committed before its response was lost can be undone. A caller's
-            # id is retried with the same id, and the broker's add is a no-op for a member it already has; only an id
-            # this method generated can need the compensating remove below.
-            session_id = f"web-{secrets.token_hex(6)}"
+        if _group_name(group):
+            raise GatewayError(400, "external_in_group", EXTERNAL_IN_GROUP)
         try:
-            session = await self.agents.create(kind, title, session_id, group)
+            session = await self.agents.create(kind, title, session_id)
         except AgentError as error:
-            if generated:
-                with contextlib.suppress(SendError, GatewayError):
-                    await self.backend.remove_group_member(group, session_id)
             raise GatewayError(400, "agent", str(error)) from error
         avatar = self.agents.avatar(kind)
         # Only for an agent the person has not yet made anything of: a name, picture, pin or archive they set is theirs,
@@ -1318,7 +1311,7 @@ class Gateway:
             try:
                 self._profiles.set_default_avatar(session.session_id, avatar)
             except OSError:
-                # The agent is already running and in the group; losing its default picture must not say otherwise.
+                # The agent is already running; losing its default picture must not say otherwise.
                 logger.exception("profile.save_failed", extra={"session": session.session_id})
         await self.refresh()
         return {
@@ -1347,6 +1340,11 @@ class Gateway:
         await self.refresh()
         return {"group": name}
 
+    def _is_external(self, session_id: str) -> bool:
+        """Whether a listed session is an external agent: a program that registered as one, or one this gateway runs."""
+        view = self._views.get(session_id)
+        return (view is not None and view.get("kind") == "external") or bool(self.agents.kind_of(session_id))
+
     async def invite_group(self, name: str, session_id: str) -> dict[str, Any]:
         """Add a session to a group as the broker owner."""
         name, session_id = _group_name(name), session_id.strip()
@@ -1356,6 +1354,8 @@ class Gateway:
             await self.refresh()
         if session_id not in self._views:
             raise GatewayError(404, "not_found", "No such session is listed")
+        if self._is_external(session_id):
+            raise GatewayError(400, "external_in_group", EXTERNAL_IN_GROUP)
         try:
             await self.backend.add_group_member(name, session_id)
         except SendError as error:
@@ -1385,6 +1385,8 @@ class Gateway:
         for item in members:
             if item not in self._views:
                 raise GatewayError(404, "not_found", "No such session is listed")
+            if self._is_external(item):
+                raise GatewayError(400, "external_in_group", EXTERNAL_IN_GROUP)
         mine = self.backend.gateway_id
         everyone = [mine, *dict.fromkeys(item for item in members if item != mine)]
         await self._group_call(lambda: self.backend.create_group(name, everyone))

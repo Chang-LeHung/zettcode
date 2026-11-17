@@ -111,7 +111,7 @@ HTTP: put it behind TLS if it leaves a network you trust.
 
 ## Codex and Claude Code
 
-The `code-agents` plugin runs **Codex** and **Claude Code** as group members you can address with `@`, each keeping one
+The `code-agents` plugin runs **Codex** and **Claude Code** as agents you can address with `@`, each keeping one
 persistent command-line session. Use it to put another vendor's agent beside your own.
 
 ```bash
