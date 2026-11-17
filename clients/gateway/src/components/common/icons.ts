@@ -9,6 +9,7 @@ export const ICONS = {
     '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/>',
   graph:
     '<circle cx="6" cy="7" r="2.4"/><circle cx="18" cy="7" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M8.4 7h7.2M7.2 9.1l3.6 6.8M16.8 9.1l-3.6 6.8"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   expand: '<path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/>',
   back: '<path d="m15 5-7 7 7 7"/>',
   chevron: '<path d="m9 5 7 7-7 7"/>',

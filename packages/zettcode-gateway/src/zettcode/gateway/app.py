@@ -461,6 +461,9 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
     async def graph(_: Request) -> Any:
         return await gateway.graph()
 
+    async def usage(_: Request) -> Any:
+        return await gateway.usage()
+
     async def older(request: Request) -> Any:
         query = request.query_params
         return await gateway.older(query.get("before"), query.get("limit"), query.get("group"))
@@ -639,6 +642,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/models/{name:path}", api(remove_model), methods=["DELETE"]),
         Route("/api/dirs", api(dirs, write_only=True)),
         Route("/api/graph", api(graph)),
+        Route("/api/usage", api(usage)),
         Route("/api/graph/timeline", api(timeline)),
         Route("/api/graph/older", api(older)),
         Route("/api/threads", api(threads)),

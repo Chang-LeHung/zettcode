@@ -7,6 +7,7 @@ import type {
   GatewayConfig,
   ModelOption,
   GraphData,
+  Usage,
   OlderMessages,
   Picture,
   GatewayStatus,
@@ -57,6 +58,7 @@ export const gateway = {
     request<{ models: ModelOption[] }>("PATCH", `/api/models/${encodeURIComponent(name)}`, changes),
   removeModel: (name: string) => request<{ models: ModelOption[] }>("DELETE", `/api/models/${encodeURIComponent(name)}`),
   graph: () => request<GraphData>("GET", "/api/graph"),
+  usage: () => request<Usage>("GET", "/api/usage"),
   older: (before: number, limit = 50, group = "") =>
     request<OlderMessages>(
       "GET",

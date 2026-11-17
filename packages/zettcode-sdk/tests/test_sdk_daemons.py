@@ -296,3 +296,32 @@ def test_a_daemons_log_is_read_from_its_end_and_an_unknown_daemon_has_none(folde
     assert [line.split(" ", 2)[2] for line in tail] == ["line 3", "line 4"]
     with pytest.raises(SessionNotFoundError):
         daemons.daemon_log("01none")
+
+
+async def test_session_totals_reads_a_session_by_its_folder_or_finds_one_whose_folder_is_unknown(tmp_path):
+    from zett_agent.messages import AssistantMessage, UserMessage
+    from zett_agent.model import ModelUsage
+
+    from zettcode.engine.storage import SessionStore
+
+    work = tmp_path / "work"
+    work.mkdir()
+    store = SessionStore(tmp_path / "store", work)
+    usage = ModelUsage(
+        input_tokens=1000,
+        output_tokens=100,
+        cache_read_tokens=900,
+        cache_write_tokens=0,
+        reasoning_tokens=0,
+        cache_reported=True,
+    )
+    await store.append("01s", "r1", UserMessage(content="q"))
+    await store.append("01s", "r1", AssistantMessage(content="a", model="m"), usage=usage)
+
+    named = daemons.session_totals({str(work): ["01s", "01missing"]}, store=tmp_path / "store")
+    lost = daemons.session_totals({}, store=tmp_path / "store", unplaced=["01s", "../01s", "01missing"])
+
+    assert set(named) == {"01s"} and named["01s"].requests == 1
+    assert named["01s"].cache_share == 0.9
+    assert set(lost) == {"01s"} and lost["01s"].input_tokens == 1000, "found in the store with no folder named"
+    assert daemons.session_totals({"": ["01s"]}, store=tmp_path / "store") == {}, "no folder, no lookup"

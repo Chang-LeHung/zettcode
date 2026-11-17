@@ -16,6 +16,11 @@ export const CONFIG_SECTIONS: Section[] = [
   { id: "limits", label: "Limits", icon: "clock" },
 ];
 
+export const DASHBOARD_SECTIONS: Section[] = [
+  { id: "overview", label: "Overview", icon: "chart" },
+  { id: "daemons", label: "Daemons", icon: "bot" },
+];
+
 export const SETTINGS_SECTIONS: Section[] = [
   { id: "servers", label: "Servers", icon: "plug" },
   { id: "connection", label: "Connection", icon: "info" },

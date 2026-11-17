@@ -44,6 +44,10 @@ page at its own origin, so they need no extra setting.
 - **Logs** reads a daemon's log as a list of turns and tools, with filters for tools and problems.
 - **Graph** draws sessions as nodes, groups as regions, and each message as a packet to its recipients. See
   [the graph](#the-graph).
+- **Dashboard** shows what the sessions have spent, read back from their stored conversations: requests, input and output
+  tokens, and the cache hit rate (the share of the input the provider served from its cache; higher is cheaper and
+  faster). Overview has a total and a card per group; Daemons has a card per daemon with its context fill. A group's chat
+  shows the same totals under its header, and when members are stopped daemons it offers to restart them there.
 
 ## The graph
 

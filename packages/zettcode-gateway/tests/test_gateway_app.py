@@ -602,6 +602,78 @@ def test_a_message_to_a_group_goes_through_its_own_route(parts):
     assert answer.json()["delivered"][0]["to"] == "peer"
 
 
+def test_usage_is_what_each_session_and_each_group_has_spent_with_the_cached_share(parts):
+    from zettcode.sdk.types import SessionStatsInfo
+
+    client, backend, work = parts
+    assert client.get("/api/usage").status_code == 401
+    signed_in(client)
+    backend.add_daemon("02d", str(work), name="stopped", status="dead", online=False)
+    client.patch("/api/threads/02d/profile", json={"pinned": False})  # makes the gateway look at the new daemon
+    backend.totals = {
+        "01d": SessionStatsInfo("01d", requests=3, input_tokens=1000, output_tokens=200, cache_read_tokens=750),
+        "02d": SessionStatsInfo("02d", requests=1, input_tokens=1000, output_tokens=50, cache_read_tokens=250),
+    }
+    backend.graph_data = {
+        "sessions": [],
+        "groups": [{"name": "team", "members": ["01d", "02d", "gone"], "created": 1.0, "last": None}],
+        "edges": [],
+        "recent": [],
+    }
+
+    body = client.get("/api/usage").json()
+
+    assert {key: sorted(ids) for key, ids in backend.totals_asked.items()} == {str(work): ["01d", "02d"]}, (
+        "external agents and unlisted ids are not looked up"
+    )
+    assert backend.unplaced_asked == ["gone"], "a member nobody lists is searched for in the store"
+    rows = {row["id"]: row for row in body["sessions"]}
+    assert rows["01d"]["cache_rate"] == 0.75 and rows["01d"]["requests"] == 3 and rows["01d"]["kind"] == "daemon"
+    assert [row["id"] for row in body["sessions"]] == ["01d", "02d"], "the biggest spender is first"
+    team = body["groups"][0]
+    assert (team["members"], team["measured"], team["offline"]) == (3, 2, ["02d"])
+    assert team["input_tokens"] == 2000 and team["output_tokens"] == 250
+    assert team["cache_rate"] == 0.5, "a group's share is its cached input over all its input, not an average of shares"
+    assert body["total"]["requests"] == 4
+
+
+def test_a_listed_daemon_with_no_conversation_is_a_row_of_zeros_and_a_silent_broker_is_not_no_groups(parts):
+    client, backend, _ = parts
+    signed_in(client)
+    backend.graph_data = {"sessions": [], "groups": [], "edges": [], "recent": []}
+
+    body = client.get("/api/usage").json()
+
+    assert [row["id"] for row in body["sessions"]] == ["01d"] and body["sessions"][0]["requests"] == 0
+    assert body["groups_known"] is True
+
+    async def down():
+        raise app_module_send_error()
+
+    backend.graph = down
+    assert client.get("/api/usage").json()["groups_known"] is False
+
+
+def app_module_send_error():
+    from zettcode.sdk.errors import SendError
+
+    return SendError("down", "unreachable")
+
+
+def test_a_session_that_never_reported_its_cache_has_no_share_and_does_not_dilute_the_group(parts):
+    from zettcode.sdk.types import SessionStatsInfo
+
+    client, backend, _ = parts
+    signed_in(client)
+    backend.totals = {"01d": SessionStatsInfo("01d", requests=1, input_tokens=500, cache_reported=False)}
+    backend.graph_data = {"sessions": [], "groups": [], "edges": [], "recent": []}
+
+    body = client.get("/api/usage").json()
+
+    assert body["sessions"][0]["cache_rate"] is None
+    assert body["total"]["cache_rate"] is None
+
+
 def test_the_graph_needs_a_sign_in_and_is_what_the_broker_reported(parts):
     client, backend, _ = parts
     backend.graph_data = {"sessions": [], "groups": [], "edges": [], "recent": [a_message(1, 10.0)]}

@@ -302,3 +302,43 @@ export interface Pending {
   at: number;
   error?: { code: string; message: string; uncertain: boolean };
 }
+
+/** What a session or a set of them has spent. `cache_rate` is the cached share of the input (0–1), or null when not measured. */
+export interface UsageTotals {
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  reasoning_tokens: number;
+  cache_rate: number | null;
+}
+
+/** One listed session (a daemon, or a terminal session) with what it has spent and how full its context is. */
+export interface UsageRow extends UsageTotals {
+  id: string;
+  name: string;
+  kind: "daemon" | "session";
+  status: Status;
+  online: boolean;
+  workspace: string;
+  model: string | null;
+  context_tokens: number | null;
+  context_window: number | null;
+}
+
+/** A group: the sum of the members that were measured, and which members are not running. */
+export interface UsageGroup extends UsageTotals {
+  name: string;
+  members: number;
+  measured: number;
+  offline: string[];
+}
+
+/** What `GET /api/usage` answers. */
+export interface Usage {
+  sessions: UsageRow[];
+  groups: UsageGroup[];
+  /** False when the broker could not be asked: `groups` is then empty because it is unknown, not because there are none. */
+  groups_known: boolean;
+  total: UsageTotals;
+}

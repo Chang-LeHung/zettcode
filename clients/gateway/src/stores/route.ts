@@ -5,7 +5,7 @@
 
 import { reactive } from "vue";
 
-export const NAVS = ["chats", "new", "config", "logs", "graph", "settings"] as const;
+export const NAVS = ["chats", "new", "config", "logs", "graph", "dashboard", "settings"] as const;
 export type Nav = (typeof NAVS)[number];
 
 export const route = reactive<{ nav: Nav; arg: string }>({ nav: "chats", arg: "" });

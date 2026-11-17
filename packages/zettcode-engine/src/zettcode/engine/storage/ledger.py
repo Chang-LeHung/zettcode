@@ -421,15 +421,19 @@ class LedgerReader:
     grown be read from where it was last read instead of from its first byte.
     """
 
-    def __init__(self, root: str | Path, workspace: str | Path, *, index: bool = True) -> None:
+    def __init__(
+        self, root: str | Path, workspace: str | Path, *, index: bool = True, folder: str | Path | None = None
+    ) -> None:
         """Name the store and the workspace; nothing is read or created yet.
 
         Args:
             root: The directory holding one folder per workspace.
             workspace: The project whose sessions are counted.
             index: Keep the index on disk. ``False`` is the in-memory behaviour alone.
+            folder: The workspace's folder itself, for a caller that found it by looking (a session whose project is not
+                known); ``workspace`` is then ignored.
         """
-        self.directory = find_workspace(Path(root).expanduser(), workspace)
+        self.directory = Path(folder) if folder is not None else find_workspace(Path(root).expanduser(), workspace)
         self.index_path = self.directory / INDEX_FILE
         self.summary_path = self.directory / SUMMARY_FILE
         self._use_index = index

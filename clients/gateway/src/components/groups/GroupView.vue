@@ -17,7 +17,9 @@ import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
 import UserAvatar from "../common/UserAvatar.vue";
 import MessageText from "../chat/MessageText.vue";
+import { canRestart, restartAll, restarting } from "../chat/threadActions";
 import GroupMembers from "./GroupMembers.vue";
+import GroupUsage from "./GroupUsage.vue";
 import InviteSheet from "./InviteSheet.vue";
 import { confirmAction, showMenu } from "../sheets/sheets";
 import { applyErase, backspaceWhole } from "../../lib/erase";
@@ -43,6 +45,15 @@ const joined = computed(() => group.value?.members.includes(meId.value) ?? false
 /** The group was listed while this page was open, so its absence now means it was deleted, not that the address is wrong. */
 const existed = ref(false);
 watch(group, (now) => now && (existed.value = true), { immediate: true });
+/** The members that are stopped daemons a press can start again: offered right under the header, where a person notices it
+ * is quiet, not only in the member list. */
+const stopped = computed(() =>
+  members.value
+    .filter((member) => !member.online && !member.me)
+    .map((member) => lobby.threads.find((thread) => thread.id === member.id))
+    .filter(canRestart),
+);
+const starting = computed(() => stopped.value.some((thread) => restarting.has(thread.id)));
 const showMembers = ref(false);
 const text = ref("");
 /** Where this group's reply is kept: a group's key is `#name`, never a session id. */
@@ -380,6 +391,15 @@ watch(text, () => void nextTick(resize));
       </button>
       <button class="iconbtn" :aria-label="t('More')" :title="t('More')" @click="menu"><Icon name="more" /></button>
     </header>
+    <GroupUsage :name="name" />
+    <div v-if="stopped.length" class="group-stopped" role="status">
+      <span class="group-stopped-text">
+        {{ stopped.length === 1 ? t("{name} is stopped and can be restarted.", { name: stopped[0]!.name }) : t("{count} daemons are stopped and can be restarted.", { count: stopped.length }) }}
+      </span>
+      <button class="btn sm" :disabled="starting" @click="restartAll(stopped.map((thread) => thread.id))">
+        <span v-if="starting" class="spin" />{{ stopped.length === 1 ? t("Restart it") : t("Restart all") }}
+      </button>
+    </div>
     <div class="group-body">
       <div class="chat-bg group-main">
         <div ref="scroller" class="messages" role="log" aria-live="polite" @scroll.passive="onScroll">
@@ -511,6 +531,7 @@ watch(text, () => void nextTick(resize));
 
 <style>
 .group-body { flex: 1; min-height: 0; display: flex; }
+.group-stopped { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--divider); color: var(--warn); font-size: 0.88rem; }
 .group-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .group-who { display: block; font-size: 0.8rem; font-weight: 650; color: var(--accent); margin-bottom: 2px; }
 .day-sep { align-self: center; margin: 12px 0 8px; }
