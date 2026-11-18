@@ -50,6 +50,11 @@ Remove-Item Env:ZETTCODE_CONFIG
 
 ## 模型连接 {#models}
 
+一条记录就是一个连接，文件里想放几个放几个。`/model` 在你当前对话里把它们列出来——每条从哪来、讲哪个 API、
+收不收图片——`/model <名字>` 不用打开列表就能切换：
+
+![`/model` 选择页：DeepSeek Pro 标为当前，下面依次是 Claude Sonnet 4.5、GPT-5 和本地 Qwen3 Coder，每行都写了来源和所讲的 API](/screens/models.svg)
+
 ### 用 /config 添加模型 {#adding-models-with-config}
 
 添加模型不必改文件。`/config` 会在对话上方打开一个面板：
@@ -68,17 +73,7 @@ Responses API，`anthropic` 是 Messages API），然后显示下面的表单。
 
 添加模型用的是**一个表单**，而不是一个一个地问：
 
-```text
-Add a model — OpenAI Chat API
-
-╭─ Model id * ────────────────────────────────────────╮
-│ gpt-4o                                         │
-╰────────────────────────────────────────────────╯
-╭─ Token ──────────────────────────────────────────╮
-│ ••••••••••••••                                 │
-╰────────────────────────────────────────────────╯
-   … Address、Shown name、Temperature、Images 和 Web search 两个开关、Context window 和 Compress at
-```
+![`/config` 添加模型时的表单：模型 id、token、地址、显示名、上下文窗口和压缩点，每个都在自己的方框里](/screens/config-form.svg)
 
 每一行都是一个**方框**，标签在上边框上，光标所在的那个框会变成亮绿色，一眼就能看出这是要输入的地方；点击方框的任何位置（包括边框）都会把光标放到那里。
 表单大约需要 32 行；终端不够高时，每一行改成占一行、文字带底色，用法不变。

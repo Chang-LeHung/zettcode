@@ -55,6 +55,12 @@ Relative workspace paths resolve from the directory where you launch ZettCode.
 
 ## Models
 
+An entry is one connection, and the file holds as many as you have. `/model` lists them for the conversation you are
+in — where each came from, the API it speaks, whether it takes images — and `/model <name>` switches without opening
+the list:
+
+![The /model picker: DeepSeek Pro marked as current, then Claude Sonnet 4.5, GPT-5 and a local Qwen3 Coder, each row naming where it came from and the API it speaks](/screens/models.svg)
+
 ### Adding models with /config {#adding-models-with-config}
 
 You do not have to edit the file to add a model. `/config` opens a panel over the conversation:
@@ -74,17 +80,7 @@ in `/model` and are not added here; see [Plugins](/guide/plugins#providers).
 
 A model is added on **one form**, not a question at a time:
 
-```text
-Add a model — OpenAI Chat API
-
-╭─ Model id * ────────────────────────────────────────╮
-│ gpt-4o                                         │
-╰────────────────────────────────────────────────╯
-╭─ Token ──────────────────────────────────────────╮
-│ ••••••••••••••                                 │
-╰────────────────────────────────────────────────╯
-   … Address, Shown name, Temperature, the Images and Web search switches, Context window and Compress at
-```
+![The form /config asks for a model with: the model id, token, address, shown name, context window and the point it compresses at, each in a box](/screens/config-form.svg)
 
 Every line is a **box** with its label on the top border, bright green while the cursor is in it, so it reads as
 something to type into; a click anywhere on a box, its border included, puts the cursor there. The form needs about

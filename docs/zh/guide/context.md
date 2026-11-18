@@ -119,7 +119,13 @@ worked out from a local count.
 :::
 
 最新的检查点已经覆盖整段对话时，再手工压缩会被拒绝。摘要可能丢细节；确切的文字要紧时，让模型重新读那个文件。
-允许的话，模型也能自己压：[自压缩](/zh/guide/commands#self-compaction)。
+允许的话，模型也能自己压：[自压缩](/zh/guide/commands#self-compaction)。`/compact` 为这个会话、或为所有从未选过的
+会话打开它：
+
+![`/compact` 面板：上面这根滑轨是这个会话自己的选择，下面是其他所有会话的默认值](/screens/compact.svg)
+
+`↑` `↓` 选一行，`←` `→` 挪那一行的旋钮，下面那行说明当前会是什么效果，`Enter` 两行一起应用——默认值写进
+`config.toml`，会话自己的选择留在会话里。`Esc` 什么都不应用。
 
 ## 让请求保持小
 

@@ -37,11 +37,26 @@ sandboxed: read the source before you install it.
 
 `zettcode[all]` installs all four; the last is a gateway plugin and adds nothing to the terminal.
 
+`/monitor` is the one with a panel of its own: two switches for this session — record its model calls, and keep the
+image data in them — and a row that writes everything recorded so far into an HTML file in the workspace, unredacted.
+
+![The /monitor panel: a switch for recording, a switch for keeping images, and the row that writes the report](/screens/monitor.svg)
+
+`←` `→` move a switch but change nothing yet; `Enter` saves both and closes, on the Export row it writes the file
+first, and `Esc` closes without applying anything. A report with nothing in it keeps the panel open and says why.
+
 ## Turn one off or on
 
 `/plugins` opens a page with a switch for each plugin you can switch: Space flips one, Enter writes, Escape writes
 nothing. `zettcode plugin enable <name>` and `zettcode plugin disable <name>` do the same for one name, and `/plugins
 disable <name>` does it from the composer. Every switch takes effect at the **next start**.
+
+![The /plugins page: the program's own plugins first, then installed ones, each row with its switch, the key or distribution the switch writes, and what the plugin adds](/screens/plugins.svg)
+
+The row says which side of that line a switch falls on: a compiled-in plugin is switched by a configuration key
+(`rows.enabled`), an installed one by `[plugins] disable`. A plugin that could not load keeps its row — that is how you
+find out — and one whose setting this process never read has no switch at all, with the reason on the line under the
+list.
 
 ```toml
 [plugins]

@@ -34,9 +34,23 @@ ZettCode 所在的环境里 `pip install /path/to/greeter`。
 
 `zettcode[all]` 把四个一起装上；最后一个是网关插件，终端里看不到它。
 
+`/monitor` 是唯一自带面板的：这个会话的两个开关——记录它的模型调用、连图片数据一起记——再加一行把目前为止
+记下的内容写成工作区里的一个 HTML 文件，不脱敏。
+
+![`/monitor` 面板：记录开关、图片开关，以及写出报告的那一行](/screens/monitor.svg)
+
+`←` `→` 只是挪开关，还没生效；`Enter` 两个一起保存并关掉面板，光标在 Export 那行时先写出文件；`Esc` 什么都不应用
+直接关掉。一条记录都没有时导出会让面板留着，并说明原因。
+
 ## 打开或关掉一个
 
 `/plugins` 打开一页，你能关的插件每个一个开关：空格翻转，Enter 写入，Escape 什么都不写。
+
+![`/plugins` 页面：先是程序自带的插件，然后是安装的插件，每行带开关、开关写入的配置键或发行包名字，以及它带来什么](/screens/plugins.svg)
+
+每一行都写明开关落在哪一边：编译进程序的插件由配置键决定（`rows.enabled`），安装的插件由 `[plugins] disable`
+决定。加载失败的插件也留着那一行——你就是这么知道它失败的——而这次进程从没读到过设置的插件根本没有开关，
+原因写在列表下面那行。
 `zettcode plugin enable <name>` 和 `zettcode plugin disable <name>` 对单个名字做同样的事，`/plugins
 disable <name>` 在输入框里就能做。所有开关都在**下一次启动**生效。
 

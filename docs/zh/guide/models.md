@@ -9,6 +9,8 @@ ZettCode 能对接任何 OpenAI 兼容的接入点：云上的 API、聚了多�
 `/model` 在对话之上打开选择面板。`Enter` 选的是**之后**的请求 —— 正在跑的那次不受影响 —— 头部立刻显示新名字。
 `/model DeepSeek Pro` 也行，显示名和模型 id 都能匹配，适合你已经清楚要哪个的时候。
 
+![`/model` 选择页：DeepSeek Pro 标为当前，下面依次是 Claude Sonnet 4.5、GPT-5 和本地 Qwen3 Coder，每行都写了来源和所讲的 API](/screens/models.svg)
+
 每行开头写模型来自哪里：`file`，或者插件提供的 `plugin <host>`。敲 `/model ` 后的补全菜单里，每个名字旁边也带着
 同样的来源和协议。`zettcode[models]` 这个 extra 为环境里的每个厂商 key 提供一个官方模型；见
 [插件](/zh/guide/plugins#official-models)。它们不在配置文件里：插件描述 host，runtime 在构建时从插件指定的
@@ -32,6 +34,8 @@ ZettCode 能对接任何 OpenAI 兼容的接入点：云上的 API、聚了多�
 ## 推理强度
 
 `/effort` 决定模型回答前愿意想多久：
+
+![`/effort` 面板：八个档位排在一根滑轨上，旋钮在 medium，下面是这个档位的意思](/screens/effort.svg)
 
 | 档位 | 适合什么 |
 | --- | --- |
