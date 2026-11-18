@@ -25,6 +25,7 @@ from zettcode.app.commandline import (
     ShellCompleter,
     ShellLauncher,
     ZshHistory,
+    arguments,
     detect_launcher,
 )
 from zettcode.app.commandline.history import preferred, read_tail
@@ -339,6 +340,20 @@ def test_a_history_word_that_is_also_a_file_takes_the_kind_of_the_file(tmp_path:
 needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
 
 
+@pytest.fixture
+def patient_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give a real git far more than the two seconds the completer allows a key press.
+
+    ``GitArguments`` asks git for its subcommands inside the budget a keystroke gets, so that a git that
+    hangs cannot freeze the composer; on a cold, loaded runner that budget is occasionally too small for
+    ``git --list-cmds`` itself. The answer then comes back empty and these tests report that the subcommand
+    slot is broken — which is what happened on Windows with 3.14 while the same git answered in the jobs
+    beside it. What is asserted here is what git says, not how quickly it says it: a git that cannot answer
+    still fails these tests, because the names they expect are only there if it did.
+    """
+    monkeypatch.setattr(arguments, "TIMEOUT", 60.0)
+
+
 def make_repository(root: Path) -> Path:
     def git(*arguments: str) -> None:
         subprocess.run(
@@ -358,7 +373,7 @@ def make_repository(root: Path) -> Path:
 
 
 @needs_git
-def test_the_word_after_git_is_one_of_its_subcommands_not_a_file(tmp_path: Path):
+def test_the_word_after_git_is_one_of_its_subcommands_not_a_file(tmp_path: Path, patient_git: None):
     make_repository(tmp_path)
     (tmp_path / "stuff.txt").write_text("")
     completer = ShellCompleter(lambda: tmp_path, ["git statt", "git status"], path="", home=tmp_path)
@@ -380,7 +395,7 @@ def test_the_word_after_git_is_one_of_its_subcommands_not_a_file(tmp_path: Path)
 
 
 @needs_git
-def test_git_options_that_take_a_value_do_not_hide_the_subcommand_slot(tmp_path: Path):
+def test_git_options_that_take_a_value_do_not_hide_the_subcommand_slot(tmp_path: Path, patient_git: None):
     make_repository(tmp_path)
     completer = ShellCompleter(lambda: tmp_path, path="", home=tmp_path)
 
@@ -390,7 +405,9 @@ def test_git_options_that_take_a_value_do_not_hide_the_subcommand_slot(tmp_path:
 
 
 @needs_git
-def test_git_checkout_and_the_like_offer_branches_tags_and_the_files_of_the_directory(tmp_path: Path):
+def test_git_checkout_and_the_like_offer_branches_tags_and_the_files_of_the_directory(
+    tmp_path: Path, patient_git: None
+):
     make_repository(tmp_path)
     (tmp_path / "feature.md").write_text("")
     completer = ShellCompleter(lambda: tmp_path, path="", home=tmp_path)
@@ -406,7 +423,7 @@ def test_git_checkout_and_the_like_offer_branches_tags_and_the_files_of_the_dire
 
 
 @needs_git
-def test_outside_a_repository_git_offers_its_subcommands_and_no_references(tmp_path: Path):
+def test_outside_a_repository_git_offers_its_subcommands_and_no_references(tmp_path: Path, patient_git: None):
     completer = ShellCompleter(lambda: tmp_path, path="", home=tmp_path)
 
     assert "status" in complete(completer, "git st")
