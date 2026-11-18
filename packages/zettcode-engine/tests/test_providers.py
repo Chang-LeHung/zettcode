@@ -114,6 +114,17 @@ def test_a_models_protocol_and_address_override_the_providers():
     assert entry.anthropic is True and entry.responses_api is False
 
 
+def test_a_model_that_says_nothing_about_images_inherits_the_providers_answer():
+    provider = _provider(
+        multimodal=True,
+        models=(ProvidedModel("a"), ProvidedModel("b", multimodal=False)),
+    )
+
+    assert [entry.multimodal for entry in entries((provider,))] == [True, False], (
+        "the host's answer stands for a model that gives none, and a model's own answer wins"
+    )
+
+
 def test_a_broken_level_is_refused_when_the_model_becomes_an_entry():
     provider = _provider(models=(ProvidedModel("m", reasoning_efforts=("banana",)),))
 
