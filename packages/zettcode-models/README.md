@@ -19,6 +19,6 @@ Moonshot, through its Anthropic-compatible endpoint. The models appear in `/mode
 
 The list is static and no endpoint is called at start. The plugin is **on by default**: a key in the environment is
 enough, and a machine whose own configuration lists no model starts on the first one the plugin offers.
-`[plugins] disable = ["models"]` leaves it out, and a vendor is skipped rather than failing the plugin when an
-earlier plugin has registered its host name, or when your entries or an earlier plugin already show any one of its
-models.
+`[plugins] disable = ["models"]` leaves it out, and a vendor is skipped rather than failing the plugin when your
+entries already show one of its models. A name an earlier plugin has taken is caught when the loader merges, so it
+refuses the whole plugin, as for any plugin that overlaps another.
