@@ -1,16 +1,17 @@
 """Official models for the vendor API keys found in the environment.
 
-A reader who has ``OPENAI_API_KEY``, ``ANTHROPIC_API_KEY``, ``DEEPSEEK_API_KEY`` or ``ZAI_API_KEY`` set does not
-have to type an address or a model id to try that vendor. The plugin knows the current official model of each host,
-registers it as one :class:`~zettcode.plugin_api.ProvidedModel`, and leaves the token to the runtime, which reads it
-from the variable named here and never writes it to the configuration.
+A reader who has ``OPENAI_API_KEY``, ``ANTHROPIC_API_KEY``, ``DEEPSEEK_API_KEY``, ``ZAI_API_KEY`` or
+``MOONSHOT_API_KEY`` set does not have to type an address or a model id to try that vendor. The plugin knows the
+current official models of each host, registers them as :class:`~zettcode.plugin_api.ProvidedModel` entries, and
+leaves the token to the runtime, which reads it from the variable named here and never writes it to the
+configuration.
 
 The list is deliberately static: a start asks no vendor for anything, so a key in the environment costs no network
 round trip. It is on by default: a key in the environment is enough for the host to be offered, and a machine whose
 own configuration lists no model starts on the first one a plugin offers, so the first run is a prompt box rather
-than an instruction. ``[plugins] disable = ["models"]`` is the way back out. A vendor whose host or shown name the
-reader's own configuration already has is left out rather than failing the plugin, because one conflict must not
-cost the vendors that do not conflict.
+than an instruction. ``[plugins] disable = ["models"]`` is the way back out. A vendor is left out, rather than
+failing the plugin, when an earlier plugin has registered its host name, or when the reader's entries or an earlier
+plugin already show any one of its models: one conflict must not cost the vendors that do not conflict.
 """
 
 from __future__ import annotations
@@ -28,6 +29,23 @@ __version__ = "0.5.1"
 
 
 @dataclass(frozen=True, slots=True)
+class VendorModel:
+    """One official model a host serves, as the vendor documents it.
+
+    Attributes:
+        model: The model id a request takes.
+        display: What ``/model`` shows for it.
+        context_window: Tokens it can carry.
+        multimodal: Whether it takes images; ``None`` is the host's own answer.
+    """
+
+    model: str
+    display: str
+    context_window: int
+    multimodal: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Vendor:
     """One host an environment variable can open.
 
@@ -37,10 +55,9 @@ class Vendor:
         env: The variables that may hold the key, most specific first.
         base_url: The address the client appends its route to.
         api: Which protocol the host speaks.
-        model: The vendor's current official model id.
-        display: What ``/model`` shows for it.
-        context_window: Tokens it can carry.
-        multimodal: Whether it takes images.
+        models: The vendor's current official models, in the order a list shows them; a machine with no configuration
+            of its own starts on the first one.
+        multimodal: Whether the host's models take images, until one says otherwise.
     """
 
     name: str
@@ -48,9 +65,7 @@ class Vendor:
     env: tuple[str, ...]
     base_url: str
     api: str
-    model: str
-    display: str
-    context_window: int
+    models: tuple[VendorModel, ...]
     multimodal: bool = False
 
     def key(self) -> tuple[str, str] | None:
@@ -62,22 +77,30 @@ class Vendor:
         return None
 
 
-#: The official model offered for each host, checked against the vendors' model pages on 2026-11-10. The ids and
+#: The official models offered for each host, checked against the vendors' own pages on 2026-11-18. The ids and
 #: windows are the whole of this plugin's knowledge: when a vendor moves on, this table is the one place to edit.
-#: DeepSeek's entry is what its own ``/models`` answers (2026-11-15): the vendor page gave the display name
-#: (``DeepSeek-V4.1-Flash``), and the id a request takes is ``deepseek-flash`` — ``deepseek-v4.1-flash`` was refused
-#: with "the supported API model names are deepseek-flash, deepseek-v4-pro". It speaks the Messages API, because that
-#: is the endpoint its hosted tools live on and the one this plugin was asked to default to.
+#: OpenAI's flagship is GPT-6.2 Astra and its everyday model GPT-6.2 Sol, both on a 1,050,000 window; neither takes
+#: tools on Chat Completions ("tool calling requires the Responses API"), so the host speaks ``responses``.
+#: Anthropic's ids are ``claude-opus-5-5`` and ``claude-sonnet-5-5``, both on a 1M window.
+#: Kimi's are ``kimi-k3.1-pro`` (the flagship) and ``kimi-k3`` (the previous flagship), both on a 1,048,576 window and
+#: reachable through the Anthropic-compatible endpoint Kimi documents for Claude Code; the key must be one issued by
+#: platform.kimi.ai, because a mainland-platform key is for api.moonshot.cn and is refused here.
+#: DeepSeek's two entries are what its own ``/models`` answers (2026-11-18): the vendor page gave the display names
+#: (``DeepSeek-V4.1-Flash`` and ``DeepSeek-V4-Pro``), and the ids a request takes are ``deepseek-flash`` and
+#: ``deepseek-v4-pro`` — ``deepseek-v4.1-flash`` was refused with "the supported API model names are deepseek-flash,
+#: deepseek-v4-pro". Both speak the Messages API, because that is the endpoint their hosted tools live on and the
+#: one this plugin was asked to default to; ``deepseek-flash`` takes images and ``deepseek-v4-pro`` text only.
 VENDORS: tuple[Vendor, ...] = (
     Vendor(
         "openai",
         "OpenAI",
         ("OPENAI_API_KEY",),
         "https://api.openai.com/v1",
-        "chat",
-        "gpt-6.1-sol",
-        "GPT-6.1 Sol",
-        1_050_000,
+        "responses",
+        (
+            VendorModel("gpt-6.2-astra", "GPT-6.2 Astra", 1_050_000),
+            VendorModel("gpt-6.2-sol", "GPT-6.2 Sol", 1_050_000),
+        ),
         multimodal=True,
     ),
     Vendor(
@@ -86,9 +109,10 @@ VENDORS: tuple[Vendor, ...] = (
         ("ANTHROPIC_API_KEY",),
         "https://api.anthropic.com",
         "anthropic",
-        "claude-opus-5-5",
-        "Claude Opus 5.5",
-        1_000_000,
+        (
+            VendorModel("claude-opus-5-5", "Claude Opus 5.5", 1_000_000),
+            VendorModel("claude-sonnet-5-5", "Claude Sonnet 5.5", 1_000_000),
+        ),
         multimodal=True,
     ),
     Vendor(
@@ -97,9 +121,10 @@ VENDORS: tuple[Vendor, ...] = (
         ("DEEPSEEK_API_KEY",),
         "https://api.deepseek.com/anthropic",
         "anthropic",
-        "deepseek-flash",
-        "DeepSeek V4.1 Flash",
-        1_048_576,
+        (
+            VendorModel("deepseek-flash", "DeepSeek V4.1 Flash", 1_048_576),
+            VendorModel("deepseek-v4-pro", "DeepSeek V4 Pro", 1_048_576, multimodal=False),
+        ),
         multimodal=True,
     ),
     Vendor(
@@ -108,15 +133,25 @@ VENDORS: tuple[Vendor, ...] = (
         ("ZAI_API_KEY", "ZHIPUAI_API_KEY", "ZHIPU_API_KEY"),
         "https://api.z.ai/api/paas/v4",
         "chat",
-        "glm-5.3",
-        "GLM-5.3",
-        1_000_000,
+        (VendorModel("glm-5.3", "GLM-5.3", 1_000_000),),
+    ),
+    Vendor(
+        "moonshot",
+        "Moonshot AI",
+        ("MOONSHOT_API_KEY",),
+        "https://api.moonshot.ai/anthropic",
+        "anthropic",
+        (
+            VendorModel("kimi-k3.1-pro", "Kimi K3.1 Pro", 1_048_576),
+            VendorModel("kimi-k3", "Kimi K3", 1_048_576),
+        ),
+        multimodal=True,
     ),
 )
 
 
 def _provider(vendor: Vendor, variable: str) -> Provider:
-    """Return the host description for one vendor, with the one model it offers."""
+    """Return the host description for one vendor, with every model it offers."""
     return Provider(
         vendor.name,
         vendor.label,
@@ -124,26 +159,28 @@ def _provider(vendor: Vendor, variable: str) -> Provider:
         api=vendor.api,  # type: ignore[arg-type]
         base_url=vendor.base_url,
         token_env=variable,
-        models=(
+        multimodal=vendor.multimodal,
+        models=tuple(
             ProvidedModel(
-                vendor.model,
-                display_model=vendor.display,
-                context_window=vendor.context_window,
-                multimodal=vendor.multimodal,
-            ),
+                model.model,
+                display_model=model.display,
+                context_window=model.context_window,
+                multimodal=model.multimodal,
+            )
+            for model in vendor.models
         ),
-        note="official model",
+        note="official models",
     )
 
 
 class ModelsPlugin(Plugin[PluginContext]):
-    """Offer one official model for each vendor whose API key is in the environment."""
+    """Offer the official models for each vendor whose API key is in the environment."""
 
     name = "models"
-    description = "An official model for each vendor API key in the environment"
+    description = "Official models for each vendor API key in the environment"
 
     def activate(self, ctx: PluginContext) -> None:
-        """Register the host of every key that is set, with its current official model."""
+        """Register the host of every key that is set, with its current official models."""
         for vendor in VENDORS:
             key = vendor.key()
             if key is None:
@@ -151,10 +188,12 @@ class ModelsPlugin(Plugin[PluginContext]):
             try:
                 ctx.agent.register_provider(_provider(vendor, key[0]))
             except ValueError as error:
-                # A name the reader's own entries (or an earlier plugin) already have is theirs, not this plugin's:
-                # it is on by default, so a conflict leaves that vendor out and costs the others nothing, rather
-                # than failing a plugin nobody asked for.
-                logger.info("models.skipped", extra={"vendor": vendor.name, "reason": str(error)})
+                # A name that is taken is not this plugin's: a host name an earlier plugin registered, or a shown
+                # name the reader's entries or an earlier plugin already use. It is on by default, so a conflict
+                # leaves that vendor out and costs the others nothing, rather than failing a plugin nobody asked
+                # for. It is a warning because a vendor can carry several models now, and one taken name quietly
+                # costs the host the rest of them.
+                logger.warning("models.skipped", extra={"vendor": vendor.name, "reason": str(error)})
 
 
-__all__ = ["ModelsPlugin", "Vendor", "VENDORS", "__version__"]
+__all__ = ["ModelsPlugin", "Vendor", "VendorModel", "VENDORS", "__version__"]
