@@ -1,21 +1,37 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { t } from "../../i18n";
-import { href, route, type Nav } from "../../stores/route";
+import { go, href, route, type Nav } from "../../stores/route";
+import { showMenu } from "../sheets/sheets";
 import { badge } from "../../lib/unread";
 import { chatsWithUnread as chatsUnread, lobby } from "../../stores/threads";
 import Icon from "../common/Icon.vue";
 import type { IconName } from "../common/icons";
 
-const tabs: { nav: Nav; label: string; icon: IconName }[] = [
+/** `extra` tabs sit in the "More" menu on a phone, where seven tabs would not fit; the wide rail shows all of them. */
+const tabs: { nav: Nav; label: string; icon: IconName; extra?: boolean }[] = [
   { nav: "chats", label: "Chats", icon: "chat" },
   { nav: "new", label: "New", icon: "plus" },
-  { nav: "config", label: "Config", icon: "config" },
-  { nav: "logs", label: "Logs", icon: "logs" },
-  { nav: "graph", label: "Graph", icon: "graph" },
+  { nav: "config", label: "Config", icon: "config", extra: true },
+  { nav: "logs", label: "Logs", icon: "logs", extra: true },
+  { nav: "graph", label: "Graph", icon: "graph", extra: true },
   { nav: "dashboard", label: "Dashboard", icon: "chart" },
   { nav: "settings", label: "Settings", icon: "settings" },
 ];
+
+/** The section a person is in when it is one of those behind "More"; said to a screen reader after the button's name. */
+const inMore = computed(() => tabs.find((tab) => tab.extra && tab.nav === route.nav));
+const moreButton = ref<HTMLButtonElement | null>(null);
+async function more(): Promise<void> {
+  await showMenu(
+    t("More"),
+    tabs
+      .filter((tab) => tab.extra)
+      .map((tab) => ({ icon: tab.icon, label: t(tab.label), current: tab.nav === route.nav, run: () => go(tab.nav) })),
+  );
+  // The sheet took focus; give it back to the control that opened it (a no-op once the bar is hidden on a wide window).
+  moreButton.value?.focus();
+}
 
 const dot = computed(() => (!lobby.live ? "warn" : lobby.status?.broker.reachable === false ? "bad" : "ok"));
 const caption = computed(() =>
@@ -30,6 +46,7 @@ const caption = computed(() =>
       v-for="tab in tabs"
       :key="tab.nav"
       class="rail-tab"
+      :class="{ extra: tab.extra }"
       :href="href(tab.nav)"
       :aria-current="route.nav === tab.nav ? 'page' : undefined"
     >
@@ -37,6 +54,11 @@ const caption = computed(() =>
       <span>{{ t(tab.label) }}</span>
       <span v-if="tab.nav === 'chats' && chatsUnread" class="badge">{{ badge(chatsUnread) }}</span>
     </a>
+    <button ref="moreButton" class="rail-tab rail-more" :class="{ active: inMore }" type="button" aria-haspopup="dialog" @click="more">
+      <Icon name="more" />
+      <span>{{ t("More") }}</span>
+      <span v-if="inMore" class="sr">{{ t(inMore.label) }}</span>
+    </button>
     <div class="rail-spacer" />
     <div class="rail-status" :title="caption">
       <span class="rail-dot" :class="dot" />
@@ -59,8 +81,10 @@ const caption = computed(() =>
   transition: background 0.15s, color 0.15s, transform 0.15s; text-decoration: none !important;
 }
 .rail-tab:hover { background: var(--hover); }
-.rail-tab[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
-.rail-tab[aria-current="page"]::before { content: ''; position: absolute; left: 5px; width: 3px; height: 22px; border-radius: 3px; background: var(--accent); }
+/* The wide rail marks the section with a tint; it has no indicator bar. */
+.rail-tab[aria-current="page"], .rail-tab.active { color: var(--accent); background: var(--accent-soft); }
+/* "More" only exists on a phone (the wide rail shows every tab); the doubled class keeps this independent of rule order. */
+.rail-tab.rail-more { display: none; }
 .rail-tab .badge { position: absolute; top: 5px; left: calc(50% + 6px); }
 .rail-spacer { flex: 1; }
 .rail-status { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; font-size: 0.62rem; color: var(--muted); }
@@ -77,5 +101,10 @@ const caption = computed(() =>
   }
   .rail-logo, .rail-spacer, .rail-status { display: none; }
   .rail-tab { flex: 1; min-height: 50px; }
+  .rail-tab.extra { display: none; }
+  .rail-tab.rail-more { display: flex; }
+  /* On a phone the current tab has no tint: its accent colour and a heavier label say where you are, so colour is not the
+     only cue. */
+  .rail-tab[aria-current="page"], .rail-tab.active { background: none; font-weight: 650; }
 }
 </style>

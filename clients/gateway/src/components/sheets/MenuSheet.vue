@@ -12,6 +12,7 @@ const emit = defineEmits<{ close: [] }>();
     :key="item.label"
     class="menu-item"
     :class="{ danger: item.danger }"
+    :aria-current="item.current ? 'true' : undefined"
     @click="
       emit('close');
       item.run();
@@ -28,4 +29,5 @@ const emit = defineEmits<{ close: [] }>();
 .menu-item.danger { color: var(--bad); }
 .menu-item svg { color: var(--muted); }
 .menu-item.danger svg { color: var(--bad); }
+.menu-item[aria-current="true"], .menu-item[aria-current="true"] svg { color: var(--accent); font-weight: 600; }
 </style>

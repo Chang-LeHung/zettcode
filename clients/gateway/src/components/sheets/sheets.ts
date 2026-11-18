@@ -10,6 +10,8 @@ export interface MenuEntry {
   label: string;
   run: () => void;
   danger?: boolean;
+  /** The entry is where the person already is (a section they are in): drawn in the accent colour. */
+  current?: boolean;
 }
 
 /** Ask a question. Resolves true only when the person chose the action; with `run`, only when the action then succeeded. */
@@ -23,6 +25,7 @@ export async function confirmAction(options: { title: string; text: string; ok: 
   return answer === true;
 }
 
-export function showMenu(title: string, items: (MenuEntry | false | null | undefined)[]): void {
-  void openSheet(title, MenuSheet, { items: items.filter((item): item is MenuEntry => Boolean(item)) });
+/** Open a menu. Resolves when the sheet is gone, so a caller that opened it from a control can put focus back there. */
+export async function showMenu(title: string, items: (MenuEntry | false | null | undefined)[]): Promise<void> {
+  await openSheet(title, MenuSheet, { items: items.filter((item): item is MenuEntry => Boolean(item)) });
 }
