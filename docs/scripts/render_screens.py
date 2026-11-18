@@ -34,20 +34,29 @@ from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.shell import APPROVAL_ROWS, PAGE_SCREEN
 from zettcode.app.ui.widgets import (
     ApprovalPage,
+    EffortPage,
     FormPage,
     ModelPage,
+    PetPage,
     PluginsPage,
+    SelfCompactPage,
     SessionsPage,
+    StatuslinePage,
     bottom_panel,
 )
+from zettcode.app.ui.widgets.effort_page import EFFORT_ROWS
 from zettcode.app.ui.widgets.form_page import Field, form_rows
+from zettcode.app.ui.widgets.pet_page import pet_rows
 from zettcode.app.ui.widgets.plugins_page import PluginRow
+from zettcode.app.ui.widgets.self_compact_page import SELF_COMPACT_ROWS
 from zettcode.commands.context_page import ContextPage
 from zettcode.commands.hub import DAEMONS, Daemon, HubData, HubPage
 from zettcode.commands.usage_page import UsagePage
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
 from zettcode.jit_harness.page import HarnessPage, HarnessTarget, TableRow, TableView
+from zettcode.pets import bundled_pets
+from zettcode.plugin_api.pets import PetCatalog
 from zettcode.sdk.types import (
     ContextReport,
     ContextShare,
@@ -549,6 +558,80 @@ def plugins_canvas() -> Canvas:
     )
 
 
+# -- the panels a command opens ---------------------------------------------------------------------------------
+
+#: One line per reasoning level, as the effort panel shows it under the rail.
+EFFORT_NOTES = {
+    "off": "no deliberate reasoning",
+    "minimal": "a token of thought, fastest",
+    "low": "quick answers",
+    "medium": "the default balance",
+    "high": "more thought on hard problems",
+    "xhigh": "a long think on hard problems",
+    "max": "the highest budget the provider takes",
+    "ultra": "above max; a provider maps it down when it must",
+}
+
+
+def effort_canvas() -> Canvas:
+    """Paint ``/effort``: the rail, the knob at the level in force, and what the level under it means."""
+    levels = tuple(EFFORT_NOTES)
+    return full_screen(
+        lambda: EffortPage(
+            levels,
+            "medium",
+            notes=EFFORT_NOTES,
+            on_select=lambda level: None,
+            on_cancel=lambda: None,
+        ),
+        100,
+        EFFORT_ROWS,
+    )
+
+
+def compact_canvas() -> Canvas:
+    """Paint ``/compact``: the session's own choice beside the default every other session follows."""
+    return full_screen(
+        lambda: SelfCompactPage(
+            None,
+            True,
+            on_apply=lambda choice, default: None,
+            on_cancel=lambda: None,
+        ),
+        100,
+        SELF_COMPACT_ROWS + 2,
+    )
+
+
+def statusline_canvas() -> Canvas:
+    """Paint ``/statusline``: the two bars as the choices stand, and a switch for every named part."""
+    return full_screen(
+        lambda: StatuslinePage(
+            {"handle", "speed", "cache"},
+            on_apply=lambda shown: None,
+            on_cancel=lambda: None,
+        ),
+        100,
+        22,
+    )
+
+
+def pet_canvas() -> Canvas:
+    """Paint ``/pet``: every pet offered, the one out marked, and the marked one going through its moods."""
+    catalog = PetCatalog(bundled_pets())
+    return full_screen(
+        lambda: PetPage(
+            catalog,
+            "penguin",
+            on_move=lambda name: None,
+            on_select=lambda name: None,
+            on_cancel=lambda: None,
+        ),
+        100,
+        pet_rows(len(catalog.names()), 40),
+    )
+
+
 # -- the hub ----------------------------------------------------------------------------------------------------
 
 #: The clock ``/hub`` counts its ages from, fixed for the same reason the resume panel has one.
@@ -765,6 +848,27 @@ SCREENS: tuple[tuple[str, Callable[[], Canvas], str], ...] = (
         plugins_canvas,
         "ZettCode's /plugins page: the program's own switches first, then installed ones, each with the key or "
         "distribution it writes",
+    ),
+    (
+        "effort",
+        effort_canvas,
+        "ZettCode's /effort panel: a rail of eight reasoning levels with the knob on medium",
+    ),
+    (
+        "compact",
+        compact_canvas,
+        "ZettCode's /compact panel: this session's own choice over the default every other session follows",
+    ),
+    (
+        "statusline",
+        statusline_canvas,
+        "ZettCode's /statusline panel: the header and the status line as the choices stand, with a switch for every "
+        "named part",
+    ),
+    (
+        "pets",
+        pet_canvas,
+        "ZettCode's /pet panel: the pets on the left with the one out marked, and that pet on its stage",
     ),
     (
         "hub",

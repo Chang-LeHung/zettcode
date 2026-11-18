@@ -44,6 +44,8 @@ conversation remains the same when you switch; use `/new` for a clean start.
 
 `/effort` picks how much the model should think before answering:
 
+![The /effort panel: eight levels on one rail, the knob on medium, and what that level means under it](/screens/effort.svg)
+
 | Level | What it is for |
 | --- | --- |
 | `off` | Request no deliberate reasoning, subject to the endpoint's support. |
@@ -55,7 +57,9 @@ conversation remains the same when you switch; use `/new` for a clean start.
 | `max` | The highest budget the provider accepts. |
 | `ultra` | Highest requested level; availability depends on the endpoint. |
 
-The choice applies to later requests, and it is recorded with the session: resuming that session puts the level back.
+`←` and `→` slide the knob one level and the name over it follows; nothing changes until `Enter`, which applies the
+level to later requests, and `Esc` leaves the level as it was. The choice is recorded with the session: resuming that
+session puts the level back.
 It is not a setting in `config.toml` — a new session starts at the configured `reasoning_effort`.
 For example:
 

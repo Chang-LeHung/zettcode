@@ -128,7 +128,13 @@ you need the space. If a summary would not be smaller than the text it replaces,
 
 If the newest checkpoint covers the conversation, another manual compaction is refused. A summary may lose detail;
 ask the model to re-read a file when exact text matters. The model can compact on its own if you allow it:
-[self-compaction](/guide/commands#self-compaction).
+[self-compaction](/guide/commands#self-compaction), which `/compact` turns on for this session or for every session
+that never chose:
+
+![The /compact panel: this session's own choice on the top rail, the default for every other session below it](/screens/compact.svg)
+
+`↑` `↓` pick a rail, `←` `→` move its knob, the line under them says what would be in effect, and `Enter` applies both
+— the default goes into `config.toml`, the session's own choice stays with the session. `Esc` applies nothing.
 
 ## Keeping the request small
 

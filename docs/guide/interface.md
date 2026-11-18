@@ -210,8 +210,12 @@ view.
 ### Choosing what is shown {#choosing-what-is-shown}
 
 Every word in both bars belongs to a named part, shown until you switch it off. `/statusline` lists them — `ctx`,
-`cache`, `model`, the `turn-*` items of the line a request ends on, `pet` and the rest — and `Enter` applies the
-choice while `Esc` leaves it as it was. In `config.toml`, one line per hidden part:
+`cache`, `model`, the `turn-*` items of the line a request ends on, `pet` and the rest:
+
+![The /statusline panel: the header and the status line as the choices stand, then a switch for each named part](/screens/statusline.svg)
+
+`↑` `↓` move between the parts, `←` `→` hide and show the marked one, and the two rows above the list show what the
+bars would read. `Enter` applies the choice, `Esc` leaves it as it was. In `config.toml`, one line per hidden part:
 
 ```toml
 [statusline]
@@ -224,9 +228,13 @@ figures that matter least are left out whole — `speed`, then `cache`, then `to
 ## The pet {#the-pet}
 
 A small companion can stand over the right of the conversation. It is off until you set `pet = true`
-under `[statusline]`, or switch the `pet` part on in `/statusline`. `/pet` opens a panel and `/pet whale` picks one
-in a step. Drag it with the mouse to move it, and its place is saved for later sessions. A terminal narrower than 80
-columns does not draw it. See [`/pet`](/guide/commands#slash-commands) and
+under `[statusline]`, or switch the `pet` part on in `/statusline`. `/pet` opens the panel below and `/pet whale`
+picks one in a step; `Enter` chooses, `Esc` puts the last one back.
+
+![The /pet panel: the thirteen pets on the left with the one out marked, and that pet on a stage at the right](/screens/pets.svg)
+
+Drag it with the mouse to move it, and its place is saved for later sessions. A terminal narrower than 80 columns
+does not draw it. See [`/pet`](/guide/commands#slash-commands) and
 [Optional features](/guide/config#optional-features).
 
 ## Next steps

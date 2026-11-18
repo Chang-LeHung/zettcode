@@ -193,7 +193,12 @@ Windows 和没有 `bwrap` 的 Linux 没有这样的沙箱：`safe` 只跑只读�
 ### 选择显示哪些部分 {#choosing-what-is-shown}
 
 两条栏里的每个词都属于一个有名字的部分，没关掉之前都显示。`/statusline` 把它们列出来——`ctx`、`cache`、`model`、
-请求结束行里的 `turn-*`、`pet` 等等——`Enter` 应用，`Esc` 保持原样。在 `config.toml` 里，每个关掉的部分一行：
+请求结束行里的 `turn-*`、`pet` 等等：
+
+![`/statusline` 面板：上面是当前选择下两条栏的样子，下面每个有名字的部分一个开关](/screens/statusline.svg)
+
+`↑` `↓` 在部分之间移动，`←` `→` 隐藏或显示标着的那一个，列表上面两行就是按当前选择画出来的两条栏。`Enter` 应用，
+`Esc` 保持原样。在 `config.toml` 里，每个关掉的部分一行：
 
 ```toml
 [statusline]
@@ -206,8 +211,11 @@ ctx = false
 ## 宠物 {#the-pet}
 
 对话右侧可以站一个小伙伴。它默认关着，把 `[statusline]` 下的 `pet` 设成 `true`，或在 `/statusline` 里打开
-`pet` 部分才出现。`/pet` 打开面板，`/pet whale` 一步选定。用鼠标拖它就能换地方，位置会为之后的会话保存。终端
-窄于 80 列时不画它。见 [`/pet`](/zh/guide/commands#斜杠命令) 和[可选功能](/zh/guide/config#可选功能)。
+`pet` 部分才出现。`/pet` 打开下面这个面板，`/pet whale` 一步选定；`Enter` 选定，`Esc` 把原来那只放回去。
+用鼠标拖它就能换地方，位置会为之后的会话保存。终端窄于 80 列时不画它。见 [`/pet`](/zh/guide/commands#斜杠命令) 和
+[可选功能](/zh/guide/config#可选功能)。
+
+![`/pet` 面板：左边是十三只宠物，当前那只标出来，右边是它在自己的舞台上的样子](/screens/pets.svg)
 
 ## 下一步
 
