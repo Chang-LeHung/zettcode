@@ -32,9 +32,18 @@ from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.plugins.loader import load_terminal_plugins, terminal_plugins
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.shell import APPROVAL_ROWS, PAGE_SCREEN
-from zettcode.app.ui.widgets import ApprovalPage, ModelPage, PluginsPage, SessionsPage, bottom_panel
+from zettcode.app.ui.widgets import (
+    ApprovalPage,
+    FormPage,
+    ModelPage,
+    PluginsPage,
+    SessionsPage,
+    bottom_panel,
+)
+from zettcode.app.ui.widgets.form_page import Field, form_rows
 from zettcode.app.ui.widgets.plugins_page import PluginRow
 from zettcode.commands.context_page import ContextPage
+from zettcode.commands.hub import DAEMONS, Daemon, HubData, HubPage
 from zettcode.commands.usage_page import UsagePage
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
@@ -540,6 +549,100 @@ def plugins_canvas() -> Canvas:
     )
 
 
+# -- the hub ----------------------------------------------------------------------------------------------------
+
+#: The clock ``/hub`` counts its ages from, fixed for the same reason the resume panel has one.
+HUB_NOW = 1_792_000_000.0
+
+
+def hub_canvas() -> Canvas:
+    """Paint ``/hub`` on its Daemons tab: what each daemon is doing, and the keys that act on the row under the mark.
+
+    The rows are the shape the tab builds — the daemon's name and title, its session, the model and the level it runs
+    at, and how long ago its record was written — and the keys are the page's own footer, which is where a reader
+    learns that Enter starts an offline daemon and that deleting takes two presses.
+    """
+    data = HubData(
+        daemons=(
+            Daemon(
+                session_id="01a1ea21",
+                label="builder",
+                status="running",
+                model="deepseek-v4-pro",
+                name="builder",
+                title="tool builder",
+                effort="medium",
+                permission="safe",
+                activity=HUB_NOW - 12,
+            ),
+            Daemon(
+                session_id="01a1ea03",
+                label="review-diff",
+                status="running",
+                model="claude-sonnet-4-5",
+                name="review-diff-emphasis",
+                title="Review word-level diff emphasis",
+                effort="high",
+                permission="full",
+                activity=HUB_NOW - 240,
+            ),
+            Daemon(
+                session_id="01a1e9d6",
+                label="review-tools",
+                status="offline",
+                model="deepseek-v4-pro",
+                name="review-tools",
+                title="Review the tools port",
+                effort="high",
+                permission="full",
+                activity=HUB_NOW - 5400,
+            ),
+        ),
+        note="3 daemons \u00b7 2 running",
+        now=HUB_NOW,
+    )
+    page = HubPage(data, on_close=lambda: None, on_stop=lambda sid: None, on_restart=lambda sid: None)
+    page._show(DAEMONS)
+    return full_screen(lambda: page, 118, 14)
+
+
+# -- the add-a-model form ---------------------------------------------------------------------------------------
+
+
+def config_form_canvas() -> Canvas:
+    """Paint the form ``/config`` asks for with: the lines, the box around the one the cursor is in, and its hint.
+
+    The fields are the ones the flow builds for a chat endpoint, in its order and with its labels, so the picture
+    answers "what am I being asked for" the way the real page does.
+    """
+    fields = (
+        Field(
+            "model", "Model id", initial="deepseek-v4-pro", hint="The id the endpoint calls the model.", required=True
+        ),
+        Field("token", "Token", initial="sk-9f2c1d7a4b", secret=True, placeholder="optional"),
+        Field("url", "Address", initial="https://api.deepseek.com"),
+        Field("name", "Shown name", initial="DeepSeek Pro"),
+        Field(
+            "context_window",
+            "Context window",
+            initial="1000000",
+            hint="Tokens the model can carry. Leave it empty to use the endpoint's own.",
+        ),
+        Field("compact_percent", "Compress at", initial="80%", placeholder="80%"),
+    )
+    return full_screen(
+        lambda: FormPage(
+            "Add a model \u2014 OpenAI Chat API",
+            fields,
+            on_submit=lambda values: None,
+            on_cancel=lambda: None,
+            cancel_label="esc back",
+        ),
+        100,
+        form_rows(len(fields)),
+    )
+
+
 #: The harness root the page prints, written as the page prints it: ``~`` stays a literal here so the picture is the
 #: same on every machine that builds the guide, instead of the home directory of whoever ran the generator.
 HARNESS_ROOT = cast("Path", PurePosixPath("~/.zettcode/harness"))
@@ -662,6 +765,18 @@ SCREENS: tuple[tuple[str, Callable[[], Canvas], str], ...] = (
         plugins_canvas,
         "ZettCode's /plugins page: the program's own switches first, then installed ones, each with the key or "
         "distribution it writes",
+    ),
+    (
+        "hub",
+        hub_canvas,
+        "ZettCode's /hub page on the Daemons tab: three daemons with their model and permission level, and the keys "
+        "that start, restart, stop and delete",
+    ),
+    (
+        "config-form",
+        config_form_canvas,
+        "The form /config asks for a model with: the model id, token, address, shown name, context window and the "
+        "point it compresses at, each in a box",
     ),
     (
         "approval",

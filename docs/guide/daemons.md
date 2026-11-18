@@ -59,7 +59,21 @@ dropped connection, a rate limit — is retried up to three times from where it 
 
 A daemon that exits any other way, such as a reboot or Ctrl-C, keeps its record too: it is listed as `dead` in
 `daemon list`, in `/hub` (Daemons tab) and in the gateway's chats, and can be started again from any of them. Only
-`kill` and `delete` remove it. In `/hub`, `s` stops, `t` restarts, and `d` deletes (press it twice).
+`kill` and `delete` remove it.
+
+![The /hub page on the Daemons tab: three daemons with their state, age, title, model and workspace, and the keys that act on the marked row](/screens/hub.svg)
+
+`/hub` is the same list without leaving the conversation: `Tab` walks Graph, Sessions, Daemons and History, and the
+row under the mark takes one of four keys.
+
+| Key | On the Daemons tab |
+| --- | --- |
+| `Enter` | Start the daemon; an offline one resumes its session. |
+| `t` | Restart it — a running one is stopped first. |
+| `s` | Stop it and **keep** its record, shown as `idle`. |
+| `d` | Delete the record **and its conversation**. Two presses: the first asks, any other key forgets. |
+
+`/` searches the tab, `r` reads the machine again, and `Esc` clears the search before it closes the page.
 
 `stop` and `kill` refuse a daemon in the middle of a turn; add `--force` to stop it anyway. A model or effort change
 takes effect from the next turn. A permission change restarts the process, so the turn in flight is lost. `--title`

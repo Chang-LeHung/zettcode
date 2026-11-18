@@ -80,17 +80,7 @@ in `/model` and are not added here; see [Plugins](/guide/plugins#providers).
 
 A model is added on **one form**, not a question at a time:
 
-```text
-Add a model — OpenAI Chat API
-
-╭─ Model id * ────────────────────────────────────────╮
-│ gpt-4o                                         │
-╰────────────────────────────────────────────────╯
-╭─ Token ──────────────────────────────────────────╮
-│ ••••••••••••••                                 │
-╰────────────────────────────────────────────────╯
-   … Address, Shown name, Temperature, the Images and Web search switches, Context window and Compress at
-```
+![The form /config asks for a model with: the model id, token, address, shown name, context window and the point it compresses at, each in a box](/screens/config-form.svg)
 
 Every line is a **box** with its label on the top border, bright green while the cursor is in it, so it reads as
 something to type into; a click anywhere on a box, its border included, puts the cursor there. The form needs about
