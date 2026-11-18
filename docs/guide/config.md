@@ -240,7 +240,7 @@ is not an API key. On macOS/Linux you can restrict file access with
 | `web_search_name` | string | the API's own | The exact tool type the endpoint expects for that search, for a provider that names it differently. Left out, the default for the API is sent. |
 | `context_window` | integer | `128000` | Positive context-window size in tokens, not characters or the output limit. |
 | `compact_percent` | number | `80` | Automatic compaction threshold: greater than `0`, at most `100`. Decimals such as `75.5` are allowed. |
-| `max_tokens` | integer | `20000` | Tokens one reply may spend: the output budget the request carries (`max_tokens`, or `max_output_tokens` on the Responses API). It is what a long answer runs out of — the reply then stops mid-sentence and says the provider said `max_tokens`. `0` sends no budget at all and leaves the endpoint's own default in force, which is the escape for a provider that refuses one. See [How long one reply may be](#max-tokens). |
+| `max_tokens` | integer | `64000` | Tokens one reply may spend: the output budget the request carries (`max_tokens`, or `max_output_tokens` on the Responses API). It is what a long answer runs out of — the reply then stops mid-sentence and says the provider said `max_tokens`. `0` sends no budget at all and leaves the endpoint's own default in force, which is the escape for a provider that refuses one. See [How long one reply may be](#max-tokens). |
 | `reasoning_efforts` | array of strings | every level | The reasoning levels this model accepts, from `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`. List them when the endpoint rejects the rest; see [Reasoning levels a model takes](#reasoning-levels-a-model-takes). |
 
 `base_url` is where the client appends its route — `/chat/completions`,
@@ -339,7 +339,7 @@ token = "sk-..."
 max_tokens = 32000
 ```
 
-The default is 20,000 tokens. When a reply stops at the limit, the conversation says so in one line —
+The default is 64,000 tokens. When a reply stops at the limit, the conversation says so in one line —
 *The reply reached the model's output limit and is cut off*, with what the provider said — and `/continue` asks
 the model to carry on from there.
 
@@ -507,7 +507,7 @@ responses_api = false
 multimodal = false
 context_window = 1000000
 compact_percent = 80
-max_tokens = 20000             # tokens one reply may spend; 0 uses the endpoint's own
+max_tokens = 64000             # tokens one reply may spend; 0 uses the endpoint's own
 
 [transcript]
 max_entries = 1024             # displayed blocks, not terminal lines

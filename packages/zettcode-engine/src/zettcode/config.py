@@ -190,10 +190,11 @@ KEEP_SHARE = 4
 
 #: Tokens one reply may spend before the endpoint cuts it off, when the config does not say otherwise. The providers'
 #: own defaults are much smaller — 4,096 on most chat endpoints, 16,384 on Anthropic — and a long answer hit that
-#: limit, ended early, and cost the reader a `/continue` for what was one reply. Twenty thousand is under what every
-#: current frontier model emits and over what a long answer needs, and an entry whose endpoint refuses a budget says
-#: so on its first request, where the fix is one number in the file.
-DEFAULT_MAX_TOKENS = 20_000
+#: limit, ended early, and cost the reader a `/continue` for what was one reply. Sixty-four thousand is under what
+#: every current frontier model emits and over what a long answer needs, while still leaving a 128,000-token window
+#: room for the request; an entry whose endpoint refuses a budget says so on its first request, where the fix is one
+#: number in the file.
+DEFAULT_MAX_TOKENS = 64_000
 
 #: The sampling temperature a model may be given: 0 is the most deterministic. OpenAI-compatible endpoints take up to
 #: 2; Anthropic's Messages API stops at 1, which is checked for an ``anthropic`` entry.
