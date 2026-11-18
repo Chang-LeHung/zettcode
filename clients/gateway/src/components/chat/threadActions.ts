@@ -65,32 +65,63 @@ export const canRestart = (thread: Thread | undefined): thread is Thread =>
 /** The daemons being started right now, for a spinner and so that a second press does nothing. */
 export const restarting = reactive(new Set<string>());
 
+/** Of these session ids, the stopped daemons that one press can start again, as threads. The one rule for "can be restarted
+ * from here", so a strip, a card and a list cannot disagree about it. */
+export const restartable = (ids: readonly string[]): Thread[] =>
+  ids.map((id) => lobby.threads.find((item) => item.id === id)).filter(canRestart);
+
+/** Ask for one daemon to be started; returns what the gateway said (`note`: what it could not keep) or the error's message. */
+async function startOne(thread: Thread): Promise<{ note?: string } | { error: string }> {
+  try {
+    return await gateway.restart(thread.id);
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : String(error) };
+  }
+}
+
 /** Start a stopped daemon again as it was (its folder, model, level and label), on its own conversation. */
 export async function restartNow(thread: Thread): Promise<boolean> {
   if (restarting.has(thread.id)) return false;
   restarting.add(thread.id);
   try {
-    const answer = await gateway.restart(thread.id);
-    await loadThreads();
+    const answer = await startOne(thread);
+    if ("error" in answer) {
+      toast(answer.error, "bad");
+      return false;
+    }
+    // A list that fails to reload must not swallow the confirmation: the daemon is running, and the list catches up.
+    await loadThreads().catch(() => {});
     // The daemon is back either way; a note only says what it could not keep, so it is not styled as a failure.
     toast(answer.note ?? t("Started {name}", { name: thread.name }));
     return true;
-  } catch (error) {
-    toast(error instanceof ApiError ? error.message : String(error), "bad");
-    return false;
   } finally {
     restarting.delete(thread.id);
   }
 }
 
-/** Start every stopped daemon among `ids` again, one after another, and return how many started. Ids that cannot be
- * restarted from here (a terminal session, a daemon with nothing to continue) are skipped. */
-export async function restartAll(ids: string[]): Promise<number> {
+/**
+ * Start every stopped daemon among `ids`, one after another, with one list reload and one toast at the end ("Started 3
+ * of 5": a partial failure is said, not shown by a strip that shrinks). Those that cannot be restarted from here are not
+ * tried. Returns how many started.
+ */
+export async function restartAll(ids: readonly string[]): Promise<number> {
+  const todo = restartable(ids).filter((thread) => !restarting.has(thread.id));
+  if (!todo.length) return 0;
   let started = 0;
-  for (const id of ids) {
-    const thread = lobby.threads.find((item) => item.id === id);
-    if (canRestart(thread) && (await restartNow(thread))) started += 1;
+  let failure = "";
+  for (const thread of todo) restarting.add(thread.id);
+  try {
+    for (const thread of todo) {
+      const answer = await startOne(thread);
+      if ("error" in answer) failure = answer.error;
+      else started += 1;
+    }
+    await loadThreads().catch(() => {});
+  } finally {
+    for (const thread of todo) restarting.delete(thread.id);
   }
+  if (started === todo.length) toast(t("Started {count} daemons", { count: started }));
+  else toast(t("Started {started} of {total}: {error}", { started, total: todo.length, error: failure }), "bad");
   return started;
 }
 

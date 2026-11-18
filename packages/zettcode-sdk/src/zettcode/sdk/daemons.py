@@ -19,9 +19,11 @@ A daemon is a separate process, so none of this is bound by the one-workspace-pe
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping, Sequence
+import threading
+import time
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .errors import ConfigurationError, DaemonStartError, SessionNotFoundError
 from .types import DaemonInfo, SessionStatsInfo
@@ -31,6 +33,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 __all__ = [
     "PERMISSIONS",
+    "UsageReaders",
     "daemon_log",
     "default_effort",
     "delete_daemon",
@@ -124,8 +127,84 @@ def list_daemons() -> list[DaemonInfo]:
     return [_info(record) for record in found]
 
 
+class UsageReaders:
+    """The ledger readers :func:`session_totals` works with, kept between calls.
+
+    A :class:`~zettcode.engine.storage.ledger.LedgerReader` is made to be reused: it holds the index of what it read, so a
+    second look parses only what was appended. A caller that asks often (a page that polls) keeps one of these. Readers
+    are kept by the *folder* they read, and a workspace is resolved to its folder on every call, so a folder that was
+    renamed (an older folder name is moved to the readable one when a terminal opens the project) is followed rather than
+    read as empty. It also remembers where a session without a known folder was found, and when one was last looked for
+    in vain, so a deleted daemon that is still a member of a group is not searched for in every folder on every call.
+
+    The readers are not thread-safe on their own: :attr:`lock` is held by :func:`session_totals` for the whole of a call,
+    so two pages polling at once take turns instead of rewriting the same index files together.
+    """
+
+    #: Seconds before a session that was not found anywhere is looked for again.
+    RETRY = 300.0
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        """Start with nothing read; ``clock`` is for tests."""
+        self._clock = clock
+        self.lock = threading.Lock()
+        self._readers: dict[str, Any] = {}
+        self._folders: dict[str, Path] = {}
+        self._missed: dict[str, float] = {}
+
+    def reader(self, root: Path, workspace: str | Path) -> Any:
+        """Return the reader of a workspace's folder as it is named now, made once per folder."""
+        from zettcode.engine.storage.layout import find_workspace
+
+        return self.reader_at(find_workspace(root, workspace))
+
+    def reader_at(self, folder: Path) -> Any:
+        """Return the reader of a folder, made once."""
+        from zettcode.engine.storage.ledger import LedgerReader
+
+        found = self._readers.get(str(folder))
+        if found is None:
+            found = self._readers[str(folder)] = LedgerReader.at(folder)
+        return found
+
+    def folder_of(self, session_id: str) -> Path | None:
+        """Return the folder a session was found in, or ``None`` when it has not been."""
+        return self._folders.get(session_id)
+
+    def remember(self, session_id: str, folder: Path) -> None:
+        """Note that a session lives in ``folder``."""
+        self._folders[session_id] = folder
+        self._missed.pop(session_id, None)
+
+    def forget(self, session_id: str) -> None:
+        """Drop where a session was found, because it is not there any more: the next call searches again."""
+        self._folders.pop(session_id, None)
+
+    def prune(self, folders: set[str], sessions: set[str]) -> None:
+        """Drop what the call just made did not use: a reader of a folder it did not read, a session it did not ask for."""
+        for key in [key for key in self._readers if key not in folders]:
+            del self._readers[key]
+        for session_id in [item for item in self._folders if item not in sessions]:
+            del self._folders[session_id]
+        for session_id in [item for item in self._missed if item not in sessions]:
+            del self._missed[session_id]
+
+    def worth_searching(self, session_id: str) -> bool:
+        """Return whether a session that is in no known folder should be searched for now."""
+        at = self._missed.get(session_id)
+        return at is None or self._clock() - at >= self.RETRY
+
+    def missed(self, session_id: str) -> None:
+        """Note that a session was looked for in every folder and is in none."""
+        self._missed[session_id] = self._clock()
+
+
 def session_totals(
-    wanted: Mapping[str, Sequence[str]], *, store: str | Path | None = None, unplaced: Sequence[str] = ()
+    wanted: Mapping[str, Sequence[str]],
+    *,
+    store: str | Path | None = None,
+    unplaced: Sequence[str] = (),
+    readers: UsageReaders | None = None,
 ) -> dict[str, SessionStatsInfo]:
     """Return what sessions have spent, whichever workspace each works in: requests, tokens and the cached share.
 
@@ -134,11 +213,20 @@ def session_totals(
         store: The session store, or ``None`` for the user's own.
         unplaced: Ids whose directory is not known (a daemon that was deleted leaves its conversation behind). They are
             looked for in every workspace's folder of the store.
+        readers: Readers kept from an earlier call, so this one reads only what changed. Without them every call reads
+            from the index again.
 
     A session that is not counted (a subagent's) or cannot be read has no entry. Reading is incremental and kept in the
-    store's own summary, so asking often is cheap; it does file I/O, so call it off the event loop.
+    store's own summary; it does file I/O, so call it off the event loop.
     """
-    from zettcode.engine.storage.ledger import LedgerReader
+    kept = readers if readers is not None else UsageReaders()
+    with kept.lock:
+        return _session_totals(kept, wanted, store, unplaced)
+
+
+def _session_totals(
+    kept: UsageReaders, wanted: Mapping[str, Sequence[str]], store: str | Path | None, unplaced: Sequence[str]
+) -> dict[str, SessionStatsInfo]:
     from zettcode.engine.storage.records import SAFE_SESSION_ID, STORE_FILE
     from zettcode.paths import DEFAULT_STORE
 
@@ -146,12 +234,15 @@ def session_totals(
 
     root = Path(store).expanduser() if store is not None else DEFAULT_STORE
     found: dict[str, SessionStatsInfo] = {}
+    used: set[str] = set()
     for workspace, ids in wanted.items():
         if not workspace or not ids:
             continue
         try:
-            stats = LedgerReader(root, workspace).stats(ids)
-        except OSError:
+            reader = kept.reader(root, workspace)
+            used.add(str(reader.directory))
+            stats = reader.stats(ids)
+        except (OSError, RuntimeError):  # RuntimeError: a `~` workspace when no home directory can be found
             continue
         found.update({session_id: stats_from(item) for session_id, item in stats.items()})
     lost = [
@@ -159,20 +250,40 @@ def session_totals(
         for session_id in unplaced
         if session_id not in found and SAFE_SESSION_ID.match(session_id) and ".." not in session_id
     ]
-    if lost:
+    by_folder: dict[Path, list[str]] = {}
+    searching: list[str] = []
+    for session_id in lost:
+        folder = kept.folder_of(session_id)
+        if folder is not None:
+            by_folder.setdefault(folder, []).append(session_id)
+        elif kept.worth_searching(session_id):
+            searching.append(session_id)
+    if searching:
         try:
             folders = [item for item in root.iterdir() if item.is_dir()]
         except OSError:
-            folders = []
-        for folder in folders:
-            here = [session_id for session_id in lost if (folder / session_id / STORE_FILE).is_file()]
-            if not here:
-                continue
-            try:
-                stats = LedgerReader(root, folder, folder=folder).stats(here)
-            except OSError:
-                continue
-            found.update({session_id: stats_from(item) for session_id, item in stats.items()})
+            folders = None  # the store could not be listed: that says nothing about the sessions, so none is "missed"
+        if folders is not None:
+            for folder in folders:
+                for session_id in [item for item in searching if (folder / item / STORE_FILE).is_file()]:
+                    kept.remember(session_id, folder)
+                    by_folder.setdefault(folder, []).append(session_id)
+            for session_id in searching:
+                if kept.folder_of(session_id) is None:
+                    kept.missed(session_id)
+    for folder, ids in by_folder.items():
+        used.add(str(folder))
+        try:
+            stats = kept.reader_at(folder).stats(ids)
+        except OSError:
+            continue
+        found.update({session_id: stats_from(item) for session_id, item in stats.items()})
+        for session_id in ids:
+            # No answer for one remembered here, and its file is gone: the folder moved or the session was deleted, so
+            # the next call looks again instead of reading the old place as empty for good.
+            if session_id not in stats and not (folder / session_id / STORE_FILE).is_file():
+                kept.forget(session_id)
+    kept.prune(used, {*unplaced, *(item for ids in wanted.values() for item in ids)})
     return found
 
 

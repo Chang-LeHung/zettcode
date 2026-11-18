@@ -1,20 +1,23 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { t } from "../../i18n";
 import { tokens } from "../../lib/format";
-import { groupArg } from "../../stores/groups";
+import { groupArg, groupThread } from "../../stores/groups";
 import { href } from "../../stores/route";
-import { lobby } from "../../stores/threads";
 import type { Usage } from "../../types";
-import { canRestart, restartAll, restarting } from "../chat/threadActions";
+import { restartable, restartAll, restarting } from "../chat/threadActions";
 import Avatar from "../common/Avatar.vue";
 import CacheRing from "./CacheRing.vue";
 
-defineProps<{ usage: Usage }>();
+const props = defineProps<{ usage: Usage }>();
 
-/** The stopped daemons of a group that a press can start. */
-const startable = (offline: string[]): string[] =>
-  offline.filter((id) => canRestart(lobby.threads.find((item) => item.id === id)));
-const busy = (ids: string[]): boolean => ids.some((id) => restarting.has(id));
+/** Each group with the stopped daemons a press can start and whether one of them is being started now. */
+const cards = computed(() =>
+  props.usage.groups.map((group) => {
+    const ids = restartable(group.offline_ids).map((thread) => thread.id);
+    return { group, ids, busy: ids.some((id) => restarting.has(id)) };
+  }),
+);
 </script>
 
 <template>
@@ -36,22 +39,17 @@ const busy = (ids: string[]): boolean => ids.some((id) => restarting.has(id));
   <p v-if="!usage.groups_known" class="card-hint warn">{{ t("The session broker did not answer, so the groups are not known right now.") }}</p>
   <p v-else-if="!usage.groups.length" class="card-hint">{{ t("There are no groups.") }}</p>
   <div v-else class="grid">
-    <article v-for="group in usage.groups" :key="group.name" class="ucard">
+    <article v-for="{ group, ids, busy } in cards" :key="group.name" class="ucard">
       <header class="ucard-head">
-        <Avatar :thread="{ id: `#${group.name}`, name: group.name, kind: 'external', status: 'idle' }" size="sm" />
+        <Avatar :thread="groupThread(group.name)" size="sm" />
         <a class="ucard-name" :href="href('chats', groupArg(group.name))">#{{ group.name }}</a>
-        <button
-          v-if="startable(group.offline).length"
-          class="btn sm"
-          :disabled="busy(startable(group.offline))"
-          @click="restartAll(startable(group.offline))"
-        >
-          <span v-if="busy(startable(group.offline))" class="spin" />{{ t("Restart offline") }}
+        <button v-if="ids.length" class="btn sm" :disabled="busy" @click="restartAll(ids)">
+          <span v-if="busy" class="spin" />{{ t("Restart offline") }}
         </button>
       </header>
       <p class="ucard-sub">
         {{ t("{count} members", { count: group.members }) }}
-        <template v-if="group.offline.length"> · <span class="warn">{{ t("{count} offline", { count: group.offline.length }) }}</span></template>
+        <template v-if="group.offline_ids.length"> · <span class="warn">{{ t("{count} offline", { count: group.offline_ids.length }) }}</span></template>
         <template v-if="group.measured < group.members"> · {{ t("{count} not measured", { count: group.members - group.measured }) }}</template>
       </p>
       <div class="ucard-body">
@@ -62,6 +60,9 @@ const busy = (ids: string[]): boolean => ids.some((id) => restarting.has(id));
           <div><dt>{{ t("Output") }}</dt><dd>{{ tokens(group.output_tokens) }}</dd></div>
         </dl>
       </div>
+      <p v-if="group.cache_input_tokens < group.input_tokens" class="ucard-foot">
+        {{ t("Cache hit is over {input} of the {all} input: the rest did not report it.", { input: tokens(group.cache_input_tokens), all: tokens(group.input_tokens) }) }}
+      </p>
     </article>
   </div>
 </template>

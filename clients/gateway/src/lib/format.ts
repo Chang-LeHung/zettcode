@@ -45,6 +45,16 @@ export function shortPath(path: string, home = ""): string {
   return path;
 }
 
+/**
+ * A share (0–1) as a percentage with `digits` decimals, or a dash when it was not measured. A share that rounds to a
+ * whole 100 is written `100%`, not `100.0%`.
+ */
+export function percent(share: number | null, digits = 1): string {
+  if (share === null) return "–";
+  const whole = share >= 1 - 0.5 * 10 ** -(digits + 2);
+  return `${(share * 100).toFixed(whole ? 0 : digits)}%`;
+}
+
 export function tokens(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(count % 1_000_000 ? 1 : 0)}M`;
   if (count >= 1_000) return `${(count / 1_000).toFixed(count % 1_000 ? 1 : 0)}K`;

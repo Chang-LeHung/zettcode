@@ -631,33 +631,61 @@ def test_usage_is_what_each_session_and_each_group_has_spent_with_the_cached_sha
     assert rows["01d"]["cache_rate"] == 0.75 and rows["01d"]["requests"] == 3 and rows["01d"]["kind"] == "daemon"
     assert [row["id"] for row in body["sessions"]] == ["01d", "02d"], "the biggest spender is first"
     team = body["groups"][0]
-    assert (team["members"], team["measured"], team["offline"]) == (3, 2, ["02d"])
+    assert (team["members"], team["measured"], team["offline_ids"]) == (3, 2, ["02d"])
     assert team["input_tokens"] == 2000 and team["output_tokens"] == 250
     assert team["cache_rate"] == 0.5, "a group's share is its cached input over all its input, not an average of shares"
     assert body["total"]["requests"] == 4
 
 
-def test_a_listed_daemon_with_no_conversation_is_a_row_of_zeros_and_a_silent_broker_is_not_no_groups(parts):
+def test_a_listed_daemon_with_no_conversation_is_a_row_of_zeros(parts):
     client, backend, _ = parts
     signed_in(client)
     backend.graph_data = {"sessions": [], "groups": [], "edges": [], "recent": []}
 
     body = client.get("/api/usage").json()
 
-    assert [row["id"] for row in body["sessions"]] == ["01d"] and body["sessions"][0]["requests"] == 0
+    mine = [row for row in body["sessions"] if row["id"] == "01d"]
+    assert len(mine) == 1 and mine[0]["requests"] == 0
     assert body["groups_known"] is True
 
-    async def down():
-        raise app_module_send_error()
 
-    backend.graph = down
-    assert client.get("/api/usage").json()["groups_known"] is False
+def test_a_broker_that_is_away_makes_the_groups_unknown_not_none(parts):
+    client, backend, _ = parts
+    signed_in(client)
+    backend.set_reachable(False)
+
+    body = client.get("/api/usage").json()
+
+    assert body["groups"] == [] and body["groups_known"] is False
+    assert [row["id"] for row in body["sessions"]] == ["01d"], "the sessions do not need the broker"
 
 
-def app_module_send_error():
-    from zettcode.sdk.errors import SendError
+def test_a_group_is_a_part_of_the_total_and_its_ring_divides_by_the_input_that_was_measured(parts):
+    from zettcode.sdk.types import SessionStatsInfo
 
-    return SendError("down", "unreachable")
+    client, backend, work = parts
+    signed_in(client)
+    backend.add_daemon("02d", str(work), name="quiet")
+    client.patch("/api/threads/02d/profile", json={"pinned": False})
+    backend.totals = {
+        "01d": SessionStatsInfo("01d", requests=1, input_tokens=1000, cache_read_tokens=900),
+        "02d": SessionStatsInfo("02d", requests=1, input_tokens=500, cache_reported=False),
+        "gone": SessionStatsInfo("gone", requests=2, input_tokens=100, cache_read_tokens=50),
+    }
+    backend.graph_data = {
+        "sessions": [],
+        "groups": [{"name": "team", "members": ["01d", "02d", "gone"], "created": 1.0, "last": None}],
+        "edges": [],
+        "recent": [],
+    }
+
+    body = client.get("/api/usage").json()
+
+    team = body["groups"][0]
+    assert team["input_tokens"] == 1600 and team["cache_input_tokens"] == 1100
+    assert team["cache_rate"] == pytest.approx(950 / 1100), "cached over the input of the sessions that said"
+    assert body["total"]["input_tokens"] >= team["input_tokens"], "a group is a part of the total, never more"
+    assert body["total"]["requests"] == 4
 
 
 def test_a_session_that_never_reported_its_cache_has_no_share_and_does_not_dilute_the_group(parts):

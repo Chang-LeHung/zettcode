@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { percent } from "../../stores/usage";
+import { percent } from "../../lib/format";
 
 const props = withDefaults(defineProps<{ share: number | null; size?: number }>(), { size: 56 });
 

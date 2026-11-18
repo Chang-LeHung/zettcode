@@ -19,7 +19,7 @@ const pages: Record<string, Component> = {
   sending: SendingSection,
   limits: LimitsSection,
 };
-const id = computed(() => (route.arg in pages ? route.arg : "models"));
+const id = computed(() => (Object.hasOwn(pages, route.arg) ? route.arg : "models"));
 const title = computed(() => t(CONFIG_SECTIONS.find((section) => section.id === id.value)?.label ?? "Config"));
 onMounted(() => void loadConfig());
 </script>

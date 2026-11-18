@@ -20,7 +20,7 @@ const pages: Record<string, Component> = {
 };
 const id = computed(() => {
   if (route.arg === "servers" && servers.mode !== "app") return "connection";
-  return route.arg in pages ? route.arg : "connection";
+  return Object.hasOwn(pages, route.arg) ? route.arg : "connection";
 });
 watch(
   id,

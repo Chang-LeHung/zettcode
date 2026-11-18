@@ -61,7 +61,6 @@ class ExternalBackend(Backend):
     def __init__(self, directory: Path, sessions_root: Path | None = None) -> None:
         self.directory = directory
         self.sessions_root = sessions_root.expanduser().resolve() if sessions_root is not None else None
-        self.store_root = self.sessions_root
         self._session: ExternalSession | None = None
         self._owner: httpx.AsyncClient | None = None
         self._on_message: Callable[[IncomingMessage], Receipt] | None = None
@@ -335,6 +334,10 @@ class ExternalBackend(Backend):
                 )
             )
         return found
+
+    @property
+    def store_root(self) -> Path | None:
+        return self.sessions_root
 
     def _store(self, workspace: str) -> SessionStore:
         """Return the store of a workspace, opened once and reused so a conversation is parsed only when it moved."""

@@ -331,6 +331,29 @@ async def test_the_stamp_is_the_one_taken_before_reading_so_a_file_that_grew_is_
 # -- through the store ------------------------------------------------------------------------------
 
 
+async def test_a_reader_at_a_folder_reads_it_as_it_is_without_resolving_a_workspace(tmp_path: Path):
+    store = await two_sessions(tmp_path)
+
+    here = LedgerReader.at(store.workspace_dir)
+    there = reader(tmp_path)
+
+    assert here.directory == store.workspace_dir
+    assert {sid: row.input_tokens for sid, row in here.stats(["a", "b"]).items()} == {"a": 1000, "b": 200}
+    assert here.stats(["a"]) == there.stats(["a"]), "the same numbers the workspace's own reader gives"
+    assert here.summary_path == there.summary_path
+
+
+async def test_a_reader_at_a_legacy_folder_reads_it_where_it_is_and_moves_nothing(tmp_path: Path):
+    store = await two_sessions(tmp_path)
+    old = tmp_path / "legacy-name"
+    store.workspace_dir.rename(old)
+
+    stats = LedgerReader.at(old).stats(["a"])
+
+    assert stats["a"].input_tokens == 1000
+    assert old.is_dir() and not store.workspace_dir.exists(), "a read by folder does not rename anything"
+
+
 async def test_the_store_answers_for_the_sessions_it_lists(tmp_path: Path):
     store = await two_sessions(tmp_path)
     listed = await store.list_sessions()

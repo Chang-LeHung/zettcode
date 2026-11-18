@@ -1,7 +1,8 @@
 # The web gateway
 
 `zettcode gateway` is a web page for the background agents on one machine: a left rail (Chats, New, Config, Logs,
-Settings), a list, and a conversation, drawn like a messenger so it works on a phone. It is not an agent. It is one
+Graph, Dashboard, Settings; on a phone the bottom bar keeps Chats, New, Dashboard and Settings and puts the rest behind
+"More"), a list, and a conversation, drawn like a messenger so it works on a phone. It is not an agent. It is one
 external broker session, with a person at it, that talks to daemons through the broker and reads the relayed
 messages with the broker's owner token.
 
