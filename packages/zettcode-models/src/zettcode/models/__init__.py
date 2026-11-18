@@ -10,8 +10,9 @@ The list is deliberately static: a start asks no vendor for anything, so a key i
 round trip. It is on by default: a key in the environment is enough for the host to be offered, and a machine whose
 own configuration lists no model starts on the first one a plugin offers, so the first run is a prompt box rather
 than an instruction. ``[plugins] disable = ["models"]`` is the way back out. A vendor is left out, rather than
-failing the plugin, when an earlier plugin has registered its host name, or when the reader's entries or an earlier
-plugin already show any one of its models: one conflict must not cost the vendors that do not conflict.
+failing the plugin, when the reader's entries already show one of its models: one conflict must not cost the
+vendors that do not conflict. A name an earlier plugin has taken is not seen here at all — a plugin cannot see
+what loaded before it — so the loader refuses the whole plugin, as it does any plugin that overlaps another.
 """
 
 from __future__ import annotations
