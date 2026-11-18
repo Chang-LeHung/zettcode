@@ -20,7 +20,7 @@ dependencies = [
   # The plugin base classes and the one helper that names a workspace's folder.
   "zettcode-engine>=0.5.1,<0.6",
   # The extension hooks and the system message it adds.
-  "zett-agent>=0.2.10,<0.3",
+  "zett-agent>=0.3.0,<0.4",
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for.

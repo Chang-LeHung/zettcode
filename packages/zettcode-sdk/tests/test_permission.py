@@ -181,6 +181,16 @@ async def test_a_command_approved_by_hand_stays_approved_whatever_the_level():
     assert await memory.is_allowed("s", "pytest -x") is False
 
 
+async def test_a_command_approved_in_one_directory_is_not_approved_in_another():
+    """One command string can act on another tree through ``work_dir``, so the directory is part of the approval."""
+    memory = ShellApprovalMemory()
+    await memory.allow_command("pytest -q", "sub")
+
+    assert await memory.is_allowed("s", "pytest -q", "sub") is True
+    assert await memory.is_allowed("s", "pytest -q") is False
+    assert await memory.is_allowed("s", "pytest -q", "other") is False
+
+
 async def test_without_a_policy_the_memory_behaves_as_it_did_before_levels():
     memory = ShellApprovalMemory()
 

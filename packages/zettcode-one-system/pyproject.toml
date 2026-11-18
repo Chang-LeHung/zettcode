@@ -20,7 +20,7 @@ dependencies = [
   # The plugin base classes.
   "zettcode-engine>=0.5.1,<0.6",
   # The message types and the extension hook the merge runs on.
-  "zett-agent>=0.2.10,<0.3",
+  "zett-agent>=0.3.0,<0.4",
 ]
 
 # A part of the program, not a separately released plugin: the `[tool.zettcode] plugin = true` marker is what the

@@ -23,7 +23,7 @@ dependencies = [
   "zettcode-tui>=0.5.1,<0.6",
   "zettcode-plugin-api>=0.5.1,<0.6",
   # The harness this subclasses.
-  "zett-agent>=0.2.10,<0.3",
+  "zett-agent>=0.3.0,<0.4",
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for. It is
