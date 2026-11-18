@@ -65,7 +65,7 @@ def compact_path(path: PurePath, *, limit: int | None = 38) -> str:
 TITLE_COLUMNS = 36
 
 
-def header_left(workspace: Path, name: str = "", handle: str = "") -> Row:
+def header_left(workspace: PurePath, name: str = "", handle: str = "") -> Row:
     """Label the app, the session, and the workspace it runs in.
 
     The session comes before the workspace because a row that is too narrow loses its right end first, and which
