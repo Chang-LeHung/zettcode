@@ -228,14 +228,19 @@ class PluginContext:
         """Refuse a model that cannot form an entry, or one whose shown name is taken.
 
         The entry is built only to be thrown away: it is the configuration's own rules that decide whether a model
-        is usable, so this cannot drift from what a request would accept.
+        is usable, so this cannot drift from what a request would accept. Every model is checked before any name is
+        claimed, so a refusal leaves nothing of the provider behind for the next plugin to trip over.
         """
-        for model in models:
+        offered = tuple(models)
+        for model in offered:
             model_from(provider, model)
+        claimed = set(self._model_names)
+        for model in offered:
             name = model.shown_name
-            if name in self._model_names:
+            if name in claimed:
                 raise ValueError(f"A model is already shown as {name!r}")
-            self._model_names.add(name)
+            claimed.add(name)
+        self._model_names = claimed
 
     def register_extension(self, extension: AgentExtension) -> AgentExtension:
         """Hand the agent one ``zett-agent`` extension of the plugin's own.
