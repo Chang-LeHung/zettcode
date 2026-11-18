@@ -324,17 +324,22 @@ async def test_a_pause_that_was_extended_after_the_timer_was_armed_still_ends():
 
     Without that the collector would stay off for good after a reader's last keystroke landed inside
     the first window: only a *later* keystroke would arm a timer, and there is none.
+
+    This is the one test that has to look *between* two deadlines, so its grace is wide: Windows
+    resolves a timer to about 16 ms, and the 35 ms - 50 ms window ``GRACE`` leaves is inside that
+    noise, which is how it failed on the Windows 3.10 job while the same code passed everywhere else.
     """
-    policy = _policy()
+    grace = 0.4
+    policy = CollectorPolicy(grace=grace)
     policy.work_started()
-    policy.typed()  # a timer is armed for GRACE from now
-    await asyncio.sleep(GRACE * 0.6)
+    policy.typed()  # a timer is armed for ``grace`` from now
+    await asyncio.sleep(grace * 0.6)
     policy.typed()  # the deadline moves out; the reader then stops for good
 
-    await asyncio.sleep(GRACE * 0.7)  # the first deadline has passed, the second has not
+    await asyncio.sleep(grace * 0.7)  # the first deadline has passed, the second has not
     assert gc.isenabled() is False
 
-    await asyncio.sleep(GRACE * 3)
+    await asyncio.sleep(grace * 3)
     assert gc.isenabled() is True, "re-armed by the timer itself, not by a keystroke that never came"
 
 
