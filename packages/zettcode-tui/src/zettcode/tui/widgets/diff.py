@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from difflib import unified_diff as _unified_diff
@@ -34,6 +35,66 @@ class DiffLine:
     segments: tuple[DiffSegment, ...] = ()
     old_number: int | None = None
     new_number: int | None = None
+
+
+def _pair(removals: Sequence[object], additions: Sequence[object]) -> Iterator[tuple[int, int]]:
+    """Yield the positions of a run of removals and the additions that answer them, paired in order.
+
+    The first removal is paired with the first addition, and so on; the longer run keeps its rest as rows
+    with nothing to be compared with. The rule is written once, here, so a unified diff and a tool call's
+    rows cannot pair differently; the lengths are the lists' own, so a pair cannot name a row that is not
+    there.
+    """
+    return zip(range(len(removals)), range(len(additions)), strict=False)
+
+
+def paired_rows(rows: Iterable[tuple[str, str]]) -> list[tuple[str, tuple[DiffSegment, ...]]]:
+    """Pair a run of removals with the additions that follow it, token by token.
+
+    A change is stored as rows of ``(sign, text)``: ``"-"`` a line taken away, ``"+"`` the line put in
+    its place, and any other sign a row with nothing to pair. Removals are paired with the additions
+    right after them by position, which is what makes a rewritten line readable: only the tokens that
+    differ are marked, so a one-word change shows which word it is instead of one whole line against
+    another.
+
+    A row with no opposite is a single unmarked run. A line that was added whole *is* the change, so
+    marking all of it would say no more than the band behind it already says; a row is marked only
+    where it has a row to be compared with. A :class:`DiffView` marks such a row whole instead, because
+    its rows have no band of their own to lean on.
+
+    Args:
+        rows: The rows in the order they are drawn.
+
+    Returns:
+        One ``(sign, segments)`` per row, in the same order.
+    """
+    paired: list[tuple[str, tuple[DiffSegment, ...]]] = []
+    removals: list[tuple[int, str]] = []
+    additions: list[tuple[int, str]] = []
+
+    def flush() -> None:
+        """Mark the tokens that differ between the buffered removals and the additions after them."""
+        for old_index, new_index in _pair(removals, additions):
+            old_row, old_text = removals[old_index]
+            new_row, new_text = additions[new_index]
+            old_segments, new_segments = word_diff(old_text, new_text)
+            paired[old_row] = (paired[old_row][0], old_segments)
+            paired[new_row] = (paired[new_row][0], new_segments)
+        removals.clear()
+        additions.clear()
+
+    for sign, text in rows:
+        if sign == "-":
+            if additions:
+                flush()  # a removal closes the additions before it, so the run it joins starts clean
+            removals.append((len(paired), text))
+        elif sign == "+":
+            additions.append((len(paired), text))
+        else:
+            flush()
+        paired.append((sign, (DiffSegment(text),)))
+    flush()
+    return paired
 
 
 def word_diff(old: str, new: str) -> tuple[tuple[DiffSegment, ...], tuple[DiffSegment, ...]]:
@@ -68,10 +129,10 @@ def parse_unified(text: str) -> list[DiffLine]:
         nonlocal removals, additions
         if not removals and not additions:
             return
-        for index in range(min(len(removals), len(additions))):
-            old_segments, new_segments = word_diff(removals[index].text, additions[index].text)
-            removals[index] = replace(removals[index], segments=old_segments)
-            additions[index] = replace(additions[index], segments=new_segments)
+        for old_index, new_index in _pair(removals, additions):
+            old_segments, new_segments = word_diff(removals[old_index].text, additions[new_index].text)
+            removals[old_index] = replace(removals[old_index], segments=old_segments)
+            additions[new_index] = replace(additions[new_index], segments=new_segments)
         for line in removals:
             lines.append(line if line.segments else replace(line, segments=(DiffSegment(line.text, True),)))
         for line in additions:
@@ -145,7 +206,9 @@ class DiffView(Widget):
 
     The gutter is reserved only when the diff carries line numbers. Removed and
     added lines are paired by position, and only the tokens that actually differ
-    get the selection colour, which is what makes a one-word change readable.
+    get the deeper band (:attr:`Theme.addition_emphasis_fill` and
+    :attr:`Theme.deletion_emphasis_fill`), which is what makes a one-word change
+    readable.
     """
 
     def __init__(self, lines: tuple[DiffLine, ...] | list[DiffLine] = ()) -> None:
@@ -191,11 +254,17 @@ class DiffView(Widget):
             return
         theme = self.theme
         styles = {
-            "add": Style(foreground=theme.accent, bold=True),
-            "remove": Style(foreground=theme.error, bold=True),
+            "add": Style(foreground=theme.addition, bold=True),
+            "remove": Style(foreground=theme.deletion, bold=True),
             "hunk": Style(foreground=theme.accent_bright, dim=True),
             "meta": Style(foreground=theme.muted, dim=True),
             "context": Style(foreground=theme.subtle),
+        }
+        # The rows a change is made of, and the words within them that it rewrote: the same two bands the
+        # transcript's diff sits on, so "the words that changed" reads the same everywhere in the program.
+        marked = {
+            "add": replace(styles["add"], background=theme.addition_emphasis_fill),
+            "remove": replace(styles["remove"], background=theme.deletion_emphasis_fill),
         }
         gutter = self.gutter
         limit = self.rect.x + self.rect.width
@@ -219,7 +288,7 @@ class DiffView(Widget):
             for segment in segments:
                 if x >= limit:
                     break
-                segment_style = replace(style, background=theme.selection, bold=True) if segment.emphasis else style
+                segment_style = marked.get(line.kind, style) if segment.emphasis else style
                 x += canvas.draw_text(x, y, segment.text, segment_style, max_width=limit - x)
 
 

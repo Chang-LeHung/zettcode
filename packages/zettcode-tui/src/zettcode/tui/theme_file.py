@@ -58,8 +58,12 @@ description = "my palette"    # shown beside its name in the /theme menu
 [ui]
 accent = "#a7c080"
 error = "#e67e80"
-# diff_added = "#a7c080"       # default: the accent
-# diff_removed = "#e67e80"     # default: the error colour
+# diff_added = "#a7c080"                  # default: the accent
+# diff_removed = "#e67e80"                # default: the error colour
+# diff_added_fill = "#414b46"             # default: diff_added mixed into the page
+# diff_removed_fill = "#4b4146"           # default: diff_removed mixed into the page
+# diff_added_emphasis_fill = "#556252"    # default: diff_added mixed further in
+# diff_removed_emphasis_fill = "#6a4d52"  # default: diff_removed mixed further in
 surface_side = "#393a44"
 surface_peer = "#313244"
 

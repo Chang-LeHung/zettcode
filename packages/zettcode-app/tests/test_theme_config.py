@@ -6,7 +6,7 @@ import pytest
 
 from zettcode.presenters.presenters import relay_detail
 from zettcode.tui import DARK, EXAMPLE, LIGHT, ThemeFileError, load_theme, theme_from_toml
-from zettcode.tui.render import highlight, language_for, languages
+from zettcode.tui.render import contrast, highlight, language_for, languages, relative_luminance
 from zettcode.tui.widgets.markdown import render_markdown
 
 
@@ -200,6 +200,30 @@ def test_theme_file_rejects_unknown_keys_and_bad_values():
         theme_from_toml('ui = "dark"\n')
 
 
+def test_the_example_comments_state_the_diff_defaults_the_program_derives():
+    """What the example writes as a commented default is what leaving the key out gives, or it is a lie.
+
+    The half of the example that is commented out is read back here, so a value that drifts from the
+    palette — the emphasis band was once written as the share it used to be — fails rather than being
+    copied into a reader's file.
+    """
+    commented = [line.removeprefix("# ") for line in EXAMPLE.splitlines() if line.startswith("# ") and " = " in line]
+    keys = {line.split(" = ")[0] for line in commented}
+    promised = {
+        "diff_added": "addition",
+        "diff_removed": "deletion",
+        "diff_added_fill": "addition_fill",
+        "diff_removed_fill": "deletion_fill",
+        "diff_added_emphasis_fill": "addition_emphasis_fill",
+        "diff_removed_emphasis_fill": "deletion_emphasis_fill",
+    }
+
+    assert set(promised) == keys, "a commented default the test does not know is a default nothing checks"
+    read = theme_from_toml("\n".join(["[ui]", *commented]))
+    for key, effective in promised.items():
+        assert getattr(read, effective) == getattr(DARK, effective), key
+
+
 def test_load_theme_reads_the_documented_example(tmp_path):
     path = tmp_path / "theme.toml"
     path.write_text(EXAMPLE, encoding="utf-8")
@@ -272,21 +296,6 @@ def test_load_theme_reports_a_missing_file(tmp_path):
         load_theme(tmp_path / "missing.toml")
 
 
-def _luminance(value: str) -> float:
-    """Return the WCAG relative luminance of a ``#rrggbb`` colour."""
-    channels = []
-    for index in (1, 3, 5):
-        channel = int(value[index : index + 2], 16) / 255
-        channels.append(channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4)
-    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
-
-
-def _contrast(first: str, second: str) -> float:
-    """Return the WCAG contrast ratio between two ``#rrggbb`` colours."""
-    lighter, darker = sorted((_luminance(first), _luminance(second)), reverse=True)
-    return (lighter + 0.05) / (darker + 0.05)
-
-
 def test_a_side_question_stays_readable_on_its_own_surface():
     """The side surface is a background, and the muted ink must survive on it.
 
@@ -295,22 +304,22 @@ def test_a_side_question_stays_readable_on_its_own_surface():
     close to the ink would leave the row unreadable.
     """
     for theme in (DARK, LIGHT):
-        assert _contrast(theme.subtle, theme.surface_side) >= 4.5, theme.name
+        assert contrast(theme.subtle, theme.surface_side) >= 4.5, theme.name
 
     washed = theme_from_toml('[ui]\nsurface_side = "#7f8a86"\n')
-    assert _contrast(washed.subtle, washed.surface_side) < 4.5  # the pinned pair is not accidental
+    assert contrast(washed.subtle, washed.surface_side) < 4.5  # the pinned pair is not accidental
 
 
 def test_a_message_between_sessions_stays_readable_on_its_own_surface():
     """The peer surface leans blue; the body text and the header's quiet detail have to survive on it."""
     for theme in (DARK, LIGHT):
-        assert _contrast(theme.text, theme.surface_peer) >= 7, theme.name
-        assert _contrast(relay_detail(theme), theme.surface_peer) >= 4.5, theme.name
+        assert contrast(theme.text, theme.surface_peer) >= 7, theme.name
+        assert contrast(relay_detail(theme), theme.surface_peer) >= 4.5, theme.name
         # It is a neighbour of the reader's own message, not a band of its own: about as light as it.
-        assert abs(_luminance(theme.surface_peer) - _luminance(theme.surface_alt)) < 0.05, theme.name
-        assert _contrast(theme.tools.message, theme.surface_peer) >= 3, theme.name
-        assert _contrast(theme.warning, theme.surface_peer) >= 3, theme.name
-        assert _contrast(theme.accent, theme.surface_peer) >= 3, theme.name
+        assert abs(relative_luminance(theme.surface_peer) - relative_luminance(theme.surface_alt)) < 0.05, theme.name
+        assert contrast(theme.tools.message, theme.surface_peer) >= 3, theme.name
+        assert contrast(theme.warning, theme.surface_peer) >= 3, theme.name
+        assert contrast(theme.accent, theme.surface_peer) >= 3, theme.name
 
 
 def test_the_peer_surface_can_be_recoloured_from_a_theme_file():

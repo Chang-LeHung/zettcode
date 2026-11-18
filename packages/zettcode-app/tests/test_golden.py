@@ -138,10 +138,10 @@ def test_golden_diff_gutter_and_word_emphasis():
         "3:10-12 fg#9da9a0\n"
         "4:0-10 d,fg#7a8478\n"
         "4:10-11 b,fg#e67e80\n"
-        "4:11-12 b,fg#e67e80,bg#4a5f52\n"
+        "4:11-12 b,fg#e67e80,bg#6a4d52\n"
         "5:0-10 d,fg#7a8478\n"
         "5:10-11 b,fg#a7c080\n"
-        "5:11-12 b,fg#a7c080,bg#4a5f52\n"
+        "5:11-12 b,fg#a7c080,bg#556252\n"
         "6:0-10 d,fg#7a8478\n"
         "6:10-12 fg#9da9a0"
     )

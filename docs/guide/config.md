@@ -716,14 +716,18 @@ palette during that run; it does not rewrite any file.
 
 | Section | Colour keys |
 | --- | --- |
-| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `surface_peer`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `diff_added_fill`, `diff_removed_fill`, `border`, `focus`, `selection` |
+| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `surface_peer`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `diff_added_fill`, `diff_removed_fill`, `diff_added_emphasis_fill`, `diff_removed_emphasis_fill`, `border`, `focus`, `selection` |
 | `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent`, `message`, `web-search`, `ask-user` |
 | `code` | `inline`, `text`, `keyword`, `string`, `comment`, `number`, `function`, `builtin`, `operator`, `punctuator` |
 
 `diff_added` and `diff_removed` colour the lines of an edit's diff and the `+N -M` beside a file. Left out,
 they follow `accent` and `error`, so changing those changes the diff too; set them to colour the diff on its own.
 `diff_added_fill` and `diff_removed_fill` are the bands behind those lines; left out, each is its line colour mixed
-into the page, so the band follows the palette.
+into the page, so the band follows the palette. `diff_added_emphasis_fill` and `diff_removed_emphasis_fill` are the
+deeper bands behind the words a changed line actually rewrote; left out, each is its line colour mixed further into
+its band, so the words a one-word change rewrote stand out from the rest of the line. A marked word keeps the colour
+of its line and the mark adds no weight of its own, so the band is the whole of the mark: a band set to the line
+colour itself leaves no room for it to go deeper, and the words stop being marked.
 
 Colours use quoted six-digit hex strings such as `"#83c092"`. Do not use
 `"green"`, three-digit hex, or the TOML string `"None"` for transparency; omit

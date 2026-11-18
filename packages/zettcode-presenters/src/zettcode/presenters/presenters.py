@@ -60,6 +60,7 @@ from zettcode.tui import (
     Style,
     TextLine,
     Theme,
+    paired_rows,
 )
 from zettcode.tui.render import (
     SweepSpan,
@@ -70,6 +71,7 @@ from zettcode.tui.render import (
     layout_rich_lines,
     sweep_spans,
     truncate,
+    truncate_spans,
 )
 from zettcode.tui.widgets.markdown import MarkdownSource
 
@@ -678,25 +680,43 @@ class FileChangePresenter(NamedToolPresenter[F]):
         A row is cut at the width rather than wrapped, so one long line cannot push the rest of
         the diff off the screen; the break between two edits is drawn quiet, and what is past the
         preview is counted the way a long output's is.
+
+        A line that replaces another one is marked word by word: the tokens it rewrote sit on the
+        deeper band (:attr:`Theme.addition_emphasis_fill`, :attr:`Theme.deletion_emphasis_fill`),
+        so a one-word change says which word it is rather than one whole line against another.
+        Only the band changes, the way delta and GitHub's diff view mark a word: the text keeps the
+        colour its line has, and nothing is set in bold.
         """
         limit = TOOL_EXPANDED_ROWS if entry.expanded else TOOL_PREVIEW_ROWS
         room = max(1, width - CONTENT_INDENT * 2 - 2)
+        # A row is cleaned before it is cut into runs, not after: an escape sequence the model wrote would
+        # otherwise be split across two of them, and the half without the escape would reach the canvas as
+        # its own parameter bytes. Every row is paired and only then bounded, so a window that stops in the
+        # middle of a block still marks the removals it shows: the change is capped at MAX_DIFF_ROWS, and
+        # pairing it costs less than a frame.
+        rows = paired_rows([(sign, terminal_safe(text)) for sign, text in entry.diff])
         styles = {
             "+": Style(foreground=theme.addition, background=theme.addition_fill),
             "-": Style(foreground=theme.deletion, background=theme.deletion_fill),
             " ": Style(foreground=theme.subtle),
             "@": muted,
         }
+        marked = {
+            "+": Style(foreground=theme.addition, background=theme.addition_emphasis_fill),
+            "-": Style(foreground=theme.deletion, background=theme.deletion_emphasis_fill),
+        }
         lines: list[TextLine] = []
-        for index, (sign, text) in enumerate(entry.diff[:limit]):
+        for index, (sign, segments) in enumerate(rows[:limit]):
             lead = f"{' ' * CONTENT_INDENT}\u2514 " if index == 0 else " " * (CONTENT_INDENT * 2)
             style = styles.get(sign, styles[" "])
-            shown = text if sign == "@" else f"{sign} {terminal_safe(text)}"
-            cut = truncate(shown, room)
+            emphatic = marked.get(sign, style)
+            spans = [Span(f"{sign} ", style)] if sign != "@" else []
+            spans += [Span(part.text, emphatic if part.emphasis else style) for part in segments]
+            cut = list(truncate_spans(spans, room))
             if style.background is not None:
                 # A band runs the width of the row, so a short line is as much a line as a long one.
-                cut += " " * max(0, room - display_width(cut))
-            lines.append(TextLine((Span(lead, muted), Span(cut, style))))
+                cut.append(Span(" " * max(0, room - sum(span.width for span in cut)), style))
+            lines.append(TextLine((Span(lead, muted), *cut)))
         omitted = len(entry.diff) - limit
         if omitted > 0:
             lines.append(TextLine((Span(f"{' ' * (CONTENT_INDENT * 2)}{ELLIPSIS} {omitted} more rows", muted),)))

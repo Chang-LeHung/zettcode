@@ -3,7 +3,16 @@
 from .ansi import ANSI_COLORS, AnsiBuffer, AnsiLine
 from .canvas import Canvas
 from .code import DEFAULT_CODE_THEME, GENERIC, LATEX, PYTHON, SHELL, CodeTheme, highlight, language_for, languages
-from .color import ColorDepth, blend, encode_style, parse_hex, rgb_to_ansi16, rgb_to_ansi256
+from .color import (
+    ColorDepth,
+    blend,
+    contrast,
+    encode_style,
+    parse_hex,
+    relative_luminance,
+    rgb_to_ansi16,
+    rgb_to_ansi256,
+)
 from .renderer import DifferentialRenderer
 from .rich_text import Alignment, inset_line, layout_rich_lines
 from .style import DEFAULT_STYLE, Cell, Span, Style, TextLine
@@ -48,6 +57,7 @@ __all__ = [
     "blend",
     "cell_glyph",
     "character_width",
+    "contrast",
     "count_wrapped_rows",
     "display_width",
     "encode_style",
@@ -59,6 +69,7 @@ __all__ = [
     "language_for",
     "languages",
     "parse_hex",
+    "relative_luminance",
     "rgb_to_ansi16",
     "rgb_to_ansi256",
     "slice_columns",

@@ -16,21 +16,8 @@ from zettcode.app.plugins import PluginContext, TuiPlugin, load_terminal_plugins
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.config import ZettCodeConfig, load_config
 from zettcode.tui import DARK, LIGHT, Theme, ThemeCatalog, ThemeFileError, bundled_themes
-from zettcode.tui.render.color import parse_hex
+from zettcode.tui.render import contrast
 from zettcode.tui.theme_file import BUNDLED
-
-
-def luminance(colour: str) -> float:
-    red, green, blue = (
-        ((c / 255) / 12.92) if c / 255 <= 0.03928 else (((c / 255) + 0.055) / 1.055) ** 2.4
-        for c in parse_hex(colour)  # type: ignore[union-attr]
-    )
-    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
-
-
-def contrast(first: str, second: str) -> float:
-    high, low = sorted((luminance(first), luminance(second)), reverse=True)
-    return (high + 0.05) / (low + 0.05)
 
 
 def catalog(directory: Path | None = None) -> ThemeCatalog:
@@ -70,6 +57,27 @@ def test_a_shipped_palette_loads_under_its_name_with_a_page_colour_a_note_and_re
 
 def test_the_palettes_that_ship_do_not_repeat_each_other():
     assert len({catalog().load(name) for name in BUNDLED}) == len(BUNDLED)
+
+
+@pytest.mark.parametrize("name", BUNDLED)
+def test_no_palette_that_ships_falls_below_the_marked_word_floor_they_keep_today(name: str):
+    """A palette names its own diff ink and bands; the deeper band may cost contrast, and 2.5:1 is the line.
+
+    DARK and LIGHT are held to two thirds of their line's contrast (``test_tool_diff.py``), a figure that
+    does not travel: the sixteen that ship set their diff colours themselves and several are further from
+    their page than DARK is. This is the floor they keep today rather than a readability standard — the
+    tightest is nord's removed line at 2.53:1. All of them clear the 3:1 WCAG asks of large text on the
+    line's own band (the tightest band is 3.22:1) and ten fall under it once marked, which is the argument
+    for keeping this floor at 2.5: raising it to 3.0 would make those ten name a shallower band and flatten
+    the mark exactly where the ink is thinnest.
+    """
+    theme = catalog().load(name)
+
+    for side, ink, marked in (
+        ("added", theme.addition, theme.addition_emphasis_fill),
+        ("removed", theme.deletion, theme.deletion_emphasis_fill),
+    ):
+        assert contrast(ink, marked) >= 2.5, f"{name} {side}: {contrast(ink, marked):.2f}:1 for {ink} on {marked}"
 
 
 def test_the_menu_lists_the_two_default_palettes_first_then_the_ones_that_ship():

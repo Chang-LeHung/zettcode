@@ -127,6 +127,7 @@ _EXPORTS = {
     "load_theme": ".theme_file",
     "normalize_key": ".core",
     "parse_background": ".terminal",
+    "paired_rows": ".widgets",
     "parse_unified": ".widgets",
     "resolve_tracks": ".layout",
     "run_app": ".runner",
@@ -263,6 +264,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         TextArea,
         Toast,
         build_unified,
+        paired_rows,
         parse_unified,
         word_diff,
     )
@@ -407,6 +409,7 @@ __all__ = [
     "key_id",
     "load_theme",
     "normalize_key",
+    "paired_rows",
     "parse_unified",
     "resolve_tracks",
     "run_app",

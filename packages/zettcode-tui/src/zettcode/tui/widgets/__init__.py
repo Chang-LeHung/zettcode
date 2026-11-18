@@ -37,6 +37,7 @@ _EXPORTS = {
     "build_unified": ".diff",
     "layout_input": ".textarea",
     "next_word": ".textarea",
+    "paired_rows": ".diff",
     "parse_unified": ".diff",
     "previous_word": ".textarea",
     "render_markdown": ".markdown",
@@ -49,7 +50,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .completion import Completer, CompletionItem, CompletionPopup
     from .console import ConsolePanel
     from .dialog import Dialog, DialogAction
-    from .diff import DiffLine, DiffSegment, DiffView, build_unified, parse_unified, word_diff
+    from .diff import DiffLine, DiffSegment, DiffView, build_unified, paired_rows, parse_unified, word_diff
     from .list import ListItem, ListView
     from .list_page import ListPage
     from .markdown import Markdown, MarkdownSource, MarkdownView, render_markdown
@@ -114,6 +115,7 @@ __all__ = [
     "build_unified",
     "layout_input",
     "next_word",
+    "paired_rows",
     "parse_unified",
     "previous_word",
     "render_markdown",
