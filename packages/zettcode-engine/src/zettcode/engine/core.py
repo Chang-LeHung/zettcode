@@ -206,7 +206,7 @@ def _build_provider(selected: ModelConfig) -> Adapter:
     ``max_tokens``.
 
     A budget larger than the window is sent as the window: a reply longer than the context that has to hold it is not
-    a request any endpoint can serve, and the default of 20,000 would otherwise make every small-context entry
+    a request any endpoint can serve, and the default of 64,000 would otherwise make every small-context entry
     impossible the moment it was read. The entry keeps the number it was given; only the request is bounded.
     """
     token = selected.token or KEYLESS_TOKEN

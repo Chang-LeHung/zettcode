@@ -325,7 +325,7 @@ async def test_the_panel_takes_a_reply_budget_in_tokens_and_writes_it(shell):  #
     assert fx.app.agent.models[1].max_tokens == 32_000
 
 
-async def test_clearing_the_budget_brings_back_the_default_of_twenty_thousand(shell):  # noqa: F811
+async def test_clearing_the_budget_brings_back_the_default_of_sixty_four_thousand(shell):  # noqa: F811
     fx = shell(BASE.replace('token = "sk-two"', 'token = "sk-two"\nmax_tokens = 32000'))
     await fx.command("/config")
     fx.choose("GPT-4o")
@@ -335,7 +335,7 @@ async def test_clearing_the_budget_brings_back_the_default_of_twenty_thousand(sh
     fx.harness.press("enter")
 
     assert "max_tokens" not in fx.models[1]
-    assert fx.app.agent.models[1].max_tokens == 20_000
+    assert fx.app.agent.models[1].max_tokens == 64_000
 
 
 async def test_a_budget_row_the_reader_did_not_touch_is_not_rewritten(shell):  # noqa: F811

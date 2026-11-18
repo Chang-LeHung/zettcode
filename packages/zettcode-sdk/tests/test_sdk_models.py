@@ -230,7 +230,7 @@ def test_every_model_gets_the_default_output_budget_without_saying_so(tmp_path: 
 
     add({"model": "a", "token": "t"}, path=path)
 
-    assert config.read_models(path)[0].max_tokens == config.DEFAULT_MAX_TOKENS == 20_000
+    assert config.read_models(path)[0].max_tokens == config.DEFAULT_MAX_TOKENS == 64_000
 
 
 def test_a_budget_in_the_file_is_read_and_written_back(tmp_path: Path):

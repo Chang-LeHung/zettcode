@@ -467,8 +467,8 @@ class ConfigMixin(ShellState):
                 "max_tokens",
                 "Reply budget",
                 initial=str(entry.get("max_tokens", "")),
-                placeholder="20,000 tokens",
-                hint="How long one reply may be: 32000, 32k or 1m. Leave it empty for 20,000; 0 sends none and uses the endpoint's own.",
+                placeholder="64,000 tokens",
+                hint="How long one reply may be: 32000, 32k or 1m. Leave it empty for 64,000; 0 sends none and uses the endpoint's own.",
             ),
         ]
         actions = [
