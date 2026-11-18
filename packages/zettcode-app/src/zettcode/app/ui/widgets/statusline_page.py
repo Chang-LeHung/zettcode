@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection
-from pathlib import Path
+from pathlib import PurePosixPath
 from time import monotonic
 
 from zettcode.plugin_api.panels import pressed
@@ -33,7 +33,7 @@ TURN_TITLE = "Request line"
 #: descriptions listed here are the ones the rows declare and cannot drift from them.
 SAMPLE: dict[str, tuple[Row, Row]] = {
     "Header": (
-        labels.header_left(Path("~/projects/api"), "Fix the parser", "fix-the-parser"),
+        labels.header_left(PurePosixPath("~/projects/api"), "Fix the parser", "fix-the-parser"),
         labels.header_right("gpt-5", "medium"),
     ),
     "Status line": (
