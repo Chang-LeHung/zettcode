@@ -43,6 +43,13 @@ sandboxed: read the source before you install it.
 nothing. `zettcode plugin enable <name>` and `zettcode plugin disable <name>` do the same for one name, and `/plugins
 disable <name>` does it from the composer. Every switch takes effect at the **next start**.
 
+![The /plugins page: the program's own plugins first, then installed ones, each row with its switch, the key or distribution the switch writes, and what the plugin adds](/screens/plugins.svg)
+
+The row says which side of that line a switch falls on: a compiled-in plugin is switched by a configuration key
+(`rows.enabled`), an installed one by `[plugins] disable`. A plugin that could not load keeps its row — that is how you
+find out — and one whose setting this process never read has no switch at all, with the reason on the line under the
+list.
+
 ```toml
 [plugins]
 enabled = true          # false leaves every third-party plugin out; the built-in screen stays

@@ -127,6 +127,8 @@ enter choose · f follow up · s steer · esc keep editing the draft
 
 在 `ask` 下，面板给出命令和它所在的目录。
 
+![对话下方的批准面板：命令、它运行的目录，以及带按键的五个编号选项](/screens/approval.svg)
+
 | 按键 | 作用 |
 | --- | --- |
 | `y` | 只跑这一次。 |

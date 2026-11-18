@@ -19,27 +19,34 @@ from __future__ import annotations
 import argparse
 import os
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path, PurePosixPath
+from typing import cast
 
-from render_terminal import preview_plugins, svg
+from render_terminal import preview, preview_plugins, svg
 
 from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.plugins.loader import load_terminal_plugins, terminal_plugins
 from zettcode.app.ui.app import ZettCodeApp
-from zettcode.app.ui.shell import PAGE_SCREEN
+from zettcode.app.ui.shell import APPROVAL_ROWS, PAGE_SCREEN
+from zettcode.app.ui.widgets import ApprovalPage, ModelPage, PluginsPage, SessionsPage, bottom_panel
+from zettcode.app.ui.widgets.plugins_page import PluginRow
 from zettcode.commands.context_page import ContextPage
 from zettcode.commands.usage_page import UsagePage
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
+from zettcode.jit_harness.page import HarnessPage, HarnessTarget, TableRow, TableView
 from zettcode.sdk.types import (
     ContextReport,
     ContextShare,
     DayTotals,
+    ModelInfo,
     ModelTotals,
+    SessionInfo,
+    SessionStatsInfo,
     SessionTotals,
     Totals,
     WorkspaceUsage,
@@ -288,6 +295,321 @@ def context_canvas(kind: str) -> Canvas:
     )
 
 
+# -- the model picker --------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class SampleModels:
+    """A client that answers the one question the model picker asks it: which models were configured.
+
+    The picker reads ``client.models`` and nothing else, so a picture of it needs no runtime, no connection
+    and no token — only the entries the sample configuration file holds.
+    """
+
+    models: Sequence[ModelInfo]
+
+
+def sample_models() -> tuple[ModelInfo, ...]:
+    """Return four connections the way one configuration file holds them: a file entry for each API, and a local one."""
+    return (
+        ModelInfo(
+            name="DeepSeek Pro",
+            model="deepseek-v4-pro",
+            context_window=1_000_000,
+            multimodal=False,
+            efforts=("low", "medium", "high"),
+            active=True,
+            display_model="DeepSeek Pro",
+            base_url="https://api.deepseek.com",
+        ),
+        ModelInfo(
+            name="Claude Sonnet 4.5",
+            model="claude-sonnet-4-5",
+            context_window=200_000,
+            multimodal=True,
+            efforts=("low", "medium", "high"),
+            api="anthropic",
+        ),
+        ModelInfo(
+            name="GPT-5",
+            model="gpt-5",
+            context_window=400_000,
+            multimodal=True,
+            efforts=("minimal", "low", "medium", "high"),
+            api="responses",
+        ),
+        ModelInfo(
+            name="Qwen3 Coder (local)",
+            model="qwen3-coder",
+            context_window=262_144,
+            multimodal=False,
+            efforts=(),
+            base_url="http://localhost:11434/v1",
+        ),
+    )
+
+
+def models_canvas() -> Canvas:
+    """Paint ``/model`` over the conversation, with every entry the sample file holds."""
+    models = sample_models()
+    return full_screen(
+        lambda: ModelPage(SampleModels(models), on_select=lambda entry: None, on_cancel=lambda: None),
+        100,
+        len(models) + 6,
+    )
+
+
+# -- the approval prompt -----------------------------------------------------------------------------------------
+
+
+#: The command the sample conversation asks to run, and the directory it runs in.
+APPROVAL_COMMAND = "pytest tests/test_users.py -q"
+
+
+def approval_canvas() -> Canvas:
+    """Paint the approval prompt the way the shell shows it: a strip at the bottom of the conversation.
+
+    This is the one interaction the program cannot do without and prose describes badly — five answers, each with
+    its own key, one of which changes the permission level for the rest of the session — so the picture is the
+    prompt itself, over the conversation that asked for the command.
+    """
+
+    def open_the_prompt(app: ZettCodeApp) -> None:
+        page = ApprovalPage(
+            APPROVAL_COMMAND,
+            on_choice=lambda choice: None,
+            permission="ask",
+            work_dir="~/projects/api",
+        )
+        app.app.push_screen(Screen(bottom_panel(page, rows=APPROVAL_ROWS), name=PAGE_SCREEN, modal=True))
+
+    return preview(open_the_prompt)
+
+
+#: The clock ``/resume`` reads its ages from, fixed so the picture says the same thing on every build.
+RESUMED_AT = datetime(2026, 10, 17, 11, 0)
+
+
+def session_rows() -> tuple[tuple[SessionInfo, ...], dict[str, SessionStatsInfo]]:
+    """Return five stored sessions and their totals, in the store's order: newest first."""
+    rows = (
+        SessionInfo(
+            id="1a2b3c4d",
+            title="Fix the parser crash",
+            created_at=RESUMED_AT - timedelta(days=2, hours=4),
+            updated_at=RESUMED_AT - timedelta(minutes=3),
+        ),
+        SessionInfo(
+            id="9f8e7d6c",
+            title=None,
+            created_at=RESUMED_AT - timedelta(hours=17),
+            updated_at=RESUMED_AT - timedelta(hours=17),
+        ),
+        SessionInfo(
+            id="4c5d6e7f",
+            title="Refactor the config loader",
+            created_at=RESUMED_AT - timedelta(days=6),
+            updated_at=RESUMED_AT - timedelta(days=1, hours=2),
+        ),
+        SessionInfo(
+            id="2b3c4d5e",
+            title="Pagination for /users",
+            created_at=RESUMED_AT - timedelta(days=11),
+            updated_at=RESUMED_AT - timedelta(days=3),
+        ),
+        SessionInfo(
+            id="7a8b9c0d",
+            title="Review the tools port",
+            created_at=RESUMED_AT - timedelta(days=13),
+            updated_at=RESUMED_AT - timedelta(days=8),
+        ),
+    )
+    stats = {
+        "1a2b3c4d": SessionStatsInfo(
+            id="1a2b3c4d",
+            entries=41,
+            requests=12,
+            input_tokens=12_300,
+            output_tokens=1_200,
+            cache_read_tokens=10_700,
+            cache_reported=True,
+        ),
+        "9f8e7d6c": SessionStatsInfo(id="9f8e7d6c", entries=3, requests=1, input_tokens=3_900, cache_reported=True),
+        "4c5d6e7f": SessionStatsInfo(
+            id="4c5d6e7f",
+            entries=118,
+            requests=34,
+            input_tokens=210_000,
+            output_tokens=18_400,
+            cache_read_tokens=164_000,
+            cache_reported=True,
+        ),
+        "2b3c4d5e": SessionStatsInfo(
+            id="2b3c4d5e",
+            entries=76,
+            requests=21,
+            input_tokens=96_500,
+            output_tokens=7_800,
+            cache_read_tokens=61_000,
+            cache_reported=True,
+        ),
+        "7a8b9c0d": SessionStatsInfo(id="7a8b9c0d", entries=52, requests=15, input_tokens=64_000, output_tokens=5_100),
+    }
+    return rows, stats
+
+
+def sessions_canvas() -> Canvas:
+    """Paint ``/resume``: the stored sessions, what each cost, and the box that searches them."""
+    rows, stats = session_rows()
+    return full_screen(
+        lambda: SessionsPage(rows, stats=stats, on_select=lambda session: None, on_cancel=lambda: None, now=RESUMED_AT),
+        110,
+        14,
+    )
+
+
+# -- the plugin switches -----------------------------------------------------------------------------------------
+
+
+def plugin_rows() -> tuple[PluginRow, ...]:
+    """Return the switches a real page could have: the program's own first, then installed ones.
+
+    The rows are the shape the editor builds — what a plugin calls itself, the distribution that carries it, whether
+    it is compiled in, whether it is on, and the key or distribution a switch is written with — with one compiled-in
+    plugin that failed, because a page with no failure does not show what a failure looks like.
+    """
+    return (
+        PluginRow(
+            "presenters",
+            "zettcode-presenters",
+            builtin=True,
+            setting="rows.enabled",
+            description="The rows of the conversation and how they are drawn",
+        ),
+        PluginRow(
+            "skills",
+            "zettcode-skills",
+            builtin=True,
+            setting="skills.enabled",
+            description="The skills a workspace declares, as @ references",
+        ),
+        PluginRow(
+            "mcp",
+            "zettcode-mcp",
+            builtin=True,
+            setting="mcp.enabled",
+            description="MCP servers from the configuration and the workspace",
+        ),
+        PluginRow(
+            "todos",
+            "zettcode-todos",
+            builtin=True,
+            enabled=False,
+            setting="harness.todowrite",
+            description="The todo_write tool and the plan it keeps above the composer",
+        ),
+        PluginRow(
+            "coding",
+            "zettcode-code-agents",
+            builtin=True,
+            failure="no plugin provides the model",
+            switchable=False,
+            why="its setting is unknown to a process that could not load it",
+        ),
+        PluginRow(
+            "monitor",
+            "zettcode-monitor",
+            description="Every model call, exported as HTML",
+        ),
+        PluginRow(
+            "recap",
+            "zettcode-recap",
+            enabled=False,
+            description="A recap of what the session did when you come back",
+        ),
+    )
+
+
+def plugins_canvas() -> Canvas:
+    """Paint ``/plugins``: the switches, the key each one writes, and what the marked plugin adds."""
+    rows = plugin_rows()
+    return full_screen(
+        lambda: PluginsPage(rows, on_apply=lambda written: None, on_cancel=lambda: None),
+        120,
+        18,
+    )
+
+
+#: The harness root the page prints, written as the page prints it: ``~`` stays a literal here so the picture is the
+#: same on every machine that builds the guide, instead of the home directory of whoever ran the generator.
+HARNESS_ROOT = cast("Path", PurePosixPath("~/.zettcode/harness"))
+
+
+def harness_canvas() -> Canvas:
+    """Paint ``/harness``: one repository per session, and the tab strip that reaches its tools and files.
+
+    The rows are the shape ``HarnessCommand`` builds — the session id in the first column, then its title, the
+    repository that session wrote, and what that repository is for — with the current session marked, so the page
+    says what a harness *is*: tools written for one conversation, kept beside the others and borrowable.
+    """
+    here, other, third = (
+        Path("/tmp/harness/api-1f3c"),
+        Path("/tmp/harness/api-8b21"),
+        Path("/tmp/harness/api-c40e"),
+    )
+    views = (
+        TableView(
+            "Harnesses",
+            ("SESSION", "TITLE", "REPOSITORY", "DESCRIPTION"),
+            (
+                TableRow(
+                    HarnessTarget("api-1f3c", here),
+                    ("api-1f3c", "Refactor the config loader", "loader-tools", "Find every caller of load_config"),
+                    current=True,
+                ),
+                TableRow(
+                    HarnessTarget("api-8b21", other),
+                    ("api-8b21", "Pagination for /users", "pager-tools", "List the pages one view can return"),
+                ),
+                TableRow(
+                    HarnessTarget("api-c40e", third),
+                    ("api-c40e", "Fix the parser crash", "parser-tools", "Reproduce the crash from a log line"),
+                ),
+            ),
+            "accent = current session \u00b7 enter borrow \u00b7 esc close",
+        ),
+        TableView(
+            "Tools",
+            ("TOOL", "SOURCE", "STATUS", "DESCRIPTION"),
+            (
+                TableRow(
+                    None,
+                    ("list_callers", "jit/loader-tools", "active", "List the call sites of a function"),
+                    current=True,
+                ),
+                TableRow(None, ("rewrite_caller", "jit/loader-tools", "available", "Rewrite one call site")),
+            ),
+            "accent = active \u00b7 error colour = banned \u00b7 esc close",
+        ),
+        TableView(
+            "Files",
+            ("FILE", "DESCRIPTION", "SIZE", "PATH"),
+            (TableRow(None, ("NOTES.md", "How the two tools work together", "1,204 B", ".")),),
+        ),
+    )
+    return full_screen(
+        lambda: HarnessPage(
+            state="on",
+            directory=HARNESS_ROOT,
+            views=views,
+            on_switch=lambda target: None,
+            on_close=lambda: None,
+        ),
+        100,
+        11,
+    )
+
+
 #: Every picture the guide shows: file name, how to paint it, and what a screen reader says it is.
 SCREENS: tuple[tuple[str, Callable[[], Canvas], str], ...] = (
     (
@@ -319,6 +641,33 @@ SCREENS: tuple[tuple[str, Callable[[], Canvas], str], ...] = (
         "context-resumed",
         lambda: context_canvas("resumed"),
         "ZettCode's /context page for a session just reopened, with two sources still pending",
+    ),
+    (
+        "models",
+        models_canvas,
+        "ZettCode's /model picker: four connections from one configuration file, the current one marked",
+    ),
+    (
+        "harness",
+        harness_canvas,
+        "ZettCode's /harness page: a repository per session, with the Tools and Files tabs beside it",
+    ),
+    (
+        "sessions",
+        sessions_canvas,
+        "ZettCode's /resume picker: five stored sessions with their age, entries and token figures, over a search box",
+    ),
+    (
+        "plugins",
+        plugins_canvas,
+        "ZettCode's /plugins page: the program's own switches first, then installed ones, each with the key or "
+        "distribution it writes",
+    ),
+    (
+        "approval",
+        approval_canvas,
+        "ZettCode's approval prompt under a conversation: the command, the directory it runs in, and five numbered "
+        "answers with their keys",
     ),
 )
 

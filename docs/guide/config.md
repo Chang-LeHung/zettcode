@@ -55,6 +55,12 @@ Relative workspace paths resolve from the directory where you launch ZettCode.
 
 ## Models
 
+An entry is one connection, and the file holds as many as you have. `/model` lists them for the conversation you are
+in — where each came from, the API it speaks, whether it takes images — and `/model <name>` switches without opening
+the list:
+
+![The /model picker: DeepSeek Pro marked as current, then Claude Sonnet 4.5, GPT-5 and a local Qwen3 Coder, each row naming where it came from and the API it speaks](/screens/models.svg)
+
 ### Adding models with /config {#adding-models-with-config}
 
 You do not have to edit the file to add a model. `/config` opens a panel over the conversation:

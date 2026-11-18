@@ -74,6 +74,69 @@ zettcode
 Type what you want and press **Enter**. `y` approves a shell command once, `p` remembers it, `a` stops asking,
 `Esc` refuses, and **Ctrl-D** on an empty prompt exits.
 
+## Configuration
+
+One file, `~/.zettcode/config.toml`, holds every connection you have — as many as you like. `/model` lists them with
+where each came from, the API it speaks and whether it takes images, and switching costs a keystroke:
+
+<p align="center">
+  <img src="docs/public/screens/models.svg" width="1000" alt="The /model picker: DeepSeek Pro marked as current, then Claude Sonnet 4.5, GPT-5 and a local Qwen3 Coder, each row naming where it came from and the API it speaks" />
+</p>
+
+```toml
+# ~/.zettcode/config.toml
+[[models]]
+model = "deepseek-v4-pro"
+display_model = "DeepSeek Pro"
+token = "sk-..."                       # or set OPENAI_API_KEY and leave this out
+base_url = "https://api.deepseek.com"
+context_window = 1000000
+
+[[models]]
+model = "claude-sonnet-4-5"
+display_model = "Claude Sonnet 4.5"
+token = "sk-ant-..."
+anthropic = true                       # the Messages API instead of the OpenAI-compatible one
+```
+
+Settings belong to the **entry**, not to the program: each model carries its own context window, temperature, the
+share of the window it compresses at, and whether the provider searches the web for it. `/config` opens the same
+models as a panel and adds one without you editing the file; a model's own page edits those settings.
+
+**Several files.** When two sets have nothing to do with each other — work endpoints and your own, or one per
+provider — keep them apart and pick one for a run:
+
+```bash
+ZETTCODE_CONFIG=~/.zettcode/work.toml zettcode -w ~/projects/api
+```
+
+The file it names **replaces** the default for that run; the two are not merged. Everything else in the file is
+described in the guide's [Configuration](https://chang-lehung.github.io/zettcode/guide/config) page.
+
+## Tools it writes for the job
+
+The model is not limited to the tools it was given. With the harness on — the default — it writes a small Python tool
+for the task in front of you, loads it in a child process, and calls it in the same turn; the rows that build the tool
+sit in the transcript like any other:
+
+<p align="center">
+  <img src="docs/public/screens/harness.svg" width="1000" alt="The /harness page: one repository per session — loader-tools, pager-tools, parser-tools — with the current session marked, and Tools and Files tabs beside it" />
+</p>
+
+**Each project keeps its own.** A harness belongs to a workspace: a session's tools live in
+`~/.zettcode/harness/<project>-<hash>/<session>/`, so two projects do not load each other's tools unless you lend
+one across, and clearing your sessions does not delete them.
+
+```text
+/harness gen find the callers of a function and rewrite one call site
+/harness                    # every harness on this machine, with its tools and its notes
+```
+
+`/harness` shows what a session built: Tab moves between harnesses, tools and files, and Enter lends another
+session's harness to this conversation. `/harness reset` stops later requests from using it without deleting
+anything, and `[harness] jit = false` starts with the harness off. The code runs with the access the permission
+level allows — at `full` it is not a sandbox. See [The JIT harness](https://chang-lehung.github.io/zettcode/guide/harness).
+
 ## Work with other agents
 
 ```bash

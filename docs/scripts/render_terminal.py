@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import os
 import tempfile
+from collections.abc import Callable
 from dataclasses import replace
 from html import escape
 from pathlib import Path
@@ -55,8 +56,13 @@ def api_users_body() -> str:
     )
 
 
-def preview() -> Canvas:
-    """Paint one sample conversation without a terminal, network, or user store."""
+def preview(dress: Callable[[ZettCodeApp], None] | None = None) -> Canvas:
+    """Paint one sample conversation without a terminal, network, or user store.
+
+    Args:
+        dress: Called with the shell once the conversation is scripted and before it is painted, for a picture
+            that shows the same conversation with something open over it — the approval prompt, say.
+    """
     previous = Path.cwd()
     runtime: ZettCodeEngine | None = None
     with tempfile.TemporaryDirectory(prefix="zettcode-docs-") as directory:
@@ -113,6 +119,9 @@ def preview() -> Canvas:
             app._session_title = "Pagination for /users"
             app.app.resize(100, 40)
             app.app.mount()
+            if dress is not None:
+                dress(app)
+                app.app.request_layout()
             return app.app.render()
         finally:
             os.chdir(previous)

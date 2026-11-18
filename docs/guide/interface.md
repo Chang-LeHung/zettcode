@@ -137,6 +137,8 @@ starts at `ask`; a resumed session keeps the level it last used.
 
 At `ask` the panel shows the command and its directory.
 
+![The approval prompt under a conversation: the command, the directory it runs in, and the five numbered answers with their keys](/screens/approval.svg)
+
 | Key | Meaning |
 | --- | --- |
 | `y` | Run it this once. |

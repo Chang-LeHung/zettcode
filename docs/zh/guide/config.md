@@ -50,6 +50,11 @@ Remove-Item Env:ZETTCODE_CONFIG
 
 ## 模型连接 {#models}
 
+一条记录就是一个连接，文件里想放几个放几个。`/model` 在你当前对话里把它们列出来——每条从哪来、讲哪个 API、
+收不收图片——`/model <名字>` 不用打开列表就能切换：
+
+![`/model` 选择页：DeepSeek Pro 标为当前，下面依次是 Claude Sonnet 4.5、GPT-5 和本地 Qwen3 Coder，每行都写了来源和所讲的 API](/screens/models.svg)
+
 ### 用 /config 添加模型 {#adding-models-with-config}
 
 添加模型不必改文件。`/config` 会在对话上方打开一个面板：

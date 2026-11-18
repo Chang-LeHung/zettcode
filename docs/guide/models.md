@@ -12,6 +12,8 @@ requests — the one already running is not disturbed — and the header shows t
 new name immediately. `/model DeepSeek Pro` also works, matching either the display
 name or the model id, for when you know exactly what you want.
 
+![The /model picker: DeepSeek Pro marked as current, then Claude Sonnet 4.5, GPT-5 and a local Qwen3 Coder, each row naming where it came from and the API it speaks](/screens/models.svg)
+
 Every row starts with where the model came from: `file`, or `plugin <host>` for one a plugin offers. The
 suggestion menu after `/model ` carries the same source and the protocol beside each name. The `zettcode[models]`
 extra adds one official model for each vendor key in the environment; see [Plugins](/guide/plugins#official-models). They are not in the

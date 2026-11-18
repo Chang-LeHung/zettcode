@@ -40,6 +40,13 @@ The `/resume` panel lists this workspace's recent sessions, newest first, with a
 id as you type. A plain `zettcode` always starts a new session; it never reopens the last one. Two checkouts keep
 separate lists even when their files are identical, so check the workspace before hunting for a missing id.
 
+![The /resume panel: a search box over five sessions, each row showing how long ago it was updated, its entries, input and output tokens, the share served from cache, and its short id](/screens/sessions.svg)
+
+Each row also says what the session cost, so the one you want is recognisable without opening it: the `Cached` column
+is the share of the input the provider served from its cache, and a session the store has no totals for shows dashes
+rather than zeros. Type to narrow the list, `Enter` opens the row under the mark, and `Esc` clears the box before it
+closes the panel.
+
 `/new` starts a fresh session and leaves the current one on disk. `/clear` only empties the screen; the session and
 its memory of the turns go on.
 
