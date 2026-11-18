@@ -10,6 +10,7 @@ import pytest
 from zett_agent.agent import Agent, AgentRunConfig
 from zett_agent.events import AgentEventType
 from zett_agent.extensions.base import AgentExtension
+from zett_agent.jit_harness import JITHarness
 from zett_agent.messages import AssistantMessage, SystemMessage
 from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 
@@ -130,6 +131,26 @@ async def test_with_the_switch_on_a_request_has_the_four_tools_and_their_guidanc
         isinstance(message, SystemMessage) and "repo_create" in message.content
         for message in model.requests[0].messages
     )
+
+
+def test_the_guidance_names_the_repository_notes_without_their_bodies(tmp_path: Path):
+    """A note is found only by a model told it exists; the catalog gives the name, kind, description and path."""
+    harness = JITHarness(tmp_path / "jit")
+    harness.create_repo("kit")
+    resources = harness.repo_path
+    assert resources is not None
+    (resources / "resources").mkdir()
+    (resources / "resources" / "debugging.md").write_text(
+        "---\nkind: skill\ndescription: Use when a test fails.\n---\nRead the traceback.\n", encoding="utf-8"
+    )
+    harness.load_repo()
+    try:
+        catalog = SwitchedHarness(tmp_path / "harness", HarnessSwitch(on=True)).notes_catalog(harness)
+    finally:
+        harness.close()
+
+    assert "`debugging`" in catalog and "Use when a test fails." in catalog
+    assert "Read the traceback." not in catalog, "the body is read by the model, not pasted into every request"
 
 
 async def test_the_switch_applies_to_the_next_request_of_a_client_that_was_already_built(tmp_path: Path):

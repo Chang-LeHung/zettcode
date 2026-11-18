@@ -40,7 +40,7 @@ class ShellApprovalMemory:
                 is put to the reader, which is what ``ask`` does.
         """
         self._modes: dict[str, ShellApprovalMode] = {}
-        self._allowed: set[str] = set()
+        self._allowed: set[tuple[str, str | None]] = set()
         self._policy = policy
 
     async def get_session_mode(self, session_id: str) -> ShellApprovalMode:
@@ -55,12 +55,16 @@ class ShellApprovalMemory:
         """Forget a session's policy, so the next prompt reviews again."""
         self._modes.pop(session_id, None)
 
-    async def is_allowed(self, session_id: str, command: str) -> bool:
-        """Return whether a command may run without asking: by level, or approved by hand."""
+    async def is_allowed(self, session_id: str, command: str, work_dir: str | None = None) -> bool:
+        """Return whether a command may run without asking: by level, or approved by hand.
+
+        The directory is part of the approval: one command string can act on another tree through ``work_dir``,
+        so a decision remembered for the working directory does not cover a call that names one.
+        """
         if self._policy is not None and self._policy.allows_unasked(command):
             return True
-        return command in self._allowed
+        return (command, work_dir) in self._allowed
 
-    async def allow_command(self, command: str) -> None:
-        """Remember one exact command for the rest of this run."""
-        self._allowed.add(command)
+    async def allow_command(self, command: str, work_dir: str | None = None) -> None:
+        """Remember one exact command, for the directory it was approved in, for the rest of this run."""
+        self._allowed.add((command, work_dir))

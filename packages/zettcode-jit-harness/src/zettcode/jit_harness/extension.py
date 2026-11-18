@@ -41,7 +41,14 @@ class SwitchedHarness(JITHarnessExtension):
     Every hook that changes a request first asks the switch. A hook that only releases what a request held is left
     alone, so a request that began with the harness on still lets go of it cleanly. The switch is read once per
     request, in ``on_tool``, because ``/harness`` waits for an idle shell: no request sees it change halfway.
+
+    The repository's reusable notes are named in the guidance block: a note is only found by a model that knows it
+    exists, and the catalog carries each note's name, kind, description and path — never its body, which ``repo_load``
+    reads when the model asks. It is the framework's own bound (``MAX_NOTE_CATALOG_CHARS``), so a large repository
+    drops whole entries rather than cutting one.
     """
+
+    include_notes = True
 
     def __init__(
         self,
