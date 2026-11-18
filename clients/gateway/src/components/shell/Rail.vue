@@ -1,23 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { t } from "../../i18n";
-import { go, href, route, type Nav } from "../../stores/route";
+import { go, href, route } from "../../stores/route";
+import { TABS as tabs } from "../../sections";
 import { showMenu } from "../sheets/sheets";
 import { badge } from "../../lib/unread";
 import { chatsWithUnread as chatsUnread, lobby } from "../../stores/threads";
 import Icon from "../common/Icon.vue";
-import type { IconName } from "../common/icons";
-
-/** `extra` tabs sit in the "More" menu on a phone, where seven tabs would not fit; the wide rail shows all of them. */
-const tabs: { nav: Nav; label: string; icon: IconName; extra?: boolean }[] = [
-  { nav: "chats", label: "Chats", icon: "chat" },
-  { nav: "new", label: "New", icon: "plus" },
-  { nav: "config", label: "Config", icon: "config", extra: true },
-  { nav: "logs", label: "Logs", icon: "logs", extra: true },
-  { nav: "graph", label: "Graph", icon: "graph", extra: true },
-  { nav: "dashboard", label: "Dashboard", icon: "chart" },
-  { nav: "settings", label: "Settings", icon: "settings" },
-];
 
 /** The section a person is in when it is one of those behind "More"; said to a screen reader after the button's name. */
 const inMore = computed(() => tabs.find((tab) => tab.extra && tab.nav === route.nav));

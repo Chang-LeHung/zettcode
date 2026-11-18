@@ -1,29 +1,23 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watch } from "vue";
+import { computed, watch, type Component } from "vue";
 import { t } from "../../i18n";
 import { DASHBOARD_SECTIONS } from "../../sections";
 import { route } from "../../stores/route";
 import { lobby } from "../../stores/threads";
-import { loadUsage, REFRESH_MS, usage } from "../../stores/usage";
+import { loadUsage, usage, useUsage } from "../../stores/usage";
 import PageBar from "../common/PageBar.vue";
 import Skeleton from "../common/Skeleton.vue";
 import UsageDaemons from "./UsageDaemons.vue";
 import UsageOverview from "./UsageOverview.vue";
 
-const id = computed(() => (route.arg === "daemons" ? "daemons" : "overview"));
+const pages: Record<string, Component> = { overview: UsageOverview, daemons: UsageDaemons };
+const id = computed(() => (Object.hasOwn(pages, route.arg) ? route.arg : "overview"));
 const title = computed(() => t(DASHBOARD_SECTIONS.find((section) => section.id === id.value)?.label ?? "Dashboard"));
 
 // A daemon that started or stopped changes what the rows say, so they are read again at once, not at the next tick.
 watch(() => lobby.threads.map((thread) => `${thread.id}:${thread.status}`).join(), () => void loadUsage());
 
-let timer = 0;
-onMounted(() => {
-  void loadUsage();
-  timer = window.setInterval(() => {
-    if (!document.hidden) void loadUsage();
-  }, REFRESH_MS);
-});
-onBeforeUnmount(() => window.clearInterval(timer));
+useUsage();
 </script>
 
 <template>
@@ -33,8 +27,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
       <p v-if="usage.error" class="errcard">{{ usage.error }}</p>
       <Skeleton v-if="!usage.data && !usage.error" kind="cards" :count="3" />
       <template v-else-if="usage.data">
-        <UsageOverview v-if="id === 'overview'" :usage="usage.data" />
-        <UsageDaemons v-else :usage="usage.data" />
+        <component :is="pages[id]" :usage="usage.data" />
       </template>
     </div>
   </div>
@@ -64,6 +57,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
 .ucard-name:hover { color: var(--accent); }
 .ucard-sub { margin: 0 0 6px 42px; color: var(--muted); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ucard-sub .warn { color: var(--warn); }
+.ucard-foot { margin: 8px 0 0; color: var(--muted); font-size: 0.72rem; line-height: 1.35; }
 .ucard-body { display: flex; align-items: center; gap: 16px; }
 .nums { flex: 1; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .nums dt { color: var(--muted); font-size: 0.72rem; }

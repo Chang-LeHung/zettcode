@@ -311,6 +311,8 @@ export interface UsageTotals {
   cache_read_tokens: number;
   reasoning_tokens: number;
   cache_rate: number | null;
+  /** The input of the sessions that reported their cache: what `cache_rate` is a share of (`input_tokens` counts the others too). */
+  cache_input_tokens: number;
 }
 
 /** One listed session (a daemon, or a terminal session) with what it has spent and how full its context is. */
@@ -331,7 +333,8 @@ export interface UsageGroup extends UsageTotals {
   name: string;
   members: number;
   measured: number;
-  offline: string[];
+  /** The members that are stopped or not connected, by session id. */
+  offline_ids: string[];
 }
 
 /** What `GET /api/usage` answers. */

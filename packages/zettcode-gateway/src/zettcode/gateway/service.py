@@ -138,11 +138,17 @@ def _totals_of(stats: SessionStatsInfo) -> dict[str, Any]:
         "cache_read_tokens": stats.cache_read_tokens,
         "reasoning_tokens": stats.reasoning_tokens,
         "cache_rate": stats.cache_share,
+        "cache_input_tokens": stats.input_tokens if stats.cache_reported else 0,
     }
 
 
 def _sum_totals(items: Sequence[SessionStatsInfo]) -> dict[str, Any]:
-    """Return the totals of several sessions. The cached share is taken over the sessions that measured it."""
+    """Return the totals of several sessions.
+
+    The cached share is taken over the sessions that measured it, so ``cache_input_tokens`` (their input) is what
+    ``cache_read_tokens`` is a share of: ``input_tokens`` also counts the sessions that did not say, and a page that
+    divides by it gets a lower number than ``cache_rate``.
+    """
     measured = [item for item in items if item.cache_reported]
     sent = sum(item.input_tokens for item in measured)
     return {
@@ -152,6 +158,7 @@ def _sum_totals(items: Sequence[SessionStatsInfo]) -> dict[str, Any]:
         "cache_read_tokens": sum(item.cache_read_tokens for item in items),
         "reasoning_tokens": sum(item.reasoning_tokens for item in items),
         "cache_rate": sum(item.cache_read_tokens for item in measured) / sent if sent else None,
+        "cache_input_tokens": sent,
     }
 
 
@@ -1351,15 +1358,20 @@ class Gateway:
                     "name": str(group.get("name", "")),
                     "members": len(members),
                     "measured": len(measured),
-                    "offline": [
+                    "offline_ids": [
                         item for item in members if item in views and views[item]["status"] in ("dead", "offline")
                     ],
                     **_sum_totals(measured),
                 }
             )
         ordered = sorted(rows.values(), key=lambda row: (-row["input_tokens"] - row["output_tokens"], row["name"]))
-        listed = [found[session_id] for session_id in rows if session_id in found]
-        return {"sessions": ordered, "groups": groups, "groups_known": groups_known, "total": _sum_totals(listed)}
+        # Everything that was read, listed or not: a group is a part of it, so no group's number exceeds the total.
+        return {
+            "sessions": ordered,
+            "groups": groups,
+            "groups_known": groups_known,
+            "total": _sum_totals(list(found.values())),
+        }
 
     async def older(self, before: object, limit: object, group: object = None) -> dict[str, Any]:
         """Return the stored messages before id ``before``, oldest first: what a feed loads as it is scrolled back.

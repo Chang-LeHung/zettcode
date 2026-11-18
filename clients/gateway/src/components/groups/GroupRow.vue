@@ -4,7 +4,7 @@ import { t } from "../../i18n";
 import { listTime } from "../../lib/format";
 import { badge } from "../../lib/unread";
 import { href } from "../../stores/route";
-import { groupArg, senderName, unreadOf } from "../../stores/groups";
+import { groupArg, groupThread, senderName, unreadOf } from "../../stores/groups";
 import type { GraphGroup } from "../../types";
 import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
@@ -29,7 +29,7 @@ const line = computed(() => {
 
 <template>
   <a class="row" :href="href('chats', groupArg(group.name))" :aria-current="current ? 'true' : undefined">
-    <Avatar :thread="{ id: `#${group.name}`, name: group.name, kind: 'external', status: 'idle' }" />
+    <Avatar :thread="groupThread(group.name)" />
     <div class="row-body">
       <div class="row-top">
         <Icon class="row-kind" name="users" size="xs" />

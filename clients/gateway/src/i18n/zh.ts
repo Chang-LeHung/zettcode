@@ -580,6 +580,10 @@ export const ZH: Record<string, string> = {
   "{count} daemons are stopped and can be restarted.": "{count} 个 daemon 已停止,可以重启。",
   "context {share}": "上下文 {share}",
   "Cached tokens": "缓存 token",
+  "Nothing has been measured for this group yet.": "这个群还没有可统计的消耗。",
+  "Cache hit is over {input} of the {all} input: the rest did not report it.": "缓存命中率按 {all} 输入中的 {input} 计算,其余的没有上报。",
+  "Started {count} daemons": "已启动 {count} 个 daemon",
+  "Started {started} of {total}: {error}": "已启动 {started} / {total} 个:{error}",
   "The session broker did not answer, so the groups are not known right now.": "会话 broker 没有响应,暂时无法得知群组情况。",
   "The part of the input the provider served from its cache. Higher is cheaper and faster.":
     "输入中由模型服务商缓存直接提供的比例,越高越省钱、越快。",

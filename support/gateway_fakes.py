@@ -144,7 +144,13 @@ class FakeBackend(Backend):
         self.traffic_listener(line)
 
     async def graph(self) -> dict[str, Any]:
+        if not self._reachable:
+            raise SendError("offline", "There is no session broker")
         return self.graph_data
+
+    @property
+    def store_root(self) -> Path | None:
+        return None
 
     async def older(self, before: int, limit: int, group: str = "") -> dict[str, Any]:
         pool = self.graph_data["recent"]

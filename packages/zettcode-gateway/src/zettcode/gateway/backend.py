@@ -49,6 +49,9 @@ class GatewayStartError(ZettCodeError):
 class Backend(ABC):
     """The agent as the gateway sees it: who is there, what they said, and how to speak to them."""
 
+    #: The ledger readers :meth:`session_totals` keeps between calls; made on the first one.
+    _usage_readers: sdk_daemons.UsageReaders | None = None
+
     @property
     def external(self) -> bool:
         """Whether this backend is an external broker session rather than a model-backed one."""
@@ -181,16 +184,21 @@ class Backend(ABC):
     def daemons(self) -> list[DaemonInfo]:
         """Return every daemon on this machine, newest first."""
 
+    @property
+    @abstractmethod
+    def store_root(self) -> Path | None:
+        """Return the folder the sessions are stored in, or ``None`` for the user's own."""
+
     def session_totals(self, wanted: dict[str, list[str]], unplaced: Sequence[str] = ()) -> dict[str, SessionStatsInfo]:
         """Return what sessions have spent (requests, tokens, cached share), given the ids by the folder they work in.
 
-        ``unplaced`` are ids whose folder is not known; they are looked for in the store. It reads stored conversations,
-        so a caller runs it off the event loop.
+        ``unplaced`` are ids whose folder is not known; they are looked for in the store. The readers are kept, so a
+        page that polls costs a look at what changed. It reads stored conversations, so a caller runs it off the event
+        loop.
         """
-        return sdk_daemons.session_totals(wanted, store=self.store_root, unplaced=unplaced)
-
-    #: Where the sessions are stored, or ``None`` for the user's own.
-    store_root: Path | None = None
+        if self._usage_readers is None:
+            self._usage_readers = sdk_daemons.UsageReaders()
+        return sdk_daemons.session_totals(wanted, store=self.store_root, unplaced=unplaced, readers=self._usage_readers)
 
     @abstractmethod
     async def spawn(
@@ -287,6 +295,10 @@ class SdkBackend(Backend):
         if self._client is None:
             raise GatewayStartError("the gateway has not started")
         return self._client
+
+    @property
+    def store_root(self) -> Path | None:
+        return self.client.config.store
 
     async def close(self) -> None:
         client, self._client = self._client, None

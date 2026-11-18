@@ -7,7 +7,7 @@ import { copyText } from "../../lib/clipboard";
 import { jumpToQuoted } from "../../lib/jump";
 import { clearReply, replies, setReply, withReply } from "../../stores/reply";
 import ReplyBar from "../chat/ReplyBar.vue";
-import { closeGroup, groupChat, groupNamed, joinGroup, loadEarlierGroup, membersOf, openGroup, deleteGroup, removeFromGroup, senderName, sendToGroup } from "../../stores/groups";
+import { closeGroup, groupChat, groupNamed, groupThread, joinGroup, loadEarlierGroup, membersOf, openGroup, deleteGroup, removeFromGroup, senderName, sendToGroup } from "../../stores/groups";
 import type { Member } from "../../stores/groups";
 import { go, href } from "../../stores/route";
 import { auth } from "../../stores/auth";
@@ -17,7 +17,7 @@ import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
 import UserAvatar from "../common/UserAvatar.vue";
 import MessageText from "../chat/MessageText.vue";
-import { canRestart, restartAll, restarting } from "../chat/threadActions";
+import { restartable, restartAll, restarting } from "../chat/threadActions";
 import GroupMembers from "./GroupMembers.vue";
 import GroupUsage from "./GroupUsage.vue";
 import InviteSheet from "./InviteSheet.vue";
@@ -47,12 +47,7 @@ const existed = ref(false);
 watch(group, (now) => now && (existed.value = true), { immediate: true });
 /** The members that are stopped daemons a press can start again: offered right under the header, where a person notices it
  * is quiet, not only in the member list. */
-const stopped = computed(() =>
-  members.value
-    .filter((member) => !member.online && !member.me)
-    .map((member) => lobby.threads.find((thread) => thread.id === member.id))
-    .filter(canRestart),
-);
+const stopped = computed(() => restartable(members.value.filter((member) => !member.online && !member.me).map((member) => member.id)));
 const starting = computed(() => stopped.value.some((thread) => restarting.has(thread.id)));
 const showMembers = ref(false);
 const text = ref("");
@@ -380,7 +375,7 @@ watch(text, () => void nextTick(resize));
     <header class="bar chat-head">
       <a class="iconbtn back" :href="href('chats')" :aria-label="t('Back')"><Icon name="back" /></a>
       <button class="chat-who" :aria-expanded="showMembers" @click="showMembers = !showMembers">
-        <Avatar :thread="{ id: `#${name}`, name, kind: 'external', status: 'idle' }" size="sm" />
+        <Avatar :thread="groupThread(name)" size="sm" />
         <span class="chat-title">
           <b>#{{ name }}</b>
           <span>{{ memberLabel }} · {{ onlineLabel }}</span>
@@ -446,7 +441,7 @@ watch(text, () => void nextTick(resize));
             </div>
             </template>
             <div v-if="!groupChat.loading && !lines.length && !groupChat.error" class="group-empty">
-              <Avatar :thread="{ id: `#${name}`, name, kind: 'external', status: 'idle' }" size="xl" />
+              <Avatar :thread="groupThread(name)" size="xl" />
               <b>#{{ name }}</b>
               <span>{{ t("No messages yet. Say something to start the group.") }}</span>
               <button v-if="joined" class="btn sm ghost" type="button" @click="invite">{{ t("Invite") }}</button>

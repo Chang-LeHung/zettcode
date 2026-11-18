@@ -325,3 +325,136 @@ async def test_session_totals_reads_a_session_by_its_folder_or_finds_one_whose_f
     assert named["01s"].cache_share == 0.9
     assert set(lost) == {"01s"} and lost["01s"].input_tokens == 1000, "found in the store with no folder named"
     assert daemons.session_totals({"": ["01s"]}, store=tmp_path / "store") == {}, "no folder, no lookup"
+
+
+async def test_kept_readers_are_reused_and_a_session_found_nowhere_is_not_searched_for_on_every_call(
+    tmp_path, monkeypatch
+):
+    from zett_agent.messages import AssistantMessage, UserMessage
+    from zett_agent.model import ModelUsage
+
+    from zettcode.engine.storage import SessionStore
+    from zettcode.engine.storage import ledger as ledger_module
+
+    work = tmp_path / "work"
+    work.mkdir()
+    store = SessionStore(tmp_path / "store", work)
+    usage = ModelUsage(
+        input_tokens=10,
+        output_tokens=1,
+        cache_read_tokens=5,
+        cache_write_tokens=0,
+        reasoning_tokens=0,
+        cache_reported=True,
+    )
+    await store.append("01s", "r1", UserMessage(content="q"))
+    await store.append("01s", "r1", AssistantMessage(content="a", model="m"), usage=usage)
+    made: list[object] = []
+    real = ledger_module.LedgerReader.at
+
+    def counting(folder, **kwargs):
+        made.append(folder)
+        return real(folder, **kwargs)
+
+    monkeypatch.setattr(ledger_module.LedgerReader, "at", staticmethod(counting))
+    now = [0.0]
+    readers = daemons.UsageReaders(clock=lambda: now[0])
+    ask = {"wanted": {str(work): ["01s"]}, "store": tmp_path / "store", "readers": readers}
+
+    daemons.session_totals(**ask, unplaced=["01gone"])
+    daemons.session_totals(**ask, unplaced=["01gone"])
+
+    assert len(made) == 1, "the second call used the reader the first one made"
+    assert not readers.worth_searching("01gone"), "a session found nowhere is left alone for a while"
+    now[0] = readers.RETRY + 1
+    assert readers.worth_searching("01gone"), "and looked for again later, in case it has appeared"
+
+    lost = daemons.session_totals({}, store=tmp_path / "store", unplaced=["01s"], readers=readers)
+    assert lost["01s"].input_tokens == 10 and readers.folder_of("01s") is not None
+    again = daemons.session_totals({}, store=tmp_path / "store", unplaced=["01s"], readers=readers)
+    assert again["01s"].input_tokens == 10, "a session found once is read from the folder that was remembered"
+
+
+async def _one_reply(tmp_path, session="01s"):
+    """A store holding one session with one counted reply, and the workspace it belongs to."""
+    from zett_agent.messages import AssistantMessage, UserMessage
+    from zett_agent.model import ModelUsage
+
+    from zettcode.engine.storage import SessionStore
+
+    work = tmp_path / "work"
+    work.mkdir(exist_ok=True)
+    store = SessionStore(tmp_path / "store", work)
+    usage = ModelUsage(
+        input_tokens=10,
+        output_tokens=1,
+        cache_read_tokens=5,
+        cache_write_tokens=0,
+        reasoning_tokens=0,
+        cache_reported=True,
+    )
+    await store.append(session, "r1", UserMessage(content="q"))
+    await store.append(session, "r1", AssistantMessage(content="a", model="m"), usage=usage)
+    return work, store
+
+
+async def test_a_workspace_folder_that_is_renamed_is_followed_not_read_as_empty(tmp_path):
+    work, store = await _one_reply(tmp_path)
+    readers = daemons.UsageReaders()
+    ask = {"wanted": {str(work): ["01s"]}, "store": tmp_path / "store", "readers": readers}
+    assert daemons.session_totals(**ask)["01s"].input_tokens == 10
+
+    moved = store.workspace_dir.with_name("moved-by-an-opening-terminal")
+    store.workspace_dir.rename(moved)
+    # The workspace now resolves to a folder with nothing in it yet, as it does after a rename: the kept reader must not
+    # keep answering from the old place.
+    assert daemons.session_totals(**ask) == {}
+
+    moved.rename(store.workspace_dir)
+    assert daemons.session_totals(**ask)["01s"].input_tokens == 10, "back where the workspace names it, it reads again"
+
+
+async def test_a_folder_is_one_reader_whether_it_was_reached_by_workspace_or_by_looking(tmp_path):
+    work, store = await _one_reply(tmp_path)
+    readers = daemons.UsageReaders()
+
+    daemons.session_totals({str(work): ["01s"]}, store=tmp_path / "store", unplaced=["01other"], readers=readers)
+    first = readers.reader(tmp_path / "store", work)
+
+    assert first is readers.reader_at(store.workspace_dir)
+    assert len(readers._readers) == 1
+
+
+async def test_a_remembered_folder_that_disappears_is_searched_for_again(tmp_path):
+    _, store = await _one_reply(tmp_path)
+    readers = daemons.UsageReaders()
+    ask = {"wanted": {}, "store": tmp_path / "store", "readers": readers, "unplaced": ["01s"]}
+    assert daemons.session_totals(**ask)["01s"].input_tokens == 10
+    assert readers.folder_of("01s") is not None
+
+    moved = store.workspace_dir.with_name("elsewhere")
+    store.workspace_dir.rename(moved)
+
+    assert "01s" not in daemons.session_totals(**ask), "the call that finds the old place empty says so, and forgets it"
+    assert readers.folder_of("01s") is None
+    assert daemons.session_totals(**ask)["01s"].input_tokens == 10, "the next one searches and finds the new folder"
+    assert readers.folder_of("01s") == moved
+
+
+async def test_a_store_that_cannot_be_listed_does_not_mark_a_session_as_missed(tmp_path):
+    readers = daemons.UsageReaders()
+
+    assert daemons.session_totals({}, store=tmp_path / "no-such-store", unplaced=["01x"], readers=readers) == {}
+
+    assert readers.worth_searching("01x"), "an unreadable store says nothing about the session"
+
+
+async def test_what_a_call_did_not_use_is_dropped_from_the_kept_maps(tmp_path):
+    work, _ = await _one_reply(tmp_path)
+    readers = daemons.UsageReaders()
+    daemons.session_totals({str(work): ["01s"]}, store=tmp_path / "store", unplaced=["01gone"], readers=readers)
+    assert "01gone" in readers._missed and len(readers._readers) == 1
+
+    daemons.session_totals({}, store=tmp_path / "store", readers=readers)
+
+    assert not readers._missed and not readers._readers and not readers._folders

@@ -1,33 +1,38 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { t } from "../../i18n";
-import { tokens } from "../../lib/format";
-import { percent, usage } from "../../stores/usage";
+import { percent, tokens } from "../../lib/format";
+import { usage, useUsage } from "../../stores/usage";
 import { href } from "../../stores/route";
-import { lobby } from "../../stores/threads";
 import type { Member } from "../../stores/groups";
-import type { Thread } from "../../types";
-import { canRestart, restartNow, restarting } from "../chat/threadActions";
+import { restartable, restartNow, restarting } from "../chat/threadActions";
 import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
 
-defineProps<{ members: Member[]; canInvite?: boolean }>();
+const props = defineProps<{ members: Member[]; canInvite?: boolean }>();
 defineEmits<{ close: []; invite: []; remove: [member: Member] }>();
 
-const word = (member: Member): string =>
+// The numbers beside each member come from the Dashboard's read; this sheet asks for them itself rather than depend on
+// some other component having done it.
+useUsage();
+
+const wordOf = (member: Member): string =>
   member.me ? t("you") : member.status === "working" ? t("typing…") : member.online ? t("online") : t("offline");
 
-/** What a member has spent, from the Dashboard's numbers: its tokens in and out and its cached share. Empty until they are read. */
-const spent = (member: Member): string => {
+/** What a member has spent: its tokens in and out and its cached share. Empty until the numbers are read. */
+const spentOf = (member: Member): string => {
   const row = usage.data?.sessions.find((item) => item.id === member.id);
-  if (!row) return "";
-  return `${tokens(row.input_tokens + row.output_tokens)} · ${percent(row.cache_rate)}`;
+  return row ? `${tokens(row.input_tokens + row.output_tokens)} · ${percent(row.cache_rate)}` : "";
 };
 
-/** The stopped daemon a member is, when it can be started again from here with one press. */
-const stopped = (member: Member): Thread | undefined => {
-  const thread = lobby.threads.find((item) => item.id === member.id);
-  return canRestart(thread) ? thread : undefined;
-};
+/** Each member with its state line decided once, and the stopped daemon that one press can start again, if it is one. */
+const rows = computed(() =>
+  props.members.map((member) => ({
+    member,
+    state: [wordOf(member), spentOf(member)].filter(Boolean).join(" · "),
+    stopped: restartable([member.id])[0],
+  })),
+);
 </script>
 
 <template>
@@ -41,7 +46,7 @@ const stopped = (member: Member): Thread | undefined => {
       <button class="iconbtn" :aria-label="t('Close')" @click="$emit('close')"><Icon name="close" size="sm" /></button>
     </div>
     <ul>
-      <li v-for="member in members" :key="member.id">
+      <li v-for="{ member, state, stopped } in rows" :key="member.id">
         <component :is="member.chat ? 'a' : 'div'" class="member" :href="member.chat ? href('chats', member.id) : undefined">
           <Avatar
             :thread="{ id: member.id, name: member.name, kind: 'session', status: member.online ? member.status : 'dead' }"
@@ -49,17 +54,17 @@ const stopped = (member: Member): Thread | undefined => {
           />
           <span class="member-body">
             <span class="member-name">{{ member.name }}</span>
-            <span class="member-state" :class="{ on: member.online }">{{ word(member) }}<template v-if="spent(member)"> · {{ spent(member) }}</template></span>
+            <span class="member-state" :class="{ on: member.online }">{{ state }}</span>
           </span>
         </component>
         <button
-          v-if="stopped(member)"
+          v-if="stopped"
           class="iconbtn member-out member-restart"
           type="button"
           :disabled="restarting.has(member.id)"
           :aria-label="t('Restart it')"
           :title="t('Restart {name}', { name: member.name })"
-          @click="restartNow(stopped(member)!)"
+          @click="restartNow(stopped)"
         >
           <span v-if="restarting.has(member.id)" class="spin" />
           <Icon v-else name="refresh" size="sm" />

@@ -15,6 +15,13 @@ import { lobby, threadOf } from "./threads";
 
 /** A group is addressed as `#name` in the page's address, which no session id can look like. */
 export const groupArg = (name: string): string => `#${name}`;
+/** What an avatar is given to draw a group: its `#name` as the id, so the hue is the group's own, and `external` so no presence dot is drawn. */
+export const groupThread = (name: string): Pick<Thread, "id" | "name" | "kind" | "status"> => ({
+  id: groupArg(name),
+  name,
+  kind: "external",
+  status: "idle",
+});
 export const isGroupArg = (arg: string): boolean => arg.startsWith("#");
 /** The group a page address names, spelled as the broker holds it, so `#Straße` typed or bookmarked finds `strasse`. */
 export const groupNameOf = (arg: string): string => (isGroupArg(arg) ? spellGroup(arg.slice(1)) : arg);
