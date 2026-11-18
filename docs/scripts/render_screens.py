@@ -55,6 +55,8 @@ from zettcode.commands.usage_page import UsagePage
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
 from zettcode.jit_harness.page import HarnessPage, HarnessTarget, TableRow, TableView
+from zettcode.monitor.panel import ROWS as MONITOR_ROWS
+from zettcode.monitor.panel import MonitorPage
 from zettcode.pets import bundled_pets
 from zettcode.plugin_api.pets import PetCatalog
 from zettcode.sdk.types import (
@@ -632,6 +634,23 @@ def pet_canvas() -> Canvas:
     )
 
 
+def monitor_canvas() -> Canvas:
+    """Paint ``/monitor``: the session's two switches, the export row, and how many calls are waiting to be written."""
+    calls = [12]
+    return full_screen(
+        lambda: MonitorPage(
+            recording=True,
+            images=False,
+            count=lambda: calls[0],
+            on_apply=lambda recording, images: None,
+            on_export=lambda: "",
+            on_close=lambda: None,
+        ),
+        100,
+        MONITOR_ROWS,
+    )
+
+
 # -- the hub ----------------------------------------------------------------------------------------------------
 
 #: The clock ``/hub`` counts its ages from, fixed for the same reason the resume panel has one.
@@ -869,6 +888,12 @@ SCREENS: tuple[tuple[str, Callable[[], Canvas], str], ...] = (
         "pets",
         pet_canvas,
         "ZettCode's /pet panel: the pets on the left with the one out marked, and that pet on its stage",
+    ),
+    (
+        "monitor",
+        monitor_canvas,
+        "ZettCode's /monitor panel: a switch for recording, a switch for keeping images, and the row that writes "
+        "the report",
     ),
     (
         "hub",

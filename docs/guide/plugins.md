@@ -37,6 +37,14 @@ sandboxed: read the source before you install it.
 
 `zettcode[all]` installs all four; the last is a gateway plugin and adds nothing to the terminal.
 
+`/monitor` is the one with a panel of its own: two switches for this session — record its model calls, and keep the
+image data in them — and a row that writes everything recorded so far into an HTML file in the workspace, unredacted.
+
+![The /monitor panel: a switch for recording, a switch for keeping images, and the row that writes the report](/screens/monitor.svg)
+
+`←` `→` move a switch but change nothing yet; `Enter` saves both and closes, on the Export row it writes the file
+first, and `Esc` closes without applying anything. A report with nothing in it keeps the panel open and says why.
+
 ## Turn one off or on
 
 `/plugins` opens a page with a switch for each plugin you can switch: Space flips one, Enter writes, Escape writes
