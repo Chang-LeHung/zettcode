@@ -281,7 +281,7 @@ def test_a_click_on_a_switch_flips_it_and_a_click_on_the_row_marks_it():
     assert page.rows[page.mark].name == "search"
 
 
-def test_a_page_shorter_than_its_chrome_keeps_the_one_row_it_has():
+def test_a_page_with_no_row_for_the_line_under_the_list_keeps_its_one_row():
     page, _ = _page()
 
     text = render_block(page, width=60, height=7).split("-- styles --")[0]
@@ -399,18 +399,19 @@ def test_a_name_as_wide_as_its_column_keeps_its_last_letter_before_the_switch():
 
 
 def test_a_click_on_a_narrowed_list_marks_the_line_under_it():
-    rows = tuple(PluginRow(f"plugin-{index}", f"third-party-{index}") for index in range(15))
+    rows = tuple(PluginRow(f"plugin-{index}", f"third-party-{index}") for index in range(20))
     page, _ = _page(rows)
     harness = _harness(page, (84, 14))
-    harness.write("plugin")
+    harness.write("plugin-1")
+    assert len(page._lines) == 11, "the query really narrows the list: plugin-1 and plugin-10 through plugin-19"
     harness.press("end")
     harness.render()  # the list only scrolls when it is painted
 
     page.handle(MouseEvent(x=6, y=LIST_TOP, action=MouseAction.DOWN), None)
-    assert page.rows[page.mark].name == f"plugin-{page.top}", "the first line the filter shows"
+    assert page.rows[page.mark].name == f"plugin-{page._lines[page.top]}", "the first line the filter shows"
 
     page.handle(MouseEvent(x=6, y=LIST_TOP + page._view() - 1, action=MouseAction.DOWN), None)
-    assert page.rows[page.mark].name == rows[-1].name, "and the last one"
+    assert page.rows[page.mark].name == f"plugin-{page._lines[page.top + page._view() - 1]}", "and the last one"
 
 
 def test_a_switch_for_a_plugin_the_query_hides_shows_the_rows_again():

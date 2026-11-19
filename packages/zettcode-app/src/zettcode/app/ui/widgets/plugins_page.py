@@ -51,7 +51,7 @@ LIST_TOP = 2 + BOX_ROWS
 OFF_IN_CONFIG = "fixed"
 
 #: Columns the plugin's name takes, the switch, and the word beside it. The name column fits the longest one the
-#: program ships (``project-instructions``) with room to breathe before the switch.
+#: program ships (``project-instructions``); a name that fills it is cut with an ellipsis and sits against the switch.
 NAME_WIDTH = 24
 WORD_WIDTH = 8
 
@@ -116,7 +116,7 @@ class PluginsPage(Widget):
         Plugins                                                      4 of 6 on
 
           ╭─ Search ────────────────────────────────────────────────────────────╮
-          │ search by name or description                                        │
+          │ search name, distribution or description                            │
           ╰──────────────────────────────────────────────────────────────────────╯
           ▸ 1. skills       ━━━━●  on     skills.enabled    The skills a workspace declares, as @ references
             2. mcp          ━━━━●  on     mcp.enabled       MCP servers
@@ -266,9 +266,11 @@ class PluginsPage(Widget):
     def set(self, origin: str, on: bool) -> None:
         """Send one plugin's switch to on or off, and say on the line below why when it cannot move.
 
-        A name the search box hides is shown first: what this row has to say belongs to a row the reader can see, and
-        a marker left on an unfiltered row would leave the visible ones unmarked. The row is found by position rather
-        than by value, because two rows of one plugin (a name taken, say) are equal.
+        A row whose switch cannot move is the one this shows, and it shows it: a query that hides that row is cleared,
+        because the reason belongs on the line under a list the reader can see, and a marker left on a hidden row
+        would leave the visible ones unmarked. A switch that does move needs none of that — the reader may be
+        narrowing the list for the next row. The row is found by position rather than by value, because two rows of
+        one plugin (a name taken, say) are equal.
         """
         marked = self.rows[self.mark] if self.rows else None
         at = (
@@ -279,9 +281,9 @@ class PluginsPage(Widget):
         if at is None:
             return
         row = self.rows[at]
-        if at not in self._lines:
-            self._set_query("")
         if not self.switchable(row):
+            if at not in self._lines:
+                self._set_query("")
             self.mark = at
             self.note = self._why_fixed(row)
             return
@@ -478,9 +480,9 @@ class PluginsPage(Widget):
         elif not self._lines:
             said = truncate(f"No plugin matches \u201c{self._query.strip()}\u201d", room)
             canvas.draw_text(x, self.rect.y + LIST_TOP, said, muted, max_width=room)
-        elif self.rect.height > CHROME:
-            # The page is tall enough that the line under the list and the last row are different rows; on a page
-            # that is not, the list keeps the one row it has rather than being written over by what it says.
+        elif self.rect.bottom - 2 > self.rect.y + LIST_TOP:
+            # The line under the list has a row of its own below the last visible one; on a page shorter than that
+            # the list keeps the one row it has, rather than what the marked plugin says being written over it.
             row = self.rows[self.mark]
             head = f"{row.name}:"
             said = f"{head} {self.note or self._description(row)}"
