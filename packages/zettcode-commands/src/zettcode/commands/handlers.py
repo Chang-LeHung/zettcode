@@ -428,9 +428,10 @@ class PluginCommand(TuiPlugin):
     async def plugins(self, context: CommandContext) -> CommandResult:
         """Open the page of switches, or record one switch the next start will honour.
 
-        Without an argument this is a page: the program's own plugins first, then the installed ones, each with a
-        switch. Enter writes every change down in one go and Escape writes nothing, because the switch is not a
-        setting this session reads again — what it decides is what the *next* start does.
+        Without an argument this is a page: every plugin there is, numbered, with the rows a reader can switch first
+        and the fixed ones after them; typing narrows it to a name, a distribution or what a plugin adds. Enter writes
+        every change down in one go and Escape writes nothing, because the switch is not a setting this session reads
+        again — what it decides is what the *next* start does.
 
         The settings are read from the runtime now rather than from the activation: a switch this session already wrote
         is a new configuration object, and a page that opened with the old one would show the switch where it was.

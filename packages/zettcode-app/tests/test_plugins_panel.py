@@ -145,7 +145,7 @@ def test_the_page_lists_every_plugin_in_one_list_and_says_which_setting_a_switch
     assert text.index("skills") < text.index("monitor"), "one list, in the order the catalog gave"
     assert "skills.enabled" in text, "a plugin with a setting says which one its switch writes"
     assert "4 of 5 on" in text, "the count is of the switches the page can move"
-    assert "could not load: missing binary" in text, "an installed plugin that failed says why"
+    assert "could not load: missing" in text, "an installed plugin that failed says why"
     assert "could not load: no plugin" in text, "and so does a compiled-in one, as far as the column holds"
     assert OFF_IN_CONFIG in text, "a switch the configuration file owns says so"
     assert "esc cancel" in text
@@ -281,6 +281,14 @@ def test_a_click_on_a_switch_flips_it_and_a_click_on_the_row_marks_it():
     assert page.rows[page.mark].name == "search"
 
 
+def test_a_page_shorter_than_its_chrome_keeps_the_one_row_it_has():
+    page, _ = _page()
+
+    text = render_block(page, width=60, height=7).split("-- styles --")[0]
+
+    assert "1. skills" in text, "the line under the list would be the row itself on a page this short"
+
+
 def test_a_list_longer_than_the_screen_scrolls_to_the_marked_row():
     rows = tuple(PluginRow(f"plugin-{index}", f"third-party-{index}") for index in range(30))
     page, _ = _page(rows)
@@ -360,6 +368,61 @@ def test_a_match_keeps_the_number_it_has_in_the_whole_list():
     text = _text(page)
     assert "3. monitor" in text, "a search narrows the rows but does not renumber them"
     assert "1. skills" not in text
+
+
+def test_a_distribution_name_finds_a_plugin_whose_name_and_description_miss():
+    page, _ = _page(
+        (
+            PluginRow("todos", "zettcode-todos", description="The plan"),
+            PluginRow("skills", "skills", description="The slash commands"),
+        )
+    )
+
+    _harness(page).write("zettcode-")
+
+    assert page.query == "zettcode-"
+    assert "todos" in _text(page) and "skills" not in _text(page), "the origin decides the match"
+
+
+def test_a_name_as_wide_as_its_column_keeps_its_last_letter_before_the_switch():
+    rows = (
+        PluginRow("a" * 24, "zettcode-long"),
+        *(PluginRow(f"plugin-{index}", f"third-party-{index}") for index in range(10)),
+    )
+    page, _ = _page(rows)
+    assert page.digits == 2, "eleven rows: the numbers take two columns"
+
+    first = next(line for line in _wide(page) if "aaaa" in line)
+
+    assert "a" * 24 + "\u2501" in first, "the switch starts after the name, not on its last letter"
+    assert page._switch_column() == page._name_column() + 24
+
+
+def test_a_click_on_a_narrowed_list_marks_the_line_under_it():
+    rows = tuple(PluginRow(f"plugin-{index}", f"third-party-{index}") for index in range(15))
+    page, _ = _page(rows)
+    harness = _harness(page, (84, 14))
+    harness.write("plugin")
+    harness.press("end")
+    harness.render()  # the list only scrolls when it is painted
+
+    page.handle(MouseEvent(x=6, y=LIST_TOP, action=MouseAction.DOWN), None)
+    assert page.rows[page.mark].name == f"plugin-{page.top}", "the first line the filter shows"
+
+    page.handle(MouseEvent(x=6, y=LIST_TOP + page._view() - 1, action=MouseAction.DOWN), None)
+    assert page.rows[page.mark].name == rows[-1].name, "and the last one"
+
+
+def test_a_switch_for_a_plugin_the_query_hides_shows_the_rows_again():
+    page, _ = _page()
+    harness = _harness(page)
+    harness.write("monitor")
+
+    page.set("zettcode-quiet", False)
+
+    assert page.query == "", "a row the box hides has nowhere to show its reason"
+    assert page.rows[page.mark].name == "quiet"
+    assert "quiet: switched off in the configuration file" in _text(page)
 
 
 def test_a_search_with_no_match_says_so_and_takes_the_query_back_before_it_closes():
