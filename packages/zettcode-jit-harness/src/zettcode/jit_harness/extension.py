@@ -158,7 +158,7 @@ class SwitchedHarness(JITHarnessExtension):
         session_file = self._session_file
 
         @tool(execution_mode=ToolExecutionMode.SERIAL)
-        async def profile_tools(names: list[str] | None = None) -> UsageReport:
+        async def profile_tools(names: list[str] | None = None, calls: int = 0) -> UsageReport:
             """Show how tools have done in this session: calls, success rate, time, input and output size, errors.
 
             Read from this session's stored conversation, so it works for any tool, yours or the application's, and
@@ -167,19 +167,26 @@ class SwitchedHarness(JITHarnessExtension):
             Args:
                 names: Up to 10 tool names to inspect, each with its recent errors. Omit it to
                     see the repository's tools and every tool called so far.
+                calls: How much of the conversation to count: 0 the current context (since the last compaction), a
+                    positive number that many recent tool calls, or -1 every stored call, compacted history included.
 
             Snippet:
                 profile_tools()
                 profile_tools(names=["twice"])
+                profile_tools(calls=-1)
 
             Guidelines:
                 - Read it before building or changing a tool, and when deciding what to unload or delete.
                 - A low success rate or a repeated error means fix the tool; calls of 0 means it may not be needed.
-                - `window` says how much of the conversation was read; a long one is counted from its recent end.
+                - `window` says how much of the conversation was read; `calls=-1` reads all of it, however long.
             """
             path = session_file(session_id) if session_file is not None else None
             # A long conversation is tens of megabytes: read it off the event loop.
-            scan = await asyncio.to_thread(scan_tool_calls, path) if path is not None else Scan()
+            scan = (
+                await asyncio.to_thread(scan_tool_calls, path, calls=calls)
+                if path is not None
+                else Scan(requested=calls)
+            )
             catalog = {entry["name"]: entry for entry in harness.list_tools()}
             return build_report(scan, catalog, names, management=harness.management_names)
 

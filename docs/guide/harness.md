@@ -72,7 +72,9 @@ On a machine with no working sandbox, the harness says so once per session.
 A harness repository needs a `MANIFEST` beside `__init__.py`: a name, a version, a description and the tools it
 declares. A `BAN_TOOLS` file lists tool names the repository may not define. `profile_tools` reports how each tool has
 done — calls, success rate, time, input and output size, recent errors — read from the stored conversation, so it
-survives a restart.
+survives a restart. Its `calls` argument picks how much of that is counted: `0` (the default) the current context
+since the last compaction, a positive number the most recent that many tool calls, and `-1` the whole stored
+conversation, compacted history included.
 
 ## Limits
 

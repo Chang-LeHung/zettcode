@@ -747,11 +747,13 @@ class JitTool(ToolHandler):
         """Say which repository call this is, and how many tools a profile asked about."""
         if name == "repo_create":
             repo = argument(arguments, "repo")
-            return ToolRow(f"Create harness repo {repo}" if repo else "Create harness repo (unknown repo)")
+            if not repo:
+                return ToolRow("Create harness repo (unknown repo)")
+            return ToolRow(f"Create harness repo {repo} (a Python package)")
         if name == "repo_load":
-            return ToolRow("Load harness repo")
+            return ToolRow("Load harness repo (lists tools and notes)")
         if name == "repo_unload":
-            return ToolRow("Unload harness repo")
+            return ToolRow("Unload harness repo (files stay on disk)")
         asked = arguments.get("names")
         count = (
             len([one for one in asked if isinstance(one, str)])
@@ -785,6 +787,20 @@ def _counted(number: int, noun: str) -> str:
     return f"{number} {noun}{'' if number == 1 else 's'}"
 
 
+def _percent(value: float) -> str:
+    """Return a share as a percentage without a trailing ``.0``: ``91.6%``, ``100%``."""
+    return f"{value * 100:.1f}".rstrip("0").rstrip(".") + "%"
+
+
+def _chars(value: int) -> str:
+    """Return a character count short enough for a row: ``340``, ``1.2k``, ``1.5M``."""
+    if value < 1_000:
+        return str(value)
+    if value < 999_950:
+        return f"{value / 1_000:.1f}".rstrip("0").rstrip(".") + "k"
+    return f"{value / 1_000_000:.1f}".rstrip("0").rstrip(".") + "M"
+
+
 def _milliseconds(value: float) -> str:
     """Return a mean duration with the precision it has: a tenth below ten milliseconds, whole above."""
     return f"{value:.1f} ms" if value < 10 else f"{value:.0f} ms"
@@ -804,7 +820,18 @@ def _repo_text(data: Mapping[str, object]) -> str | None:
     ):
         return None
     names = [one for one in tools if isinstance(one, str)]
-    notes = [note["name"] for note in resources if isinstance(note, Mapping) and isinstance(note.get("name"), str)]
+    notes: list[str] = []
+    for note in resources:
+        if not isinstance(note, Mapping) or not isinstance(note.get("name"), str):
+            continue
+        label = note["name"]
+        kind = note.get("kind")
+        if isinstance(kind, str) and kind:
+            label += f" ({kind})"
+        description = note.get("description")
+        if isinstance(description, str) and description:
+            label += f" — {' '.join(description.split())}"
+        notes.append(label)
     if status == "created":
         path = data.get("path")
         where = f" at {path}" if isinstance(path, str) and path else ""
@@ -826,6 +853,9 @@ def _profile_text(data: Mapping[str, object]) -> str | None:
     if not isinstance(rows, list):
         return None
     if not rows:
+        window = data.get("window")
+        if isinstance(window, str) and window:
+            return f"No tool calls recorded yet · measured over {window}"
         return "No tool calls recorded yet."
     omitted = data.get("omitted")
     omitted = omitted if isinstance(omitted, int) and not isinstance(omitted, bool) and omitted > 0 else 0
@@ -851,11 +881,19 @@ def _profile_text(data: Mapping[str, object]) -> str | None:
             read_any = True
         rate = row.get("success_rate")
         if isinstance(rate, (int, float)) and not isinstance(rate, bool):
-            bits.append(f"{rate:.1%} ok")
+            bits.append(f"{_percent(rate)} ok")
             read_any = True
         average = row.get("avg_ms")
         if isinstance(average, (int, float)) and not isinstance(average, bool):
             bits.append(_milliseconds(average))
+            read_any = True
+        given = row.get("avg_input_chars")
+        if isinstance(given, (int, float)) and not isinstance(given, bool):
+            bits.append(f"in {_chars(round(given))}")
+            read_any = True
+        gave = row.get("avg_output_chars")
+        if isinstance(gave, (int, float)) and not isinstance(gave, bool):
+            bits.append(f"out {_chars(round(gave))}")
             read_any = True
         if not read_any:
             continue
@@ -874,6 +912,7 @@ def _profile_text(data: Mapping[str, object]) -> str | None:
     if isinstance(window, str) and window:
         # On the header, because folding keeps the first lines: a caveat under the rows is a caveat nobody reads.
         header += f" · measured over {window}"
+    header += " · state/calls/failed/ok/time/size"
     return "\n".join([header, *tool_lines, *errors])
 
 
