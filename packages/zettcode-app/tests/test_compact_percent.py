@@ -277,7 +277,6 @@ def agent(tmp_path, monkeypatch):
     config = replace(
         load_config(workspace, path=path),
         store=tmp_path / "sessions",
-        plugins_enabled=False,
         skills_enabled=False,
         mcp_enabled=False,
     )

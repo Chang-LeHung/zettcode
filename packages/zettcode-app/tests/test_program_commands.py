@@ -1,4 +1,4 @@
-"""The commands of the program's own plugins stand ahead of an installed plugin's, whatever order they load in."""
+"""A plugin's commands are registered in the order its plugin loads, and `deps` decides that order."""
 
 from __future__ import annotations
 
@@ -31,17 +31,12 @@ class Part(TuiPlugin):
         ctx.tui.register_command("part", "the program's own", _nothing)
 
 
-def test_a_part_that_loads_after_an_installed_plugin_still_counts_as_the_programs_own(tmp_path: Path):
+def test_a_plugins_commands_follow_the_dependency_order_the_plugins_load_in(tmp_path: Path):
     plugins = load_terminal_plugins(
         make_config(tmp_path),
         builtins=(),
-        entry_points=[
-            FakeEntryPoint("installed", Installed),
-            FakeEntryPoint("part", Part, "zettcode.terminal"),
-        ],
+        entry_points=[FakeEntryPoint("part", Part), FakeEntryPoint("installed", Installed)],
     )
 
-    assert [plugin.name for plugin in plugins.plugins] == ["installed", "part"]
-    assert [command.name for command in plugins.builtin_commands] == ["/part"]
-    assert [command.name for command in plugins.installed_commands] == ["/inst"]
-    assert [command.name for command in plugins.commands] == ["/part", "/inst"]
+    assert [plugin.name for plugin in plugins.plugins] == ["installed", "part"], "`part` needs `installed`"
+    assert [command.name for command in plugins.commands] == ["/inst", "/part"]

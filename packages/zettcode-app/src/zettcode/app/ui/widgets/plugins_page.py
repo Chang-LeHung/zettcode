@@ -1,8 +1,8 @@
-"""The page ``/plugins`` opens: the plugins the program carries, the ones installed beside it, and a switch for each.
+"""The page ``/plugins`` opens: every plugin there is, and a switch for each one that can have one.
 
-Which rows have a switch is not this page's decision: the engine's catalog works it out (a compiled-in plugin has one
-only when it declares the configuration key that decides it; an installed one always has, unless a line of the
-configuration holds it), so the editor's panel and this one cannot disagree. What a switch writes is a promise about
+Which rows have a switch is not this page's decision: the engine's catalog works it out (a plugin the program
+requires has none; the others do, unless a line of the configuration holds them), so the editor's panel and this one
+cannot disagree. What a switch writes is a promise about
 the *next* start — the file is read once, when a process starts — and this one keeps what it already loaded.
 
 Nothing here imports the engine: a row is the few facts the page draws, and the command that opens it fills them in.
@@ -25,10 +25,6 @@ CHROME = 6
 
 #: The first row of the list, counted from the top of the page.
 LIST_TOP = 3
-
-#: The headings the rows are grouped under: what the program carries, and what was installed beside it.
-BUILTIN = "Built in"
-INSTALLED = "Third-party"
 
 #: What a row without a switch says in the switch column, when the configuration file holds the switch.
 OFF_IN_CONFIG = "fixed"
@@ -60,11 +56,12 @@ class PluginRow:
 
     Attributes:
         name: What the plugin calls itself.
-        origin: The distribution that carries it, and the name a switch is written with.
-        builtin: Compiled into the program, so it is switched by a configuration key rather than `[plugins] disable`.
+        origin: The entry-point name it is published under, and the name a switch is written with.
+        required: The program cannot run without it, so its row has no switch.
         enabled: Whether the next start does its work.
         failure: Why it could not load here, or ``""`` when it did.
-        setting: The configuration key that decides a compiled-in plugin, such as ``"skills.enabled"``.
+        setting: The configuration key that decides the plugin, such as ``"skills.enabled"``; empty for one that
+            ``[plugins] disable`` holds.
         switchable: Whether there is a switch to draw; the catalog decides it, so the editor's panel agrees.
         why: Why there is none, when there is none.
         note: What else the row has to say — a plugin that lost its name to one loaded before it, for instance.
@@ -74,7 +71,7 @@ class PluginRow:
 
     name: str
     origin: str
-    builtin: bool = False
+    required: bool = False
     enabled: bool = True
     failure: str = ""
     setting: str = ""
@@ -91,12 +88,10 @@ class PluginsPage(Widget):
 
         Plugins                                                      3 of 5 on
 
-          Built in ─────────────────────────────────────────────────────────────────
           ▸ skills       ━━━━●  on     skills.enabled    The skills a workspace declares, as @ references
             mcp          ━━━━●  on     mcp.enabled       MCP servers
             todos        ●────  off    harness.todowrite The todo_write tool and the plan it keeps
             coding       failed                          could not load: no plugin provides the model
-          Third-party ──────────────────────────────────────────────────────────────
             monitor      ━━━━●  on     zettcode-monitor  Every model call, exported as HTML
             acme         ●────  off    zettcode-acme     Search results from the acme index
             held         fixed                          zettcode-held
@@ -108,19 +103,18 @@ class PluginsPage(Widget):
     of the marked plugin; Enter hands every change to the caller, which writes them down and closes the page; Escape
     writes nothing.
 
-    After the switch a row says where it writes — a compiled-in plugin's setting, or an installed one's distribution —
+    After the switch a row says where it writes — the plugin's setting, or its distribution —
     and then, where the page is wide enough for both, what the plugin adds in one line. The two columns are a page
     narrower than about ninety columns too much for, and there the setting keeps the line to itself, as it always
     had; the line under the list still says what the marked plugin does.
 
     Every row has a switch but the ones a reader cannot move, and those say why on the line under the list: a
-    compiled-in plugin that could not load (its setting is unknown to this process, so the row has none), one whose
-    switch is a line in the configuration file, and a group the configuration turned off as a whole. A compiled-in
-    plugin with no setting of its own is not on the page at all — there would be nothing to press. It is an installed
-    plugin that failed which keeps its switch, because `[plugins] disable` is exactly what would leave it out.
+    plugin the program requires, one whose switch is a line in the configuration file, and a group the configuration
+    turned off as a whole. A plugin that failed keeps its switch, because `[plugins] disable` is exactly what would
+    leave it out.
 
     Args:
-        rows: The plugins a list shows, in the order they are grouped: the program's first.
+        rows: The plugins a list shows, in the order the catalog gave them.
         on_apply: Receives every changed plugin's origin and the state to write when Enter is pressed.
         on_cancel: Called when the reader backs out.
     """
@@ -143,19 +137,13 @@ class PluginsPage(Widget):
         self.on_cancel = on_cancel
         #: The plugin the marker is on, as an index into :attr:`rows`.
         self.mark = 0
-        #: The first visible row of the list, counted in list rows (headings included).
+        #: The first visible row of the list.
         self.top = 0
         #: Why the last press did nothing, on the line under the list; cleared by the next move.
         self.note: str | None = None
         self._token = f"plugins-panel:{id(self)}"
-        self._lines: list[tuple[str, int]] = []
-        previous = None
-        for index, row in enumerate(self.rows):
-            title = BUILTIN if row.builtin else INSTALLED
-            if title != previous:
-                self._lines.append(("heading", index))
-                previous = title
-            self._lines.append(("plugin", index))
+        #: The row each list line shows; one line a plugin now that there are no headings.
+        self._lines: list[int] = list(range(len(self.rows)))
 
     @property
     def focusable(self) -> bool:
@@ -279,9 +267,7 @@ class PluginsPage(Widget):
         index = self.top + offset
         if not 0 <= offset < self._view() or index >= len(self._lines):
             return False
-        kind, at = self._lines[index]
-        if kind != "plugin":
-            return False
+        at = self._lines[index]
         row = self.rows[at]
         start = self._switch_column()
         if start <= event.x < start + SWITCH_WIDTH + 1 + WORD_WIDTH:
@@ -301,14 +287,13 @@ class PluginsPage(Widget):
         return self.rect.x + 4 + NAME_WIDTH
 
     def _reveal(self) -> None:
-        """Scroll the list the least that shows the marked plugin, and its heading when it is the first of its group."""
+        """Scroll the list the least that shows the marked plugin."""
         if not self.rows:
             return
         view = self._view()
-        row = self._lines.index(("plugin", self.mark))
-        first = row - 1 if self._lines[row - 1][0] == "heading" else row
-        if first < self.top:
-            self.top = first
+        row = self._lines.index(self.mark)
+        if row < self.top:
+            self.top = row
         if row >= self.top + view:
             self.top = row - view + 1
         self.top = max(0, min(self.top, max(0, len(self._lines) - view)))
@@ -379,7 +364,7 @@ class PluginsPage(Widget):
         return "it could not load, so there is no switch to move" if row.failure else row.why
 
     def _draw_list(self, canvas: Canvas) -> None:
-        """Draw the visible rows: a heading for each group, then its plugins with their switches."""
+        """Draw the visible rows: each plugin with its switch."""
         theme = self.theme
         surface = theme.surface_alt
         x = self.rect.x + 2
@@ -392,15 +377,8 @@ class PluginsPage(Widget):
             if index >= len(self._lines):
                 break
             y = self.rect.y + LIST_TOP + offset
-            kind, at = self._lines[index]
+            at = self._lines[index]
             row = self.rows[at]
-            if kind == "heading":
-                title = BUILTIN if row.builtin else INSTALLED
-                canvas.draw_text(x, y, title, Style(foreground=theme.muted, background=surface, bold=True))
-                start = x + display_width(title) + 1
-                if start < right:
-                    canvas.draw_text(start, y, "\u2500" * (right - start), Style(foreground=groove, background=surface))
-                continue
             rail = self.switches.get(row.origin) if row.switchable else None
             on = rail.position(now) if rail is not None else float(row.enabled)
             marked = at == self.mark
@@ -447,7 +425,7 @@ class PluginsPage(Widget):
                 # what the plugin does. The setting is the footnote, so it is the dimmer of the two. A row nothing
                 # writes from — a compiled-in plugin that failed, whose setting never loaded — has no second column
                 # to line up with, so what it has to say starts where the first one would have.
-                setting = row.setting if row.builtin else row.origin
+                setting = row.setting or row.origin
                 said_at = start
                 if setting:
                     canvas.draw_text(
@@ -472,10 +450,8 @@ class PluginsPage(Widget):
             if room >= MIN_DESCRIPTION:
                 if row.failure:
                     text, colour = f"could not load: {row.failure}", theme.error
-                elif row.builtin:
-                    text, colour = row.setting, blend(theme.muted, surface, 0.35)
                 else:
-                    text, colour = row.origin, blend(theme.muted, surface, 0.35)
+                    text, colour = row.setting or row.origin, blend(theme.muted, surface, 0.35)
                 canvas.draw_text(
                     start, y, truncate(text, room), Style(foreground=colour, background=surface), max_width=room
                 )

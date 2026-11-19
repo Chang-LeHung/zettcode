@@ -35,8 +35,9 @@ from the root.
     framework only (the SDK is an extra, for type-checking a plugin). A plugin depends on that one package. The implementations are written against it and
     sit above it: `zettcode-presenters` draws the built-in rows, `zettcode-app` is the shell and the loader. Moving a
     part of the program into a distribution of its own follows the same cut — the contract goes in `plugin-api`, the
-    implementation in its own package. A part is named in `PROGRAM_DISTRIBUTIONS`; the ones the program cannot run
-    without are in `REQUIRED_PLUGINS`, and only those are unreachable by `[plugins] disable`.
+    implementation in its own package. There is no kind of plugin that is more privileged than another: the ones the
+    program cannot run without are named by whoever loads (`REQUIRED_AGENT_NAMES`, `REQUIRED_PLUGINS`), and only those
+    are unreachable by `[plugins] disable`. The plugins that draw publish in `zettcode.tui`, which only a terminal reads.
 - The plugins are the distributions in `packages/` that say `[tool.zettcode] plugin = true` (`zettcode-code-agents`, `zettcode-models`, `zettcode-monitor`, `zettcode-recap`), each with its own version and tag. They are workspace members like the rest — one environment,
   `uv.lock`, the suite `make check` runs — and `.github/workflows/release-packages.yml` releases whichever of them has
   a version PyPI does not have. A terminal plugin depends on `zettcode-plugin-api` and imports nothing else of ours; a gateway plugin (`zettcode-code-agents`) may depend on `zettcode-gateway` and `zettcode-broker` instead:

@@ -279,7 +279,7 @@ def _plugin_entry(entry: Any) -> PluginEntry:
     return PluginEntry(
         name=entry.name,
         origin=entry.origin,
-        builtin=entry.builtin,
+        required=entry.required,
         enabled=entry.enabled,
         failure=entry.failure,
         setting=entry.setting,
@@ -1550,6 +1550,9 @@ class Client:
         result = set_enabled(self.config, name, enabled=enabled, bundle=runtime.plugins)
         if result is not None:
             runtime.config = applied(runtime.config, result, enabled)
+            if enabled:
+                # Turning a setting plugin on also clears a `[plugins] disable` line that held it.
+                runtime.config = applied_installed(runtime.config, {name: True})
         else:
             runtime.config = applied_installed(
                 runtime.config, {name: enabled}, by_default=set(runtime.plugins.default_off) & {name}

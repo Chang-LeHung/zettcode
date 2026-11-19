@@ -294,8 +294,8 @@ class FakeClient:
                 PlainCommand("/brief", "start a report", brief, when_busy="queue"),
             ),
             entries=(
-                PluginEntry("shell", "shell", builtin=True),
-                PluginEntry("usage", "usage", builtin=True),
+                PluginEntry("shell", "shell", required=True),
+                PluginEntry("usage", "usage", required=True),
                 PluginEntry("acme", "zettcode-acme"),
                 PluginEntry("quiet", "zettcode-quiet", enabled=False),
                 PluginEntry("broken", "broken", failure="no such module"),
@@ -306,7 +306,7 @@ class FakeClient:
         from zettcode.sdk.types import PluginEntry
 
         if name in ("shell", "usage"):
-            raise ValueError(f"{name} is compiled into the program, so it cannot be switched off")
+            raise ValueError(f"{name} is one the program cannot run without, so it cannot be switched off")
         if name not in ("zettcode-acme", "zettcode-quiet"):
             raise ValueError(f"No plugin is called {name!r}")
         self.switched.append((name, enabled))

@@ -265,7 +265,7 @@ async def test_a_plugin_can_be_switched_off_for_the_next_start():
     assert response.json() == {
         "name": "zettcode-acme",
         "origin": "zettcode-acme",
-        "builtin": False,
+        "required": False,
         "enabled": False,
         "failure": "",
         "setting": "",
@@ -277,12 +277,12 @@ async def test_a_plugin_can_be_switched_off_for_the_next_start():
     assert client.switched == [("zettcode-acme", False)]
 
 
-async def test_a_builtin_cannot_be_switched_off_over_http():
+async def test_a_required_plugin_cannot_be_switched_off_over_http():
     async with serve(FakeClient()) as (http, _app):
         response = await http.put("/plugins/shell", json={"enabled": False})
 
     assert response.status_code == 400
-    assert "compiled into the program" in response.json()["message"]
+    assert "cannot run without" in response.json()["message"]
 
 
 async def test_a_switch_needs_the_enabled_field():

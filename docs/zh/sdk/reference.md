@@ -405,8 +405,8 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 ### `PluginEntry`
 
-`name`、`origin`、`builtin`、`enabled`、`failure`、`setting`、`switchable`、`why`。`plugins()` 列出的一个插件：它自称的名字、承载它的发行包（开关就用这个名字写；编译进程序的插件两者相同）、
-是否编译进程序、**下次启动**是否做它的活、在这里加载失败的原因、决定内置插件的配置键（`"skills.enabled"`，装进来的为空，它的开关在插件开关文件里）、
+`name`、`origin`、`required`、`enabled`、`failure`、`setting`、`switchable`、`why`。`plugins()` 列出的一个插件：它自称的名字、发布它的 entry-point 名字（开关就用这个名字写）、
+程序是否离不开它、**下次启动**是否做它的活、在这里加载失败的原因、决定该插件的配置键（`"skills.enabled"`，由 `[plugins] disable` 管的为空）、
 面板能不能给它画开关，以及不能时为什么。
 
 ### `IncomingMessage`

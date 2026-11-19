@@ -541,23 +541,24 @@ Plugins are the extension point, independent of `zett-agent`, and there are two 
 publishes a plugin class under the `zettcode.plugin` entry-point group. `engine/plugins/` is what the agent
 uses: `state.py` (`AgentBuild`, `Contribution`), `mixins.py` (the hook groups), `groups.py` (what activation
 receives and registers extensions, services, `@` providers and model providers through), `plugin.py` (`Plugin`,
-`PluginSetting` and the loaded `Plugins` bundle), `loader.py` (entry-point discovery and the `Loader` that merges
-the builtins in first), `switches.py` (which plugins a reader can turn off: `catalog()` lists what a panel shows,
-and `set_enabled()` writes the switch where that plugin's belongs — `[plugins] disable` in the configuration file for
-an installed one, the configuration key a compiled-in one declares as its `setting`; the older switch file is read and
-merged, and a name written here is removed from it) and `extension.py` (the host `AgentExtension` that fans
+`PluginSetting` and the loaded `Plugins` bundle), `loader.py` (entry-point discovery in `zettcode.plugin`, and in
+`zettcode.tui` when the loader has a screen, and the `Loader` that merges what the plugins register), `switches.py`
+(which plugins a reader can turn off: `catalog()` lists every plugin a panel shows, and `set_enabled()` writes the
+switch where that plugin's belongs — the configuration key the plugin declares as its `setting`, otherwise `[plugins]
+disable` in the configuration file; the older switch file is read and merged, and a name written here is removed from
+it) and `extension.py` (the host `AgentExtension` that fans
 every hook out in plugin-priority order). The program's own agent plugins, the `@` providers for skills and files
 included, are `zettcode/sdk/builtins.py`: the engine does not carry them.
 `app/plugins/` adds what only a terminal has: `state.py` (the `ShellContext` snapshot, `UiRow`, and the segment
 types), `mixins.py` (the row hooks), `groups.py` (`TuiGroups`, behind `ctx.tui`: commands, palettes, pets, presenters and
 the named-slot registry), `plugin.py` (`TuiPlugin`, `TuiPlugins`), `loader.py` (`TerminalLoader`, which
 also keeps command, theme and pet names unique), `host.py` (`HostLink`), `builtins.py` (the shell's own rows, written
-as an ordinary plugin) and `builtin_commands.py`. The engine is handed its loader (`ZettCodeEngine.preview(config,
+as an ordinary plugin). The engine is handed its loader (`ZettCodeEngine.preview(config,
 load)`); `TerminalAgent` hands it the terminal's, so the SDK and the server load the engine's plugins and none of the
 terminal's (`test_structure.py::test_importing_the_engine_loads_nothing_of_the_application`). The agent sees a
 single extension, and plugin-wide behaviour — ordering, shared state, loading later — has one place to live.
-Plugins register slash commands through the `ctx.tui` group they are activated with; those commands reach the
-shell after the built-ins (`app/agent/agent/commands.py::plugin_commands`), so a plugin cannot shadow one.
+Plugins register slash commands through the `ctx.tui` group they are activated with; the shell lists those
+first but drops any name it or the agent already has (`ui/app.py`), so a plugin cannot shadow one.
 
 Two routes lead from a plugin to the agent. The hook methods run inside the one host
 extension. `register_extension` and `register_extension_factory` hand the agent a whole

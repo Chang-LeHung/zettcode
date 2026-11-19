@@ -21,7 +21,7 @@ dependencies = [
   "zettcode-broker>=0.5.1,<0.6",
   # Parts of the agent that live in distributions of their own, found through the same `zettcode.plugin` group as
   # the ones published here. An SDK client offers skills and MCP servers and runs the same agent, so it installs them
-  # all; `require_agent_parts` refuses a start that lacks one.
+  # all.
   "zettcode-skills>=0.5.1,<0.6",
   "zettcode-messaging>=0.5.1,<0.6",
   "zettcode-mcp>=0.5.1,<0.6",

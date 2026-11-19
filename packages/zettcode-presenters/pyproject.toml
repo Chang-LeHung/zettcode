@@ -29,7 +29,8 @@ dependencies = [
 types = ["zettcode-sdk>=0.5.1,<0.6"]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for.
-[project.entry-points."zettcode.plugin"]
+# Read only by a process with a screen: the SDK and the server never look at this group.
+[project.entry-points."zettcode.tui"]
 presenters = "zettcode.presenters.plugin:PresentersPlugin"
 shell = "zettcode.presenters.rows:ShellRows"
 turn-line = "zettcode.presenters.rows:TurnLine"

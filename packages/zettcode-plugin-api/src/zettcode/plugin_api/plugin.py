@@ -40,9 +40,6 @@ class TuiPlugins(Plugins):
     Attributes:
         commands: Commands the plugins registered, in load and registration
             order, each typed ``"plugin"``.
-        builtin_commands: The first of ``commands`` that came from the plugins compiled into the program, in the same
-            order. The shell lists them ahead of its own and puts the rest after everything built in, so an installed
-            plugin can add a command but never shadow one of the program's.
         themes: Palettes the plugins offered by name, in load and registration order; the built-in plugin's come
             first. ``/theme`` lists, previews and switches to them, after ``dark`` and ``light``.
         presenters: How plugins asked for entries to be drawn, in load and registration order; the built-in
@@ -60,7 +57,6 @@ class TuiPlugins(Plugins):
     """
 
     commands: tuple[Command, ...] = ()
-    builtin_commands: tuple[Command, ...] = ()
     themes: tuple[ThemeSource, ...] = ()
     pets: tuple[PetSource, ...] = ()
     presenters: tuple[Presenter, ...] = ()
@@ -69,8 +65,3 @@ class TuiPlugins(Plugins):
     focus_handlers: tuple[Callable[[bool], None], ...] = ()
     turn_start_handlers: tuple[Callable[[], None], ...] = ()
     turn_end_handlers: tuple[Callable[[bool], None], ...] = ()
-
-    @property
-    def installed_commands(self) -> tuple[Command, ...]:
-        """Return the commands of the installed plugins: ``commands`` without the built-in ones."""
-        return self.commands[len(self.builtin_commands) :]

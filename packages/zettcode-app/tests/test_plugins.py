@@ -816,22 +816,15 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
         == TuiPlugins()
     )
 
-    # The switch only governs the reader's plugins: the terminal's parts still load through their entry points.
+    # `[plugins] enabled = false` leaves out everything the program does not require, the terminal's own plugins too.
+    required = ("commands", "presenters", "shell", "turn-line")
     loaded = load_terminal_plugins(
         make_config(tmp_path, plugins_enabled=False),
         entry_points=with_parts(one),
         builtins=(),
+        required=required,
     )
-    assert set(loaded_names(loaded)) == {
-        "commands",
-        "pets",
-        "presenters",
-        "shell",
-        "themes",
-        "turn-line",
-        "usage",
-        "context",
-    }
+    assert set(loaded_names(loaded)) == set(required)
     assert [row.region for row in loaded.rows] == ["header", "status"]
     assert all(row.left for row in loaded.rows)
 
@@ -995,7 +988,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
     monkeypatch.setattr(
         loader_module,
         "installed_entry_points",
-        lambda: tuple(agent_parts() + with_parts(FakeEntryPoint("greeter", Greeter))),
+        lambda **_: tuple(agent_parts() + with_parts(FakeEntryPoint("greeter", Greeter))),
     )
 
     runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path), terminal_plugins)
@@ -1030,33 +1023,11 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         *(plugin.name for plugin in AGENT_PLUGINS if plugin.name != "coding"),
     }
     assert len(runtime.plugins.extensions) == 1
-    # The program's own commands come first, in the order /help lists them, and the installed plugin's after them.
-    assert [command.name for command in runtime.plugins.builtin_commands] == [
-        # `/harness` is registered by the harness part itself. The shell's own plugins load first, then the agent's
-        # parts, and the terminal's command plugin last; `/code-review` is a plain command, merged ahead of the ones
-        # registered on the terminal group.
-        "/harness",
-        "/code-review",  # the SDK's plain command: a preset for a turn, so every front end gets it
-        "/help",
-        "/plugins",
-        "/resume",
-        "/continue",
-        "/fork",
-        "/title",
-        "/model",
-        "/effort",
-        "/permission",
-        "/btw",
-        "/bash",
-        "/clear",
-        "/quit",
-        "/exit",
-        "/hub",
-        "/usage",
-        "/context",
-    ]
-    assert [command.name for command in runtime.plugins.installed_commands] == ["/greet"]
-    assert runtime.plugins.commands == (*runtime.plugins.builtin_commands, *runtime.plugins.installed_commands)
+    # Every plugin's commands, in the order the plugins load; there is no "program's own" kind to put first.
+    names = [command.name for command in runtime.plugins.commands]
+    assert set(names) >= {"/harness", "/code-review", "/help", "/plugins", "/resume", "/model", "/usage", "/greet"}
+    assert len(names) == len(set(names)), "and none twice"
+    assert names.index("/help") < names.index("/plugins"), "one plugin's commands keep the order it registered them in"
     assert [row.region for row in runtime.plugins.rows] == ["header", "status"]
 
 
@@ -1070,7 +1041,9 @@ async def test_the_built_client_receives_the_plugin_extension(tmp_path: Path, mo
     monkeypatch.setattr(
         loader_module,
         "installed_entry_points",
-        lambda: tuple(agent_parts() + with_parts(FakeEntryPoint("greeter", Greeter), FakeEntryPoint("second", Second))),
+        lambda **_: tuple(
+            agent_parts() + with_parts(FakeEntryPoint("greeter", Greeter), FakeEntryPoint("second", Second))
+        ),
     )
     captured: dict[str, object] = {}
 

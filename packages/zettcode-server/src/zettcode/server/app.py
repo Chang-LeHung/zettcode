@@ -631,7 +631,7 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
                 PluginOut(
                     name=entry.name,
                     origin=entry.origin,
-                    builtin=entry.builtin,
+                    required=entry.required,
                     enabled=entry.enabled,
                     failure=entry.failure,
                     setting=entry.setting,
@@ -652,15 +652,15 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
     async def switch_plugin(name: str, body: PluginSwitchIn, runner: RunnerDep) -> PluginOut:
         """Turn one plugin's work on or off for the next start, and return it as the list now shows it.
 
-        Nothing is loaded or unloaded here: a switch is read once, when a process starts. A compiled-in plugin is
-        switched by a configuration key in the server's configuration file, an installed one by [plugins] disable there;
+        Nothing is loaded or unloaded here: a switch is read once, when a process starts. A plugin with a setting is
+        switched by that key in the server's configuration file, any other by [plugins] disable there;
         a client that wants the change now restarts the server, which is what the extension does.
         """
         entry = await asyncio.to_thread(runner.client.set_plugin_enabled, name, body.enabled)
         return PluginOut(
             name=entry.name,
             origin=entry.origin,
-            builtin=entry.builtin,
+            required=entry.required,
             enabled=entry.enabled,
             failure=entry.failure,
             setting=entry.setting,

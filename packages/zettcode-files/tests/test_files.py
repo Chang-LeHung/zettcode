@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib.metadata import entry_points
 from pathlib import Path
 
-from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
+from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP
 from zettcode.files import FileMentions, FileResources
 from zettcode.files.mentions import SKIP_DIRECTORIES
 
@@ -34,5 +34,7 @@ def test_the_plugin_is_a_part_of_the_agent_found_through_its_entry_point_group()
     found = {point.name: point for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)}
 
     assert found["files"].value == "zettcode.files.plugin:FileResources"
-    assert part_group(found["files"]) == AGENT_PART_GROUP
-    assert FileResources.name == "files" and FileResources.setting is None, "nothing turns it off"
+
+    assert FileResources.name == "files" and FileResources.setting is None, (
+        "no setting: `[plugins] disable` is its switch"
+    )

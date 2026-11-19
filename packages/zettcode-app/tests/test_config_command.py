@@ -140,7 +140,6 @@ def shell(tmp_path, monkeypatch):
         config = replace(
             load_config(workspace, path=path, require_models=require_models),
             store=tmp_path / "sessions",
-            plugins_enabled=False,
             skills_enabled=False,
             mcp_enabled=False,
             **overrides,

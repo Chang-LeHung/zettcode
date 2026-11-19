@@ -19,7 +19,7 @@ from zettcode.plugin_api.commands import Command, CommandResult
 from zettcode.plugin_api.host import HOST_LINK, HostLink
 from zettcode.plugin_api.plugin import TuiPlugin, TuiPlugins
 from zettcode.plugin_api.state import TurnSegment
-from zettcode.sdk.builtins import require_agent_parts
+from zettcode.sdk.builtins import REQUIRED_AGENT_NAMES
 from zettcode.tui import RESERVED_THEMES
 
 from .groups import TuiGroups, UiSlots
@@ -45,13 +45,11 @@ def load_terminal_plugins(
     builtins: Sequence[OfferedPlugin] = (),
     shared: Mapping[str, object] | None = None,
     required: Sequence[str] = (),
-    agent: bool = True,
 ) -> TuiPlugins:
-    """Load the builtin plugins and every enabled distribution into one bundle, for the terminal.
+    """Load every enabled plugin into one bundle, for the terminal.
 
-    The arguments are those of :func:`zettcode.engine.plugins.loader.load_plugins`; the builtins default to the
-    terminal's own, and the agent's come from discovery like the other parts. ``agent=False`` leaves them out, for a
-    picture or a test that draws the shell with no runtime behind it.
+    The arguments are those of :func:`zettcode.engine.plugins.loader.load_plugins`; discovery also reads the group
+    only a terminal reads (``zettcode.tui``).
     """
     bundle = run(
         TerminalLoader(config, shared),
@@ -60,7 +58,6 @@ def load_terminal_plugins(
         entry_points=entry_points,
         required=required,
         terminal=True,
-        agent=agent,
     )
     assert isinstance(bundle, TuiPlugins)
     return bundle
@@ -71,10 +68,13 @@ def load_terminal_plugins(
 #: ``[plugins] disable`` does not reach them, and the terminal does not start when one is missing.
 REQUIRED_PLUGINS: tuple[str, ...] = ("shell", "turn-line", "presenters", "commands")
 
+#: Everything a terminal start cannot run without: the agent's own plugins, and the ones that draw.
+REQUIRED_NAMES: tuple[str, ...] = (*REQUIRED_AGENT_NAMES, *REQUIRED_PLUGINS)
+
 
 def terminal_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -> TuiPlugins:
     """Load the plugins the terminal's way, in the shape :meth:`ZettCodeEngine.preview` takes as its loader."""
-    return require_agent_parts(load_terminal_plugins(config, shared=shared, required=REQUIRED_PLUGINS))
+    return load_terminal_plugins(config, shared=shared, required=REQUIRED_NAMES)
 
 
 def _tui(context: PluginContext) -> TuiGroups:
@@ -158,8 +158,6 @@ class TerminalLoader(Loader):
         self.slots = UiSlots()
         self.turn_segments: dict[str, TurnSegment] = {}
         self.commands: list[Command] = []
-        #: The commands the program's own plugins (built in, or its parts) registered; the bundle puts them first.
-        self.program_commands: list[Command] = []
         self.themes: list[ThemeSource] = []
         self.pets: list[PetSource] = []
         self.presenters: list[Presenter[Any]] = []
@@ -223,7 +221,6 @@ class TerminalLoader(Loader):
         # ``ctx.commands`` become ordinary commands here, beside the ones registered on ``ctx.tui``.
         plain = plain_commands(context)
         self._claimed.update(command.name for command in plain)
-        before = len(self.commands)
         self.commands.extend(plain)
         self._theme_names.update(source.name for source in terminal.themes)
         self.themes.extend(terminal.themes)
@@ -235,15 +232,11 @@ class TerminalLoader(Loader):
         self.turn_end_handlers.extend(terminal.turn_end_handlers)
         self._claimed.update(command.name for command in terminal.registered_commands)
         self.commands.extend(terminal.registered_commands)
-        if self.program:
-            self.program_commands.extend(self.commands[before:])
         self.slots = terminal.slots
         self.turn_segments = {segment.name: segment for segment in terminal.turn_segments}
 
     def bundle(self) -> TuiPlugins:
         plain = super().bundle()
-        program = tuple(self.program_commands)
-        own = {id(command) for command in program}
         return TuiPlugins(
             host=plain.host,
             mentions=plain.mentions,
@@ -252,12 +245,11 @@ class TerminalLoader(Loader):
             services=plain.services,
             plain_commands=plain.plain_commands,
             failed=plain.failed,
-            builtins=plain.builtins,
+            required=plain.required,
             triggers=plain.triggers,
             taken=plain.taken,
             default_off=plain.default_off,
-            commands=(*program, *(command for command in self.commands if id(command) not in own)),
-            builtin_commands=tuple(program),
+            commands=tuple(self.commands),
             themes=tuple(self.themes),
             pets=tuple(self.pets),
             presenters=tuple(self.presenters),

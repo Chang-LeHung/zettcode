@@ -528,13 +528,12 @@ class PluginOut(BaseModel):
 
     Attributes:
         name: What the plugin calls itself.
-        origin: The distribution that carries it, and the name a switch is written with; the same as ``name`` for a
-            plugin compiled into the program.
-        builtin: Compiled into the program.
+        origin: The entry-point name it is published under, and the name a switch is written with.
+        required: The program cannot run without it, so there is no switch.
         enabled: Whether the next start does its work. A switch is a promise about that start, not this process.
         failure: Why it could not load in this process, or empty when it did.
-        setting: The configuration key that decides a compiled-in plugin (``"skills.enabled"``), or empty for an
-            installed one, which `[plugins] disable` holds.
+        setting: The configuration key that decides the plugin (``"skills.enabled"``), or empty for one that
+            `[plugins] disable` holds.
         switchable: Whether there is a switch to draw; a panel shows the rest without one and says ``why``.
         why: Why it cannot be switched, when it cannot; empty otherwise.
         note: What else a panel should say — a plugin that lost its name to one loaded before it has no switch and is
@@ -546,7 +545,7 @@ class PluginOut(BaseModel):
 
     name: str
     origin: str
-    builtin: bool = False
+    required: bool = False
     enabled: bool = True
     failure: str = ""
     setting: str = ""

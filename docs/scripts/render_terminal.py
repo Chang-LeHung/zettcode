@@ -20,6 +20,7 @@ from zettcode.app.plugins.loader import load_terminal_plugins, terminal_plugins
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
+from zettcode.engine.plugins.loader import screen_entry_points
 from zettcode.plugin_api.state import ShellContext
 from zettcode.presenters.brand import LOGO_PALETTE, LOGO_PIXELS
 from zettcode.presenters.rows import ShellRows
@@ -75,12 +76,13 @@ def preview(dress: Callable[[ZettCodeApp], None] | None = None) -> Canvas:
                 # The picture shows the companion: it is off in a real start, and the penguin is the one the README wears.
                 pet="penguin",
                 statusline_hidden=(),
-                plugins_enabled=False,
                 skills_enabled=False,
                 mcp_enabled=False,
             )
             runtime = ZettCodeEngine.preview(config, terminal_plugins)
-            runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins(), agent=False)
+            runtime.plugins = load_terminal_plugins(
+                config, builtins=preview_plugins(), entry_points=screen_entry_points()
+            )
             app = ZettCodeApp(TerminalAgent(runtime), theme=replace(DARK, background="#232a2e"))
             clock = [0.0]
             app.transcript.clock = lambda: clock[0]

@@ -277,8 +277,6 @@ export function doctorPage(checks: ModelCheck[]): Page {
  */
 export function pluginsPage(plugins: PluginReport): Page {
   const entries = plugins.entries === undefined ? legacyEntries(plugins) : plugins.entries;
-  const builtin = entries.filter((entry) => entry.builtin);
-  const installed = entries.filter((entry) => !entry.builtin);
   // The same population the page's script recounts: a switch's own state, and the rows that could not load.
   const switched = entries.filter((entry) => entry.switchable);
   const off = switched.filter((entry) => !entry.enabled).length;
@@ -288,12 +286,11 @@ export function pluginsPage(plugins: PluginReport): Page {
     title: "Plugins",
     summary: `<b id="plugins-on">${switched.length - off}</b> of <span id="plugins-switches">${switched.length}</span> switches on <span class="muted">· <span id="plugins-failed">${failed}</span> failed · <span id="plugins-noswitch">${without}</span> without a switch</span>`,
     body: `<section class="columns">
-      ${group("Built in", builtin, "No plugin the program carries can be switched.")}
-      ${group("Installed", installed, "No plugin is installed beside the program.")}
+      ${group("Plugins", entries, "No plugin is installed.")}
     </section>
     <p class="scope">A switch is written down now and honoured by the next start: this one does the work it
-    loaded. A plugin compiled into the program writes its own configuration key; an installed one is recorded beside
-    the session store, the same file the terminal's <code>/plugins</code> writes.</p>`,
+    loaded. A plugin with a setting writes its own configuration key; any other is recorded in
+    <code>[plugins] disable</code>, the same file the terminal's <code>/plugins</code> writes.</p>`,
   };
 }
 
@@ -338,7 +335,7 @@ function legacy(name: string, why: string): PluginEntry {
   return {
     name,
     origin: name,
-    builtin: false,
+    required: false,
     enabled: true,
     failure: "",
     setting: "",

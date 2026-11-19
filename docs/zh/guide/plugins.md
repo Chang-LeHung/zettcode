@@ -56,14 +56,19 @@ disable <name>` 在输入框里就能做。所有开关都在**下一次启动**
 
 ```toml
 [plugins]
-enabled = true          # false 会放下所有第三方插件，内置界面不受影响
-disable = ["recap"]     # 下次启动时不加载这些已安装的插件
+enabled = true          # false 会放下所有插件，只留程序离不开的那几个
+disable = ["recap"]     # 下次启动时不加载这些插件
 enable = ["quiet"]      # 一个自己声明默认关闭的插件
 ```
 
 `disable` 和 `enable` 写的是插件的 **origin**——它的 entry-point 名字，可能和包名、也和插件自己的 `name`
-不同。编译进程序的插件由它本来就有的设置开关（`[mcp] enabled`、`[skills] enabled`），页面写的是那个键。
-屏幕启动所必需的终端部件根本不在这一页上。
+不同。每个插件在页面上都有一行，不管它已加载、已关闭、默认关闭还是加载失败。已经有自己设置的插件由那个键开关
+（`[mcp] enabled`、`[skills] enabled`），页面写的是那个键；`disable` 行或 `enabled = false` 仍会拦住它，打开它时会清掉那一行。
+大约二十个插件是程序离不开的——agent 的工具、shell 权限、会话日志、用量、上下文和压缩，以及终端的 shell 行、回合行、渲染器和命令——
+`disable` 行和 `enabled = false` 都管不到它们，也没有 `[plugins]` 开关（其中 `subagents` 和 `self-compaction` 仍有各自的 setting）。
+
+要画界面的插件（shell 行、渲染器、命令、配色、宠物）发布在单独的 entry-point 组 `zettcode.tui` 里，只有终端会读它，所以脚本或服务端
+这类不开界面的进程不会导入它们。你自己的插件两个组都可以用；只有它要导入终端时才用 `zettcode.tui`。
 
 ## 插件的配置放在哪
 

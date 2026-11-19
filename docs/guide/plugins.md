@@ -19,7 +19,7 @@ relative imports, and `--force` to replace a file whose content differs. By hand
 ZettCode runs in.
 
 `zettcode plugin list` shows each plugin's origin, location and switch; `--json` is the same for a program.
-`zettcode plugin uninstall <name>` removes a single file or a distribution.
+`zettcode plugin uninstall <name>` removes a single file or a distribution. It refuses one that `zettcode` itself depends on (the program's own packages); `disable` leaves one of their plugins out instead.
 
 ::: warning Install only trusted plugins
 Plugins run Python inside the ZettCode process and can change both the model's work and your files. They are not
@@ -60,15 +60,23 @@ list.
 
 ```toml
 [plugins]
-enabled = true          # false leaves every third-party plugin out; the built-in screen stays
-disable = ["recap"]     # installed plugins left out at the next start
+enabled = true          # false leaves every plugin out except the ones the program cannot run without
+disable = ["recap"]     # plugins left out at the next start
 enable = ["quiet"]      # a plugin that declares itself off by default
 ```
 
 `disable` and `enable` name the plugin's **origin** — its entry-point name, which can differ from the package name and
-from the plugin's own `name`. A plugin compiled into the program is switched by the setting it already has (`[mcp]
-enabled`, `[skills] enabled`), and the page writes that key instead. The terminal parts the screen cannot start without
-are not on the page at all.
+from the plugin's own `name`. Every plugin has a row on the page, whether it is loaded, off, off by default or failed.
+A plugin that already has a setting is switched by that key (`[mcp] enabled`, `[skills] enabled`), and the page writes
+it instead; a `disable` line or `enabled = false` still holds it back, and turning it on clears the line. About twenty
+plugins are ones the program cannot run without — the agent's tools, shell permission, session log, usage, context and
+compaction, and the terminal's shell rows, turn line, presenters and commands. Neither a `disable` line nor
+`enabled = false` reaches them, and they have no `[plugins]` switch (two of them, `subagents` and `self-compaction`,
+still have a setting).
+
+Plugins that draw (the shell rows, presenters, commands, palettes and pets) are published in their own entry-point group,
+`zettcode.tui`, which only the terminal reads, so a script or the server that never opens a screen does not import
+them. A plugin of your own may use either group; use `zettcode.tui` only if it imports the terminal.
 
 ## Where a plugin's settings live
 

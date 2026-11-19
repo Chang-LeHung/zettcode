@@ -11,8 +11,8 @@ from plugin_helpers import runtime_state  # noqa: E402  (support/ is on the path
 from zettcode._compat import tomllib
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import AgentBuild, loader
-from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, run
-from zettcode.sdk.builtins import AGENT_PLUGIN_NAMES, AGENT_PLUGINS, REQUIRED_AGENT_NAMES, require_agent_parts
+from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, run
+from zettcode.sdk.builtins import AGENT_PLUGIN_NAMES, AGENT_PLUGINS, REQUIRED_AGENT_NAMES
 
 PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 
@@ -90,15 +90,21 @@ def test_a_plugin_is_activated_after_the_one_whose_service_it_reads_whatever_the
     assert plugins.failed == ()
 
 
-def test_a_disable_line_does_not_reach_the_plugins_that_compose_the_agent(tmp_path: Path, caplog):
+def test_a_disable_line_does_not_reach_the_plugins_the_agent_requires(tmp_path: Path, caplog):
     config = _config(tmp_path, disabled_plugins=("coding", "session-log"))
     points = list(entry_points(group=PLUGIN_ENTRY_POINT_GROUP))
 
     with caplog.at_level("WARNING", logger="zettcode.plugins"):
-        plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=points)
+        plugins = run(
+            loader.Loader(config, runtime_state(config)),
+            config,
+            builtins=(),
+            entry_points=points,
+            required=REQUIRED_AGENT_NAMES,
+        )
 
     assert {"coding", "session-log"} <= {plugin.name for plugin in plugins.plugins}
-    assert {"coding", "session-log"} <= set(plugins.builtins), "so the plugins page offers no switch for them"
+    assert {"coding", "session-log"} <= set(plugins.required), "so the plugins page offers no switch for them"
     assert {r.plugin for r in caplog.records if r.getMessage() == "plugins.required"} == {"coding", "session-log"}
 
 
@@ -106,83 +112,32 @@ def test_plugins_switched_off_as_a_whole_still_load_them(tmp_path: Path):
     config = _config(tmp_path, plugins_enabled=False)
     points = _sdk_points()
 
-    plugins = run(loader.Loader(config, runtime_state(config)), config, builtins=(), entry_points=points)
+    plugins = run(
+        loader.Loader(config, runtime_state(config)),
+        config,
+        builtins=(),
+        entry_points=points,
+        required=REQUIRED_AGENT_NAMES,
+    )
 
     assert [plugin.name for plugin in plugins.plugins] == list(AGENT_PLUGIN_NAMES)
 
 
-def test_an_installation_with_none_of_them_is_refused_and_one_that_failed_to_activate_is_not(tmp_path: Path):
+def test_an_installation_with_none_of_them_is_refused_and_so_is_one_where_they_cannot_start(tmp_path: Path):
     import pytest
 
     from zettcode.engine.plugins import load_plugins
     from zettcode.engine.plugins.loader import RequiredPluginError
 
     config = _config(tmp_path)
-    nothing = load_plugins(config, builtins=(), entry_points=[], shared=runtime_state(config))
     with pytest.raises(RequiredPluginError) as raised:
-        require_agent_parts(nothing)
-    assert set(raised.value.missing) == set(REQUIRED_AGENT_NAMES) >= {"skills", "skill-tool", "mcp"}
+        load_plugins(config, builtins=(), entry_points=[], shared=runtime_state(config), required=REQUIRED_AGENT_NAMES)
+    assert set(raised.value.missing) == set(REQUIRED_AGENT_NAMES)
 
-    bare = load_plugins(config, builtins=(), shared={})  # discovery, but no state to build on: each one fails
-    assert {origin for origin, _why in bare.failed} >= {"coding", "session-log"}
-    assert require_agent_parts(bare) is bare, "a failure to activate is recorded, as it always was"
-
-
-class _Foreign:
-    """An entry point of another distribution that declares the program's group."""
-
-    class dist:  # noqa: N801 - the slice of importlib.metadata.Distribution the loader reads
-        name = "acme-tools"
-
-    group = AGENT_PART_GROUP
-
-    def __init__(self, name: str) -> None:
-        self.name = name
-        self.value = "acme:Plugin"
-
-    def load(self):
-        from zettcode.engine.plugins import Plugin
-
-        class Stranger(Plugin):
-            pass
-
-        Stranger.name = self.name
-        return Stranger
-
-
-def test_a_foreign_distribution_cannot_join_the_program_by_declaring_its_group(tmp_path: Path):
-    from zettcode.engine.plugins import catalog, load_plugins
-
-    config = _config(tmp_path, disabled_plugins=("aaa",))
-    points = [_Foreign("aaa"), *_sdk_points()]
-
-    plugins = load_plugins(config, builtins=(), entry_points=points, shared=runtime_state(config))
-
-    assert "aaa" not in plugins.builtins and "aaa" not in [plugin.name for plugin in plugins.plugins], (
-        "an ordinary plugin"
-    )
-    assert [plugin.name for plugin in plugins.plugins] == list(AGENT_PLUGIN_NAMES), "and it did not jump the queue"
-    off = _config(tmp_path)
-    shown = [
-        row.origin
-        for row in catalog(
-            off, load_plugins(off, builtins=(), entry_points=points, shared=runtime_state(off)), entry_points=points
-        )
-    ]
-    assert "aaa" in shown, "it has a row, so a switch"
-
-
-def test_a_stranger_that_names_itself_like_one_of_them_does_not_stand_in_for_the_missing_ones(tmp_path: Path):
-    import pytest
-
-    from zettcode.engine.plugins import load_plugins
-    from zettcode.engine.plugins.loader import RequiredPluginError
-
-    config = _config(tmp_path)
-    plugins = load_plugins(config, builtins=(), entry_points=[_Foreign("mcp")], shared=runtime_state(config))
-
-    with pytest.raises(RequiredPluginError):
-        require_agent_parts(plugins)
+    # Discovery, but no state to build on: each one fails to activate, and the program says which, not "not installed".
+    with pytest.raises(RequiredPluginError) as bare:
+        load_plugins(config, builtins=(), shared={}, required=REQUIRED_AGENT_NAMES)
+    assert bare.value.missing["coding"] != "not installed"
 
 
 def test_passing_the_list_as_builtins_beside_discovery_is_not_a_set_of_duplicate_failures(tmp_path: Path):
@@ -197,11 +152,13 @@ def test_passing_the_list_as_builtins_beside_discovery_is_not_a_set_of_duplicate
     assert [plugin.name for plugin in plugins.plugins] == list(AGENT_PLUGIN_NAMES)
 
 
-def test_the_skills_and_the_mcp_client_are_parts_of_the_agent_published_by_distributions_of_their_own(tmp_path: Path):
-    """They are discovered with the SDK's, count as the program's own, and the agent still receives their extensions."""
+def test_the_skills_and_the_mcp_client_are_plugins_like_any_other_and_the_agent_still_receives_their_extensions(
+    tmp_path: Path,
+):
+    """They are discovered with the SDK's, and a disable line does reach them: nothing makes them special."""
     (tmp_path / "mcp.json").write_text('{"servers": {"docs": {"url": "http://127.0.0.1:9/a"}}}', encoding="utf-8")
     config = dataclasses.replace(
-        _config(tmp_path, disabled_plugins=("skills", "mcp")),
+        _config(tmp_path),
         skills_enabled=True,
         mcp_enabled=True,
         mcp_config=tmp_path / "mcp.json",
@@ -212,18 +169,36 @@ def test_the_skills_and_the_mcp_client_are_parts_of_the_agent_published_by_distr
 
     names = [plugin.name for plugin in plugins.plugins]
     assert {"skills", "skill-tool", "mcp"} <= set(names)
-    assert {"skills", "skill-tool", "mcp"} <= set(plugins.builtins), "a disable line does not reach them"
     assert plugins.failed == ()
     built = [type(extension).__name__ for extension in plugins.agent_extensions(AgentBuild(model=object()))]  # type: ignore[arg-type]
     assert {"SkillExtension", "ReportingMcpExtension"} <= set(built)
+
+    off = dataclasses.replace(config, disabled_plugins=("skills", "mcp"))
+    left = run(loader.Loader(off, runtime_state(off)), off, builtins=(), entry_points=points)
+    assert not {"skills", "mcp"} & {plugin.name for plugin in left.plugins}, "a reader may leave them out"
 
     # Where they stand among the activations is not the order the agent runs them in: that is each extension's
     # priority, which these two do not share with anything (the rest of the agent is at 100).
     extensions = plugins.agent_extensions(AgentBuild(model=object()))  # type: ignore[arg-type]
     by_name = {extension.name: extension.priority for extension in extensions}
     assert by_name["ReportingMcpExtension"] < by_name["SkillExtension"] < 100
-    # The agent sorts by priority (stably), so these two run first whatever the activation order put them after.
     run_order = [e.name for e in sorted(extensions, key=lambda e: e.priority)]
     assert (
         run_order.index("ReportingMcpExtension") < run_order.index("SkillExtension") < run_order.index("CodingBundle")
     )
+
+
+def test_a_disable_line_naming_a_plugin_the_program_hands_over_whole_is_logged(tmp_path: Path, caplog):
+    config = _config(tmp_path, disabled_plugins=("coding",))
+
+    with caplog.at_level("WARNING", logger="zettcode.plugins"):
+        plugins = run(
+            loader.Loader(config, runtime_state(config)),
+            config,
+            builtins=AGENT_PLUGINS,
+            entry_points=[],
+            required=REQUIRED_AGENT_NAMES,
+        )
+
+    assert "coding" in {plugin.name for plugin in plugins.plugins}
+    assert {r.plugin for r in caplog.records if r.getMessage() == "plugins.required"} == {"coding"}

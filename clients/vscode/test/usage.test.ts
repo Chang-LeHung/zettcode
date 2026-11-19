@@ -89,11 +89,11 @@ const entries: PluginEntry[] = [
 ];
 
 /** One entry with the defaults a fixture does not care about. */
-function base(name: string, origin: string, builtin = false): PluginEntry {
+function base(name: string, origin: string, required = false): PluginEntry {
   return {
     name,
     origin,
-    builtin,
+    required,
     enabled: true,
     failure: "",
     setting: "",
@@ -211,7 +211,7 @@ test("the model check page has pass and fail cards", async () => {
   assert.ok(document.querySelector(".check-detail")?.textContent?.includes("answered"));
 });
 
-test("the plugins page separates the program's own from the installed ones, and says what is off", async () => {
+test("the plugins page lists every plugin in one group, and says what is off", async () => {
   await showPluginsPanel(async () => client as never, { toString: () => "file:///extension" } as never, "zettcode");
   assert.ok(lastPanel !== null);
   assert.equal(lastPanel.title, "ZettCode: Plugins");
@@ -219,16 +219,12 @@ test("the plugins page separates the program's own from the installed ones, and 
 
   assert.deepEqual(
     Array.from(document.querySelectorAll(".columns .panel h2")).map((node) => node.textContent),
-    ["Built in", "Installed"],
+    ["Plugins"],
   );
-  const panelOf = (title: string): Element | undefined =>
-    Array.from(document.querySelectorAll(".columns .panel")).find(
-      (node) => node.querySelector("h2")?.textContent === title,
-    );
-  const names = (title: string): (string | null)[] =>
-    Array.from(panelOf(title)?.querySelectorAll(".plugin-name") ?? []).map((node) => node.textContent);
-  assert.deepEqual(names("Built in"), ["skills", "mcp"]);
-  assert.deepEqual(names("Installed"), ["lint", "search", "acme", "held", "lost"]);
+  assert.deepEqual(
+    Array.from(document.querySelectorAll(".columns .panel .plugin-name")).map((node) => node.textContent),
+    ["skills", "mcp", "lint", "search", "acme", "held", "lost"],
+  );
 
   const summary = document.querySelector(".summary")?.textContent?.replace(/\s+/g, " ") ?? "";
   assert.ok(
@@ -390,8 +386,7 @@ test("an empty catalog is a page with nothing to switch, not an old server", asy
   assert.equal(document.querySelectorAll(".plugin").length, 0, "no row was invented from the names");
   assert.equal(document.querySelectorAll(".switch").length, 0);
   const text = document.body.textContent ?? "";
-  assert.ok(text.includes("No plugin the program carries can be switched"), text);
-  assert.ok(text.includes("No plugin is installed beside the program"), text);
+  assert.ok(text.includes("No plugin is installed"), text);
   assert.equal(document.getElementById("plugins-on")?.textContent, "0");
 });
 

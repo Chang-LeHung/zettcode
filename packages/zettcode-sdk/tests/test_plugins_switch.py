@@ -31,13 +31,13 @@ class _Bundle:
         self,
         plugins: list[_Plugin] | None = None,
         *,
-        builtins: tuple[str, ...] = (),
+        required: tuple[str, ...] = (),
         failed: tuple[tuple[str, str], ...] = (),
         taken: tuple[tuple[str, str], ...] = (),
         default_off: tuple[str, ...] = (),
     ) -> None:
         self.plugins = plugins or []
-        self.builtins = builtins
+        self.required = required
         self.failed = failed
         self.taken = taken
         self.default_off = default_off
@@ -151,15 +151,58 @@ def test_a_switch_updates_both_lists_the_page_reads(config):
     )
 
 
-def test_a_builtin_setting_is_written_to_its_configuration_key(config):
+def test_a_plugin_with_a_setting_is_written_to_its_configuration_key(config):
     settings, path = config
-    bundle = _Bundle([_Plugin("mcp", setting=PluginSetting("mcp_enabled", "mcp"))], builtins=("mcp",))
+    bundle = _Bundle([_Plugin("mcp", setting=PluginSetting("mcp_enabled", "mcp"))])
 
     written, keys, problems = switches.set_many(settings, {"mcp": False}, bundle=bundle, entry_points=())
 
     assert problems == [] and written == {"mcp": False}
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     assert data["mcp"]["enabled"] is False
+
+
+def test_a_plugin_with_a_setting_that_a_disable_line_holds_is_off_and_turning_it_on_clears_the_line(config):
+    import dataclasses
+
+    settings, path = config
+    switches.set_installed(settings, "mcp", enabled=False)  # writes `[plugins] disable = ["mcp"]` to the file
+    assert disabled_in(path) == ["mcp"]
+    settings = dataclasses.replace(settings, disabled_plugins=("mcp",), mcp_enabled=True)
+    bundle = _Bundle([_Plugin("mcp", setting=PluginSetting("mcp_enabled", "mcp"))])
+
+    row = next(entry for entry in switches.catalog(settings, bundle, entry_points=()) if entry.name == "mcp")
+    assert row.enabled is False and "[plugins] disable" in row.note, "the setting says on, the line wins"
+
+    switches.set_many(settings, {"mcp": True}, bundle=bundle, entry_points=())
+
+    assert disabled_in(path) == []
+    assert tomllib.loads(path.read_text(encoding="utf-8"))["mcp"]["enabled"] is True
+
+
+def test_a_plugin_with_a_setting_is_off_without_a_switch_under_the_global_off(config):
+    import dataclasses
+
+    settings, path = config
+    settings = dataclasses.replace(settings, plugins_enabled=False, skills_enabled=True)
+    plugin = _Plugin("skills", setting=PluginSetting("skills_enabled", "skills"))
+
+    row = next(e for e in switches.catalog(settings, _Bundle([plugin]), entry_points=()) if e.name == "skills")
+    assert row.enabled is False and row.switchable is False and "enabled = false" in row.why
+    _, keys, problems = switches.set_many(settings, {"skills": False}, bundle=_Bundle([plugin]), entry_points=())
+    assert keys == [] and problems
+
+    required = next(e for e in switches.catalog(settings, _Bundle([plugin], required=("skills",)), entry_points=()))
+    assert required.enabled is True and required.required, "a required plugin is loaded under the global switch"
+
+
+def test_every_row_of_a_file_that_failed_one_class_carries_the_reason(config):
+    settings, _ = config
+    bundle = _Bundle([_Plugin("one", origin="pair"), _Plugin("two", origin="pair")], failed=(("pair", "Bad: no"),))
+
+    rows = [row for row in switches.catalog(settings, bundle, entry_points=()) if row.origin == "pair"]
+
+    assert len(rows) == 2 and all("Bad: no" in row.failure for row in rows)
 
 
 def test_a_file_plugin_is_one_row_and_its_switch_is_written(config):

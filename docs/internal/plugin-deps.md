@@ -14,50 +14,52 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
 - Names are unique. Dependencies are resolved by name, so the name is the identity. An entry point or file that takes
   the name of another plugin loses it and is logged (`plugins.name_taken`).
 - Services: `ctx.inject(name, obj)` (same as `provide`) publishes; `ctx.service(name, kind)` / `ctx.find(...)` reads, and the page services have typed readers (`ctx.agent.session_store_service()`, `usage_ledger_service()`, `context_report_service()` / `context_page_service()`).
-- One entry-point group, `zettcode.plugin`: one line per plugin class, whichever part of the program it is. The role
-  of a point is decided by the **distribution** it came from (`PROGRAM_DISTRIBUTIONS` in the engine's loader), which
-  `importlib.metadata` knows before the plugin's module is imported:
-  - `agent`: the parts that compose the agent. 10 are published by `zettcode-sdk`; `zettcode-skills`
-    (`skills`, `skill-tool`), `zettcode-messaging` (`messaging`), `zettcode-mcp` (`mcp`), `zettcode-files` (`files`),
-    `zettcode-jit-harness` (`harness`), `zettcode-ask-user` (`ask-user`), `zettcode-instructions`
-    (`project-instructions`), `zettcode-todos` (`todos`), `zettcode-tool-output` (`tool-output`),
-    `zettcode-truncation` (`long-output`) and `zettcode-guidance` (`tool-guidelines`) are distributions of their own.
-    Every loader reads them (the engine's own default does not: `agent=False`). None can be switched off — they are
-    protected like a compiled-in plugin, `[skills] enabled` and the other configuration keys being what turns a feature
-    off — but a failure to activate one is recorded in `failed`, not raised, as it was when they were compiled in.
-  - `terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`, `usage`, `context`). The SDK and the server
-    do not load them, so the terminal's packages are never imported there. `REQUIRED_PLUGINS = (shell, turn-line, presenters, commands)` in `app/plugins/loader.py`.
-  - anything else: what a reader installs, published on its own line with its own version (`[tool.zettcode] plugin =
-    true` in its `pyproject.toml` is what the release order looks for). The two old group names (`zettcode.plugins`,
-    the parts' `zettcode.agent`/`zettcode.terminal`) are still read, so a wheel published before the merge keeps
-    loading.
-- Order inside a group is `(Plugin.rank, name)`, then `deps`. `AGENT_PLUGINS` in `sdk/builtins.py` is the one list that
-  says the order of the SDK's own (and gives each class its rank); the entry points in the SDK's `pyproject.toml`
-  repeat it, and `test_agent_parts.py` and `test_structure.py` hold the two, and the suite's literal copies in
+- Two entry-point groups and no role. Every plugin is the same kind of class; nothing about a distribution's name
+  decides what it may do.
+  - `zettcode.plugin`: read by every process. The SDK publishes 11 (`coding`, `commandline`, `capabilities`,
+    `subagents`, `shell-permission`, `session-log`, `usage-tracking`, `context-tracking`, `side-questions`,
+    `self-compaction`, `compaction`); `zettcode-skills` (`skills`, `skill-tool`), `zettcode-messaging`, `zettcode-mcp`,
+    `zettcode-files`, `zettcode-jit-harness` (`harness`), `zettcode-ask-user`, `zettcode-instructions`
+    (`project-instructions`), `zettcode-todos`, `zettcode-tool-output`, `zettcode-truncation` (`long-output`),
+    `zettcode-guidance` (`tool-guidelines`), `zettcode-memory` (`memory`, `daemon-guide`) and `zettcode-one-system` are
+    distributions of their own, and so are the ones a reader installs (monitor, recap, models), which carry
+    `[tool.zettcode] plugin = true` because the release order looks for it.
+  - `zettcode.tui`: read only when the loader has a screen (`installed_entry_points(terminal=True)`). `presenters`,
+    `shell`, `turn-line`, `commands`, `usage`, `context`, `pets` and `themes` publish here, so the SDK and the server
+    never import or load the terminal's packages (`catalog()` still lists them).
+  - What the program cannot run without is **named by the caller**: `load_plugins(..., required=names)`. The SDK passes
+    `REQUIRED_AGENT_NAMES` (the 11 above) and the terminal adds `REQUIRED_PLUGINS = (shell, turn-line, presenters,
+    commands)`. A name with a setting (`subagents`, `self-compaction`) is still switched by that setting. Nothing else
+    is protected: `skills`, `mcp`, `memory` and the rest are ordinary plugins a reader may leave out.
+  - `catalog()` lists every plugin — loaded, off, off by default, failed — so the plugins page cannot hide one. A
+    required plugin has no `[plugins]` switch, and nothing is switchable under `[plugins] enabled = false`.
+- Order is `rank` (default 0, lowest first), then what the caller named (offered whole or required) before the rest, then discovery order (entry-point name), then `deps`. `AGENT_PLUGINS` in
+  `sdk/builtins.py` is the one list that says the order of the SDK's own (and gives each class its rank); the entry
+  points in the SDK's `pyproject.toml` repeat it, and `test_agent_parts.py` and `test_structure.py` hold the two, and the suite's literal copies in
   `support/conftest.py`, together. The only service one reads from another is `subagents` ← `capabilities`, written
-  as a `deps`. A part in another distribution states no rank: its extension has a `priority` of its own (the
+  as a `deps`. A plugin in another distribution states no rank: its extension has a `priority` of its own (the
   skills 80, MCP 70, project instructions 10, against the 100 nearly everything else shares), and the agent sorts by
-  that. Registration order still decides, though, wherever a priority is shared: a part with no rank is activated at
-  rank 0, sorted by name among themselves and beside the SDK's `coding`, which has rank 0 too — `ask-user`, `coding`,
-  `files`, `harness`, `long-output`, `mcp`, `project-instructions`, `skill-tool`, `skills`, `todos`,
-  `tool-guidelines`, `tool-output` — and what the SDK lists from `capabilities` on follows by rank. Within the 100
-  band that registration order is the run order, which is the list
-  `test_the_order_the_agent_runs_them_in_is_the_priority_of_each` pins: `ask-user`, `coding`, `long-output`, `todos`,
+  that. Registration order still decides, though, wherever a priority is shared: plugins with no rank are activated at
+  rank 0, sorted by name among themselves, but the ones the caller named (the SDK hands `AGENT_PLUGINS` over whole and
+  requires its names) come first among equal ranks — so in production `coding` precedes `ask-user`, `files`,
+  `harness`, `long-output`, `mcp`, `project-instructions`, `skill-tool`, `skills`, `todos`, `tool-guidelines`,
+  `tool-output`, which follow by name (`test_the_real_loader_hands_the_agent_coding_before_the_question_tool`) — and what the SDK lists from `capabilities` on follows by rank. A reader's plugin
+  has rank 0 as well, so it is activated among those, by name; one that must run last sets a higher rank. Within the 100
+  band that registration order is the run order. The discovery helper the tests use gives (and
+  `test_the_order_the_agent_runs_them_in_is_the_priority_of_each` pins) `ask-user`, `coding`, `long-output`, `todos`,
   `tool-guidelines`, `tool-output`, `subagents`, the shell's approval, the store, the usage and context counters, then
   the compaction; the extensions at 10, 50, 80, 110 and 120, and the harness far above them, stand where their own
   priority puts them around those.
   That order is visible in one place and only there: the tools array a provider is handed is
-  `tuple(tool.definition for tool in context.tools.values())`, so `ask_user` is now offered before `read` and
-  `todo_write` before `task`, where before the move they were last and second to last. Nothing else reads a
+  `tuple(tool.definition for tool in context.tools.values())`, so `todo_write` is offered before `task` (and, with
+  the discovery helper, `ask_user` before `read`; in production `CodingBundle` registers first, so `read` comes first). Nothing else reads a
   position — the shell reads the plan by name, the model picks tools by name — so the tools array is the whole
   effect, and `test_plugin_extensions.py` pins it. What registration order used to decide for the skills — a skill
   beating a file of the same name in `@` — is `MentionProvider.precedence` now (a session −20, a skill −10, anything
   else 0).
-- `require_agent_parts(plugins)` refuses an installation that lacks any of the parts (`REQUIRED_AGENT_NAMES`: the
-  SDK's own plus `files`, `harness`, `skills`, `skill-tool`, `mcp`, `ask-user`, `project-instructions`, `todos`,
-  `tool-output`, `long-output`, `tool-guidelines`), in the
-  SDK's and the terminal's loaders: a damaged one would otherwise start an agent with no file references, no skills, no
-  MCP or no way to ask the reader a question, silently.
+- `load_agent_plugins` passes `required=REQUIRED_AGENT_NAMES` (the SDK's own 11), so an installation missing or failing
+  one raises `RequiredPluginError` instead of starting an agent with no tools, no session log and no compaction. The
+  others (files, skills, MCP, ask-user, …) are ordinary plugins: if one is absent the agent simply lacks that feature.
 
 ## Triggers
 

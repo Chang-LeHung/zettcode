@@ -223,17 +223,17 @@ export interface RunResult {
 /** One plugin as a list of them shows it. */
 export interface PluginEntry {
   name: string;
-  /** The distribution that carries it, and the name a switch is written with; equal to `name` for a builtin. */
+  /** The entry-point name it is published under, and the name a switch is written with. */
   origin: string;
-  /** Compiled into the program. */
-  builtin: boolean;
+  /** The program cannot run without it, so there is no switch. */
+  required: boolean;
   /** Whether the next start does its work: a switch is a promise about that start, not this process. */
   enabled: boolean;
   /** Why it could not load in this process, or empty when it did. */
   failure: string;
   /**
-   * The configuration key that decides a compiled-in plugin (`skills.enabled`), or empty for an installed one, which
-   * the plugin switch file holds.
+   * The configuration key that decides the plugin (`skills.enabled`), or empty for one that `[plugins] disable`
+   * holds.
    */
   setting: string;
   /** Whether there is a switch to draw; a list shows the rest without one and says `why`. */

@@ -48,7 +48,7 @@ class Greeter(TuiPlugin):
 ```
 
 With the entry point above and the package installed, `/greet Ada` shows a toast saying `hello Ada`. A plugin's
-commands are listed after the built-in ones, so none can shadow `/model`, `/resume` and the rest.
+commands cannot shadow the shell's own, so `/model`, `/resume` and the rest always do what the commands page says.
 
 ## How a plugin loads
 
@@ -122,9 +122,7 @@ class Journal(Plugin[PluginContext]):
     async def show(self, context: PlainCommandContext) -> TextCommandResult:
         if not context.argument:
             return TextCommandResult(message=f"{self.prefix}: nothing chosen")
-        return TextCommandResult(
-            message=f"## {self.prefix}\n\nLast {self.limit} entries about: {context.argument}"
-        )
+        return TextCommandResult(message=f"## {self.prefix}\n\nLast {self.limit} entries about: {context.argument}")
 ```
 
 Run `zettcode --journal-limit 5`; type `/journal tests` in the composer. The same plugin is available to a daemon
@@ -882,8 +880,8 @@ from zettcode.plugin_api import INBOX, Inbox, Plugin, PluginContext, Trigger, Tr
 
 
 class EveryMinute(Trigger):
-    name = "every-minute"            # a lowercase letter or digit first, then lowercase letters/digits/._-, 1-64; it names the lock file
-    scope = TriggerScope.MACHINE     # one on the whole machine
+    name = "every-minute"  # a lowercase letter or digit first, then lowercase letters/digits/._-, 1-64; it names the lock file
+    scope = TriggerScope.MACHINE  # one on the whole machine
 
     async def run(self, fire):
         while True:
@@ -902,8 +900,7 @@ class Heartbeat(Plugin[PluginContext]):
 
     async def on_tick(self, event: TriggerEvent) -> None:
         if self._inbox is not None:
-            self._inbox.deliver(f"tick: {event.payload['reason']}",
-                                mode="followup", origin="trigger")
+            self._inbox.deliver(f"tick: {event.payload['reason']}", mode="followup", origin="trigger")
 ```
 
 `scope` says how many copies run:
@@ -937,8 +934,8 @@ The sections above explain when to use each piece; this is the exact name, type 
 | `description` | one line saying what the plugin adds. `/plugins` shows it beside the switch, and the SDK and the server hand it on; a distribution this process did not load is described by its package summary instead. |
 | `deps` | other plugin **names** this one needs; the loader activates them first. |
 | `priority` | order among plugins inside the host; lower runs first. The host adopts the lowest, so one plugin’s priority moves the whole bundle against other extensions. Default `100`. |
-| `setting` | program-only: the config key that switches a compiled-in plugin; a third-party plugin declares none. |
-| `rank` | program-only ordering inside a role group; a third-party plugin leaves it at `0`. |
+| `setting` | the config key that switches this plugin instead of `[plugins] disable`; most plugins declare none. |
+| `rank` | ordering among plugins that have no `deps` between them, lowest first; leave it at `0` unless you need to come before or after another. A plugin that reads another's service (`ctx.service(...)`) must list that plugin in `deps`: nothing else orders them. |
 | `default_enabled()` | class method; return `False` to require `[plugins] enable = ["name"]`. |
 | `cli_arguments()` | class method; returns `CliOption` declarations for startup and `daemon spawn`. |
 | `activate(ctx)` | synchronous; register everything the plugin contributes. |
