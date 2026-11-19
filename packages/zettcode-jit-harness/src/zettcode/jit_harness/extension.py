@@ -32,7 +32,14 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.jit_harness import JITHarness as JITToolbox
     from zett_agent.jit_harness import JITToolHost
 
-__all__ = ["SwitchedHarness"]
+#: The control tool this repository replaces with its own, answered from the session's stored conversation.
+PROFILE_TOOL_NAME = "profile_tools"
+
+#: The control tools the framework's harness offers. The transcript names their rows, so the names are here as well;
+#: a test ties both to the framework's own list, so a rename fails instead of sending the rows back to JSON.
+MANAGEMENT_TOOL_NAMES: tuple[str, ...] = ("repo_create", "repo_load", "repo_unload", PROFILE_TOOL_NAME)
+
+__all__ = ["MANAGEMENT_TOOL_NAMES", "PROFILE_TOOL_NAME", "SwitchedHarness"]
 
 
 class SwitchedHarness(JITHarnessExtension):
@@ -142,7 +149,7 @@ class SwitchedHarness(JITHarnessExtension):
         with self._lock:
             session_id = next((sid for sid, held in self._sessions.items() if held is harness), "")
         return tuple(
-            self._usage_tool(harness, session_id) if each.name == "profile_tools" else each
+            self._usage_tool(harness, session_id) if each.name == PROFILE_TOOL_NAME else each
             for each in super().management_tools(harness)
         )
 
