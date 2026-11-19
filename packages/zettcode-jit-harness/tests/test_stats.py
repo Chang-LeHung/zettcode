@@ -1,4 +1,4 @@
-"""``profile_tools`` reads how tools have done from the stored conversation, and never reads a long one whole."""
+"""``profile_tools`` reads how tools have done from the stored conversation, and reads a long one whole only when asked."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def test_calls_failures_time_and_size_are_counted_per_tool(tmp_path: Path):
         result("read_file", ms=1, content="z"),
     )
 
-    scan = scan_tool_calls(path)
+    scan = scan_tool_calls(path, calls=-1)
 
     bash = scan.tools["bash"]
     assert (bash.calls, bash.failed, bash.completed) == (3, 1, 2)
@@ -46,6 +46,77 @@ def test_calls_failures_time_and_size_are_counted_per_tool(tmp_path: Path):
     assert bash.total_chars == 100 + 300 + len("exit code 2")
     assert scan.tools["read_file"].calls == 1
     assert not scan.partial and scan.describe() == "the whole of this session"
+
+
+def test_the_current_context_starts_after_the_last_compaction(tmp_path: Path):
+    path = write(
+        tmp_path / "data.jsonl",
+        result("bash"),
+        json.dumps({"kind": "compaction", "message": "the prefix that was summarized"}),
+        result("read_file"),
+        json.dumps({"kind": "compaction", "message": "another summary"}),
+        result("grep", call="g"),
+    )
+
+    current = scan_tool_calls(path)
+    everything = scan_tool_calls(path, calls=-1)
+
+    assert {name: tally.calls for name, tally in current.tools.items()} == {"grep": 1}
+    assert sum(tally.calls for tally in everything.tools.values()) == 3
+    assert current.describe() == "the current context, since the last compaction"
+    assert everything.describe() == "the whole of this session"
+
+
+def test_a_positive_count_keeps_the_most_recent_calls(tmp_path: Path):
+    path = write(
+        tmp_path / "data.jsonl", result("bash", call="a"), result("read_file", call="b"), result("grep", call="c")
+    )
+
+    scan = scan_tool_calls(path, calls=2)
+
+    assert {name: tally.calls for name, tally in scan.tools.items()} == {"read_file": 1, "grep": 1}
+    assert scan.describe() == "the last 2 tool calls"
+
+
+def test_all_history_ignores_the_byte_window(tmp_path: Path):
+    path = write(tmp_path / "data.jsonl", result("bash", call="a"), result("read_file", call="b"))
+
+    scan = scan_tool_calls(path, calls=-1, max_bytes=1)
+
+    assert sum(tally.calls for tally in scan.tools.values()) == 2 and not scan.partial
+
+
+def test_a_count_below_minus_one_is_refused(tmp_path: Path):
+    with pytest.raises(ValueError, match="-1"):
+        scan_tool_calls(tmp_path / "data.jsonl", calls=-2)
+
+
+def test_a_count_bigger_than_the_session_says_what_it_found(tmp_path: Path):
+    path = write(tmp_path / "data.jsonl", result("bash", call="a"), result("read_file", call="b"))
+
+    scan = scan_tool_calls(path, calls=10)
+
+    assert scan.describe() == "the last 2 of 10 tool calls"
+
+
+def test_a_count_with_nothing_recorded_says_so(tmp_path: Path):
+    path = write(tmp_path / "data.jsonl", json.dumps({"kind": "compaction", "message": "x"}))
+
+    assert scan_tool_calls(path, calls=5).describe() == "the last 5 tool calls (none recorded)"
+
+
+def test_a_tool_result_that_quotes_a_compaction_does_not_start_the_context(tmp_path: Path):
+    quoted = json.dumps({"kind": "compaction", "message": "quoted in a result"})
+    path = write(
+        tmp_path / "data.jsonl",
+        result("bash", call="a"),
+        result("read_file", content=quoted, call="b"),
+        result("grep", call="c"),
+    )
+
+    scan = scan_tool_calls(path)
+
+    assert sum(tally.calls for tally in scan.tools.values()) == 3 and not scan.compaction
 
 
 def test_what_is_not_a_tool_result_is_ignored(tmp_path: Path):
@@ -202,7 +273,7 @@ def test_an_overview_lists_the_models_tools_and_the_applications_that_were_calle
     assert rows["bash"]["calls"] == 2 and rows["bash"]["success_rate"] == 0.5 and rows["bash"]["avg_ms"] == 20
     assert rows["bash"]["recent_errors"] == ["boom"]
     assert rows["twice"]["calls"] == 0 and rows["twice"]["success_rate"] is None, "unused is an answer"
-    assert report["window"] == "the whole of this session" and report["omitted"] == 0
+    assert report["window"] == "the current context" and report["omitted"] == 0
 
 
 def test_an_overview_puts_the_most_called_first_and_says_what_it_left_out():
@@ -344,7 +415,7 @@ class _Calls:
 
         self.requests.append(request)
         if len(self.requests) == 1:
-            call = ToolCall(id="p1", name="profile_tools", arguments={"names": ["twice"]})
+            call = ToolCall(id="p1", name="profile_tools", arguments={"names": ["twice"], "calls": -1})
             yield ModelEvent.completed(ModelResponse(AssistantMessage(content="", tool_calls=(call,))))
         else:
             yield ModelEvent.completed(ModelResponse(AssistantMessage(content="ok")))

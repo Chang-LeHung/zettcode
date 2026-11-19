@@ -370,9 +370,9 @@ def test_the_transcript_opens_every_row_the_same_way_and_the_handler_picks_the_c
 
 
 def test_a_harness_repository_call_says_what_it_does_and_which_repository():
-    assert describe("repo_create", repo="kit") == "Create harness repo kit"
-    assert describe("repo_load") == "Load harness repo"
-    assert describe("repo_unload") == "Unload harness repo"
+    assert describe("repo_create", repo="kit") == "Create harness repo kit (a Python package)"
+    assert describe("repo_load") == "Load harness repo (lists tools and notes)"
+    assert describe("repo_unload") == "Unload harness repo (files stay on disk)"
 
 
 def test_a_harness_tool_profile_counts_the_tools_it_was_asked_about():
@@ -395,14 +395,14 @@ def test_the_harness_names_are_the_ones_the_framework_offers():
 def test_a_loaded_repository_is_words_not_json():
     payload = (
         '{"repo": "kit", "path": "/tmp/kit", "status": "loaded", "tools": ["add", "twice"],'
-        ' "resources": [{"name": "debug", "kind": "skill"}]}'
+        ' "resources": [{"name": "debug", "kind": "skill", "description": "Use when a test fails."}]}'
     )
 
     text = DEFAULT_RENDERERS.body("repo_load", payload)
 
     assert "Loaded kit: 2 tools and 1 note" in text
     assert "tools:\n  add\n  twice" in text
-    assert "notes:\n  debug" in text
+    assert "notes:\n  debug (skill) — Use when a test fails." in text
     assert "{" not in text
 
 
@@ -436,15 +436,17 @@ def test_a_tool_profile_is_a_header_and_one_line_per_tool():
     payload = (
         '{"tools": ['
         '{"name": "twice", "calls": 12, "failed": 1, "success_rate": 0.916, "avg_ms": 3.4,'
-        ' "recent_errors": ["it broke"]},'
+        ' "avg_input_chars": 1234, "avg_output_chars": 340, "recent_errors": ["it broke"]},'
         '{"name": "add", "calls": 0, "failed": 0, "success_rate": null, "avg_ms": null}],'
         ' "omitted": 2, "window": "the last 40 calls"}'
     )
 
     text = DEFAULT_RENDERERS.body("profile_tools", payload)
 
-    assert text.splitlines()[0] == "4 tools · 2 tools left out · measured over the last 40 calls"
-    assert "twice · 12 calls · 1 failed · 91.6% ok · 3.4 ms" in text
+    assert text.splitlines()[0] == (
+        "4 tools · 2 tools left out · measured over the last 40 calls · state/calls/failed/ok/time/size"
+    )
+    assert "twice · 12 calls · 1 failed · 91.6% ok · 3.4 ms · in 1.2k · out 340" in text
     assert "add · 0 calls" in text
     assert "twice: it broke" in text
     assert "{" not in text
@@ -473,7 +475,7 @@ def test_a_profile_whose_errors_are_a_string_does_not_spell_them_out():
 def test_a_profile_header_counts_only_the_rows_the_body_shows():
     payload = '{"tools": [{"calls": 3}, {"name": "add", "calls": 1}]}'
 
-    assert DEFAULT_RENDERERS.body("profile_tools", payload).splitlines()[0] == "1 tool"
+    assert DEFAULT_RENDERERS.body("profile_tools", payload).splitlines()[0].startswith("1 tool")
 
 
 def test_a_report_whose_rows_carry_no_numbers_is_left_alone():
@@ -483,6 +485,32 @@ def test_a_report_whose_rows_carry_no_numbers_is_left_alone():
         '{"repo": "kit", "status": "loaded", "tools": ["add"]}',
     ):
         assert DEFAULT_RENDERERS.body("profile_tools", payload) == payload
+
+
+def test_a_float_mean_output_size_is_still_shown():
+    payload = '{"tools": [{"name": "twice", "calls": 1, "avg_output_chars": 340.0}]}'
+
+    assert "out 340" in DEFAULT_RENDERERS.body("profile_tools", payload)
+
+
+def test_a_multi_line_note_description_stays_on_one_row():
+    payload = (
+        '{"repo": "kit", "status": "loaded", "tools": [], "resources": ['
+        '{"name": "debug", "kind": "skill", "description": "Use when a test fails.\\nOr when it does not."}]}'
+    )
+
+    assert "notes:\n  debug (skill) — Use when a test fails. Or when it does not." in DEFAULT_RENDERERS.body(
+        "repo_load", payload
+    )
+
+
+def test_an_empty_profile_keeps_the_window_it_was_counted_over():
+    payload = '{"tools": [], "window": "the current context, since the last compaction"}'
+
+    assert (
+        DEFAULT_RENDERERS.body("profile_tools", payload)
+        == "No tool calls recorded yet · measured over the current context, since the last compaction"
+    )
 
 
 def test_an_empty_tool_profile_says_so_instead_of_showing_json():

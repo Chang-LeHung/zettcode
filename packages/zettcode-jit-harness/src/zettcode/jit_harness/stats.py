@@ -5,7 +5,8 @@ it handed back and how long it took (``timing.duration_ns``). Counting them ther
 every tool the session ever ran (the application's, an MCP server's, the model's own), and survives a restart, which a
 counter held in memory does not.
 
-The file can be very large (a long session is hundreds of megabytes), so nothing here reads it whole:
+The file can be very large (a long session is hundreds of megabytes), so nothing here reads it whole unless the
+caller asks for every stored call (``calls=-1``):
 
 * only the **tail** is read, at most :data:`SCAN_BYTES`, because how a tool has been doing lately is the question; the
   answer says when it left older calls out;
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import deque
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -62,7 +64,7 @@ class UsageReport(ToolStatsReport):
     window: str
 
 
-#: The most of a conversation file that is read, counted back from its end.
+#: The most of a conversation file that is read, counted back from its end, unless every call is asked for.
 SCAN_BYTES = 32 * 1024 * 1024
 
 #: The longest line that is parsed; a longer one is skipped.
@@ -127,6 +129,10 @@ class Scan:
     size: int = 0
     #: Lines left unparsed because they were longer than :data:`MAX_LINE`.
     skipped: int = 0
+    #: What the reader asked for: 0 the current context, a positive number that many recent calls, -1 everything.
+    requested: int = 0
+    #: Whether a compaction line was met while reading, which is where the current context begins.
+    compaction: bool = False
 
     @property
     def partial(self) -> bool:
@@ -137,11 +143,26 @@ class Scan:
         """Return one sentence saying what was read, for whoever reads the numbers."""
         if self.size == 0:
             return "this session has no stored conversation yet"
-        text = (
-            f"the last {_megabytes(self.scanned)} of {_megabytes(self.size)} of this session; older calls are not counted"
-            if self.partial
-            else "the whole of this session"
-        )
+        found = sum(tally.calls for tally in self.tools.values())
+        if self.requested < 0:
+            text = "the whole of this session"
+        elif self.requested == 0:
+            text = "the current context" + (", since the last compaction" if self.compaction else "")
+        elif found == 0:
+            calls = "call" if self.requested == 1 else "calls"
+            text = f"the last {self.requested} tool {calls} (none recorded)"
+        else:
+            calls = "call" if found == 1 else "calls"
+            text = (
+                f"the last {found} of {self.requested} tool {calls}"
+                if found < self.requested
+                else f"the last {found} tool {calls}"
+            )
+        if self.partial:
+            text += (
+                f"; only the last {_megabytes(self.scanned)} of {_megabytes(self.size)} of this session could be read,"
+                " so older calls are not counted"
+            )
         if self.skipped:
             text += f"; {self.skipped} results too large to read were left out"
         return text
@@ -151,19 +172,27 @@ def _megabytes(size: int) -> str:
     return f"{size / (1024 * 1024):.1f} MB"
 
 
-def scan_tool_calls(path: Path, *, max_bytes: int = SCAN_BYTES, max_line: int = MAX_LINE) -> Scan:
-    """Count the finished tool calls in the tail of a conversation file.
-
-    A file that is missing or unreadable is an empty scan, since a conversation that has not been stored yet has simply
-    not run a tool.
+def scan_tool_calls(path: Path, *, calls: int = 0, max_bytes: int = SCAN_BYTES, max_line: int = MAX_LINE) -> Scan:
+    """Count finished tool calls in a conversation file.
 
     Args:
         path: The session's ``data.jsonl``.
-        max_bytes: How much of the end of the file may be read.
+        calls: How much to count: ``0`` the current context (the calls after the last compaction), a positive number
+            the most recent that many calls, or ``-1`` every stored call, compacted history included (which reads the
+            whole file, however long it is).
+        max_bytes: How much of the end of the file may be read, unless ``calls`` is ``-1``.
         max_line: The longest line that is parsed, in bytes, its line break not counted: one of exactly this length is
             read and one byte more is skipped.
+
+    Raises:
+        ValueError: For a count below ``-1``.
+
+    The store is a tree and this reads it flat: on a forked session the last compaction line may belong to another
+    branch, and ``-1`` adds up every branch's calls.
     """
-    scan = Scan()
+    if calls < -1:
+        raise ValueError("calls must be 0, a positive number, or -1 for the whole conversation")
+    scan = Scan(requested=calls)
     try:
         handle = path.open("rb")
     except OSError:
@@ -171,7 +200,8 @@ def scan_tool_calls(path: Path, *, max_bytes: int = SCAN_BYTES, max_line: int = 
     with handle:
         try:
             scan.size = os.fstat(handle.fileno()).st_size
-            start = max(0, scan.size - max_bytes)
+            limit = scan.size if calls == -1 else max_bytes
+            start = max(0, scan.size - limit)
             if start:
                 # The window opens inside a line unless it happens to open at the start of one: skip to the next.
                 handle.seek(start - 1)
@@ -182,6 +212,7 @@ def scan_tool_calls(path: Path, *, max_bytes: int = SCAN_BYTES, max_line: int = 
             scan.scanned = scan.size - handle.tell()
             # The arguments of a call are on the line before its result, so they are remembered until it arrives.
             pending: dict[str, int] = {}
+            records: deque[_Call] = deque(maxlen=calls) if calls > 0 else deque()
             while True:
                 line = handle.readline(max_line + 1)
                 if not line:
@@ -190,8 +221,17 @@ def scan_tool_calls(path: Path, *, max_bytes: int = SCAN_BYTES, max_line: int = 
                     scan.skipped += 1
                     _drain(handle)
                     continue
-                if _MARK in line:
-                    _count(scan, line, pending)
+                # A tool result always carries the marker; a compaction line may carry nothing else, and in the
+                # current-context mode it is the line that says where the context begins.
+                if _MARK in line or (calls == 0 and b'"compaction"' in line):
+                    outcome = _count(scan, line, pending, records if calls > 0 else None)
+                    if calls == 0 and outcome == "compaction":
+                        # The current context starts here: what came before it is what compaction replaced.
+                        scan.tools.clear()
+                        pending.clear()
+                        scan.compaction = True
+            for call in records:
+                _apply(scan, call)
         except OSError:
             pass
     return scan
@@ -211,17 +251,52 @@ def _drain(handle: BinaryIO) -> None:
             return
 
 
-def _count(scan: Scan, line: bytes, pending: dict[str, int]) -> None:
-    """Add the tool calls a line records: what a call was given, and what it handed back."""
+@dataclass(frozen=True, slots=True)
+class _Call:
+    """One finished tool call, as the numbers a tally needs."""
+
+    name: str
+    success: bool
+    ms: float | None
+    input_chars: int | None
+    output_chars: int
+    error: str | None
+
+
+def _apply(scan: Scan, call: _Call) -> None:
+    """Add one call to the scan's totals."""
+    tally = scan.tools.setdefault(call.name, Tally())
+    tally.calls += 1
+    tally.total_chars += call.output_chars
+    if call.input_chars is not None:
+        tally.total_input_chars += call.input_chars
+        tally.sized += 1
+    if call.ms is not None:
+        tally.total_ms += call.ms
+        tally.timed += 1
+    if not call.success:
+        tally.failed += 1
+        tally.remember(call.error or "failed with no message")
+
+
+def _count(scan: Scan, line: bytes, pending: dict[str, int], records: deque[_Call] | None = None) -> str:
+    """Read one line: ``"compaction"`` when it starts the current context, else ``""``.
+
+    With ``records`` the calls are kept there instead of tallied, for a reader that wants only the last few.
+    """
     try:
         record = json.loads(line)
     except ValueError:
-        return
-    if not isinstance(record, dict) or record.get("kind") != "message":
-        return
+        return ""
+    if not isinstance(record, dict):
+        return ""
+    if record.get("kind") == "compaction":
+        return "compaction"
+    if record.get("kind") != "message":
+        return ""
     parts = record.get("message")
     if not isinstance(parts, list):
-        return
+        return ""
     timing = record.get("timing")
     nanoseconds = timing.get("duration_ns") if isinstance(timing, dict) else None
     for part in parts:
@@ -236,19 +311,20 @@ def _count(scan: Scan, line: bytes, pending: dict[str, int]) -> None:
             continue
         content = data.get("content")
         text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
-        tally = scan.tools.setdefault(name, Tally())
-        tally.calls += 1
-        tally.total_chars += len(text)
-        given = pending.pop(data["tool_call_id"], None) if isinstance(data["tool_call_id"], str) else None
-        if given is not None:
-            tally.total_input_chars += given
-            tally.sized += 1
-        if isinstance(nanoseconds, (int, float)) and not isinstance(nanoseconds, bool):
-            tally.total_ms += nanoseconds / 1_000_000
-            tally.timed += 1
-        if not success:
-            tally.failed += 1
-            tally.remember(" ".join(text.split())[:ERROR_CHARS] or "failed with no message")
+        identifier = data.get("tool_call_id")
+        given = pending.pop(identifier, None) if isinstance(identifier, str) else None
+        milliseconds = (
+            nanoseconds / 1_000_000
+            if isinstance(nanoseconds, (int, float)) and not isinstance(nanoseconds, bool)
+            else None
+        )
+        error = None if success else (" ".join(text.split())[:ERROR_CHARS] or "failed with no message")
+        call = _Call(name, success, milliseconds, given, len(text), error)
+        if records is None:
+            _apply(scan, call)
+        else:
+            records.append(call)
+    return ""
 
 
 def _remember_arguments(data: dict[str, Any], pending: dict[str, int]) -> None:
