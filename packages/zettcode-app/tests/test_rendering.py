@@ -367,3 +367,128 @@ def test_the_transcript_opens_every_row_the_same_way_and_the_handler_picks_the_c
 
     assert [type(e) for e in tools] == [ReadEntry, EditEntry, ToolEntry]
     assert [e.call_id for e in tools] == ["c1", "c2", "c3"] and all(e.running for e in tools)
+
+
+def test_a_harness_repository_call_says_what_it_does_and_which_repository():
+    assert describe("repo_create", repo="kit") == "Create harness repo kit"
+    assert describe("repo_load") == "Load harness repo"
+    assert describe("repo_unload") == "Unload harness repo"
+
+
+def test_a_harness_tool_profile_counts_the_tools_it_was_asked_about():
+    title = describe("profile_tools", names=["twice", "add"])
+
+    assert title == "Profile harness tools · 2 tools"
+    assert describe("profile_tools") == "Profile harness tools"
+
+
+def test_the_harness_names_are_the_ones_the_framework_offers():
+    from zett_agent.jit_harness.manifest import MANAGEMENT_NAMES
+
+    from zettcode.app.agent.conversation.rendering import JitTool
+    from zettcode.jit_harness.extension import MANAGEMENT_TOOL_NAMES
+
+    assert JitTool.names == set(MANAGEMENT_TOOL_NAMES)
+    assert set(MANAGEMENT_TOOL_NAMES) == set(MANAGEMENT_NAMES)
+
+
+def test_a_loaded_repository_is_words_not_json():
+    payload = (
+        '{"repo": "kit", "path": "/tmp/kit", "status": "loaded", "tools": ["add", "twice"],'
+        ' "resources": [{"name": "debug", "kind": "skill"}]}'
+    )
+
+    text = DEFAULT_RENDERERS.body("repo_load", payload)
+
+    assert "Loaded kit: 2 tools and 1 note" in text
+    assert "tools:\n  add\n  twice" in text
+    assert "notes:\n  debug" in text
+    assert "{" not in text
+
+
+def test_a_repository_that_already_existed_says_so_rather_than_created():
+    """``repo_create`` on an existing repository answers ``loaded``; a row that says "Created" is a lie."""
+    text = DEFAULT_RENDERERS.body(
+        "repo_create", '{"repo": "kit", "path": "/tmp/kit", "status": "loaded", "tools": [], "resources": []}'
+    )
+
+    assert text.startswith("Loaded kit:") and "Created" not in text
+
+
+def test_a_created_and_an_unloaded_repository_say_what_happened():
+    created = DEFAULT_RENDERERS.body(
+        "repo_create", '{"repo": "kit", "path": "/tmp/kit", "status": "created", "tools": [], "resources": []}'
+    )
+    unloaded = DEFAULT_RENDERERS.body(
+        "repo_unload", '{"repo": "kit", "path": "/tmp/kit", "status": "unloaded", "tools": ["add"], "resources": []}'
+    )
+
+    assert created == "Created kit at /tmp/kit"
+    assert unloaded == "Unloaded kit; 1 tool hidden"
+
+
+def test_a_payload_that_is_not_a_repository_report_is_left_alone():
+    for payload in ('{"error": "boom"}', '{"status": "loaded", "repo": "kit"}', "not json", "[1, 2]"):
+        assert DEFAULT_RENDERERS.body("repo_load", payload) == payload
+
+
+def test_a_tool_profile_is_a_header_and_one_line_per_tool():
+    payload = (
+        '{"tools": ['
+        '{"name": "twice", "calls": 12, "failed": 1, "success_rate": 0.916, "avg_ms": 3.4,'
+        ' "recent_errors": ["it broke"]},'
+        '{"name": "add", "calls": 0, "failed": 0, "success_rate": null, "avg_ms": null}],'
+        ' "omitted": 2, "window": "the last 40 calls"}'
+    )
+
+    text = DEFAULT_RENDERERS.body("profile_tools", payload)
+
+    assert text.splitlines()[0] == "4 tools · 2 tools left out · measured over the last 40 calls"
+    assert "twice · 12 calls · 1 failed · 91.6% ok · 3.4 ms" in text
+    assert "add · 0 calls" in text
+    assert "twice: it broke" in text
+    assert "{" not in text
+
+
+def test_a_slow_mean_keeps_no_decimal():
+    payload = '{"tools": [{"name": "twice", "calls": 1, "avg_ms": 1234.4}]}'
+
+    assert "twice · 1 call · 1234 ms" in DEFAULT_RENDERERS.body("profile_tools", payload)
+
+
+def test_a_tool_profile_puts_the_state_beside_the_name():
+    payload = '{"tools": [{"name": "twice", "status": "unloaded", "calls": 3}]}'
+
+    assert "twice · unloaded · 3 calls" in DEFAULT_RENDERERS.body("profile_tools", payload)
+
+
+def test_a_profile_whose_errors_are_a_string_does_not_spell_them_out():
+    payload = '{"tools": [{"name": "twice", "calls": 1, "recent_errors": "broke"}]}'
+
+    text = DEFAULT_RENDERERS.body("profile_tools", payload)
+
+    assert "twice: b" not in text and "broke" not in text
+
+
+def test_a_profile_header_counts_only_the_rows_the_body_shows():
+    payload = '{"tools": [{"calls": 3}, {"name": "add", "calls": 1}]}'
+
+    assert DEFAULT_RENDERERS.body("profile_tools", payload).splitlines()[0] == "1 tool"
+
+
+def test_a_report_whose_rows_carry_no_numbers_is_left_alone():
+    """A payload that only looks like a report is not one; JSON punctuation must not be turned into a sentence."""
+    for payload in (
+        '{"tools": [{"name": "add"}]}',
+        '{"repo": "kit", "status": "loaded", "tools": ["add"]}',
+    ):
+        assert DEFAULT_RENDERERS.body("profile_tools", payload) == payload
+
+
+def test_an_empty_tool_profile_says_so_instead_of_showing_json():
+    assert DEFAULT_RENDERERS.body("profile_tools", '{"tools": [], "omitted": 0}') == "No tool calls recorded yet."
+
+
+def test_a_harness_row_whose_answer_is_not_that_json_keeps_the_output_it_was_given():
+    """A failed call arrives as prose, and a row must not pretend it is a repository."""
+    assert DEFAULT_RENDERERS.body("repo_load", "jit harness is off") == "jit harness is off"

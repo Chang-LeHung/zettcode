@@ -733,6 +733,150 @@ class GroupTool(ToolHandler):
         return ToolRow(f"{verb} group #{argument(arguments, 'group').lstrip('#') or '(unknown)'}{with_}")
 
 
+class JitTool(ToolHandler):
+    """The just-in-time harness's own tools: the repository it keeps and the report on its tools.
+
+    The harness answers with a JSON object rather than prose, so the row shapes it: the repository's status, the tools
+    and notes it holds, or one line per profiled tool. A payload that is not that shape — a failure, another tool's
+    result — is left exactly as it came.
+    """
+
+    names = frozenset({"repo_create", "repo_load", "repo_unload", "profile_tools"})
+
+    def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
+        """Say which repository call this is, and how many tools a profile asked about."""
+        if name == "repo_create":
+            repo = argument(arguments, "repo")
+            return ToolRow(f"Create harness repo {repo}" if repo else "Create harness repo (unknown repo)")
+        if name == "repo_load":
+            return ToolRow("Load harness repo")
+        if name == "repo_unload":
+            return ToolRow("Unload harness repo")
+        asked = arguments.get("names")
+        count = (
+            len([one for one in asked if isinstance(one, str)])
+            if isinstance(asked, Sequence) and not isinstance(asked, str)
+            else 0
+        )
+        return ToolRow(
+            f"Profile harness tools {SEPARATOR} {_counted(count, 'tool')}" if count else "Profile harness tools"
+        )
+
+    def body(self, name: str, output: str) -> str:
+        """Say the repository or the profile in words; anything else is left as it arrived."""
+        data = _jit_payload(output)
+        if data is None:
+            return output
+        shaped = _profile_text(data) if name == "profile_tools" else _repo_text(data)
+        return output if shaped is None else shaped
+
+
+def _jit_payload(output: str) -> dict[str, object] | None:
+    """Return the JSON object a harness tool answered with, or ``None`` for anything else."""
+    try:
+        value = json.loads(output)
+    except (TypeError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _counted(number: int, noun: str) -> str:
+    """Return ``3 tools`` or ``1 tool``."""
+    return f"{number} {noun}{'' if number == 1 else 's'}"
+
+
+def _milliseconds(value: float) -> str:
+    """Return a mean duration with the precision it has: a tenth below ten milliseconds, whole above."""
+    return f"{value:.1f} ms" if value < 10 else f"{value:.0f} ms"
+
+
+def _repo_text(data: Mapping[str, object]) -> str | None:
+    """Return the repository result in words, or ``None`` when the payload is not one."""
+    status = data.get("status")
+    repo = data.get("repo")
+    tools = data.get("tools")
+    resources = data.get("resources")
+    if (
+        status not in ("created", "loaded", "unloaded")
+        or not isinstance(repo, str)
+        or not isinstance(tools, list)
+        or not isinstance(resources, list)
+    ):
+        return None
+    names = [one for one in tools if isinstance(one, str)]
+    notes = [note["name"] for note in resources if isinstance(note, Mapping) and isinstance(note.get("name"), str)]
+    if status == "created":
+        path = data.get("path")
+        where = f" at {path}" if isinstance(path, str) and path else ""
+        return f"Created {repo}{where}"
+    if status == "unloaded":
+        hidden = f"; {_counted(len(names), 'tool')} hidden" if names else ""
+        return f"Unloaded {repo}{hidden}"
+    lines = [f"Loaded {repo}: {_counted(len(names), 'tool')} and {_counted(len(notes), 'note')}"]
+    if names:
+        lines.extend(["tools:", *(f"  {one}" for one in names)])
+    if notes:
+        lines.extend(["notes:", *(f"  {one}" for one in notes)])
+    return "\n".join(lines)
+
+
+def _profile_text(data: Mapping[str, object]) -> str | None:
+    """Return the profile as a header and one line per profiled tool, or ``None`` when it is not a report."""
+    rows = data.get("tools")
+    if not isinstance(rows, list):
+        return None
+    if not rows:
+        return "No tool calls recorded yet."
+    omitted = data.get("omitted")
+    omitted = omitted if isinstance(omitted, int) and not isinstance(omitted, bool) and omitted > 0 else 0
+    window = data.get("window")
+    tool_lines: list[str] = []
+    errors: list[str] = []
+    for row in rows:
+        if not isinstance(row, Mapping) or not isinstance(row.get("name"), str):
+            continue
+        name = row["name"]
+        bits = [name]
+        state = row.get("status")
+        if isinstance(state, str) and state and state != "loaded":
+            bits.append(state)
+        read_any = False
+        calls = row.get("calls")
+        if isinstance(calls, int) and not isinstance(calls, bool):
+            bits.append(_counted(calls, "call"))
+            read_any = True
+        failed = row.get("failed")
+        if isinstance(failed, int) and not isinstance(failed, bool) and failed:
+            bits.append(f"{failed} failed")
+            read_any = True
+        rate = row.get("success_rate")
+        if isinstance(rate, (int, float)) and not isinstance(rate, bool):
+            bits.append(f"{rate:.1%} ok")
+            read_any = True
+        average = row.get("avg_ms")
+        if isinstance(average, (int, float)) and not isinstance(average, bool):
+            bits.append(_milliseconds(average))
+            read_any = True
+        if not read_any:
+            continue
+        tool_lines.append(" · ".join(bits))
+        recent = row.get("recent_errors")
+        if isinstance(recent, list):
+            for error in recent:
+                if isinstance(error, str) and error:
+                    errors.append(f"{name}: {error}")
+    if not tool_lines:
+        return None
+    # The header counts what the body shows plus what was left out, never rows that carried nothing to print.
+    header = _counted(len(tool_lines) + omitted, "tool")
+    if omitted:
+        header += f" · {_counted(omitted, 'tool')} left out"
+    if isinstance(window, str) and window:
+        # On the header, because folding keeps the first lines: a caveat under the rows is a caveat nobody reads.
+        header += f" · measured over {window}"
+    return "\n".join([header, *tool_lines, *errors])
+
+
 class NamespacedTool(ToolHandler):
     """A tool whose name carries where it came from: ``server__tool``, so the row names the server.
 
@@ -829,6 +973,7 @@ DEFAULT_RENDERERS = Renderers(
         MessageTool(),
         HistoryTool(),
         GroupTool(),
+        JitTool(),
         NamespacedTool(),
         FallbackTool(),
         ReasoningHandler(),
