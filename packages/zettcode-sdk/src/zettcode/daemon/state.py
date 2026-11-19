@@ -117,6 +117,9 @@ class State:
         title: The session's name, once it has one: what a reader recognises it by.
         name: The label the reader gave this daemon when starting it, if any: what it is *for*.
         permission: The shell level it runs at: ``deny``, ``safe`` or ``full``.
+        system_prompt: The role it was started with, or ``None`` when it was given none. Kept so a restart (a new
+            shell level, a companion coming back) is the same agent, and shown so a reader can tell which daemon is
+            which.
         requested_model: A model a reader asked for while it runs, to be used from the next turn.
         requested_effort: A reasoning level a reader asked for while it runs, likewise.
         requested_error: Why the last requested model or level could not be put in force, or ``None``.
@@ -138,6 +141,7 @@ class State:
     title: str | None = None
     name: str | None = None
     permission: str | None = None
+    system_prompt: str | None = None
     requested_model: str | None = None
     requested_effort: str | None = None
     requested_error: str | None = None

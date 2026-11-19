@@ -379,6 +379,10 @@ class Client:
         effort: The reasoning level to start on.
         permission: The shell permission level: ``deny``, ``ask``, ``safe`` (every command in a sandbox) or ``full``.
         resume: A session id to continue instead of starting a new conversation.
+        system_prompt: A role for this client's runs, appended to the system prompt of every request it makes — how a
+            program sets the part it plays. The process's, not the session's: a stored conversation opened by another
+            client runs without it, and it is no configuration field, so a client that sets none sends the usual
+            prompt.
         shared: Services handed to the plugins before activation, by name; a front end uses this for values its
             plugin flags parsed. A name the runtime owns is refused.
         store, theme_file, theme, themes_dir, pet, pet_position, reasoning_effort, shell_approval, reduced_motion,
@@ -420,6 +424,7 @@ class Client:
         effort: str | None = None,
         permission: str | None = None,
         resume: str | None = None,
+        system_prompt: str | None = None,
         shared: Mapping[str, object] | None = None,
         # The configuration fields, named and typed rather than taken as any keyword: a misspelt one is then a
         # TypeError from Python at the call, not a configuration error raised once the client is being built.
@@ -487,7 +492,7 @@ class Client:
         from .translation import AgentBridge
 
         try:
-            runtime = ZettCodeEngine.preview(resolved, load_agent_plugins, shared=shared)
+            runtime = ZettCodeEngine.preview(resolved, load_agent_plugins, shared=shared, system_prompt=system_prompt)
         except BaseException:
             self._unregister()
             raise

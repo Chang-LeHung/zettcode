@@ -63,7 +63,12 @@ def test_only_daemons_that_are_running_are_listed():
 
 
 def test_stopped_daemons_are_started_again_on_the_same_session_with_the_same_settings():
-    made, fake = companions([FakeRecord(state("a")), FakeRecord(state("c", name="docs", permission="safe"))])
+    made, fake = companions(
+        [
+            FakeRecord(state("a", system_prompt="You are a reviewer.")),
+            FakeRecord(state("c", name="docs", permission="safe")),
+        ]
+    )
 
     stopped = made.stop()
     result = made.start()
@@ -73,9 +78,11 @@ def test_stopped_daemons_are_started_again_on_the_same_session_with_the_same_set
         "the records stay, so a restart that dies half way leaves them listed and startable"
     )
     assert all(worked for worked, _ in result)
-    assert [(s["resume"], s["name"], s["permission"], s["model"], s["effort"]) for s in fake.started] == [
-        ("a", "review", "full", "fast", "high"),
-        ("c", "docs", "safe", "fast", "high"),
+    assert [
+        (s["resume"], s["name"], s["permission"], s["model"], s["effort"], s["system_prompt"]) for s in fake.started
+    ] == [
+        ("a", "review", "full", "fast", "high", "You are a reviewer."),
+        ("c", "docs", "safe", "fast", "high", None),
     ]
     assert fake.started[0]["workspace"] == Path("/work/a")
 

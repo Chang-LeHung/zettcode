@@ -265,6 +265,7 @@ class FakeBackend(Backend):
         started_at: float | None = None,
         title: str | None = None,
         direct: bool = False,
+        system_prompt: str | None = None,
     ) -> DaemonInfo:
         info = DaemonInfo(
             session_id=session_id,
@@ -275,6 +276,7 @@ class FakeBackend(Backend):
             model=model_name,
             effort=None,
             permission=permission,
+            system_prompt=system_prompt,
             pid=4000 + next(self._numbers),
             started_at=started_at if started_at is not None else time.time(),
         )
@@ -399,6 +401,7 @@ class FakeBackend(Backend):
         resume: str | None,
         name: str | None,
         permission: str,
+        system_prompt: str | None = None,
     ) -> DaemonInfo:
         if self.fail_spawn is not None:
             raise self.fail_spawn
@@ -410,11 +413,17 @@ class FakeBackend(Backend):
                 "resume": resume,
                 "name": name,
                 "permission": permission,
+                "system_prompt": system_prompt,
             }
         )
         session_id = resume or f"01spawned-{next(self._numbers):04d}-0000-0000-000000000000"
         info = self.add_daemon(
-            session_id, str(workspace), name=name, model_name=model or self.model_list[0].name, permission=permission
+            session_id,
+            str(workspace),
+            name=name,
+            model_name=model or self.model_list[0].name,
+            permission=permission,
+            system_prompt=system_prompt,
         )
         return info
 

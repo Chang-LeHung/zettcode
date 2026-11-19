@@ -100,6 +100,7 @@ def _info(record: Record) -> DaemonInfo:
         model=state.model,
         effort=state.effort,
         permission=state.permission,
+        system_prompt=state.system_prompt,
         pid=state.pid,
         started_at=state.started_at,
         updated_at=record.updated(),
@@ -296,6 +297,7 @@ async def spawn_daemon(
     name: str | None = None,
     title: str | None = None,
     permission: str = "full",
+    system_prompt: str | None = None,
 ) -> DaemonInfo:
     """Start a background agent and return it once it can be messaged.
 
@@ -311,17 +313,28 @@ async def spawn_daemon(
             default is ``full``, the same one the command line starts with: a daemon nobody is watching has no one
             to answer a sandbox's questions, and a start that silently changes what it may do is worse than one
             that says so. ``safe`` and ``deny`` are asked for, not assumed.
+        system_prompt: A role, added to the system prompt of every request the daemon makes: how one background
+            agent is a reviewer and another a builder. It belongs to the process, so ``resume`` by hand opens the
+            conversation without it; every restart that stays on the session keeps it — :func:`update_daemon`, the
+            broker restart, `/hub` and the gateway's Restart — and a blank role is refused.
 
     Raises:
-        ConfigurationError: The permission is not one of :data:`PERMISSIONS`, or the workspace is not a directory.
+        ConfigurationError: The permission is not one of :data:`PERMISSIONS`, the workspace is not a directory, or
+            the role is blank (whitespace only), which would run as no role at all.
         DaemonStartError: The process exited, or never became reachable; the message is what it said.
     """
     if permission not in PERMISSIONS:
         raise ConfigurationError(f"A daemon's permission is one of {', '.join(PERMISSIONS)}, not {permission!r}")
+    if system_prompt is not None and not system_prompt.strip():
+        # The same refusal the process makes, said as a configuration error so a caller is not told a start failed
+        # when nothing was started: a blank role runs as none, and the reader would think it had one.
+        raise ConfigurationError("A daemon's system prompt needs at least one character")
     folder = Path(workspace).expanduser()
     if not folder.is_dir():
         raise ConfigurationError(f"No such directory: {folder}")
     from zettcode.daemon.process import Daemons, SpawnFailed
+
+    role = None if system_prompt is None else system_prompt.strip()
 
     def start() -> Record:
         return Daemons().start(
@@ -332,6 +345,7 @@ async def spawn_daemon(
             name=name or None,
             title=title or None,
             permission=permission,
+            system_prompt=role,
         )
 
     try:

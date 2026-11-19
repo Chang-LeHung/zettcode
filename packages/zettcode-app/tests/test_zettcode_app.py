@@ -358,6 +358,8 @@ class FakeRuntime:
     # adopted and a zero deadline would race with it.
     tokenizer: Tokenizer = field(default_factory=lambda: Tokenizer(deadline=0.0, loader=_no_encoder))
     config: FakeConfig = field(default_factory=FakeConfig)
+    #: The role a client may set for the run, as the real runtime keeps it: none here.
+    system_prompt: str | None = None
     plugins: TuiPlugins = field(default_factory=TuiPlugins)
     #: The sessions another process has open: the fake's lock. A session in here is shown and not written to.
     held_elsewhere: set[str] = field(default_factory=set)

@@ -84,6 +84,7 @@ class Daemons:
         name: str | None = None,
         title: str | None = None,
         permission: str = "full",
+        system_prompt: str | None = None,
         plugin_arguments: Mapping[str, Mapping[str, object]] | None = None,
     ) -> Record:
         """Start one daemon in ``workspace`` and return the record it wrote once it was reachable.
@@ -96,6 +97,7 @@ class Daemons:
             name: A label to record beside the session, so ``daemon list`` says what it is for.
             title: What to call the session. ``None`` lets it name itself from its first answer.
             permission: The shell level it runs at: ``deny``, ``safe`` or ``full``.
+            system_prompt: A role for the daemon, appended to the system prompt of every request it makes.
             plugin_arguments: Values the plugin options parsed, handed to the child as JSON.
 
         Raises:
@@ -113,6 +115,11 @@ class Daemons:
         if title is not None and not title.strip():
             # The daemon would be started and then fail to name itself; refusing here says which argument it was.
             raise SpawnFailed("a session's title needs at least one character")
+        system_prompt = None if system_prompt is None else system_prompt.strip()
+        if system_prompt is not None and not system_prompt:
+            # A blank role is not a role: the daemon would run with the usual prompt and the reader would think it
+            # had one. Refused here, like a blank title, and with the argument named.
+            raise SpawnFailed("a system prompt needs at least one character")
         token = secrets.token_hex(8)
         early = self.registry.workspace(workspace, create=True) / ".spawn"
         early.mkdir(parents=True, exist_ok=True)
@@ -126,7 +133,18 @@ class Daemons:
                 }
             child = _Child(
                 self._command(
-                    _options(workspace, token, model, effort, resume, name, title, permission, plugin_arguments or {})
+                    _options(
+                        workspace,
+                        token,
+                        model,
+                        effort,
+                        resume,
+                        name,
+                        title,
+                        permission,
+                        system_prompt,
+                        plugin_arguments or {},
+                    )
                 ),
                 workspace,
                 log,
@@ -164,6 +182,8 @@ class Daemons:
         if options.title is not None:
             argv += ["--title", options.title]
         argv += ["--permission", options.permission]
+        if options.system_prompt is not None:
+            argv += ["--system", options.system_prompt]
         return argv
 
     def _await(self, child: _Child, token: str, timeout: float) -> Record | None:
@@ -507,6 +527,7 @@ class Daemons:
                 resume=record.session_id,
                 name=state.name,
                 permission=level,
+                system_prompt=state.system_prompt,
                 plugin_arguments=state.plugin_arguments,
             )
         except SpawnFailed as error:
@@ -519,8 +540,9 @@ class Daemons:
         The level is handed to the process when it starts, so nothing short of a restart changes it. The session
         is the one thing that must survive, and it does: the conversation is on disk and ``resume`` continues it.
 
-        The values a plugin's options parsed are written into the record when the daemon starts, so they are handed
-        back here: the agent that comes back is the one that stopped, plugins and all.
+        The values a plugin's options parsed, and the role the daemon was started with, are written into the record
+        when it starts, so they are handed back here: the agent that comes back is the one that stopped, plugins and
+        role both.
         """
         state = record.state
         if state is None:
@@ -536,6 +558,7 @@ class Daemons:
                 resume=record.session_id,
                 name=state.name,
                 permission=permission,
+                system_prompt=state.system_prompt,
                 plugin_arguments=state.plugin_arguments,
             )
         except SpawnFailed as error:
@@ -666,6 +689,7 @@ def _options(
     name: str | None,
     title: str | None,
     permission: str,
+    system_prompt: str | None = None,
     plugin_arguments: Mapping[str, Mapping[str, object]] | None = None,
 ) -> Options:
     """Build what ``daemon run`` should be told, without importing its module until it is needed."""
@@ -680,6 +704,7 @@ def _options(
         name=name,
         title=title,
         permission=permission,
+        system_prompt=system_prompt,
         plugin_arguments=plugin_arguments or {},
     )
 

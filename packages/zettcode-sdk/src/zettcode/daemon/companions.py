@@ -2,8 +2,8 @@
 
 A daemon is a session running headless on the broker. When the broker is replaced by one that speaks another protocol
 it cannot reconnect and waits for ever, so a restart ends each daemon and, once the new broker is up, starts it again
-on the same stored session, model, reasoning level, name and shell level. The conversation is not touched: a daemon is
-only the process that runs it.
+on the same stored session, model, reasoning level, name, shell level and role. The conversation is not touched: a
+daemon is only the process that runs it.
 """
 
 from __future__ import annotations
@@ -58,6 +58,9 @@ class DaemonCompanions(Companions):
                     # `safe` for a record with no level: it predates the full default, so it was started
                     # at safe, and a restart must not quietly give it more than it had.
                     permission=state.permission or "safe",
+                    # The role it was started with, so the agent that comes back is the one that stopped, and not
+                    # the same conversation in another part.
+                    system_prompt=state.system_prompt,
                     # The values its plugin options parsed, so the agent that comes back is the one that stopped.
                     plugin_arguments=state.plugin_arguments,
                 )

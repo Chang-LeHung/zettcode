@@ -39,7 +39,7 @@ def message(text: str = "hello") -> IncomingMessage:
     return IncomingMessage(sender_id="sender", sender="someone", text=text)
 
 
-def state_for(home, *, pid: int | None = None, status: str = "idle") -> State:
+def state_for(home, *, pid: int | None = None, status: str = "idle", system_prompt: str | None = None) -> State:
     return State(
         session_id="01a1",
         workspace=str(home),
@@ -47,6 +47,7 @@ def state_for(home, *, pid: int | None = None, status: str = "idle") -> State:
         status=status,
         token="t",
         started_at=1.0,
+        system_prompt=system_prompt,
     )
 
 
@@ -231,6 +232,53 @@ def test_a_chat_windows_message_is_never_merged_with_the_ones_around_it():
     assert second is not None and second.direct and second.text == "window"
     assert third is not None and third.text == "after"
     assert inbox.done() is None
+
+
+# -- the role it was started with ----------------------------------------------------------------------------------
+def test_the_command_a_start_runs_carries_a_system_prompt_only_when_it_has_one(home):
+    """`--system` reaches the child, and a daemon given no role is started with the prompt every session has."""
+    daemons = process.Daemons()
+    plain = daemons._command(Options(workspace=home, token="t"))
+    role = daemons._command(Options(workspace=home, token="t", system_prompt="You are a reviewer."))
+
+    assert "--system" not in plain
+    assert role[role.index("--system") + 1] == "You are a reviewer."
+
+
+def test_a_blank_system_prompt_is_refused_before_a_process_is_started(home):
+    """A role of spaces would run as no role at all, and the reader would think it had one."""
+    with pytest.raises(process.SpawnFailed, match="system prompt"):
+        process.Daemons().start(home, system_prompt="   ")
+
+
+def test_the_spawn_command_passes_the_system_prompt_and_says_the_role_it_got(home, monkeypatch, capsys):
+    seen: dict[str, object] = {}
+
+    def start(self, workspace, **options):
+        seen.update(options)
+        entry = Registry().record(workspace, "01role", create=True)
+        entry.save(state_for(home, system_prompt=options["system_prompt"]))
+        return entry
+
+    monkeypatch.setattr(process.Daemons, "start", start)
+
+    assert daemon_program(["spawn", "-w", str(home), "--system", "You are a reviewer."]) == 0
+
+    assert seen["system_prompt"] == "You are a reviewer."
+    assert "role     You are a reviewer." in capsys.readouterr().out
+
+
+def test_a_daemon_started_with_a_role_records_it(home):
+    """The record is the only durable copy of what a daemon was started with, so restarts start from it."""
+    record = process.Daemons().start(home, system_prompt="You are a reviewer.")
+    try:
+        found = Registry().find(record.session_id)
+        assert found is not None and found.state is not None
+        assert found.state.system_prompt == "You are a reviewer."
+    finally:
+        left = Registry().find(record.session_id)
+        if left is not None:
+            process.Daemons().stop(left)
 
 
 # -- the process ---------------------------------------------------------------------------------------------------
@@ -580,11 +628,15 @@ def test_a_daemon_runs_at_the_shell_level_it_was_started_with(home, monkeypatch)
 
     _client(Options(workspace=home, token="t"))
     _client(Options(workspace=home, token="t", permission="safe"))
+    _client(Options(workspace=home, token="t", system_prompt="You are a reviewer."))
 
     assert seen[0]["permission"] == "full", "the default, for a daemon that fetched nothing and approved nothing"
     assert seen[1]["permission"] == "safe", "a sandboxed daemon is a sandboxed daemon"
     assert all(entry["sessions_enabled"] is True for entry in seen), "being messaged is what a daemon is for"
     assert all(entry["ask_user_enabled"] is False for entry in seen), "nobody can answer a question here"
+    assert [entry.get("system_prompt") for entry in seen] == [None, None, "You are a reviewer."], (
+        "the role reaches the request head, and no role stays no role"
+    )
 
 
 def test_ask_is_not_a_permission_a_daemon_can_be_given():
@@ -2033,11 +2085,18 @@ def test_a_turn_that_starts_after_the_check_leaves_the_record_as_it_was(home, mo
     assert Registry().find("01a1").state.permission == "safe", "the record still says what the process runs at"
 
 
-def test_a_restart_for_a_level_keeps_the_plugin_values_it_was_started_with(home, monkeypatch):
-    """A restart must not quietly change what the agent is made of."""
+def test_a_restart_for_a_level_keeps_the_plugin_values_and_the_role_it_was_started_with(home, monkeypatch):
+    """A restart must not quietly change what the agent is made of, or which part it plays."""
     record = Registry().record(home, "01a1", create=True)
     level = {"journal-limit": 5}
-    record.save(replace(state_for(home), permission="safe", plugin_arguments={"journal": level}))
+    record.save(
+        replace(
+            state_for(home),
+            permission="safe",
+            plugin_arguments={"journal": level},
+            system_prompt="You are a reviewer.",
+        )
+    )
     record.beat()
     running = Registry().find("01a1")
     started: list[dict] = []
@@ -2048,20 +2107,23 @@ def test_a_restart_for_a_level_keeps_the_plugin_values_it_was_started_with(home,
     process.Daemons().update(running, permission="full")
 
     assert started[0]["plugin_arguments"] == {"journal": level}
+    assert started[0]["system_prompt"] == "You are a reviewer."
 
 
 def test_a_restart_that_fails_puts_the_daemon_back_and_the_record_with_it(home, monkeypatch):
     """The record must not keep the level the failed restart was for, and nothing is left stopped."""
     record = Registry().record(home, "01a1", create=True)
-    record.save(replace(state_for(home), permission="safe"))
+    record.save(replace(state_for(home, system_prompt="You are a reviewer."), permission="safe"))
     record.beat()
     running = Registry().find("01a1")
     starts: list[str | None] = []
+    roles: list[str | None] = []
 
     monkeypatch.setattr(process.Daemons, "stop", lambda self, target, **k: "stopped; its record was kept")
 
     def start(self, workspace, **kwargs):
         starts.append(kwargs.get("permission"))
+        roles.append(kwargs.get("system_prompt"))
         if kwargs.get("permission") == "full":
             raise process.SpawnFailed("the model rejected the key")
         return running
@@ -2072,6 +2134,7 @@ def test_a_restart_that_fails_puts_the_daemon_back_and_the_record_with_it(home, 
         process.Daemons().update(running, permission="full")
 
     assert starts == ["full", "safe"], "the failed attempt, then the level it had"
+    assert roles == ["You are a reviewer.", "You are a reviewer."], "put back as the agent it was, role and all"
     assert Registry().find("01a1").state.permission == "safe", "and the record says what runs"
 
 

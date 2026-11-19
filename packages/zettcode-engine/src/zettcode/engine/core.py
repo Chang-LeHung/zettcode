@@ -129,7 +129,7 @@ def _load_engine_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -
     return load_plugins(config, shared=shared)
 
 
-def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None) -> str:
+def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None, role: str | None = None) -> str:
     """Build request instructions with an explicit workspace boundary.
 
     The prompt is the head of every request, so whatever it contains is part of
@@ -141,9 +141,13 @@ def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None) 
         config: Settings the runtime was built from.
         now: Moment to describe, injectable for tests; defaults to the local
             current time.
+        role: The part this run plays, appended after the rules above — a client's
+            ``system_prompt``, which is what ``daemon spawn --system`` sets. It is
+            the process's, not the session's, and blank or ``None`` adds nothing,
+            so a program that sets no role sends the head every other one sends.
     """
     moment = now or datetime.now().astimezone()
-    return f"""You are ZettCode, a focused coding agent working with the user in one local workspace.
+    prompt = f"""You are ZettCode, a focused coding agent working with the user in one local workspace.
 
 Inspect relevant files before editing. Make focused changes, preserve unrelated work,
 and run checks proportional to risk. Explain blockers concretely. Do not perform
@@ -183,6 +187,14 @@ Runtime environment:
 
 Treat the workspace as the current working directory. Prefer relative paths in tool
 calls. Verify mutable facts with tools instead of assuming this startup snapshot is current."""
+    role = (role or "").strip()
+    if not role:
+        return prompt
+    return (
+        f"{prompt}\n\n# Your role\n"
+        "This session was started with a role for it. Follow it along with the instructions above:\n\n"
+        f"{role}"
+    )
 
 
 def _build_provider(selected: ModelConfig) -> Adapter:
@@ -348,6 +360,10 @@ class ZettCodeEngine:
     #: The lock on the session this process has open: only the process that holds it writes to the session.
     #: A runtime that was not given one (a test's) shares nothing, so every claim is granted.
     session_locks: SessionGuard = field(default_factory=NoLocks)
+    #: A role this process was started with, appended to the system prompt of every request it makes: what a client's
+    #: ``system_prompt`` sets, and what ``daemon spawn --system`` hands a daemon. ``None`` adds nothing. It belongs to
+    #: the process and not to the session — a stored conversation resumed elsewhere runs without it.
+    system_prompt: str | None = None
     event_dispatcher: AgentEventDispatcher | None = None
     client: AgentClient | None = None
     model: Adapter | None = None
@@ -387,7 +403,12 @@ class ZettCodeEngine:
 
     @classmethod
     def preview(
-        cls, config: ZettCodeConfig, load: PluginLoader | None = None, *, shared: Mapping[str, object] | None = None
+        cls,
+        config: ZettCodeConfig,
+        load: PluginLoader | None = None,
+        *,
+        shared: Mapping[str, object] | None = None,
+        system_prompt: str | None = None,
     ) -> ZettCodeEngine:
         """Build the session side of the runtime, without a provider.
 
@@ -404,6 +425,7 @@ class ZettCodeEngine:
                 hands over itself is refused. A name another plugin provides fails that plugin unless the plugin
                 is written to keep what it is given — the messaging plugin keeps a supplied ``INBOX`` or
                 ``SESSION_LINK``, which is how a front end hands over its line or replaces the queue.
+            system_prompt: A role for this run, appended to the system prompt of every request; ``None`` adds none.
 
         Raises:
             ValueError: ``shared`` names a service the runtime hands over itself (``DELIVERY``, ``PERSISTENCE``, ...).
@@ -496,6 +518,7 @@ class ZettCodeEngine:
             active_model=selected,
             compaction_counter=counter,
             plugins=plugins,
+            system_prompt=system_prompt,
             _models=models,
             file_models=file_models,
             provided_models=offered,
@@ -661,7 +684,7 @@ class ZettCodeEngine:
         client = await create_agent(
             model,
             config=AgentRunConfig(session_id=self.session_id),
-            system_prompt=build_system_prompt(self.config),
+            system_prompt=build_system_prompt(self.config, role=self.system_prompt),
             extensions=extensions,
             reasoning_effort=self.config.reasoning_effort,
             parallel_tool_call=self.config.parallel_tool_call,

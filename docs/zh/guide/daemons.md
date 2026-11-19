@@ -18,6 +18,7 @@ zettcode daemon spawn --name builder --title "tool builder" --permission safe
 | `--effort LEVEL` | 推理级别（默认取模型接受范围的中点）。 |
 | `-n`、`--name LABEL` | 给 `daemon list` 看的标签。 |
 | `--title TEXT` | 会话的名字；不给就由它第一次回答后自己起。 |
+| `--system TEXT` | 设定角色的 system prompt，会加在它每次请求的 system prompt 里（默认没有）。 |
 | `--permission LEVEL` | `safe`、`deny` 或 `full`（默认）。没有 `ask`。 |
 | `--resume SESSION` | 接着一个已存会话，而不是从空会话开始。 |
 | `--json` | 把同样的信息打成 JSON。 |
@@ -30,6 +31,23 @@ zettcode daemon spawn --name builder --title "tool builder" --permission safe
 - `deny`：完全不给 shell，它只读文件、改文件、说话。
 
 daemon 的对话就是一个普通的已存会话。`daemon kill` 之后可以用 `zettcode resume <id>` 接着手动聊。
+
+## 给它一个角色
+
+```bash
+zettcode daemon spawn --name reviewer --permission safe \
+  --system "你评审改动。你从不改文件：你按文件、按行号说出要改什么。"
+```
+
+`--system` 把这段文字加在 daemon 每轮回答的 system prompt 里（它派出的子 agent 用的是子 agent 自己的 prompt），于是
+一个后台 agent 是评审者、另一个是构建者，不用在每条消息里再提醒一次。它属于这个 daemon，而不属于会话：`daemon list`
+把它显示为 `role`，在同一个会话上的每次重启都会保留它——`daemon update --permission`、broker 重启、`/hub`、网关的
+Restart——而 `zettcode resume <id>` 打开同一段对话时用的是平常的 prompt，没有这个角色。要换角色，停掉它再用它的会话重新起：
+
+```bash
+zettcode daemon stop <id>
+zettcode daemon spawn --resume <id> --system "你负责构建。改完先跑测试，再宣布完成。"
+```
 
 ## 和它说话
 

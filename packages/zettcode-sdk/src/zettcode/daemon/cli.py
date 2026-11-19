@@ -129,6 +129,15 @@ def _build_parser(
         help="what to call its session (default: it names itself from its first answer)",
     )
     spawn.add_argument(
+        "--system",
+        metavar="TEXT",
+        default=None,
+        help=(
+            "a system prompt that sets its role, added to the one every session runs with (default: none). "
+            "It belongs to the daemon, not to the session: `resume` opens the conversation without it"
+        ),
+    )
+    spawn.add_argument(
         "--resume",
         metavar="SESSION",
         default=None,
@@ -256,6 +265,7 @@ def _build_parser(
     run.add_argument("--name", default=None, help=argparse.SUPPRESS)
     run.add_argument("--title", default=None, help=argparse.SUPPRESS)
     run.add_argument("--permission", default="full", choices=PERMISSIONS, help=argparse.SUPPRESS)
+    run.add_argument("--system", default=None, help=argparse.SUPPRESS)
     if not with_plugins:
         return parser, ()
     from zettcode.engine.plugins.cli import add_options, load_cached_options
@@ -328,6 +338,8 @@ def _entry(record: Record) -> list[str]:
         ("output", _tokens_cell(state.output_tokens)),
         ("shell", state.permission or "?"),
     ]
+    if state.system_prompt:
+        fields.append(("role", _role_cell(state.system_prompt)))
     if state.requested_model is not None or state.requested_effort is not None:
         wanted = state.requested_model or state.model or "?"
         level = f" · effort {state.requested_effort}" if state.requested_effort is not None else ""
@@ -379,6 +391,7 @@ def _record_json(record: Record) -> dict[str, object]:
         "model": state.model if state is not None else None,
         "effort": state.effort if state is not None else None,
         "permission": state.permission if state is not None else None,
+        "system_prompt": state.system_prompt if state is not None else None,
         "status": record.status,
         "pid": state.pid if state is not None else None,
         "seconds": round(record.seconds(), 1),
@@ -412,6 +425,7 @@ def _spawn(args: argparse.Namespace, plugin_arguments: dict[str, dict[str, objec
             name=args.name,
             title=args.title,
             permission=args.permission,
+            system_prompt=args.system,
             plugin_arguments=plugin_arguments,
         )
     except SpawnFailed as error:
@@ -432,6 +446,8 @@ def _spawn(args: argparse.Namespace, plugin_arguments: dict[str, dict[str, objec
         print(f"workspace {state.workspace}")
         print(f"model    {state.model or '?'}" + (f" · effort {state.effort}" if state.effort else ""))
         print(f"shell    {state.permission or '?'}")
+        if state.system_prompt:
+            print(f"role     {_role_cell(state.system_prompt)}")
     print()
     print(f'send_message(to="{record.session_id}", message="...")')
     return EXIT_OK
@@ -589,6 +605,8 @@ def _update(args: argparse.Namespace) -> int:
         print(f"title    {state.title or '-'}")
         print(f"model    {state.model or '?'}" + (f" · effort {state.effort}" if state.effort else ""))
         print(f"shell    {state.permission or '?'}")
+        if state.system_prompt:
+            print(f"role     {_role_cell(state.system_prompt)}")
         if state.requested_model is not None or state.requested_effort is not None:
             wanted = state.requested_model or state.model or "?"
             level = f" · effort {state.requested_effort}" if state.requested_effort is not None else ""
@@ -689,6 +707,7 @@ def _run(args: argparse.Namespace) -> int:
         name=args.name,
         title=args.title,
         permission=args.permission,
+        system_prompt=args.system,
         plugin_arguments=_plugin_arguments(),
     )
     try:
@@ -732,6 +751,16 @@ def _age(seconds: float) -> str:
         return f"{minutes}m"
     hours, minutes = divmod(minutes, 60)
     return f"{hours}h {minutes:02d}m"
+
+
+#: How much of a role a line shows: enough to say what the daemon is for, not the paragraph that tells it how.
+ROLE_WIDTH = 72
+
+
+def _role_cell(text: str) -> str:
+    """Return a role as one short line: its whitespace collapsed, and a long one cut with a mark."""
+    line = " ".join(text.split())
+    return line if len(line) <= ROLE_WIDTH else line[: ROLE_WIDTH - 1] + "…"
 
 
 def _short_path(path: str) -> str:
