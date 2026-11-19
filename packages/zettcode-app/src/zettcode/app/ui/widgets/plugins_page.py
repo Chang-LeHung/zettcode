@@ -51,7 +51,8 @@ LIST_TOP = 2 + BOX_ROWS
 OFF_IN_CONFIG = "fixed"
 
 #: Columns the plugin's name takes, the switch, and the word beside it. The name column fits the longest one the
-#: program ships (``project-instructions``); a name that fills it is cut with an ellipsis and sits against the switch.
+#: program ships (``project-instructions``); a name longer than it is cut with an ellipsis, and either sort sits
+#: against the switch.
 NAME_WIDTH = 24
 WORD_WIDTH = 8
 
@@ -117,7 +118,7 @@ class PluginsPage(Widget):
 
           ╭─ Search ────────────────────────────────────────────────────────────╮
           │ search name, distribution or description                            │
-          ╰──────────────────────────────────────────────────────────────────────╯
+          ╰─────────────────────────────────────────────────────────────────────╯
           ▸ 1. skills       ━━━━●  on     skills.enabled    The skills a workspace declares, as @ references
             2. mcp          ━━━━●  on     mcp.enabled       MCP servers
             3. todos        ●────  off    harness.todowrite The todo_write tool and the plan it keeps
