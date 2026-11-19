@@ -12,9 +12,9 @@ A plugin needs only this package::
 
 What a plugin can register follows from the groups on ``ctx``: :attr:`PluginContext.agent` in every process, and
 :attr:`PluginContext.tui` where the terminal is loading. A plugin that fills a header or status row by overriding a
-hook is a :class:`zettcode.app.plugins.TuiPlugin`, which is this class plus that mixin. The plugins ZettCode composes
-the agent from are not here: they are :data:`zettcode.sdk.builtins.AGENT_PLUGINS`, because they need the broker, the
-config file and the MCP client, which the engine does not carry.
+hook is a :class:`zettcode.app.plugins.TuiPlugin`, which is this class plus that mixin. Every plugin is the same kind of
+thing: the ones ZettCode composes the agent from are published by their distributions in the same entry-point group
+as a reader's, and they are listed, switched and shown like any other.
 
 The pieces live in focused modules — :mod:`~zettcode.engine.plugins.mixins` for the hook groups,
 :mod:`~zettcode.engine.plugins.context` for activation, :mod:`~zettcode.engine.plugins.plugin` for the base class, and
@@ -27,7 +27,7 @@ from .cli import CliOption, installed_options
 from .context import PluginContext
 from .extension import PluginExtension
 from .llm import ModelAccess
-from .loader import PLUGIN_ENTRY_POINT_GROUP, Loader, installed_entry_points, load_plugins
+from .loader import PLUGIN_ENTRY_POINT_GROUP, TERMINAL_ENTRY_POINT_GROUP, Loader, installed_entry_points, load_plugins
 from .mixins import (
     PluginAgentMixin,
     PluginEventMixin,
@@ -56,6 +56,7 @@ from .triggers import Trigger, TriggerEvent, TriggerHost, TriggerScope, TriggerS
 
 __all__ = [
     "PLUGIN_ENTRY_POINT_GROUP",
+    "TERMINAL_ENTRY_POINT_GROUP",
     "LLM",
     "ModelAccess",
     "CliOption",

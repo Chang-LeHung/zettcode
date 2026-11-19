@@ -160,7 +160,7 @@ describe("the JSON API", () => {
         return json(response, {
           loaded: ["shell"],
           failures: [],
-          entries: [{ name: "shell", origin: "shell", builtin: true, enabled: true, failure: "" }],
+          entries: [{ name: "shell", origin: "shell", required: true, enabled: true, failure: "" }],
           triggers: [{ name: "idle", scope: "process", state: "running", detail: "" }],
         });
       }
@@ -169,7 +169,7 @@ describe("the JSON API", () => {
         return json(response, {
           name: "acme",
           origin: "zettcode-acme",
-          builtin: false,
+          required: false,
           enabled: false,
           failure: "",
           setting: "",
@@ -205,7 +205,7 @@ describe("the JSON API", () => {
     assert.equal((await client.updateSettings({ compact_percent: 55 })).model.compact_percent, 55);
     assert.deepEqual((await client.plugins()).loaded, ["shell"]);
     assert.deepEqual(
-      (await client.plugins()).entries.map((entry) => [entry.origin, entry.builtin]),
+      (await client.plugins()).entries.map((entry) => [entry.origin, entry.required]),
       [["shell", true]],
     );
     // A trigger a plugin registered, and where it is: the four fields the SDK hands a Python caller.
@@ -217,7 +217,7 @@ describe("the JSON API", () => {
     assert.deepEqual(await client.setPluginEnabled("zettcode-acme", false), {
       name: "acme",
       origin: "zettcode-acme",
-      builtin: false,
+      required: false,
       enabled: false,
       failure: "",
       setting: "",

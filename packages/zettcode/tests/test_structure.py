@@ -1427,13 +1427,10 @@ def test_the_suites_list_of_the_programs_parts_is_what_the_distributions_publish
         for node in tree.body
         if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "PROGRAM_PARTS" for t in node.targets)
     )
-    from zettcode.engine.plugins.loader import PROGRAM_DISTRIBUTIONS, TERMINAL_ROLE
-
     published: dict[str, str] = {}
     for settings_path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
         settings = tomllib.loads(settings_path.read_text(encoding="utf-8"))
-        if settings["project"]["name"] in PROGRAM_DISTRIBUTIONS[TERMINAL_ROLE]:
-            published.update(settings["project"].get("entry-points", {}).get("zettcode.plugin", {}))
+        published.update(settings["project"].get("entry-points", {}).get("zettcode.tui", {}))
 
     assert dict(listed) == published
     assert [name for name, _ in listed] == sorted(published), "listed in the order the loader sorts them"
@@ -1466,13 +1463,13 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
         for node in tree.body
         if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "EXTERNAL_AGENT_PARTS" for t in node.targets)
     )
-    from zettcode.engine.plugins.loader import AGENT_ROLE, PROGRAM_DISTRIBUTIONS
-
     owners: dict[str, dict[str, str]] = {}
     for path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
-        project = tomllib.loads(path.read_text(encoding="utf-8"))["project"]
-        if project["name"] in PROGRAM_DISTRIBUTIONS[AGENT_ROLE]:
-            owners[path.parent.name] = project["entry-points"]["zettcode.plugin"]
+        settings = tomllib.loads(path.read_text(encoding="utf-8"))
+        points = settings["project"].get("entry-points", {}).get("zettcode.plugin")
+        # The distributions that are plugins of their own (released on their own line) are not the agent's parts.
+        if points and not settings.get("tool", {}).get("zettcode", {}).get("plugin"):
+            owners[path.parent.name] = points
     outside = {
         name: value for owner, points in owners.items() if owner != "zettcode-sdk" for name, value in points.items()
     }
@@ -1497,26 +1494,22 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
     assert not set(listed) & set(outside), "a part has one owner"
 
 
-def test_the_distributions_that_may_publish_the_programs_groups_are_the_ones_that_do():
-    """`PROGRAM_DISTRIBUTIONS` is a literal in the loader: a rename would quietly make a part an ordinary plugin.
+def test_the_screen_group_holds_exactly_the_plugins_that_draw():
+    """`zettcode.tui` is read only by a process with a screen, so a plugin there must need one, and no other may.
 
-    The roles are decided by the distribution a point came from, since the group they are published in no longer says
-    which is which; every distribution in the table must publish a point, and the plugins must not be in it.
+    The distributions that publish it are the ones that import the terminal's widgets; a plugin that works without a
+    screen (the memory, the monitor, the recap) belongs in `zettcode.plugin`, where the SDK and the server see it.
     """
-    from zettcode.engine.plugins.loader import AGENT_ROLE, PROGRAM_DISTRIBUTIONS, TERMINAL_ROLE
-
     listed = [
         tomllib.loads(path.read_text(encoding="utf-8")) for path in sorted((ROOT / "packages").glob("*/pyproject.toml"))
     ]
-    publishing = {
+    on_screen = {
         settings["project"]["name"]
         for settings in listed
-        if "zettcode.plugin" in settings["project"].get("entry-points", {})
-        and not settings.get("tool", {}).get("zettcode", {}).get("plugin")
+        if "zettcode.tui" in settings["project"].get("entry-points", {})
     }
-    declared = set().union(*PROGRAM_DISTRIBUTIONS.values())
+    assert on_screen == {"zettcode-app", "zettcode-commands", "zettcode-pets", "zettcode-presenters"}
 
-    assert declared == publishing, "the table names every distribution with a part, and only those"
     marked = {
         settings["project"]["name"] for settings in listed if settings.get("tool", {}).get("zettcode", {}).get("plugin")
     }
@@ -1526,8 +1519,7 @@ def test_the_distributions_that_may_publish_the_programs_groups_are_the_ones_tha
         "zettcode-monitor",
         "zettcode-recap",
     }, "the plugin line covers every plugin"
-    agent, terminal = PROGRAM_DISTRIBUTIONS[AGENT_ROLE], PROGRAM_DISTRIBUTIONS[TERMINAL_ROLE]
-    assert agent and terminal and not (agent & terminal), "a distribution has one role"
+    assert not marked & on_screen, "a plugin that is released on its own line is not the program's screen"
 
 
 def test_a_part_is_named_as_its_entry_point_is():
@@ -1541,24 +1533,24 @@ def test_a_part_is_named_as_its_entry_point_is():
     for settings_path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
         settings = tomllib.loads(settings_path.read_text(encoding="utf-8"))
         entry_points = settings["project"].get("entry-points", {})
-        for name, target in entry_points.get("zettcode.plugin", {}).items():
-            module, _, attribute = target.partition(":")
-            assert getattr(importlib.import_module(module), attribute).name == name, target
+        for group in ("zettcode.plugin", "zettcode.tui"):
+            for name, target in entry_points.get(group, {}).items():
+                module, _, attribute = target.partition(":")
+                assert getattr(importlib.import_module(module), attribute).name == name, target
 
 
-def test_the_parts_are_offered_before_a_readers_plugins():
-    """A reader's plugin must not take a part's name: the parts come first, whatever the names sort like.
+def test_a_process_with_no_screen_never_reads_the_screens_group():
+    """The two groups are what keeps the SDK from importing the terminal: only `terminal=True` reads `zettcode.tui`.
 
     The suite replaces discovery with a literal list, so this calls the function as it is installed in this environment
     (`_REAL_DISCOVERY` is the one captured before the fixture replaced the module attribute).
     """
-    points = _REAL_DISCOVERY()
-    wanted = [loader.part_group(point) is None for point in points]
+    everywhere = {point.name for point in _REAL_DISCOVERY()}
+    with_a_screen = {point.name for point in _REAL_DISCOVERY(terminal=True)}
 
-    assert wanted == sorted(wanted), "every part before every ordinary plugin"
-    assert any(not is_plugin for is_plugin in wanted), "the parts are in this environment"
-    assert any(is_plugin for is_plugin in wanted), "and so is at least one ordinary plugin, or this proves nothing"
-    assert "coding" in [point.name for point in points]
+    assert "coding" in everywhere and "memory" in everywhere and "daemon-guide" in everywhere
+    assert {"commands", "presenters", "shell", "themes", "pets"}.isdisjoint(everywhere)
+    assert everywhere < with_a_screen and {"commands", "presenters", "shell", "themes", "pets"} <= with_a_screen
 
 
 def test_every_shipped_plugin_names_its_context():

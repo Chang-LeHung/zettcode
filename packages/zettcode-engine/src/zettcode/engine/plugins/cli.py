@@ -77,7 +77,7 @@ def installed_options(entry_points: Iterable[EntryPoint] | None = None) -> tuple
     from .loader import installed_entry_points
     from .plugin import Plugin
 
-    points = tuple(entry_points) if entry_points is not None else installed_entry_points()
+    points = tuple(entry_points) if entry_points is not None else installed_entry_points(terminal=True)
     found: list[tuple[str, CliOption]] = []
     for point in points:
         try:
@@ -219,7 +219,7 @@ def _refresh(target: Path, delay: float = 0.0) -> None:
             time.sleep(delay)
         from .loader import installed_entry_points
 
-        points = tuple(installed_entry_points())
+        points = tuple(installed_entry_points(terminal=True))
         fingerprint = _fingerprint(points)
         cached = _read_cache(target)
         if cached is not None and cached.get("version") == _CACHE_VERSION and cached.get("fingerprint") == fingerprint:

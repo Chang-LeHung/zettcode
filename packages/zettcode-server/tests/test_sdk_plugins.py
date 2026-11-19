@@ -49,20 +49,19 @@ def _installed(monkeypatch: pytest.MonkeyPatch, *names: str) -> None:
 
     parts = loader.installed_entry_points()  # what the suite already stubs it to: the program's own parts
     points = (*parts, *_points(*names))
-    monkeypatch.setattr(loader, "installed_entry_points", lambda: points)
-    monkeypatch.setattr(switches.loader, "installed_entry_points", lambda: points)
+    monkeypatch.setattr(loader, "installed_entry_points", lambda **_: points)
+    monkeypatch.setattr(switches.loader, "installed_entry_points", lambda **_: points)
 
 
-async def test_a_client_lists_the_plugins_compiled_into_the_program_that_can_be_switched(tmp_path: Path):
+async def test_a_client_lists_every_plugin_with_the_setting_that_switches_it_when_it_has_one(tmp_path: Path):
     async with zc.Client(config=config_for(tmp_path)) as client:
         report = client.plugins
 
-    builtins = [entry for entry in report.entries if entry.builtin]
-    assert builtins, "the engine's own plugins are compiled into the program"
-    assert all(entry.setting for entry in builtins), "a row is listed because it has a setting to write"
-    assert {entry.name for entry in builtins} <= set(report.loaded)
-    assert "coding" not in [entry.name for entry in builtins], "a tool with no switch is not on the list"
-    assert [entry.enabled for entry in builtins if entry.name == "skills"] == [False], "the setting decides it"
+    by_name = {entry.name: entry for entry in report.entries}
+    assert {"memory", "daemon-guide", "skills", "coding"} <= set(by_name), "no plugin is hidden from the list"
+    assert by_name["skills"].setting == "skills.enabled" and by_name["skills"].enabled is False
+    assert by_name["coding"].required and not by_name["coding"].switchable, "required: a row, and no switch"
+    assert by_name["memory"].switchable and by_name["memory"].enabled is False, "off by default, and still shown"
 
 
 async def test_an_installed_plugin_is_listed_with_the_name_a_switch_is_written_with(tmp_path: Path, monkeypatch):
@@ -72,7 +71,7 @@ async def test_an_installed_plugin_is_listed_with_the_name_a_switch_is_written_w
         entries = client.plugins.entries
 
     greeter = next(entry for entry in entries if entry.name == "greeter")
-    assert (greeter.origin, greeter.builtin, greeter.enabled, greeter.failure) == ("greeter", False, True, "")
+    assert (greeter.origin, greeter.required, greeter.enabled, greeter.failure) == ("greeter", False, True, "")
 
 
 async def test_a_plugin_that_cannot_load_is_listed_with_why(tmp_path: Path, monkeypatch):
@@ -260,8 +259,8 @@ async def test_a_client_reports_where_each_trigger_is_once_the_runtime_has_start
 
     parts = loader.installed_entry_points()
     points = (*parts, EntryPoint(name="watching", value=f"{__name__}:Watching", group="zettcode.plugins"))
-    monkeypatch.setattr(loader, "installed_entry_points", lambda: points)
-    monkeypatch.setattr(switches.loader, "installed_entry_points", lambda: points)
+    monkeypatch.setattr(loader, "installed_entry_points", lambda **_: points)
+    monkeypatch.setattr(switches.loader, "installed_entry_points", lambda **_: points)
 
     async with zc.Client(config=config_for(tmp_path)) as client:
         assert client.plugins.triggers == (), "nothing watches before the runtime starts"
@@ -286,8 +285,8 @@ async def test_the_server_sends_where_each_trigger_is_once_the_runtime_has_start
 
     parts = loader.installed_entry_points()
     points = (*parts, EntryPoint(name="watching", value=f"{__name__}:Watching", group="zettcode.plugins"))
-    monkeypatch.setattr(loader, "installed_entry_points", lambda: points)
-    monkeypatch.setattr(switches.loader, "installed_entry_points", lambda: points)
+    monkeypatch.setattr(loader, "installed_entry_points", lambda **_: points)
+    monkeypatch.setattr(switches.loader, "installed_entry_points", lambda **_: points)
 
     async with zc.Client(config=config_for(tmp_path)) as client:
         await client._agent.runtime.start()

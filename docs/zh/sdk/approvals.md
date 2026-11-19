@@ -84,7 +84,7 @@ async with client.prompt("deploy to staging") as run:
 ```python
 async with client.prompt("deploy it", on_approval=panel.show, defer_answers=True) as run:
     async for event in run:
-        ...                      # panel.show(request) 立刻返回；面板稍后调用 request.approve()
+        ...  # panel.show(request) 立刻返回；面板稍后调用 request.approve()
 ```
 
 ### 3. 都不做

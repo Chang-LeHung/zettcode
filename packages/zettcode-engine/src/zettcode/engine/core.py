@@ -120,13 +120,13 @@ WARM_MODULES_WHEN = (
 
 
 def _load_engine_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -> Plugins:
-    """Load the installed plugins that need only the engine, and the switches that turn them off.
+    """Load every installed plugin, and honour the switches that turn them off.
 
-    The engine ships no built-in plugin of its own: composing the agent (the tools, the store, the permission, the
-    compaction, the MCP client) is :mod:`zettcode.sdk.builtins`, which passes its own loader here. A runtime built
-    this way still honours ``[plugins]`` for the distributions and single files a reader installed.
+    The engine ships no plugin of its own: composing the agent (the tools, the store, the permission, the compaction,
+    the MCP client) is done by plugins that distributions publish, found through their entry points like any other.
+    A front end that has a screen, or that requires some of them by name, passes its own loader here.
     """
-    return load_plugins(config, builtins=(), shared=shared, agent=False)
+    return load_plugins(config, shared=shared)
 
 
 def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None) -> str:

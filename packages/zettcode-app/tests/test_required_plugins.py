@@ -1,9 +1,8 @@
-"""The parts of the program cannot be turned off: not by `[plugins] disable`, not by a switch, not by a panel.
+"""The plugins the program cannot run without are named by the loader's caller, and nothing else is special.
 
-Two kinds of part, one rule. The plugins compiled into the program load before any distribution is looked at; the
-required plugins (`REQUIRED_PLUGINS`, today the rows and the presenters that draw them) are ordinary distributions
-found through an entry point, but the terminal names them, so a `disable` line or `[plugins] enabled = false` does not
-reach them, and the program does not start when one is missing — a transcript with no presenters draws nothing.
+A `disable` line or `[plugins] enabled = false` does not reach a required plugin, no switch writes one off, and the
+program does not start when one is missing — a transcript with no presenters draws nothing. Every other plugin,
+the pets and the palettes included, is an ordinary one: it has a row and a switch.
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ import pytest
 
 from zettcode.app.plugins import load_terminal_plugins
 from zettcode.app.plugins.builtins import BuiltinThemes
-from zettcode.app.plugins.loader import REQUIRED_PLUGINS
+from zettcode.app.plugins.loader import REQUIRED_NAMES, REQUIRED_PLUGINS
 from zettcode.commands.context import ContextPagePlugin
 from zettcode.commands.plugin import CommandsPlugin
 from zettcode.commands.usage import UsageCommand
@@ -81,7 +80,7 @@ def test_the_required_plugins_are_the_rows_and_the_presenters():
 def test_a_disable_line_that_names_a_part_of_the_program_does_nothing(tmp_path: Path):
     plugins = _load(tmp_path, disabled_plugins=REQUIRED)
 
-    assert set(REQUIRED) <= set(plugins.builtins)
+    assert set(REQUIRED) <= set(plugins.required)
     assert plugins.presenters, "the transcript still has the rows the program draws"
     # The agent's own plugins fail here for want of the services a runtime hands over; the required parts do not.
     assert {origin for origin, _why in plugins.failed}.isdisjoint(REQUIRED)
@@ -99,7 +98,7 @@ def test_the_disable_file_does_not_reach_a_part_of_the_program_either(tmp_path: 
 
     plugins = _load(tmp_path)
 
-    assert "presenters" in plugins.builtins and plugins.presenters
+    assert "presenters" in plugins.required and plugins.presenters
 
 
 def test_the_reader_is_told_in_the_log_when_a_disable_line_names_a_part(tmp_path: Path, caplog):
@@ -143,16 +142,15 @@ def test_no_switch_writes_a_required_part_off(tmp_path: Path, name: str):
     assert not (tmp_path / "plugins.json").exists(), "nothing was written anywhere"
 
 
-def test_the_plugins_page_does_not_offer_a_switch_for_a_required_part(tmp_path: Path):
+def test_the_plugins_page_lists_a_required_part_without_a_switch(tmp_path: Path):
     config = _config(tmp_path)
     bundle = _load(tmp_path)
 
-    listed = {entry.origin for entry in catalog(config, bundle, entry_points=POINTS)}
+    rows = {entry.origin: entry for entry in catalog(config, bundle, entry_points=POINTS)}
 
-    assert listed.isdisjoint(REQUIRED), "a row with no switch would only invite the press"
-    assert {"pets", "themes", "usage", "context"} <= listed, (
-        "the optional parts, which do have a switch, are still there"
-    )
+    assert set(REQUIRED) <= set(rows), "every plugin has a row, the required ones too"
+    assert all(not rows[name].switchable and rows[name].required for name in REQUIRED), "but none to press"
+    assert all(rows[name].switchable for name in ("pets", "themes", "usage", "context")), "the others have one"
 
 
 def test_the_pets_and_the_palettes_are_parts_a_reader_may_switch_off(tmp_path: Path):
@@ -164,13 +162,28 @@ def test_the_pets_and_the_palettes_are_parts_a_reader_may_switch_off(tmp_path: P
     assert {origin for origin, _why in plugins.failed}.isdisjoint(REQUIRED), "the agent's own plugins lack a runtime"
 
 
-def test_a_process_with_no_screen_is_not_offered_switches_for_the_parts_it_never_loads(tmp_path: Path):
+def test_the_terminal_hands_the_loader_every_name_it_cannot_run_without(tmp_path: Path, monkeypatch):
+    import zettcode.app.plugins.loader as module
+    from zettcode.plugin_api import TuiPlugins
+
+    seen: dict[str, object] = {}
+
+    def fake_run(loader: object, config: object, **kwargs: object) -> TuiPlugins:
+        seen.update(kwargs)
+        return TuiPlugins()
+
+    monkeypatch.setattr(module, "run", fake_run)
+
+    module.terminal_plugins(_config(tmp_path), {})
+
+    assert tuple(seen["required"]) == REQUIRED_NAMES  # type: ignore[arg-type]
+
+
+def test_a_process_with_no_screen_still_lists_every_plugin_so_none_is_hidden(tmp_path: Path):
     from zettcode.engine.plugins import load_plugins
 
     config = _config(tmp_path)
     headless = load_plugins(config, builtins=(), entry_points=[])
     terminal_points = [Point(name, target) for name, target in (("pets", PetsPlugin), ("themes", BuiltinThemes))]
-    for point in terminal_points:
-        point.group = "zettcode.terminal"  # type: ignore[attr-defined]
 
-    assert catalog(config, headless, entry_points=terminal_points) == ()
+    assert {row.origin for row in catalog(config, headless, entry_points=terminal_points)} == {"pets", "themes"}

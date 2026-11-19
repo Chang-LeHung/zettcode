@@ -13,7 +13,7 @@ from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.extensions.guidance import tool_guidance
 from zettcode.engine.extensions.subagents import build_subagents
 from zettcode.engine.plugins import AgentBuild, load_plugins
-from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
+from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP
 from zettcode.guidance import ToolGuidance
 from zettcode.tools import files
 
@@ -71,7 +71,7 @@ def test_the_plugin_is_a_part_of_the_agent_found_through_its_entry_point_group()
     found = {point.name: point for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)}
 
     assert found["tool-guidelines"].value == "zettcode.guidance.plugin:ToolGuidance"
-    assert part_group(found["tool-guidelines"]) == AGENT_PART_GROUP
+
     assert ToolGuidance.name == "tool-guidelines"
 
 

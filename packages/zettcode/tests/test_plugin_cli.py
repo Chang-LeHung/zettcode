@@ -297,7 +297,7 @@ def test_the_default_a_plugin_asks_for_is_read_from_its_class(monkeypatch):
     monkeypatch.setattr(
         cli,
         "_installed_plugins",
-        lambda group: [
+        lambda: [
             ("quiet", "zettcode-quiet", "/site-packages", _Point(False)),
             ("loud", "zettcode-loud", "/site-packages", _Point(True)),
         ],
@@ -383,9 +383,7 @@ def test_a_distribution_that_cannot_be_imported_is_not_reported_as_enabled(tmp_p
     monkeypatch.setattr(cli, "plugins_dir", lambda: tmp_path / "plugins")
     monkeypatch.setattr(cli, "plugin_state", lambda: config)
     monkeypatch.setattr(cli, "_resolve_switch_name", lambda state, name: "broken")
-    monkeypatch.setattr(
-        cli, "_installed_plugins", lambda group: [("broken", "zettcode-broken", "/site-packages", Broken())]
-    )
+    monkeypatch.setattr(cli, "_installed_plugins", lambda: [("broken", "zettcode-broken", "/site-packages", Broken())])
 
     assert cli.switch("broken", enabled=True) == 1
 
@@ -591,7 +589,7 @@ def test_list_names_every_plugin_and_where_it_is(tmp_path, monkeypatch, capsys):
 
     said = capsys.readouterr().out
     assert "KIND" in said and "LOCATION" in said and "SWITCH" in said
-    assert "compiled in" in said, "the plugins compiled into the program are listed"
+    assert "memory" in said and "daemon-guide" in said, "the program's own plugins are listed like any other"
     assert "greeter" in said and str(folder / "greeter.py") in said
 
 
@@ -632,7 +630,7 @@ def test_list_draws_a_plugin_that_is_off_by_default_as_off(tmp_path, monkeypatch
     monkeypatch.setattr(cli, "plugins_dir", lambda: tmp_path / "plugins")
     monkeypatch.setattr(cli, "plugin_state", lambda: config)
     monkeypatch.setattr(
-        cli, "_installed_plugins", lambda group: [("quiet", "zettcode-quiet", "/site-packages", _Point(False))]
+        cli, "_installed_plugins", lambda: [("quiet", "zettcode-quiet", "/site-packages", _Point(False))]
     )
 
     assert cli.list_plugins() == 0
@@ -647,7 +645,7 @@ def test_list_names_the_disable_line_that_holds_a_plugin_off_by_default_back(tmp
     monkeypatch.setattr(cli, "plugins_dir", lambda: tmp_path / "plugins")
     monkeypatch.setattr(cli, "plugin_state", lambda: config)
     monkeypatch.setattr(
-        cli, "_installed_plugins", lambda group: [("quiet", "zettcode-quiet", "/site-packages", _Point(False))]
+        cli, "_installed_plugins", lambda: [("quiet", "zettcode-quiet", "/site-packages", _Point(False))]
     )
 
     assert cli.list_plugins() == 0
@@ -661,7 +659,7 @@ def test_list_says_yes_for_a_named_plugin_even_when_it_is_off_by_default(tmp_pat
     monkeypatch.setattr(cli, "plugins_dir", lambda: tmp_path / "plugins")
     monkeypatch.setattr(cli, "plugin_state", lambda: config)
     monkeypatch.setattr(
-        cli, "_installed_plugins", lambda group: [("quiet", "zettcode-quiet", "/site-packages", _Point(False))]
+        cli, "_installed_plugins", lambda: [("quiet", "zettcode-quiet", "/site-packages", _Point(False))]
     )
 
     assert cli.list_plugins() == 0
@@ -810,3 +808,61 @@ def test_a_configuration_path_that_is_not_a_file_is_reported(tmp_path, monkeypat
 
     assert cli.list_plugins() == 1
     assert "is not a file" in capsys.readouterr().err
+
+
+def test_uninstall_refuses_a_distribution_the_program_depends_on(monkeypatch, capsys):
+    from importlib import metadata
+
+    runs: list[list[str]] = []
+    requires = {
+        "zettcode": ["zettcode-sdk>=0.5", "extra-thing; extra == 'dev'"],
+        "zettcode-sdk": ["httpx>=0.27", "pywin32; sys_platform == 'win32'"],
+    }
+    monkeypatch.setattr(metadata, "requires", lambda name: requires.get(name))
+    monkeypatch.setattr(cli, "plugins_dir", lambda: Path("/nonexistent"))
+    monkeypatch.setattr(cli, "distribution_for", lambda name: "httpx")
+    monkeypatch.setattr(cli, "installer", lambda: cli.Installer("pip", (sys.executable, "-m", "pip")))
+    monkeypatch.setattr(cli, "run", lambda command: runs.append(list(command)) or 0)
+
+    assert cli.uninstall("httpx") == 1
+
+    assert runs == [] and "part of the program itself" in capsys.readouterr().err
+    assert cli._program_distributions() >= {"zettcode", "zettcode-sdk", "httpx", "pywin32"}
+    assert "extra-thing" not in cli._program_distributions(), "an extra is not a dependency"
+
+
+def test_list_gives_a_required_plugin_and_a_setting_plugin_their_own_switch_words(tmp_path, monkeypatch, capsys):
+    config = fake_config(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: tmp_path / "plugins")
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+    monkeypatch.setattr(cli, "_required_names", lambda: frozenset({"coding", "subagents"}))
+
+    class WithSetting:
+        setting = SimpleNamespace(path="harness.subagent")
+
+    class Plain:
+        setting = None
+
+        @staticmethod
+        def default_enabled() -> bool:
+            return True
+
+    monkeypatch.setattr(
+        cli,
+        "_installed_plugins",
+        lambda: [
+            ("coding", "zettcode-sdk", "/x", _Point(False)),
+            ("subagents", "zettcode-sdk", "/x", SimpleNamespace(load=lambda: WithSetting)),
+            ("quiet", "zettcode-quiet", "/x", SimpleNamespace(load=lambda: Plain)),
+        ],
+    )
+    rows = {row.name: row for row in cli.plugin_rows()}
+    assert rows["coding"].switch == "required"
+    assert rows["subagents"].switch == "setting harness.subagent"
+    assert "disable" in rows["quiet"].switch
+
+    config.plugins_enabled = False
+    rows = {row.name: row for row in cli.plugin_rows()}
+    assert rows["quiet"].switch == "plugins.enabled" and rows["quiet"].enabled is False
+    assert rows["subagents"].switch == "setting harness.subagent", "a required plugin keeps its setting"
+    assert cli.switch("coding", enabled=False) == 1

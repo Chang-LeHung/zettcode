@@ -22,9 +22,8 @@ os.environ["HOME"] = _HOME
 os.environ["USERPROFILE"] = _HOME  # what `Path.home()` reads on Windows
 atexit.register(shutil.rmtree, _HOME, ignore_errors=True)
 
-#: The plugins the program is made of that only a screen loads, as their distributions publish them in the one
-#: `zettcode.plugin` group, sorted by name
-#: the way the loader sorts them. Each distribution's `pyproject.toml` says the same; `test_structure.py` compares.
+#: The plugins the program is made of that only a screen loads, as their distributions publish them in the
+#: `zettcode.tui` group, sorted by name the way the loader sorts them. Each distribution's `pyproject.toml` says the same; `test_structure.py` compares.
 PROGRAM_PARTS = (
     ("commands", "zettcode.commands.plugin:CommandsPlugin"),
     ("context", "zettcode.commands.context:ContextPagePlugin"),
@@ -108,15 +107,17 @@ def _no_installed_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     from zettcode.engine.plugins import loader
 
-    points = tuple(_point(name, value, dist) for name, value, dist in _part_points())
-    monkeypatch.setattr(loader, "installed_entry_points", lambda: points)
+    everywhere = tuple(_point(name, value, dist, "zettcode.plugin") for name, value, dist in _part_points(screen=False))
+    screen = tuple(_point(name, value, dist, "zettcode.tui") for name, value, dist in _part_points(screen=True))
+    monkeypatch.setattr(
+        loader, "installed_entry_points", lambda *, terminal=False: (*everywhere, *screen) if terminal else everywhere
+    )
 
 
 class _Point:
     """An entry point as the loader reads one: a name, the target it loads, and the distribution it came from.
 
-    The distribution is what says which role a plugin has (``loader.program_distributions``), so a stand-in that
-    names one is the part it claims to be.
+    The distribution is only what a message names; every plugin is the same kind of thing.
     """
 
     group = "zettcode.plugin"
@@ -124,9 +125,10 @@ class _Point:
     class dist:  # noqa: N801 - the slice of importlib.metadata.Distribution the loader reads
         name = ""
 
-    def __init__(self, name: str, value: str, distribution: str) -> None:
+    def __init__(self, name: str, value: str, distribution: str, group: str = "zettcode.plugin") -> None:
         self.name = name
         self.value = value
+        self.group = group
 
         self.dist = type("Dist", (), {"name": distribution})()
 
@@ -137,16 +139,19 @@ class _Point:
         return getattr(import_module(module), attribute)
 
 
-def _point(name: str, value: str, distribution: str) -> _Point:
+def _point(name: str, value: str, distribution: str, group: str = "zettcode.plugin") -> _Point:
     """Return the stand-in an entry point of ``distribution`` is, in a test."""
-    return _Point(name, value, distribution)
+    return _Point(name, value, distribution, group)
 
 
-def _part_points() -> list[tuple[str, str, str]]:
-    """Every part the program publishes, as (entry-point name, target, distribution), in load order."""
-    agent = [(name, value, _OWNER[name]) for name, value in sorted((*AGENT_PARTS, *EXTERNAL_AGENT_PARTS))]
-    terminal = [(name, value, _OWNER[name]) for name, value in sorted(PROGRAM_PARTS)]
-    return [*agent, *terminal]
+def _part_points(*, screen: bool) -> list[tuple[str, str, str]]:
+    """The plugins the program publishes, as (entry-point name, target, distribution), sorted by name.
+
+    ``screen`` picks the group only a terminal reads (``zettcode.tui``); otherwise the one every process reads.
+    """
+    if screen:
+        return [(name, value, _OWNER[name]) for name, value in sorted(PROGRAM_PARTS)]
+    return [(name, value, _OWNER[name]) for name, value in sorted((*AGENT_PARTS, *EXTERNAL_AGENT_PARTS))]
 
 
 #: The distribution that publishes each part, as the suite's literals name them (`test_structure.py` checks this

@@ -22,7 +22,8 @@ dependencies = [
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for.
-[project.entry-points."zettcode.plugin"]
+# Read only by a process with a screen: the SDK and the server never look at this group.
+[project.entry-points."zettcode.tui"]
 pets = "zettcode.pets.plugin:PetsPlugin"
 
 [project.urls]

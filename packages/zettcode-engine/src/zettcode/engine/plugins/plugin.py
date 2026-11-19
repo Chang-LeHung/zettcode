@@ -42,12 +42,14 @@ _T = TypeVar("_T")
 
 @dataclass(frozen=True, slots=True)
 class PluginSetting:
-    """The configuration key that decides whether a compiled-in plugin does its work.
+    """The configuration key that decides whether a plugin does its work.
 
-    A plugin installed as a distribution is switched by `[plugins] disable` in the configuration. One compiled into the program has no
-    file of its own: what turns its work off is a setting the reader already has, such as ``[skills] enabled``. A
-    plugin that declares one is listed by a panel with a switch, and the switch writes that key; a plugin that does
-    not is not listed, because there is nothing a reader could do about it.
+    A plugin with none is switched by `[plugins] disable` in the configuration. One that declares one is switched by
+    that key instead: the panel writes the setting the reader already has, such as ``[skills] enabled``, and the
+    plugin loads only when that key is on. A ``[plugins] disable`` line naming it also holds it back, because the
+    loader decides before the plugin's class is imported — the setting is how the switch is written, not a promise
+    that a hand-written disable line is ignored. The panel lists both, and the switch writes whichever belongs to
+    the plugin.
 
     Attributes:
         field: The attribute of :class:`~zettcode.config.ZettCodeConfig` that holds it now, for the state a list
@@ -89,8 +91,8 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
             costs the reader the one line that tells the two plugins called alike apart.
         priority: Hook order against every other extension: lower runs first,
             and equal priorities keep registration order.
-        setting: The configuration key that turns its work off, for a plugin compiled into the program; ``None`` when
-            the plugin is installed as a distribution, which `[plugins] disable` reaches instead.
+        setting: The configuration key that turns its work off; ``None`` when the plugin is switched by
+            `[plugins] disable` instead.
     """
 
     #: Identity the loader may resolve and record; a plain attribute, so a
@@ -104,15 +106,13 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
     #: The names of the plugins this one needs. The loader activates a plugin after every plugin it lists, and
     #: leaves it out, reported, when one of them is absent, turned off, failed, or the lists go round in a circle.
     deps: ClassVar[tuple[str, ...]] = ()
-    #: Where a plugin stands among the others of its entry-point group when the loader has no ``deps`` to go by: parts
-    #: are activated by ``(rank, name)`` within their group, so a group whose extensions share a priority (and so
-    #: keep their registration order) is activated in a stated order and not in the order entry points happen to sort.
-    #: The program's to set: ``zettcode.sdk.builtins`` writes it for its own plugins, and a plugin of anyone else has
-    #: no use for it, since it is only read for the parts of the program.
+    #: Where a plugin stands among the others when the loader has no ``deps`` to go by: plugins are activated by
+    #: ``rank``, lowest first and in discovery (name) order among equals, so extensions that share a priority (and so keep their registration order) are
+    #: activated in a stated order and not in the order entry points happen to sort. Most plugins have no preference.
     rank: ClassVar[int] = 0
     priority: ClassVar[int] = 100
-    #: The configuration key that decides whether a compiled-in plugin does its work, or ``None`` when there is none:
-    #: a plugin the reader cannot turn off is left out of the list rather than shown without a switch.
+    #: The configuration key that decides whether a plugin does its work, or ``None`` when `[plugins] disable` does:
+    #: the panel lists the plugin either way, and the switch writes whichever belongs to it.
     setting: ClassVar[PluginSetting | None] = None
 
     @classmethod
@@ -179,8 +179,8 @@ class Plugins:
             with it; the shell reports these where the user can see them.
         failed: The failures themselves, one ``(origin, why)`` pair each, for a list that groups them by the plugin
             they belong to. This is the one record; :attr:`failures` is written from it.
-        builtins: The origins of the plugins compiled into the program, in load order. They always load, so a switch
-            cannot leave one out, and a list can say which rows are the program's own.
+        required: The names the program cannot run without. A switch cannot leave one out, and a list shows its row
+            without a switch.
         triggers: The triggers the plugins registered, in load and registration order; the runtime starts them with
             itself (see :class:`~zettcode.engine.plugins.triggers.TriggerHost`).
         taken: The plugins that lost a name to one loaded before them, each as ``(name, why)``; they are not failures
@@ -197,7 +197,7 @@ class Plugins:
     services: Mapping[str, object] = field(default_factory=dict)
     plain_commands: tuple[object, ...] = ()
     failed: tuple[tuple[str, str], ...] = ()
-    builtins: tuple[str, ...] = ()
+    required: tuple[str, ...] = ()
     triggers: tuple[TriggerRegistration, ...] = ()
     taken: tuple[tuple[str, str], ...] = ()
     default_off: tuple[str, ...] = ()

@@ -1,15 +1,18 @@
 """Which plugins load, and which the next start leaves out.
 
-Two things decide it, and both are written now for the process that starts next:
+Every plugin has a row, and there is one rule for what a switch does:
 
-* A plugin installed as a distribution is switched by `[plugins] disable` in the configuration file; an older
-  file of names beside the session store is still read and merged. A plugin that says it is off by default
+* A plugin that declares a setting (:attr:`~zettcode.engine.plugins.plugin.Plugin.setting`) is switched by that key of
+  the configuration, such as ``[skills] enabled``: the key decides whether it does its work, and is what a switch
+  writes. A ``[plugins] disable`` line naming it, or ``[plugins] enabled = false``, holds it back before its class is
+  imported, so its row is off then; turning it on also clears the line.
+* Any other plugin is switched by `[plugins] disable` in the configuration file (an older file of names beside the
+  session store is still read and merged). One that says it is off by default
   (:meth:`~zettcode.engine.plugins.plugin.Plugin.default_enabled`) is the other way round: it stays off until
   `[plugins] enable` names it, and that is the line a switch turning one on writes.
-* A plugin compiled into the program has no file of its own. What turns its work off is a setting the reader already
-  has — ``[skills] enabled``, ``[mcp] enabled`` — which the plugin declares (see
-  :attr:`~zettcode.engine.plugins.plugin.Plugin.setting`). A compiled-in plugin that declares none cannot be switched
-  at all, so :func:`catalog` leaves it out rather than list a row with nothing to press.
+* A plugin the program cannot run without (what the loader's caller passed as ``required``) is never left out by a
+  ``disable`` line or the global switch, so its row has no switch of that kind; one that declares a setting is still
+  switched by it.
 
 The terminal's ``/plugins`` page, the server's panel and the SDK all come through this module, so they cannot disagree
 about which names exist, which may be switched, or where the answer is kept.
@@ -46,16 +49,16 @@ class PluginEntry:
 
     Attributes:
         name: What the plugin calls itself.
-        origin: The distribution that carries it; the same as ``name`` for a plugin compiled into the program. This
-            is the name a switch is written with, because it is the one the loader matches.
-        builtin: Whether it is compiled into the program.
+        origin: The entry-point name (or file stem) it is published under. This is the name a switch is written with,
+            because it is the one the loader matches.
+        required: Whether the program cannot run without it, so no ``disable`` line or global switch reaches it (its row has a switch only if it declares a setting).
         enabled: Whether the next start does its work.
         failure: Why it could not load in this process, or ``""`` when it did.
-        setting: The configuration key that decides a compiled-in plugin (``"skills.enabled"``); empty for an
-            installed one, which ``[plugins] disable`` holds.
-        switchable: Whether there is anything a reader can do about it *here*. A compiled-in plugin that failed has no
-            switch, and neither has one whose switch belongs to a line the reader wrote; a list draws those rows
-            without one, and says why in ``why``.
+        setting: The configuration key that decides the plugin (``"skills.enabled"``); empty for one that
+            ``[plugins] disable`` holds.
+        switchable: Whether there is anything a reader can do about it *here*. A required plugin has no switch, and
+            neither has one whose switch belongs to a line the reader wrote; a list draws those rows without one, and
+            says why in ``why``.
         why: Why it cannot be switched, when it cannot; empty otherwise.
         note: What else a list should say about the row — a plugin that lost its name to one loaded before it has no
             switch and is not a failure, and this says so.
@@ -67,7 +70,7 @@ class PluginEntry:
 
     name: str
     origin: str
-    builtin: bool = False
+    required: bool = False
     enabled: bool = True
     failure: str = ""
     setting: str = ""
@@ -100,72 +103,53 @@ def catalog(
 ) -> tuple[PluginEntry, ...]:
     """Return every plugin a list can show, in the order it shows them.
 
-    That is: the compiled-in plugins the reader can switch, each with the setting that decides it; the installed
-    distributions, in load order, with the ones the next start leaves out; then a plugin that lost its name to one
-    loaded before it, with a note and no switch, under the installed group; then the ones that could not load, each
-    with the reason. A compiled-in plugin with no setting is not here at all: there is nothing a reader could do about
-    it.
+    A plugin is a row whether it loaded, is switched off, is off by default, or failed: that is the one rule, and it
+    is what keeps a plugin the reader cannot see from being a plugin the reader cannot switch. The rows are the
+    plugins that loaded (in load order), then the ones the next start leaves out, then a plugin that lost its name to
+    one loaded before it (a note, no switch), then the ones that could not load, each with the reason.
 
     Args:
         config: Settings the switches are read from.
-        bundle: What the loader produced, whose ``builtins`` says which rows are the program's own.
+        bundle: What the loader produced, whose ``required`` says which rows have no switch.
         entry_points: The installed entry points; ``None`` reads the ones this environment has, so a test can pass
             its own instead of installing a distribution.
     """
-    builtins = set(bundle.builtins)
+    required = set(bundle.required)
     off = set(off_names(config))
     # The two lists a reader wrote, and the plugins the loader left out only because they ask to be: a row is on when
     # it was named, or when nothing holds it back and it wants to be on.
     turned_on = set(config.enabled_plugins)
     by_default = set(bundle.default_off)
-    compiled: list[PluginEntry] = []
-    installed: list[PluginEntry] = []
+    rows: list[PluginEntry] = []
     for plugin in bundle.plugins:
         origin = plugin.origin or plugin.name
-        setting = plugin.setting
-        if origin in builtins:
-            if setting is not None:
-                compiled.append(
-                    PluginEntry(
-                        plugin.name,
-                        origin,
-                        builtin=True,
-                        enabled=bool(getattr(config, setting.field)),
-                        setting=setting.path,
-                        description=plugin.description,
-                    )
-                )
-            continue
-        installed.append(
-            _installed(
+        rows.append(
+            _row(
                 plugin.name,
                 origin,
                 config,
+                required=origin in required or plugin.name in required,
                 off=off,
                 turned_on=turned_on,
                 by_default=by_default,
+                setting=plugin.setting,
                 description=plugin.description,
             )
         )
-    points = tuple(entry_points) if entry_points is not None else loader.installed_entry_points()
-    seen = {entry.origin for entry in installed} | {origin for origin, _why in bundle.failed}
+    points = tuple(entry_points) if entry_points is not None else loader.installed_entry_points(terminal=True)
+    seen = {entry.origin for entry in rows} | {origin for origin, _why in bundle.failed}
     for point in points:
-        # A required plugin has an entry point and is the program's own: it is not a row nobody can move.
-        if point.name in seen or point.name in builtins:
+        if point.name in seen:
             continue
-        # A part for a screen is listed by a process that has one. A bundle that holds none of it (the SDK, the
-        # server) is not offering switches for things it never loads — unless one is switched off, which is the one
-        # state in which a part is absent from a bundle that would have it.
-        if loader.part_group(point) is not None:
-            if point.name not in off:
-                continue
         # This one never loaded, so there is no object to ask: its distribution's summary is what it has to say. The
         # metadata is read here and not for every entry point, because a row that loaded speaks for itself.
-        installed.append(
-            _installed(
+        seen.add(point.name)
+        rows.append(
+            _row(
                 point.name,
                 point.name,
                 config,
+                required=point.name in required,
                 off=off,
                 turned_on=turned_on,
                 by_default=by_default,
@@ -176,53 +160,43 @@ def catalog(
     # what says it exists: it stays on the page, off, where it can be switched back on.
     for path in loader.installed_files(config.plugins_dir):
         if path.stem not in seen:
-            installed.append(
-                _installed(path.stem, path.stem, config, off=off, turned_on=turned_on, by_default=by_default)
-            )
-    # A file can load some of its classes and fail others: every reason belongs on the file's one row, not on a
-    # second row named after the class, which no switch could ever write. A file that fails all of its classes still
-    # gets one row, with every reason joined.
+            seen.add(path.stem)
+            rows.append(_row(path.stem, path.stem, config, off=off, turned_on=turned_on, by_default=by_default))
+    # A file can load some of its classes and fail others: every reason belongs on each of the file's rows (one per class
+    # that loaded), not on a row named after the class, which no switch could ever write.
     reasons: dict[str, list[str]] = {}
     for origin, why in bundle.failed:
-        if origin not in builtins:
-            reasons.setdefault(origin, []).append(why)
-    if reasons:
-        installed = [
-            replace(entry, failure="; ".join(reasons[entry.origin])) if entry.origin in reasons else entry
-            for entry in installed
-        ]
-    loaded_origins = {entry.origin for entry in installed}
-    failures: dict[str, list[str]] = {}
-    for origin, why in bundle.failed:
-        if origin in builtins or origin not in loaded_origins:
-            failures.setdefault(origin, []).append(why)
+        reasons.setdefault(origin, []).append(why)
+    shown = {entry.origin for entry in rows}
     by_name = {point.name: point for point in points}
-    failed = [
-        _failed(
-            origin,
-            "; ".join(whys),
-            config,
-            builtin=origin in builtins,
-            off=off,
-            # A row that failed has no object either: the summary of the point it came from is all there is.
-            description=_summary(by_name[origin]) if origin in by_name else "",
+    failed: list[PluginEntry] = []
+    for origin, whys in reasons.items():
+        joined = "; ".join(whys)
+        if origin in shown:
+            # Every row this origin has (a file may load several classes), so none reads as fine.
+            rows = [replace(entry, failure=joined) if entry.origin == origin else entry for entry in rows]
+            continue
+        failed.append(
+            replace(
+                _row(
+                    origin,
+                    origin,
+                    config,
+                    required=origin in required,
+                    off=off,
+                    turned_on=turned_on,
+                    by_default=by_default,
+                    # A row that failed has no object either: the summary of the point it came from is all there is.
+                    description=_summary(by_name[origin]) if origin in by_name else "",
+                ),
+                failure=joined,
+            )
         )
-        for origin, whys in failures.items()
-    ]
     lost = [PluginEntry(name, name, enabled=False, switchable=False, note=note) for name, note in bundle.taken]
-    # The group a row belongs to decides where it stands, so a group is one run of rows and gets one heading.
-    return tuple(
-        [
-            *compiled,
-            *(entry for entry in failed if entry.builtin),
-            *installed,
-            *lost,
-            *(entry for entry in failed if not entry.builtin),
-        ]
-    )
+    return tuple([*rows, *lost, *failed])
 
 
-def _installed(
+def _row(
     name: str,
     origin: str,
     config: ZettCodeConfig,
@@ -230,16 +204,42 @@ def _installed(
     off: set[str],
     turned_on: set[str] | frozenset[str] = frozenset(),
     by_default: set[str] | frozenset[str] = frozenset(),
+    required: bool = False,
+    setting: PluginSetting | None = None,
     description: str = "",
 ) -> PluginEntry:
-    """Return one installed plugin's row: whether the next start loads it, and whether its switch can move.
+    """Return one plugin's row: whether the next start loads it, and whether its switch can move.
 
-    A plugin that asks to be off until it is named is off here too, and its row says so: the loader leaves it out
-    for that reason, and a switch turning it on writes ``[plugins] enable``. A name in ``[plugins] disable`` is a
-    reader's decision about it, so the row is off and the note is not shown for one.
+    A plugin with a setting is on when the configuration says so and nothing holds it back (a ``disable`` line, or
+    ``[plugins] enabled = false``; neither reaches a required plugin), and its switch is that key. A required plugin
+    without one is on and has no switch. Any other plugin is off when it is in ``[plugins] disable``, or when it asks to be off until
+    ``[plugins] enable`` names it and nothing does; a switch turning it on writes that line.
     """
+    if setting is not None:
+        global_off = not required and not config.plugins_enabled
+        line = not required and origin in off
+        return PluginEntry(
+            name,
+            origin,
+            required=required,
+            enabled=bool(getattr(config, setting.field)) and not global_off and not line,
+            setting=setting.path,
+            switchable=not global_off,
+            why="plugins are off entirely: [plugins] enabled = false in the configuration file" if global_off else "",
+            note="held back by [plugins] disable; switching it on clears that" if line and not global_off else "",
+            description=description,
+        )
+    if required:
+        return PluginEntry(
+            name,
+            origin,
+            required=True,
+            switchable=False,
+            why="the program cannot run without it",
+            description=description,
+        )
     why = (
-        "installed plugins are off entirely: [plugins] enabled = false in the configuration file"
+        "plugins are off entirely: [plugins] enabled = false in the configuration file"
         if not config.plugins_enabled
         else ""
     )
@@ -252,37 +252,6 @@ def _installed(
         why=why,
         note="off by default; [plugins] enable turns it on" if off_by_default and config.plugins_enabled else "",
         description=description,
-    )
-
-
-def _failed(
-    origin: str, why: str, config: ZettCodeConfig, *, builtin: bool, off: set[str], description: str = ""
-) -> PluginEntry:
-    """Return the row of a plugin that could not load.
-
-    A compiled-in one has no switch here: the object that declares its setting never loaded. An installed one keeps
-    its: ``[plugins] disable`` is exactly what would leave it out next time, and its row says both things.
-    """
-    if builtin:
-        return PluginEntry(
-            origin,
-            origin,
-            builtin=True,
-            enabled=origin not in off,
-            failure=why,
-            switchable=False,
-            why="it could not load, so there is no switch to move",
-            description=description,
-        )
-    row = _installed(origin, origin, config, off=off, description=description)
-    return PluginEntry(
-        row.name,
-        row.origin,
-        enabled=row.enabled,
-        failure=why,
-        switchable=row.switchable,
-        why=row.why,
-        description=row.description,
     )
 
 
@@ -456,7 +425,7 @@ def set_many(
     written: dict[str, bool] = {}
     keys: list[tuple[PluginSetting, bool]] = []
     problems: list[str] = []
-    settings, builtins, known = _rules(config, bundle, entry_points)
+    settings, required, known = _rules(config, bundle, entry_points)
     key_changes: list[tuple[str, PluginSetting, bool]] = []
     off_changes: dict[str, bool] = {}
     off = set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file))
@@ -470,18 +439,19 @@ def set_many(
         name = known.get(asked, asked)
         setting = settings.get(name)
         if setting is not None:
+            if name not in required and not config.plugins_enabled:
+                problems.append(
+                    f"{name} is switched by [plugins] enabled = false in the configuration file, which turns every "
+                    "plugin off; edit that line to load them again"
+                )
+                continue
             key_changes.append((name, setting, enabled))
+            if enabled and name in off and name not in required:
+                # Held by a disable line: the key alone would not bring it back, so the line goes too.
+                off_changes[name] = True
             continue
-        if name in builtins:
-            if name in {origin for origin, _why in bundle.failed}:
-                problems.append(
-                    f"{name} could not load, so the setting that switches it is not known here; "
-                    "edit the configuration file to leave it out"
-                )
-            else:
-                problems.append(
-                    f"{name} is compiled into the program and has no setting of its own, so it cannot be switched"
-                )
+        if name in required:
+            problems.append(f"{name} is one the program cannot run without, so it cannot be switched")
             continue
         if name not in known and name not in off:
             problems.append(f"No plugin is called {asked!r}; ask for the list to see the ones there are")
@@ -522,18 +492,14 @@ def set_many(
 def _rules(
     config: ZettCodeConfig, bundle: Plugins, entry_points: Iterable[EntryPoint] | None = None
 ) -> tuple[dict[str, PluginSetting], set[str], dict[str, str]]:
-    """Return what a switch needs: the settings by origin, the origins compiled in, and every name to its origin.
+    """Return what a switch needs: the settings by origin, the required names, and every name to its origin.
 
     A plugin may call itself something other than the distribution's name; both reach it, and both are written with the
     origin, because that is the name the loader matches.
     """
-    builtins = set(bundle.builtins)
-    settings = {
-        plugin.origin or plugin.name: plugin.setting
-        for plugin in bundle.plugins
-        if plugin.setting is not None and (plugin.origin or plugin.name) in builtins
-    }
-    points = tuple(entry_points) if entry_points is not None else loader.installed_entry_points()
+    required = set(bundle.required)
+    settings = {plugin.origin or plugin.name: plugin.setting for plugin in bundle.plugins if plugin.setting is not None}
+    points = tuple(entry_points) if entry_points is not None else loader.installed_entry_points(terminal=True)
     known: dict[str, str] = {}
     # Every origin first — a distribution's, a compiled-in plugin's, a switched-off name's — because a plugin that
     # calls itself one of those must not take it over: the page's switch for that name would write the plugin's
@@ -541,7 +507,7 @@ def _rules(
     for plugin in bundle.plugins:
         origin = plugin.origin or plugin.name
         known[origin] = origin
-    for name in (*builtins, *(point.name for point in points)):
+    for name in (*required, *(point.name for point in points)):
         known[name] = name
     for path in loader.installed_files(config.plugins_dir):
         known[path.stem] = path.stem
@@ -549,7 +515,7 @@ def _rules(
         known[name] = name
     for plugin in bundle.plugins:
         known.setdefault(plugin.name, plugin.origin or plugin.name)
-    return settings, builtins, known
+    return settings, required, known
 
 
 def set_enabled(

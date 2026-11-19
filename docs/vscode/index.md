@@ -157,11 +157,9 @@ A plugin installed beside the server adds commands here too: they appear in the 
 conversation; one that is a preset for a request starts that request, with the command as its line and the preset as
 what the model reads.
 
-**ZettCode: Show Plugins** lists every plugin you can switch: the ones compiled into the program first, then the
-ones installed beside it, each with a switch and the reason on any that failed. A switch is written down now and
+**ZettCode: Show Plugins** lists every plugin, each with a switch (the few the program requires have none) and the reason on any that failed. A switch is written down now and
 honoured the **next** time the server starts — this one does the work it loaded, so **ZettCode: Restart Server**
-applies it. Where it is written is the plugin's own business: an installed plugin goes in the file the terminal's
-`/plugins` writes, a compiled-in one in your configuration file (`[skills] enabled`, `[mcp] enabled`, …). That file
+applies it. Where it is written is the plugin's own business: a plugin with a setting goes in that key of your configuration file (`[skills] enabled`, `[mcp] enabled`, …), any other in `[plugins] disable` there, the same file the terminal's `/plugins` writes. That file
 is read and replaced as a whole, so two programs writing it at the same moment keep the last write; the terminal
 and one server are the ordinary case.
 

@@ -11,7 +11,7 @@ from zett_agent.extensions.ask_user import AskUserExtension
 from zettcode.ask_user import AskUser
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import AgentBuild, load_plugins
-from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
+from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP
 
 
 class FakeEntryPoint:
@@ -50,7 +50,7 @@ def test_the_plugin_is_a_part_of_the_agent_found_through_its_entry_point_group()
     found = {point.name: point for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)}
 
     assert found["ask-user"].value == "zettcode.ask_user.plugin:AskUser"
-    assert part_group(found["ask-user"]) == AGENT_PART_GROUP
+
     assert AskUser.name == "ask-user"
 
 

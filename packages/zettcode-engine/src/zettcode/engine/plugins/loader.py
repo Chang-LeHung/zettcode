@@ -56,97 +56,36 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 logger = logging.getLogger("zettcode.plugins")
 
-#: What a caller may hand as a builtin: the plugin itself, or its class, which the loader builds (the agent's list
-#: names classes; the terminal's names instances). All three loader signatures take this one union.
+#: What a caller may hand over whole: the plugin itself, or its class, which the loader builds.
 OfferedPlugin: TypeAlias = Plugin[Any] | type[Plugin[Any]]
 
-#: The one entry-point group: a plugin class per line, whichever part of the program it is (see
-#: :data:`PROGRAM_DISTRIBUTIONS` for the ones the program itself publishes).
+#: The entry-point group every process reads: a plugin class per line. There is no kind of plugin that is more
+#: privileged than another; what a program cannot run without is named by the caller (``required``).
 PLUGIN_ENTRY_POINT_GROUP = "zettcode.plugin"
 
-#: The group this used to be, still read so a plugin published before the rename keeps loading. One release.
-LEGACY_ENTRY_POINT_GROUP = "zettcode.plugins"
-
-#: The roles a distribution of the program may publish its plugins in. Being unswitchable, ahead of everything, or
-#: loaded only by a screen is a privilege of the program, not of whoever declares an entry point: the role is decided by
-#: the **distribution** a point came from, which `importlib.metadata` knows before the plugin's module is imported (so a
-#: process with no screen never imports the terminal's parts). A point that says nothing of its distribution (a test's
-#: stand-in) is an ordinary plugin unless the table names it.
-AGENT_ROLE = "agent"
-TERMINAL_ROLE = "terminal"
-
-#: The roles, by the distributions that publish them: the agent's parts (the tools, the session log, the permission, the
-#: compaction, ...) are loaded by every front end and cannot be switched off — a configuration key such as
-#: ``[skills] enabled`` is what turns a feature off; the terminal's (presenters, pets, palettes, commands) only a screen
-#: loads, because they would import the whole terminal into the SDK and the server to offer them nothing.
-PROGRAM_DISTRIBUTIONS: dict[str, frozenset[str]] = {
-    AGENT_ROLE: frozenset(
-        {
-            "zettcode-sdk",
-            "zettcode-skills",
-            "zettcode-mcp",
-            "zettcode-messaging",
-            "zettcode-files",
-            "zettcode-jit-harness",
-            "zettcode-ask-user",
-            "zettcode-instructions",
-            "zettcode-memory",
-            "zettcode-todos",
-            "zettcode-tool-output",
-            "zettcode-truncation",
-            "zettcode-guidance",
-            "zettcode-one-system",
-        }
-    ),
-    TERMINAL_ROLE: frozenset({"zettcode-app", "zettcode-commands", "zettcode-pets", "zettcode-presenters"}),
-}
-
-#: What the two old group names were called, for code that asks for a role by name.
-AGENT_PART_GROUP = AGENT_ROLE
-TERMINAL_PART_GROUP = TERMINAL_ROLE
+#: The group only a process with a screen reads. A plugin that draws (the commands, the presenters, the pets, the
+#: palettes) publishes here instead, so the SDK and the server never look at it, let alone import it. Nothing else is
+#: different about it: it is the same class, the same switch and the same row on the plugins page.
+TERMINAL_ENTRY_POINT_GROUP = "zettcode.tui"
 
 
-def part_group(point: EntryPoint) -> str | None:
-    """Return the role ``point`` is a part of, or ``None`` when it is an ordinary plugin of a reader's.
+def installed_entry_points(*, terminal: bool = False) -> tuple[EntryPoint, ...]:
+    """Return the plugin entry points installed in this environment, sorted by name and then by distribution.
 
-    The distribution says it, which is what a point published before the groups were merged cannot be trusted to: an
-    old wheel still declares ``zettcode.agent`` or ``zettcode.terminal``, and the role is the same. A stand-in that
-    names no distribution (a test's) is read from those old group names, which is all it has to say what it is.
-    """
-    dist = _distribution(point)
-    if dist is not None:
-        for role, allowed in PROGRAM_DISTRIBUTIONS.items():
-            if dist in allowed:
-                return role
-        return None
-    return _legacy_role(getattr(point, "group", "") or "")
-
-
-def _legacy_role(group: str) -> str | None:
-    """Return the role an old group name stands for, or ``None``."""
-    return {"zettcode.agent": AGENT_ROLE, "zettcode.terminal": TERMINAL_ROLE}.get(group)
-
-
-def installed_entry_points() -> tuple[EntryPoint, ...]:
-    """Return every plugin entry point installed in this environment, the program's parts first.
-
-    The import is deferred to the call so the plugin package itself stays cheap to import, and results are sorted by
-    entry-point name so the load order is the same on every run. The group this used to be called is read beside the
-    current one, so a plugin published before the rename keeps loading.
+    The import is deferred to the call so the plugin package itself stays cheap to import. The terminal's group is
+    read only for ``terminal=True``: a process that has no screen does not even list what it would never load.
     """
     from importlib.metadata import entry_points
 
-    current = entry_points(group=PLUGIN_ENTRY_POINT_GROUP)
-    # What the group was called before, the two the parts used, and the plugin line: a wheel published then is still
-    # read, so nothing on PyPI stops loading when the program that reads it is upgraded.
-    older = [
-        *entry_points(group=LEGACY_ENTRY_POINT_GROUP),
-        *entry_points(group="zettcode.agent"),
-        *entry_points(group="zettcode.terminal"),
-    ]
-    # The program's parts first: a reader's plugin that took one of their names would lose it to the part, so the part
-    # must be the one offered first (see `run`'s clash check).
-    return tuple(sorted((*current, *older), key=lambda point: (part_group(point) is None, point.name)))
+    found = list(entry_points(group=PLUGIN_ENTRY_POINT_GROUP))
+    if terminal:
+        found.extend(entry_points(group=TERMINAL_ENTRY_POINT_GROUP))
+    return tuple(sorted(found, key=lambda point: (point.name, _distribution(point) or "")))
+
+
+def screen_entry_points() -> tuple[EntryPoint, ...]:
+    """Return only the plugins published for a screen: what a picture of the shell is drawn with, and nothing else."""
+    return tuple(point for point in installed_entry_points(terminal=True) if point.group == TERMINAL_ENTRY_POINT_GROUP)
 
 
 def installed_files(directory: Path) -> tuple[Path, ...]:
@@ -226,12 +165,11 @@ def load_plugins(
     config: ZettCodeConfig,
     *,
     entry_points: Iterable[EntryPoint] | None = None,
-    builtins: Sequence[OfferedPlugin],
+    builtins: Sequence[OfferedPlugin] = (),
     shared: Mapping[str, object] | None = None,
     required: Sequence[str] = (),
-    agent: bool = True,
 ) -> Plugins:
-    """Load the builtin plugins and every enabled distribution into one bundle.
+    """Load every enabled plugin into one bundle.
 
     Args:
         config: Settings the plugins are activated with, and the source of the
@@ -239,15 +177,11 @@ def load_plugins(
         entry_points: Entry points to load; ``None`` reads the installed ones.
             Tests pass their own, so discovery can be exercised without
             installing a distribution.
-        builtins: Plugins compiled into the repository, which the engine does not ship; ``()`` for none. A class is
-            instantiated, as an entry point's is, so the agent's list of classes is passed as it stands; unlike one
-            from a distribution, a builtin that cannot be built raises, because it is the program's own code. The
-            program's agent is not passed here: it is found through the ``zettcode.plugin`` group with the agent role,
-            unless ``agent`` is false. A caller that cannot discover (a test) may pass
-            :data:`zettcode.sdk.builtins.AGENT_PLUGINS`.
+        builtins: Plugins handed over whole (a class or an instance), loaded whatever the switches say; ``()`` for none.
         shared: Objects the runtime hands over by name before any plugin activates (see
             :mod:`zettcode.engine.plugins.services`); a plugin reads them with ``container.service``, and they
             stay findable on the returned bundle. A plugin cannot provide a name that is taken here.
+        required: Names of the plugins the program cannot run without; see :func:`run`.
 
     Returns:
         The host extension, services, and load failures the plugins produced.
@@ -279,13 +213,11 @@ class _Candidate:
 
     plugin: Plugin[Any] | None
     origin: str
-    builtin: bool = False
     label: str | None = None
     error: BaseException | None = None
-    #: Whether it came from the program's own entry-point group, which is ahead of every installed plugin.
-    part: bool = False
-    #: Whether it is one of the plugins that compose the agent (the ``agent`` role): a part that is also built in.
-    agent: bool = False
+    #: Whether the caller handed it in whole instead of leaving it to be discovered; such a plugin is not held back by
+    #: a switch, since whoever passed it asked for it.
+    offered: bool = False
 
     @property
     def name(self) -> str:
@@ -306,40 +238,36 @@ def run(
     entry_points: Iterable[EntryPoint] | None,
     required: Sequence[str] = (),
     terminal: bool = False,
-    agent: bool = True,
 ) -> Plugins:
-    """Feed the builtins, the enabled distributions and the single-file plugins to ``loader``, and return what it bundled.
+    """Feed the offered plugins, the enabled distributions and the single-file plugins to ``loader``, and bundle them.
 
-    The candidates are offered builtins first, then distributions, then files, and are activated in dependency order
-    (:mod:`~zettcode.engine.plugins.graph`): stable, so without ``deps`` that is the order they were offered in.
-    Builtins always load, while ``[plugins] enabled`` only gates the distributions and the files.
+    Every plugin is the same kind of thing. The candidates are the ones the caller offered whole (``builtins``), then
+    the installed entry points, then the files; they are activated in dependency order
+    (:mod:`~zettcode.engine.plugins.graph`) after a stable sort by ``rank``. ``[plugins] disable`` and
+    ``[plugins] enabled`` hold back the installed ones and the files. What the caller offered whole always loads.
 
     Args:
+        builtins: Plugins the caller hands over as they are, a class or an instance; ``()`` for none. They are not
+            discovered, so a test can pass the exact set it wants.
         required: Names of plugins the program cannot run without. A ``disable`` line that names one — or one of the
             plugins it needs — is ignored and logged, and one that still did not load makes the call raise. A name is
-            matched against the entry-point name (the origin) as well as ``Plugin.name``, so a required plugin keeps
-            the two equal; one whose ``name`` differs cannot be pulled back in once disabled.
-        terminal: Whether the loader has a screen, which is what the parts with the ``terminal`` role wait for.
+            matched against the entry-point name (the origin) as well as ``Plugin.name``.
+        terminal: Whether the loader has a screen, which is what makes it read the terminal's entry-point group
+            (:data:`TERMINAL_ENTRY_POINT_GROUP`) beside the common one.
 
     Raises:
         RequiredPluginError: A plugin in ``required`` is not loaded.
     """
     candidates: list[_Candidate] = []
+    offered_names: set[str] = set()
     for offered in builtins:
         plugin = _offered_plugin(offered)
-        candidates.append(_Candidate(plugin, plugin.name or type(plugin).__name__, builtin=True))
-        if candidates[-1].origin not in loader.builtins:
-            loader.builtins.append(candidates[-1].origin)
+        origin = plugin.name or type(plugin).__name__
+        candidates.append(_Candidate(plugin, origin, offered=True))
+        offered_names.add(origin)
     # Offered by origin, so the ones a ``disable`` line holds back can still be pulled in when the program needs them.
     sources: dict[str, Callable[[], list[_Candidate]]] = {}
-    # With `[plugins] enabled = false` nothing is loaded but the parts of the program (the `terminal` role,
-    # which that switch is not about) and the plugins the program requires.
-    points = tuple(entry_points) if entry_points is not None else installed_entry_points()
-    # The parts of the program that need a screen are for a loader that has one.
-    points = tuple(point for point in points if terminal or part_group(point) != TERMINAL_PART_GROUP)
-    points = tuple(point for point in points if agent or part_group(point) != AGENT_PART_GROUP)
-    parts = {point.name for point in points if part_group(point) is not None}
-    agent_names = {point.name for point in points if part_group(point) == AGENT_PART_GROUP}
+    points = tuple(entry_points) if entry_points is not None else installed_entry_points(terminal=terminal)
     # The configuration file's own list and the switch file's, merged for the one caller that loads. The switch
     # module cannot be imported here (it imports this one), so the union is written out; `off_names` is the same
     # rule for the front ends.
@@ -352,43 +280,44 @@ def run(
     for point in points:
         who = _described(point)
         if point.name in sources:
-            # The program's parts come first, so a later plugin under the same name is the one that loses; it must
-            # not take the place of a part, a required one least of all. The same distribution listed twice (a stale
-            # `dist-info` beside an editable copy) is an environment quirk, not a clash.
+            # The first one found keeps the name. The same distribution listed twice (a stale `dist-info` beside an
+            # editable copy) is an environment quirk, not a clash.
             if _distribution(point) is None or _distribution(point) != owners_dist.get(point.name):
                 taken.setdefault(point.name, []).append(who)
             continue
         owners[point.name] = who
         owners_dist[point.name] = _distribution(point)
-        sources[point.name] = partial(_from_point, loader, point)
+        sources[point.name] = partial(_from_point, point)
     if config.plugins_enabled:
         for path in installed_files(config.plugins_dir):
             if path.stem in sources:
                 taken.setdefault(path.stem, []).append(f"the file {path.name}")
                 continue
             owners[path.stem] = f"the file {path.name}"
-            sources[path.stem] = partial(_from_file, loader, path)
-    held = {origin for origin in sources if origin in disabled or (not config.plugins_enabled and origin not in parts)}
-    for origin in sources:
-        # A name the caller already passed as a built-in is that plugin; the discovered twin of it is the same part
-        # offered twice, not a second plugin to refuse as a duplicate.
-        if origin not in held and origin not in loader.builtins:
-            candidates.extend(sources[origin]())
-    # A name on that list can only reach a distribution or a file, unless the program needs it: the plugins it lists
-    # as builtin loaded above, and the required ones, with what they need, are pulled in below. A line that names one
-    # does nothing, and a reader who wrote it is told so instead of left to think the part is off.
-    for origin in sorted(disabled & set(loader.builtins)):
+            sources[path.stem] = partial(_from_file, path)
+    held = {origin for origin in sources if origin in disabled or not config.plugins_enabled}
+    for origin in sorted(disabled & offered_names):
+        # Offered whole, so the line cannot reach it; the pull loop below tells the reader about the discovered ones.
         logger.warning(
             "plugins.required",
-            extra={"plugin": origin, "reason": "part of the program; [plugins] disable does not reach it"},
+            extra={"plugin": origin, "reason": "handed over by the program; [plugins] disable does not reach it"},
         )
-    # The plugins that compose the agent are protected like the required ones, but a failure of one is recorded and
-    # does not stop the call: that is what they were as compiled-in plugins.
-    protected = set(required) | agent_names
+    for origin in sources:
+        # A name the caller already offered is that plugin; the discovered twin of it is the same plugin offered
+        # twice, not a second one to refuse as a duplicate. It is noted at debug level, for whoever is diagnosing a
+        # package that publishes a name the program handed over.
+        if origin in offered_names:
+            logger.debug(
+                "plugins.name_offered", extra={"plugin": origin, "who": owners[origin], "reason": "handed over whole"}
+            )
+        if origin not in held and origin not in offered_names:
+            candidates.extend(sources[origin]())
+    # What the program requires is loaded whatever the switches say, with what it needs; a reader who wrote a line
+    # that cannot take effect is told so instead of left to think the plugin is off.
     while True:
         by_name = {candidate.name: candidate for candidate in candidates}
         wanted: set[str] = set()
-        queue = [name for name in protected]
+        queue = list(required)
         while queue:
             name = queue.pop()
             if name in wanted:
@@ -396,29 +325,22 @@ def run(
             wanted.add(name)
             if name in by_name:
                 queue.extend(by_name[name].deps)
-        pulled = sorted(
-            origin for origin in held if origin in wanted and not (origin in parts and origin in loader.builtins)
-        )
+        pulled = sorted(origin for origin in held if origin in wanted and origin not in offered_names)
         if not pulled:
             break
         for origin in pulled:
             held.discard(origin)
             added = sources[origin]()
             if origin in disabled:
-                disabled_plugins = [candidate.plugin for candidate in added if candidate.plugin is not None]
-                off_plugin = disabled_plugins[0] if disabled_plugins else None
-                if origin in required:
-                    event = "plugins.required"
-                    reason = "the program cannot run without it; [plugins] disable does not reach it"
-                elif off_plugin is not None and not off_plugin.default_enabled():
-                    event = "plugins.default_off"
-                    reason = "off by default; [plugins] enable turns it on"
-                else:
-                    event = "plugins.required"
-                    reason = "part of the program; [plugins] disable does not reach it"
-                logger.warning(event, extra={"plugin": origin, "reason": reason})
+                logger.warning(
+                    "plugins.required",
+                    extra={
+                        "plugin": origin,
+                        "reason": "the program cannot run without it; [plugins] disable does not reach it",
+                    },
+                )
             candidates.extend(added)
-    # A name that was taken is reported only when the one that has it was actually offered: a part the reader switched
+    # A name that was taken is reported only when the one that has it was actually offered: one the reader switched
     # off refused nothing, and its row on the plugins page says "off", not "failed".
     for name, losers in taken.items():
         if name in held:
@@ -432,17 +354,13 @@ def run(
                 extra={"plugin": name, "who": who, "reason": reason},
             )
             loader.taken.append((name, f"{who}: {reason}"))
-    # A plugin of the program is the program's own whether or not it loads, and whether or not it is ever activated: one
-    # refused for a need that failed still goes on the list a switch is refused against.
-    loader.builtins.extend(c.origin for c in candidates if c.builtin and c.origin not in loader.builtins)
-    # A plugin that says it is off by default is loaded only when the configuration enables it, the program
-    # requires it, or a loader that survives needs it. The last part is the closure the pull loop above already
-    # protects for a required plugin; it is repeated here because the default-off choice is per plugin and can
-    # otherwise strand a required plugin's dependency.
+    # A plugin that says it is off by default is loaded only when the configuration enables it, the caller requires
+    # it, or another plugin that loads needs it.
     kept = [
         candidate
         for candidate in candidates
         if candidate.plugin is None
+        or candidate.offered
         or candidate.plugin.default_enabled()
         or candidate.name in enabled
         or candidate.origin in enabled
@@ -475,11 +393,14 @@ def run(
         and candidate.plugin is not None
         and not candidate.plugin.default_enabled()
     )
-    candidates = kept
-    # Within the program's own groups the stated rank decides, then the name; the stable sort keeps everything else.
-    at = [i for i, c in enumerate(candidates) if c.agent]
-    for slot, candidate in zip(at, sorted((candidates[i] for i in at), key=_rank), strict=True):
-        candidates[slot] = candidate
+    # Among equal ranks, what the caller named (offered whole, or required) goes first, so a plugin nobody asked for
+    # cannot take a name one of those needs; `rank` stays the primary key because extensions that share a priority
+    # run in the order they registered.
+    named = set(required)
+    candidates = sorted(
+        kept,
+        key=lambda c: (_rank(c), 0 if (c.offered or c.name in named or c.origin in named) else 1),
+    )
     ordered, refused = graph.order([graph.Node(c.name, c.deps) for c in candidates])
     loaded: set[int] = set()
     for index in sorted(refused):
@@ -496,17 +417,10 @@ def run(
             # It was ready, but a plugin it needs failed to activate: the failure is that plugin's, and this one is
             # reported as the casualty it is rather than activated without what it asked for.
             loader.fail(candidate.origin, f"needs plugin {lost!r}, which cannot be loaded", label=candidate.label)
-        elif loader.accept(
-            candidate.plugin,
-            origin=candidate.origin,
-            builtin=candidate.builtin,
-            part=candidate.part,
-            label=candidate.label,
-        ):
+        elif loader.accept(candidate.plugin, origin=candidate.origin, label=candidate.label):
             loaded.add(index)
             names_loaded.add(candidate.name)
-    # A required plugin is the program's own as much as a compiled-in one: no switch reaches it, and a list says so.
-    loader.builtins.extend(name for name in required if name not in loader.builtins)
+    loader.required.extend(name for name in required if name not in loader.required)
     if required:
         have = {candidates[index].name for index in loaded}
         absent: dict[str, str] = {}
@@ -534,25 +448,22 @@ def _described(point: EntryPoint) -> str:
     return f"{point.name!r} ({dist or 'unknown distribution'}" + (f", {value})" if value else ")")
 
 
-def _rank(candidate: _Candidate) -> tuple[int, str]:
-    """Sort key of a part inside its group: its declared rank, then its name; a failure sorts first, by origin."""
-    return (candidate.plugin.rank if candidate.plugin is not None else -1, candidate.origin)
+def _rank(candidate: _Candidate) -> int:
+    """Sort key: the plugin's declared rank. The call site breaks ties by what the caller named, then keeps discovery order."""
+    return candidate.plugin.rank if candidate.plugin is not None else 0
 
 
-def _from_point(loader: Loader, point: EntryPoint) -> list[_Candidate]:
+def _from_point(point: EntryPoint) -> list[_Candidate]:
     """Resolve one entry point into a candidate; a failure is a candidate that carries it."""
-    group = part_group(point)
-    part = group is not None
-    agent = group == AGENT_PART_GROUP
     try:
-        return [_Candidate(_instantiate(point), point.name, builtin=agent, part=part, agent=agent)]
+        return [_Candidate(_instantiate(point), point.name)]
     except KeyboardInterrupt:
         raise
     except BaseException as error:
-        return [_Candidate(None, point.name, builtin=agent, error=error, part=part, agent=agent)]
+        return [_Candidate(None, point.name, error=error)]
 
 
-def _from_file(loader: Loader, path: Path) -> list[_Candidate]:
+def _from_file(path: Path) -> list[_Candidate]:
     """Import one single-file plugin into candidates; a failure is recorded and gives none."""
     origin = path.stem
     try:
@@ -586,10 +497,9 @@ class Loader:
         #: The origins of the plugins left out only because they say they are off by default, in discovery order; a
         #: list shows one as off and a switch writes it into ``[plugins] enable``.
         self.off_by_default: list[str] = []
-        #: The origins of the compiled-in plugins, in load order, so a bundle can say which rows are the program's.
-        self.builtins: list[str] = []
-        #: Whether the plugin being accepted is the program's own (built in, or one of its parts); read by ``merge``.
-        self.program = False
+        #: The names the program cannot run without (what the caller passed as ``required``), so a list can say which
+        #: rows have no switch.
+        self.required: list[str] = []
         self._identities: set[str] = set()
         self._extension_names: set[str] = {HOST_NAME}
         self._mention_kinds: set[str] = set()
@@ -683,7 +593,7 @@ class Loader:
             services=dict(self.services),
             plain_commands=tuple(self.plain_commands),
             failed=tuple(self.failed),
-            builtins=tuple(self.builtins),
+            required=tuple(self.required),
             triggers=tuple(self.triggers),
             taken=tuple(self.taken),
             default_off=tuple(dict.fromkeys(self.off_by_default)),
@@ -701,8 +611,6 @@ class Loader:
         plugin: Plugin[Any],
         *,
         origin: str,
-        builtin: bool = False,
-        part: bool = False,
         label: str | None = None,
     ) -> bool:
         """Activate one plugin and merge what it registered, or report why not.
@@ -712,19 +620,10 @@ class Loader:
 
         Args:
             plugin: The plugin to activate.
-            origin: The name of the distribution (or of the compiled-in plugin) it came from.
-            builtin: Whether it is compiled into the program, which is what makes it impossible to switch off.
-            part: Whether it is one of the program's own parts (a role in ``PROGRAM_DISTRIBUTIONS``). Unlike a builtin it
-                can be switched off, unless the loader's caller requires it; what it registers is the program's own,
-                which is what :attr:`program` tells :meth:`merge` while it runs.
+            origin: The entry-point name (or file stem) it came from.
             label: The class name, when this plugin came from a file that can hold several; a failure says which.
         """
-        self.program = builtin or part
         name = plugin.name or origin or type(plugin).__name__
-        if builtin and origin not in self.builtins:
-            # Recorded before it is activated: a compiled-in plugin is the program's own whether or not it loaded,
-            # and the list of them is what a switch is refused against.
-            self.builtins.append(origin)
         if plugin.setting is not None and not _is_bool_setting(self.config, plugin.setting):
             # A switch that names a setting the configuration does not have, or one that is not a boolean, would be a
             # row nobody could move or a truthy default in a panel. It is a plugin bug, and the load says so.
@@ -766,12 +665,12 @@ def _is_bool_setting(config: ZettCodeConfig, setting: PluginSetting) -> bool:
 
 
 def _offered_plugin(target: Plugin[Any] | type[Plugin[Any]]) -> Plugin[Any]:
-    """Return a builtin as an instance: the agent's list names classes, an older caller may hand one over whole."""
+    """Return an offered plugin as an instance: a caller may hand over a class or an object."""
     if isinstance(target, Plugin):
         return target
     if isinstance(target, type) and issubclass(target, Plugin):
         return target()
-    raise TypeError(f"a builtin plugin is a Plugin or a Plugin subclass, not {type(target).__name__}")
+    raise TypeError(f"an offered plugin is a Plugin or a Plugin subclass, not {type(target).__name__}")
 
 
 def _instantiate(point: EntryPoint) -> Plugin[Any]:

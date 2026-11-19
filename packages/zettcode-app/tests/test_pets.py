@@ -365,7 +365,7 @@ async def test_with_no_pets_installed_the_command_says_so_and_opens_no_panel():
     app.agent.runtime.config = dataclasses.replace(app.agent.runtime.config, disabled_plugins=("pets",))
     await _type_command(app, harness, "/pet")
     texts = [getattr(entry, "text", "") for entry in app.transcript.entries]
-    assert any("switched off" in text for text in texts), texts
+    assert any("left out" in text for text in texts), texts
 
 
 async def test_the_pet_command_names_the_pet_straight_away_and_remembers_it(config_file):  # noqa: F811

@@ -49,6 +49,7 @@ from zettcode.app.ui.widgets import (  # noqa: E402
 )
 from zettcode.config import ModelConfig, ZettCodeConfig  # noqa: E402
 from zettcode.engine.core import ZettCodeEngine  # noqa: E402
+from zettcode.engine.plugins.loader import screen_entry_points
 from zettcode.messaging.relayed import Relayed  # noqa: E402
 from zettcode.plugin_api.entries import EntryStatus  # noqa: E402
 from zettcode.presenters.labels import header_left  # noqa: E402
@@ -94,12 +95,13 @@ class Env:
                 ModelConfig(model="claude-sonnet-4-5", display_model="Claude Sonnet 4.5", token="x"),
                 ModelConfig(model="deepseek-chat", display_model="DeepSeek Chat", token="x"),
             ),
-            plugins_enabled=False,
             skills_enabled=False,
             mcp_enabled=False,
         )
         self.runtime = ZettCodeEngine.preview(config, terminal_plugins)
-        self.runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins(), agent=False)
+        self.runtime.plugins = load_terminal_plugins(
+            config, builtins=preview_plugins(), entry_points=screen_entry_points()
+        )
         self.workspace = workspace
 
     def close(self) -> None:

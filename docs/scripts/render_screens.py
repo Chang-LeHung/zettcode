@@ -54,6 +54,7 @@ from zettcode.commands.hub import DAEMONS, Daemon, HubData, HubPage
 from zettcode.commands.usage_page import UsagePage
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
+from zettcode.engine.plugins.loader import screen_entry_points
 from zettcode.jit_harness.page import HarnessPage, HarnessTarget, TableRow, TableView
 from zettcode.monitor.panel import ROWS as MONITOR_ROWS
 from zettcode.monitor.panel import MonitorPage
@@ -263,12 +264,13 @@ def shell(width: int, height: int) -> Iterator[ZettCodeApp]:
                 workspace=workspace,
                 store=workspace / "sessions",
                 models=(ModelConfig(model="example-model", token="example-token"),),
-                plugins_enabled=False,
                 skills_enabled=False,
                 mcp_enabled=False,
             )
             runtime = ZettCodeEngine.preview(config, terminal_plugins)
-            runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins(), agent=False)
+            runtime.plugins = load_terminal_plugins(
+                config, builtins=preview_plugins(), entry_points=screen_entry_points()
+            )
             app = ZettCodeApp(TerminalAgent(runtime), theme=THEME, auto_theme=False)
             app.app.resize(width, height)
             app.app.mount()
@@ -492,46 +494,42 @@ def sessions_canvas() -> Canvas:
 
 
 def plugin_rows() -> tuple[PluginRow, ...]:
-    """Return the switches a real page could have: the program's own first, then installed ones.
+    """Return the switches a real page could have: every plugin in one list, loaded or not.
 
-    The rows are the shape the editor builds — what a plugin calls itself, the distribution that carries it, whether
-    it is compiled in, whether it is on, and the key or distribution a switch is written with — with one compiled-in
-    plugin that failed, because a page with no failure does not show what a failure looks like.
+    The rows are the shape the editor builds — what a plugin calls itself, the entry point that carries it, whether
+    the program requires it, whether it is on, and the key a switch is written with — with one plugin that failed,
+    because a page with no failure does not show what a failure looks like.
     """
     return (
         PluginRow(
             "presenters",
             "zettcode-presenters",
-            builtin=True,
             setting="rows.enabled",
             description="The rows of the conversation and how they are drawn",
         ),
         PluginRow(
             "skills",
             "zettcode-skills",
-            builtin=True,
             setting="skills.enabled",
             description="The skills a workspace declares, as @ references",
         ),
         PluginRow(
             "mcp",
             "zettcode-mcp",
-            builtin=True,
             setting="mcp.enabled",
             description="MCP servers from the configuration and the workspace",
         ),
         PluginRow(
             "todos",
             "zettcode-todos",
-            builtin=True,
             enabled=False,
             setting="harness.todowrite",
             description="The todo_write tool and the plan it keeps above the composer",
         ),
         PluginRow(
             "coding",
-            "zettcode-code-agents",
-            builtin=True,
+            "zettcode-sdk",
+            required=True,
             failure="no plugin provides the model",
             switchable=False,
             why="its setting is unknown to a process that could not load it",

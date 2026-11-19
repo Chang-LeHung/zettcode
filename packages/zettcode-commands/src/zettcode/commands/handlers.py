@@ -479,7 +479,7 @@ class PluginCommand(TuiPlugin):
                 PluginRow(
                     entry.name,
                     entry.origin,
-                    entry.builtin,
+                    entry.required,
                     entry.enabled,
                     entry.failure,
                     entry.setting,
@@ -512,7 +512,9 @@ class PluginCommand(TuiPlugin):
             runtime.config = applied(runtime.config, setting, enabled)
         from zettcode.engine.plugins.switches import applied_installed
 
-        installed = {name: enabled for name, enabled in written.items() if name not in runtime.plugins.builtins}
+        by_setting = {plugin.origin or plugin.name for plugin in runtime.plugins.plugins if plugin.setting is not None}
+        # A setting plugin turned on may also have had a disable line cleared; turned off, only its key is written.
+        installed = {name: enabled for name, enabled in written.items() if name not in by_setting or enabled}
         if installed:
             # A plugin that is off until `[plugins] enable` names it is turned on by a line, not by the absence of
             # one; the running settings object follows what the file says.

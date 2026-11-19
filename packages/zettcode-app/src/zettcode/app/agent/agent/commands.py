@@ -58,17 +58,12 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
 
     @property
     def plugin_commands(self) -> tuple[Command, ...]:
-        """Return the commands the installed plugins registered, not counting the built-in ones.
+        """Return the commands the plugins registered, in load order.
 
-        The shell keeps them after everything built in, so a plugin cannot take over a built-in name;
-        plugin-versus-plugin duplicates are rejected when the plugins load.
+        The shell drops any of these whose name it or the agent already has, so a plugin cannot take over one of its
+        names; plugin-versus-plugin duplicates are rejected when the plugins load.
         """
-        return self.terminal_plugins.installed_commands
-
-    @property
-    def builtin_plugin_commands(self) -> tuple[Command, ...]:
-        """Return the commands the program's own plugins registered: ``/resume``, ``/model``, ``/usage`` and the rest."""
-        return self.terminal_plugins.builtin_commands
+        return self.terminal_plugins.commands
 
     @property
     def themes(self) -> ThemeCatalog:
@@ -94,10 +89,11 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
 
     @property
     def pets_switched_off(self) -> bool:
-        """Return whether the reader turned the pets plugin off, which is why a catalog of none is empty."""
+        """Return whether the pets plugin is left out (a `disable` line, or `[plugins] enabled = false`)."""
         from zettcode.engine.plugins import off_names
 
-        return "pets" in off_names(self.runtime.config)
+        config = self.runtime.config
+        return not config.plugins_enabled or "pets" in off_names(config)
 
     @property
     def plugin_failures(self) -> tuple[str, ...]:

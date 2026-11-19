@@ -72,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
         "list",
         help="list every plugin's name, origin and location",
         description=(
-            "List the plugins compiled into the program, the distributions installed beside it, and the single files "
+            "List every plugin — the ones published by a distribution, and the single files "
             "in ~/.zettcode/plugins: each one's name, the distribution or file it came from, where it is, and whether "
             "the next start loads it."
         ),
@@ -129,9 +129,9 @@ def build_parser() -> argparse.ArgumentParser:
             action,
             help=f"{action} a plugin for the next start",
             description=(
-                f"Write the plugin switch so the next start will {wording}. Installed distributions and single-file "
-                "plugins are switched here; a plugin compiled into the program is switched by its own setting in the "
-                "configuration file (the /plugins panel does that)."
+                f"Write the plugin switch so the next start will {wording}. Plugins from distributions and single-file "
+                "plugins are switched here; a plugin that has a setting is switched by that setting in the "
+                "configuration file (the /plugins panel does that), and the few the program requires cannot be."
             ),
         )
         switch.add_argument("name", help="the plugin's origin: its distribution, entry-point name, or file stem")
@@ -163,10 +163,9 @@ class PluginRow:
 
 
 def plugin_rows() -> list[PluginRow]:
-    """Return every plugin the program has, installed beside it, or in the plugins folder.
+    """Return every plugin there is: published by a distribution, or a file in the plugins folder.
 
-    Nothing is activated: a built-in contributes its own name and setting, an installed one its entry point and
-    distribution, a file its path. An installed plugin's class, and the file of one the next start would run, are
+    Nothing is activated: a plugin contributes its entry point and distribution, a file its path. An installed plugin's class, and the file of one the next start would run, are
     imported to ask one question — :meth:`~zettcode.engine.plugins.plugin.Plugin.default_enabled` — which is the only
     way to know whether a switch turning it on has to name it; the import builds the class and runs module-level code,
     as a start does, and calls nothing on it. A file either switch list holds back is not imported at all, because a
@@ -175,28 +174,36 @@ def plugin_rows() -> list[PluginRow]:
     state = plugin_state()
 
     from zettcode.config import read_disabled_plugins
-    from zettcode.engine.plugins.loader import (
-        PLUGIN_ENTRY_POINT_GROUP,
-        file_off_by_default,
-        installed_files,
-    )
-    from zettcode.sdk.builtins import AGENT_PLUGINS
+    from zettcode.engine.plugins.loader import file_off_by_default, installed_files
 
     off_switch = set(read_disabled_plugins(state.plugins_file))
     held = set(state.disabled_plugins)
     # Named in ``[plugins] enable``, or wanting to be on unless it is dropped: the same rule the loader keeps.
     asked_for = set(state.enabled_plugins)
     rows: list[PluginRow] = []
-    seen: set[str] = set()
-    for plugin in AGENT_PLUGINS:
-        if not plugin.name or plugin.name in seen:
-            continue
-        seen.add(plugin.name)
-        switch = f"setting {plugin.setting.path}" if plugin.setting is not None else "-"
-        rows.append(PluginRow("builtin", plugin.name, plugin.name, "compiled in", switch))
-    for name, origin, location, point in _installed_plugins(PLUGIN_ENTRY_POINT_GROUP):
+    required = _required_names()
+    for name, origin, location, point in _installed_plugins():
         # A plugin that cannot be imported has no answer, and a list draws it as on: the start is where its failure
         # belongs, and a row must not become a traceback.
+        setting = _setting_of(point)
+        is_required = name in required
+        if not is_required and not state.plugins_enabled:
+            # The global switch turns every other plugin off, a setting's too; offering a per-plugin switch would
+            # write a line the next start ignores.
+            rows.append(PluginRow("installed", name, origin, location, "plugins.enabled", False))
+            continue
+        if setting:
+            # A required plugin with a setting is still switched by it, and no disable line reaches it.
+            if not is_required and (name in held or name in off_switch):
+                switch = f"setting {setting} (held by [plugins] disable)"
+                rows.append(PluginRow("installed", name, origin, location, switch, False))
+            else:
+                rows.append(PluginRow("installed", name, origin, location, f"setting {setting}"))
+            continue
+        if is_required:
+            # Loaded whatever the global switch says, so it is on here too.
+            rows.append(PluginRow("installed", name, origin, location, "required", True))
+            continue
         by_default = bool(_off_by_default(point))
         rows.append(
             PluginRow(
@@ -226,21 +233,46 @@ def plugin_rows() -> list[PluginRow]:
     return rows
 
 
-def _installed_plugins(group: str) -> list[tuple[str, str, str, EntryPoint]]:
-    """Return ``(entry point, distribution, location, point)`` for every distribution that publishes a plugin a reader owns.
+def _required_names() -> frozenset[str]:
+    """Return the names the program cannot run without, which have no switch."""
+    from zettcode.app.plugins.loader import REQUIRED_NAMES
 
-    The program's own parts publish in the same group now, and they are not a reader's to install, switch or remove:
-    their distribution is in `PROGRAM_DISTRIBUTIONS`, and this leaves them to `/plugins`, which shows them read-only.
+    return frozenset(REQUIRED_NAMES)
+
+
+def _setting_for_origin(origin: str) -> str:
+    """Return the setting of the one plugin published as ``origin``, importing that plugin and no other."""
+    for entry, _dist, _location, point in _installed_plugins():
+        if entry == origin:
+            return _setting_of(point)
+    return ""
+
+
+def _setting_of(point: EntryPoint) -> str:
+    """Return the configuration key that switches the plugin behind ``point`` (``"skills.enabled"``), or ``""``."""
+    try:
+        setting = point.load().setting
+    except KeyboardInterrupt:
+        raise
+    except BaseException:  # noqa: BLE001 - an import failure is the loader's to report, not this list's
+        return ""
+    return str(setting.path) if setting is not None else ""
+
+
+def _installed_plugins() -> list[tuple[str, str, str, EntryPoint]]:
+    """Return ``(entry point, distribution, location, point)`` for every plugin a distribution publishes.
+
+    Both groups are read: the one every process loads and the one only a terminal does.
     """
     from importlib import metadata
 
-    from zettcode.engine.plugins.loader import LEGACY_ENTRY_POINT_GROUP, part_group
+    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, TERMINAL_ENTRY_POINT_GROUP
 
     found: list[tuple[str, str, str, EntryPoint]] = []
     for distribution in metadata.distributions():
         origin = distribution.metadata["Name"] or distribution.name
         for point in distribution.entry_points:
-            if point.group not in (group, LEGACY_ENTRY_POINT_GROUP) or part_group(point) is not None:
+            if point.group not in (PLUGIN_ENTRY_POINT_GROUP, TERMINAL_ENTRY_POINT_GROUP):
                 continue
             try:
                 location = str(distribution.locate_file(""))
@@ -450,6 +482,14 @@ def uninstall(name: str) -> int:
     if tool is None:
         print(NO_INSTALLER, file=sys.stderr)
         return EXIT_FAILED
+    if _normal(distribution) in _program_distributions():
+        print(
+            f"zettcode plugin: {distribution} is a part of the program itself (zettcode depends on it), so it is not "
+            "removed; a plugin it publishes can be left out with `zettcode plugin disable <plugin>` (names are in "
+            "`zettcode plugin list`) unless the program requires it",
+            file=sys.stderr,
+        )
+        return EXIT_FAILED
     print(f"uninstalling {distribution}")
     # pip asks before removing; uv does not and has no such flag.
     flags = ["-y", distribution] if tool.kind == "pip" else [distribution]
@@ -460,6 +500,37 @@ def uninstall(name: str) -> int:
     forgot = _forget_switches([name, *_entry_names_for_distribution(distribution)])
     print(f"uninstalled; start ZettCode again to drop what it added{forgot}")
     return EXIT_OK
+
+
+def _normal(name: str) -> str:
+    """Return a distribution name the way pip compares it."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _program_distributions() -> frozenset[str]:
+    """Return ``zettcode`` and every distribution it depends on, however deep: what removing would break the program.
+
+    A requirement behind an environment marker other than an extra counts whatever platform this is: refusing to remove
+    one too many is the safe side."""
+    from importlib import metadata
+
+    seen: set[str] = set()
+    queue = ["zettcode"]
+    while queue:
+        name = _normal(queue.pop())
+        if name in seen:
+            continue
+        seen.add(name)
+        try:
+            requires = metadata.requires(name) or []
+        except metadata.PackageNotFoundError:
+            continue
+        queue.extend(
+            match.group(0)
+            for line in requires
+            if "extra ==" not in line and (match := re.match(r"[A-Za-z0-9][A-Za-z0-9_.-]*", line))
+        )
+    return frozenset(seen)
 
 
 def _forget_switches(names: list[str]) -> str:
@@ -530,11 +601,33 @@ def switch(name: str, *, enabled: bool) -> int:
     if origin is None:
         print(
             f"zettcode plugin: no installed plugin or plugin file is called {name!r}; /plugins lists the ones there "
-            "are (a compiled-in plugin is switched by its own setting, in that list)",
+            "are (a plugin with a setting is switched by that setting, in that list)",
             file=sys.stderr,
         )
         return EXIT_FAILED
     from zettcode.engine.plugins.switches import set_installed
+
+    setting = _setting_for_origin(origin)
+    if setting and enabled and (origin in config.disabled_plugins or origin in _legacy_disabled(config)):
+        try:
+            set_installed(config, origin, enabled=True)
+        except ValueError as error:
+            print(f"zettcode plugin: {error}", file=sys.stderr)
+            return EXIT_FAILED
+        print(f"cleared the [plugins] disable line for {origin}; its setting {setting} decides the rest")
+        return EXIT_OK
+    if setting:
+        print(
+            f"zettcode plugin: {origin} is switched by the setting {setting} of the configuration file",
+            file=sys.stderr,
+        )
+        return EXIT_FAILED
+    if origin in _required_names():
+        print(
+            f"zettcode plugin: {origin} is one the program cannot run without, so it cannot be switched",
+            file=sys.stderr,
+        )
+        return EXIT_FAILED
 
     by_default = False
     if enabled:
@@ -556,6 +649,13 @@ def switch(name: str, *, enabled: bool) -> int:
     return EXIT_OK
 
 
+def _legacy_disabled(config: SwitchState) -> set[str]:
+    """Return the names the older switch file holds off."""
+    from zettcode.config import read_disabled_plugins
+
+    return set(read_disabled_plugins(config.plugins_file)) if isinstance(config.plugins_file, Path) else set()
+
+
 def _off_by_default_named(name: str) -> bool | None:
     """Return whether the plugin called ``name`` is off until ``[plugins] enable`` names it.
 
@@ -565,9 +665,9 @@ def _off_by_default_named(name: str) -> bool | None:
     says so instead of writing a line that cannot help. A name that is neither a distribution nor a file says
     ``False``.
     """
-    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, file_off_by_default
+    from zettcode.engine.plugins.loader import file_off_by_default
 
-    for entry, _origin, _location, point in _installed_plugins(PLUGIN_ENTRY_POINT_GROUP):
+    for entry, _origin, _location, point in _installed_plugins():
         if entry == name:
             return _off_by_default(point)
     path = plugins_dir() / f"{name}.py"
@@ -597,7 +697,7 @@ def _resolve_switch_name(config: SwitchState, name: str) -> str | None:
     from importlib.metadata import entry_points
 
     from zettcode.config import read_disabled_plugins
-    from zettcode.engine.plugins.loader import LEGACY_ENTRY_POINT_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
+    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, TERMINAL_ENTRY_POINT_GROUP
 
     name = _safe_name(name)
     exact = plugins_dir() / f"{name}.py"
@@ -608,8 +708,8 @@ def _resolve_switch_name(config: SwitchState, name: str) -> str | None:
         return canonical.stem
 
     if any(
-        point.name == name and part_group(point) is None
-        for group in (PLUGIN_ENTRY_POINT_GROUP, LEGACY_ENTRY_POINT_GROUP)
+        point.name == name
+        for group in (PLUGIN_ENTRY_POINT_GROUP, TERMINAL_ENTRY_POINT_GROUP)
         for point in entry_points(group=group)
     ):
         return name
@@ -627,7 +727,7 @@ def _entry_names_for_distribution(distribution: str) -> list[str]:
     """Return the plugin entry-point names a distribution carries, by distribution name (case and '-'/'_' ignored)."""
     from importlib import metadata
 
-    from zettcode.engine.plugins.loader import LEGACY_ENTRY_POINT_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
+    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, TERMINAL_ENTRY_POINT_GROUP
 
     wanted = distribution.strip().lower().replace("_", "-")
     for found in metadata.distributions():
@@ -637,7 +737,7 @@ def _entry_names_for_distribution(distribution: str) -> list[str]:
         return sorted(
             point.name
             for point in found.entry_points
-            if point.group in (PLUGIN_ENTRY_POINT_GROUP, LEGACY_ENTRY_POINT_GROUP) and part_group(point) is None
+            if point.group in (PLUGIN_ENTRY_POINT_GROUP, TERMINAL_ENTRY_POINT_GROUP)
         )
     return []
 
@@ -764,7 +864,7 @@ def distribution_for(name: str) -> str | None:
     """Return the installed distribution's name for a distribution or plugin entry-point name, if there is one."""
     from importlib import metadata
 
-    from zettcode.engine.plugins.loader import LEGACY_ENTRY_POINT_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
+    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, TERMINAL_ENTRY_POINT_GROUP
 
     try:
         found = metadata.distribution(name)
@@ -775,11 +875,7 @@ def distribution_for(name: str) -> str | None:
 
     for candidate in metadata.distributions():
         for point in candidate.entry_points:
-            if (
-                point.group in (PLUGIN_ENTRY_POINT_GROUP, LEGACY_ENTRY_POINT_GROUP)
-                and point.name == name
-                and part_group(point) is None
-            ):
+            if point.group in (PLUGIN_ENTRY_POINT_GROUP, TERMINAL_ENTRY_POINT_GROUP) and point.name == name:
                 return candidate.metadata["Name"] or candidate.name
     return None
 

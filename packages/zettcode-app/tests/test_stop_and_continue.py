@@ -102,7 +102,6 @@ def shell(tmp_path: Path, monkeypatch):
             workspace=tmp_path / "work",
             models=(ModelConfig(model="gpt-9", token="k"),),
             store=tmp_path / "sessions",
-            plugins_enabled=False,
             skills_enabled=False,
             mcp_enabled=False,
             sessions_enabled=False,

@@ -22,18 +22,16 @@ reads from another, such as the capabilities the subagents are sized by, is a ``
 a plugin builds on (the session store, the permission policy) is handed over by the runtime by name, see
 :mod:`zettcode.engine.plugins.services`.
 
-A part that lives in a distribution of its own (the skills, the MCP client, the files, the harness, the ``ask_user``
-tool, the project instructions, the plan, the shell's kept output, an over-long result, the per-tool guidance and the
-session messaging) states no rank, so it is activated ahead of this list and registers its extension first; each of
-those still runs where its own priority puts it. ``ask-user``, ``todos``, ``tool-output``, ``long-output``,
-``tool-guidelines`` and the session messaging share the 100 nearly everything else here has, so they run before what
-this module contributes in that band.
+The plugins that live in distributions of their own (the skills, the MCP client, the files, the harness, the ``ask_user``
+tool, the project instructions, the plan, the shell's kept output, an over-long result, the per-tool guidance, the
+memory and the session messaging) state no rank, so they are activated by name ahead of the ones above and register their
+extensions first; each of those still runs where its own priority puts it.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 from zettcode.config import ModelConfig
 from zettcode.engine.dialogue.side import SideQuestions
@@ -70,8 +68,6 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.config import ZettCodeConfig
     from zettcode.engine.plugins import Plugins
     from zettcode.engine.plugins.state import AgentBuild
-
-_P = TypeVar("_P", bound="Plugins")
 
 
 class CodingTools(Plugin[PluginContext]):
@@ -343,56 +339,26 @@ for _rank, _plugin in enumerate(AGENT_PLUGINS):
 assert len(set(AGENT_PLUGINS)) == len(AGENT_PLUGINS), "AGENT_PLUGINS lists a class twice"
 
 
-#: The names of those plugins, which the program cannot run without.
-AGENT_PLUGIN_NAMES: tuple[str, ...] = tuple(plugin.name for plugin in AGENT_PLUGINS)
+#: The names of those plugins, which the program cannot run without. The others the agent is made of (skills, MCP,
+#: files, ...) are ordinary plugins: they load when installed, and a reader may leave one out.
+REQUIRED_AGENT_NAMES: tuple[str, ...] = tuple(plugin.name for plugin in AGENT_PLUGINS)
 
-#: Those and the parts that live in distributions of their own (skills, MCP, files, harness, ask-user, the project
-#: instructions, the plan, the shell's kept output, an over-long result, the per-tool guidance and the session
-#: messaging): what an installation must hold.
-REQUIRED_AGENT_NAMES: tuple[str, ...] = (
-    *AGENT_PLUGIN_NAMES,
-    "files",
-    "harness",
-    "skills",
-    "skill-tool",
-    "mcp",
-    "ask-user",
-    "project-instructions",
-    "todos",
-    "tool-output",
-    "long-output",
-    "tool-guidelines",
-    "messaging",
-)
-
-
-def require_agent_parts(plugins: _P) -> _P:
-    """Return ``plugins``, or raise when the plugins that compose the agent were not found at all.
-
-    A failure to activate one is recorded in ``failed`` as it always was; what is refused here is an installation that
-    has none of them to activate, which would start an agent with no tools, no session log and no compaction.
-
-    Raises:
-        RequiredPluginError: One of :data:`AGENT_PLUGIN_NAMES` neither loaded nor failed.
-    """
-    from zettcode.engine.plugins.loader import RequiredPluginError
-
-    # Keyed on where a plugin came from and not on what it calls itself: ``builtins`` holds the origin of every plugin
-    # the program published, loaded or not, and a stranger that names itself ``mcp`` is not among them.
-    seen = set(plugins.builtins)
-    missing = {name: "not installed" for name in REQUIRED_AGENT_NAMES if name not in seen}
-    if missing:
-        raise RequiredPluginError(missing)
-    return plugins
+#: What the SDK's tests and the CLI mean by "the plugins that compose the agent's core".
+AGENT_PLUGIN_NAMES = REQUIRED_AGENT_NAMES
 
 
 def load_agent_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -> Plugins:
-    """Load the agent's plugins and the distributions a reader enabled: the loader a runtime is built with.
+    """Load the agent's plugins: the loader a runtime is built with.
 
-    The engine's own default loads the installed plugins and none of the agent's, because the engine does not ship
-    them. Whoever builds the runtime says which agent it wants: the SDK passes this, and the terminal passes
-    :func:`zettcode.app.plugins.loader.terminal_plugins`, which adds the plugins only a screen can hold.
+    The engine's own default loads whatever is installed and requires nothing. Whoever builds the runtime says which
+    plugins the program cannot run without: the SDK passes the agent's core, and the terminal passes those and the ones
+    that draw (:func:`zettcode.app.plugins.loader.terminal_plugins`).
+
+    Raises:
+        RequiredPluginError: One of :data:`REQUIRED_AGENT_NAMES` is not installed.
     """
     from zettcode.engine.plugins import load_plugins
 
-    return require_agent_parts(load_plugins(config, builtins=(), shared=shared))
+    # Handed over whole, not discovered: a distribution that publishes the same entry-point names cannot displace
+    # what the agent is made of, and `[plugins] disable` has nothing to hold back because it is already here.
+    return load_plugins(config, builtins=AGENT_PLUGINS, shared=shared, required=REQUIRED_AGENT_NAMES)

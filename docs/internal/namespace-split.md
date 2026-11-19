@@ -187,24 +187,23 @@ Each stage is one branch and one commit, and ends with `make check` green plus b
    re-exported from `zettcode.plugin_api` (nothing in the guide or in either plugin used them). The facade resolves each
    name on first use, because the boot frame imports a row constant before the settings or a provider SDK exist.
 
-   **A part of the program cannot be switched off.** `[plugins] disable`, the switch file and the `/plugins` panel
-   reach only what an entry point makes discoverable. A part of the program is listed by the program (`builtins=`), loads
-   before any distribution is looked at, and has no entry point, so none of them reaches it; one that is an optional
-   feature declares a `PluginSetting` and is switched by that key. A hand-written `disable` line that names a part is
-   ignored and logged (`plugins.required`). `test_required_plugins.py` holds it against the real list of built-ins, and
-   `test_a_part_the_program_is_made_of_is_never_discoverable_as_a_plugin` holds the other side: a distribution that is
-   a part must not declare the entry point. The next part to be split out (themes, pets, the shell's rows) follows the
-   same cut: contract in `plugin-api`, implementation in its own package, listed by the app, never an entry point.
+   **Only what the loader is told to require cannot be switched off.** (This replaced an earlier rule in which a
+   "part of the program" was a plugin of a privileged kind; there is no such kind now.) Every plugin is published by an
+   entry point, in `zettcode.plugin` or, when it needs a screen, `zettcode.tui`, and has a row on the plugins page. The
+   caller of `load_plugins` names the ones it cannot run without (`required=`): a hand-written `disable` line that names
+   one is ignored and logged (`plugins.required`), and it has no switch. A plugin that is an optional feature declares a
+   `PluginSetting` and is switched by that key. `test_required_plugins.py` holds this, and
+   `test_the_screen_group_holds_exactly_the_plugins_that_draw` holds the group a screen's plugins are published in.
 
 ## What changes for a reader and a plugin author
 
 ```python
 # before
-from zettcode import ZettCodeConfig, ZettCodeEngine   # and: import zettcode; zettcode.__version__
+from zettcode import ZettCodeConfig, ZettCodeEngine  # and: import zettcode; zettcode.__version__
 from zettcode.app.plugins import TuiPlugin, PluginContext
 
 # after
-from zettcode.config import ZettCodeConfig          # what the engine's settings are, shipped by `zettcode-engine`
+from zettcode.config import ZettCodeConfig  # what the engine's settings are, shipped by `zettcode-engine`
 from zettcode.engine import ZettCodeEngine
 from zettcode.version import __version__
 from zettcode.plugin_api import TuiPlugin, PluginContext

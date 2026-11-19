@@ -6,7 +6,7 @@ from importlib.metadata import entry_points
 from pathlib import Path
 
 from zettcode.config import ZettCodeConfig
-from zettcode.engine.plugins.loader import AGENT_PART_GROUP, PLUGIN_ENTRY_POINT_GROUP, part_group
+from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP
 from zettcode.mention import Mention, MentionProvider, MentionRegistry
 from zettcode.skills import SkillMentions, SkillResources, SkillTool
 
@@ -59,7 +59,6 @@ def test_both_plugins_are_parts_of_the_agent_found_through_its_entry_point_group
 
     assert found["skills"].value == "zettcode.skills.plugin:SkillResources"
     assert found["skill-tool"].value == "zettcode.skills.plugin:SkillTool"
-    assert part_group(found["skills"]) == AGENT_PART_GROUP, "the program's own, so no `[plugins] disable` reaches it"
 
 
 def test_the_switch_is_the_skills_setting_and_off_registers_nothing(tmp_path: Path):

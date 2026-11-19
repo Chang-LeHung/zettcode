@@ -575,13 +575,12 @@ class PluginEntry:
 
     Attributes:
         name: What the plugin calls itself.
-        origin: The distribution that carries it, which is the name a switch is written with; the same as ``name``
-            for a plugin compiled into the program.
-        builtin: Whether it is compiled into the program.
+        origin: The entry-point name it is published under, which is the name a switch is written with.
+        required: Whether the program cannot run without it, so there is no switch for it.
         enabled: Whether the next start does its work. A switch is a promise about that start, not about this process.
         failure: Why it could not load here, or ``""`` when it did.
-        setting: The configuration key that decides a compiled-in plugin (``"skills.enabled"``), or ``""`` for an
-            installed one, which `[plugins] disable` holds.
+        setting: The configuration key that decides the plugin (``"skills.enabled"``), or ``""`` for one that
+            `[plugins] disable` holds.
         switchable: Whether there is a switch to draw here; a list shows the rest without one and says ``why``.
         why: Why it cannot be switched, when it cannot; ``""`` otherwise.
         note: What else a list should say — a plugin that lost its name to one loaded before it has no switch and is
@@ -593,7 +592,7 @@ class PluginEntry:
 
     name: str
     origin: str
-    builtin: bool = False
+    required: bool = False
     enabled: bool = True
     failure: str = ""
     setting: str = ""

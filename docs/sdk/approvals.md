@@ -88,7 +88,7 @@ ends (it finished, was stopped, or failed) is denied or declined, so nothing is 
 ```python
 async with client.prompt("deploy it", on_approval=panel.show, defer_answers=True) as run:
     async for event in run:
-        ...                      # panel.show(request) returned at once; panel calls request.approve() later
+        ...  # panel.show(request) returned at once; panel calls request.approve() later
 ```
 
 ### 3. Do neither

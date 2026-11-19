@@ -488,3 +488,22 @@ def test_the_typed_page_readers_return_the_provided_services(tmp_path: Path):
     assert empty.agent.usage_ledger_service() is None
     assert empty.agent.context_report_service() is None
     assert empty.agent.context_page_service() is None
+
+
+def test_among_equal_ranks_the_plugins_the_caller_requires_activate_first(tmp_path: Path):
+    """A plugin that sorts first by name cannot activate ahead of a required one and take what it needs."""
+    points = [Point("aaa", plugin("aaa")), Point("needed", plugin("needed")), Point("zzz", plugin("zzz"))]
+
+    load_plugins(config(tmp_path), builtins=(), entry_points=points, required=["needed"])
+
+    assert Base.seen == ["needed", "aaa", "zzz"]
+
+
+def test_rank_still_decides_before_the_required_tie_break(tmp_path: Path):
+    late = plugin("late")
+    type(late).rank = 5
+    points = [Point("late", late), Point("aaa", plugin("aaa"))]
+
+    load_plugins(config(tmp_path), builtins=(), entry_points=points, required=["late"])
+
+    assert Base.seen == ["aaa", "late"]

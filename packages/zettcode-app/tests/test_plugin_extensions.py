@@ -464,12 +464,14 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
 
 
 def test_the_order_the_agent_runs_them_in_is_the_priority_of_each(tmp_path):
-    """The list above is registration order; the agent keeps a stable sort by priority, and that is the real order.
+    """The list above is the registration order the discovery helper gives (production puts the SDK's own list ahead of
+    these: see `test_the_real_loader_hands_the_agent_coding_before_the_question_tool`); the agent keeps a stable sort by
+    priority, and that is the run order.
 
     Compared with the order the SDK's own list alone used to give, the parts of other distributions moved into the
     band they share: `ask-user` and `todos` left the list for their own distributions, and `long-output`,
     `tool-guidelines` and `tool-output` left it the same way. All of them are activated at rank 0 with a priority of
-    their own (100 for these five, 80 for the skills), so they are handed over, and so run, first among the 100 band.
+    their own (100 for these five, 80 for the skills), so with the helper they are handed over, and so run, first among the 100 band.
     `AgentsMdExtension` is still first on its 10, the permissions still run at 50 (the deny before the approval),
     the skills at 80, and the capabilities and side questions at 110 and 120. Nothing is ordered against anything it
     competes with: the question tool, the plan tool, the guidance and the two output keepers are features of their
@@ -519,10 +521,9 @@ async def test_the_tools_the_model_is_offered_are_in_the_order_the_extensions_re
 
     The agent builds it as ``tuple(tool.definition for tool in context.tools.values())`` after every extension's
     ``on_tool`` has run in priority order, so within one priority it is the order the extensions registered their
-    tools in. That is why this test changes when `ask-user` or `todos` move: both are parts of other distributions now,
-    activated at rank 0, so `ask_user` is offered before the coding bundle's `read` and `todo_write` before the
-    subagents' `task`, where the old list put them last and second to last. Nothing reads a tool's position — the
-    model picks one by name and every extension finds its own — so this array is the whole effect of the move.
+    tools in. This one goes through the discovery helper, so `ask_user` is offered before the coding bundle's `read`;
+    the array the program really hands the model is pinned by the test at the end of this file. Nothing reads a
+    tool's position — the model picks one by name and every extension finds its own.
     """
     config = make_config(tmp_path, todowrite_enabled=True, subagent_enabled=True, skills_enabled=True)
     model = _RecordingModel()
@@ -637,7 +638,9 @@ async def test_the_runtime_gives_the_agent_the_plugins_extensions_then_the_host(
 
     config = make_config(tmp_path, todowrite_enabled=True)
     runtime = runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
-    extra = FakeEntryPoint("extra", offering("extra", "extra-ext"))
+    last = offering("extra", "extra-ext")
+    last.rank = 100  # a plugin that wants to be after the program's own says so
+    extra = FakeEntryPoint("extra", last)
     # The parts of other distributions are passed here the way discovery would offer them: this test replaces
     # discovery with one entry point of its own, and the plan is one of them now.
     runtime.plugins = load_plugins(
@@ -657,3 +660,39 @@ async def test_the_runtime_gives_the_agent_the_plugins_extensions_then_the_host(
     # The plan the shell reads is the extension the agent runs, and the usage it shows is what is counted.
     assert runtime.todos in extensions and runtime.usage in extensions and runtime.compaction in extensions
     await runtime.aclose()
+
+
+def test_the_real_loader_hands_the_agent_coding_before_the_question_tool(tmp_path):
+    """Production hands the SDK's list over whole, so `coding` is offered first; the helper above only discovers.
+
+    Pinned because the order of the 100 band is the order of the tools the model sees.
+    """
+    from plugin_helpers import runtime_state
+    from zettcode.sdk.builtins import load_agent_plugins
+
+    config = make_config(tmp_path, skills_enabled=False, subagent_enabled=False)
+    plugins = load_agent_plugins(config, runtime_state(config))
+
+    names = [extension.name for extension in plugins.agent_extensions(AgentBuild(model=object()))]  # type: ignore[arg-type]
+    assert names.index("CodingBundle") < names.index("AskUserExtension")
+
+
+async def test_the_tools_the_program_offers_the_model_start_with_the_coding_bundle(tmp_path):
+    """The production twin: `load_agent_plugins` hands the SDK's list over whole, so `read` comes before `ask_user`."""
+    from plugin_helpers import runtime_state
+    from zettcode.sdk.builtins import load_agent_plugins
+
+    config = make_config(tmp_path, todowrite_enabled=True, subagent_enabled=True, skills_enabled=True)
+    plugins = load_agent_plugins(config, runtime_state(config))
+    model = _RecordingModel()
+    agent = await Agent.create(
+        model,  # type: ignore[arg-type]
+        config=AgentRunConfig(session_id="s"),
+        extensions=list(plugins.agent_extensions(AgentBuild(model=object()))),  # type: ignore[arg-type]
+    )
+
+    [event async for event in agent.stream("hi", config=AgentRunConfig(session_id="s"))]
+
+    [offered] = model.offered
+    assert offered.index("read") < offered.index("ask_user")
+    assert offered[-4:] == ["repo_create", "repo_load", "repo_unload", "profile_tools"]

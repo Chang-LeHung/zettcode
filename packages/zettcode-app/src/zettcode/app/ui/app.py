@@ -182,15 +182,15 @@ class ZettCodeApp(
         self._agent = agent
         self._client = agent.client
         self._plugin_rows: tuple[UiRow, ...] = agent.plugin_rows
-        # The program's own plugins come first, then the shell's commands, then the agent's, and the installed
-        # plugins last: the first to claim a name owns it, so an installed plugin can add a command and can never
-        # shadow one the program has.
+        # The plugins' commands are listed first, then the shell's, then the agent's. A name the shell or the agent
+        # already has is theirs: a plugin can add a command and can never shadow one of those.
+        shell = ShellCommands(self)
+        own = {command.name for command in (*shell.items, *agent.commands)}
         self._commands = Registry(
             [
-                CommandList(agent.builtin_plugin_commands),
-                ShellCommands(self),
+                CommandList(tuple(command for command in agent.plugin_commands if command.name not in own)),
+                shell,
                 CommandList(agent.commands),
-                CommandList(agent.plugin_commands),
             ]
         ).items()
         # The plugins' commands reach the shell through the context they are run with, and the words their menus

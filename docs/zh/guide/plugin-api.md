@@ -38,8 +38,8 @@ class Greeter(TuiPlugin):
         return CommandResult(notification=f"hello {context.argument}")
 ```
 
-配上上面的 entry point、装好包，`/greet Ada` 会弹出一句 `hello Ada`。插件的命令排在内置命令之后，盖不掉
-`/model`、`/resume` 等命令。
+配上上面的 entry point、装好包，`/greet Ada` 会弹出一句 `hello Ada`。插件的命令盖不掉终端自己的命令，所以
+`/model`、`/resume` 等命令不会被换掉。
 
 ## 插件如何加载
 
@@ -110,9 +110,7 @@ class Journal(Plugin[PluginContext]):
     async def show(self, context: PlainCommandContext) -> TextCommandResult:
         if not context.argument:
             return TextCommandResult(message=f"{self.prefix}: nothing chosen")
-        return TextCommandResult(
-            message=f"## {self.prefix}\n\nLast {self.limit} entries about: {context.argument}"
-        )
+        return TextCommandResult(message=f"## {self.prefix}\n\nLast {self.limit} entries about: {context.argument}")
 ```
 
 运行 `zettcode --journal-limit 5`，在输入框里敲 `/journal tests`。同一个插件对
@@ -428,7 +426,7 @@ class Recap(TuiPlugin):
 屏幕上看到自己说的话。回答只出现在命令放它的地方——这里是引用。`/btw` 是同一类问题，带读者的 origin，所以
 shell 会画它，也会还原它。
 
-插件的命令排在最后，盖不掉内置命令，所以 `/model`、`/resume` 等永远按[命令](/zh/guide/commands)里说的做。
+插件的命令盖不掉终端自己的命令，所以 `/model`、`/resume` 等永远按[命令](/zh/guide/commands)里说的做。
 
 ### 返回一个文档
 
@@ -808,8 +806,8 @@ from zettcode.plugin_api import INBOX, Inbox, Plugin, PluginContext, Trigger, Tr
 
 
 class EveryMinute(Trigger):
-    name = "every-minute"            # a lowercase letter or digit first, then lowercase letters/digits/._-, 1-64; it names the lock file
-    scope = TriggerScope.MACHINE     # one on the whole machine
+    name = "every-minute"  # a lowercase letter or digit first, then lowercase letters/digits/._-, 1-64; it names the lock file
+    scope = TriggerScope.MACHINE  # one on the whole machine
 
     async def run(self, fire):
         while True:
@@ -828,8 +826,7 @@ class Heartbeat(Plugin[PluginContext]):
 
     async def on_tick(self, event: TriggerEvent) -> None:
         if self._inbox is not None:
-            self._inbox.deliver(f"tick: {event.payload['reason']}",
-                                mode="followup", origin="trigger")
+            self._inbox.deliver(f"tick: {event.payload['reason']}", mode="followup", origin="trigger")
 ```
 
 `scope` 说跑几份：

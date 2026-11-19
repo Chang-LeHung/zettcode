@@ -198,7 +198,10 @@ class ShellCommands(CommandProvider):
             # No plugin offers a pet: there is nothing to choose from, and a panel of no rows has nowhere for the mark
             # to stand. What the reader can do depends on why, so the config says which of the two it is.
             if shell.agent.pets_switched_off:
-                return CommandResult(message="The pets plugin is switched off. Turn it on with /plugins.")
+                return CommandResult(
+                    message="The pets plugin is left out: remove `pets` from [plugins] disable, or set "
+                    "[plugins] enabled = true, in the configuration file."
+                )
             return CommandResult(message="No pets are installed. They come with the program: reinstall zettcode.")
         if not context.argument:
 

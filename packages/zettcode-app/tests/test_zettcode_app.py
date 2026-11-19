@@ -577,7 +577,6 @@ def rows_and_commands(
     plain = plain_commands(ctx)
     return TuiPlugins(
         commands=(*ctx.tui.registered_commands, *plain, *commands),
-        builtin_commands=tuple((*ctx.tui.registered_commands, *plain)),
         rows=ctx.tui.rows,
         failed=tuple((origin, why) for origin, _, why in (line.partition(": ") for line in failures)),
         themes=ctx.tui.themes,
@@ -589,7 +588,7 @@ def rows_and_commands(
             INBOX: Inbox(IdleDelivery(), cap=inbox_cap),
             **({USAGE_LEDGER: usage_store} if usage_store is not None else {}),
         },
-        builtins=("presenters", "commands"),
+        required=("presenters", "commands"),
     )
 
 
@@ -1421,7 +1420,7 @@ async def test_code_review_is_offered_by_help():
 
 
 async def test_plugin_commands_join_the_shell_and_run():
-    """A command a plugin registered is offered last and handled like any other."""
+    """A command a plugin registered is offered with the others and handled like any other."""
 
     async def greet(context: CommandContext) -> CommandResult:
         return CommandResult(notification=f"hello {context.argument}".strip())
@@ -1430,7 +1429,7 @@ async def test_plugin_commands_join_the_shell_and_run():
     app = build_app(plugins=plugins)
     harness = _harness(app)
 
-    assert app.commands[-1].name == "/greet"
+    assert "/greet" in [command.name for command in app.commands]
     assert "- `/greet` — say hello (`plugin`)" in help_text(app.commands)
 
     harness.write("/greet world")

@@ -6,7 +6,7 @@ groups, what it draws, and what a key or a click does to it.
 
 from __future__ import annotations
 
-from zettcode.app.ui.widgets.plugins_page import BUILTIN, INSTALLED, OFF_IN_CONFIG, PluginRow, PluginsPage
+from zettcode.app.ui.widgets.plugins_page import OFF_IN_CONFIG, PluginRow, PluginsPage
 from zettcode.tui import MouseAction, MouseEvent
 from zettcode.tui.testing import Harness, render_block
 
@@ -14,12 +14,12 @@ from zettcode.tui.testing import Harness, render_block
 #: failed, and four installed beside it — one failed (the switch file can still leave it out) and one held by the
 #: configuration file (no switch).
 ROWS = (
-    PluginRow("skills", "skills", builtin=True, setting="skills.enabled"),
-    PluginRow("mcp", "mcp", builtin=True, setting="mcp.enabled"),
+    PluginRow("skills", "skills", setting="skills.enabled"),
+    PluginRow("mcp", "mcp", setting="mcp.enabled"),
     PluginRow(
         "coding",
         "coding",
-        builtin=True,
+        required=True,
         failure="no plugin provides the model",
         switchable=False,
         why="it could not load, so there is no switch to move",
@@ -82,7 +82,7 @@ def _wide(page: PluginsPage, width: int = 120) -> list[str]:
 def test_a_row_says_what_the_plugin_does_after_the_place_its_switch_writes():
     page, _ = _page(
         (
-            PluginRow("skills", "skills", builtin=True, setting="skills.enabled", description="The slash commands"),
+            PluginRow("skills", "skills", setting="skills.enabled", description="The slash commands"),
             PluginRow("monitor", "zettcode-monitor", description="Every model call, exported as HTML"),
         )
     )
@@ -97,9 +97,7 @@ def test_a_row_says_what_the_plugin_does_after_the_place_its_switch_writes():
 
 
 def test_a_page_with_no_room_for_both_columns_keeps_the_setting_and_leaves_the_rest_to_the_line_below():
-    page, _ = _page(
-        (PluginRow("skills", "skills", builtin=True, setting="skills.enabled", description="The slash commands"),)
-    )
+    page, _ = _page((PluginRow("skills", "skills", setting="skills.enabled", description="The slash commands"),))
 
     text = _text(page)
 
@@ -139,14 +137,13 @@ def test_a_plugin_that_lost_its_name_says_so_without_a_switch():
     assert "already has the name" in _text(page), "the line under the list says who wanted it"
 
 
-def test_the_page_lists_the_programs_own_plugins_apart_from_the_installed_ones():
+def test_the_page_lists_every_plugin_in_one_list_and_says_which_setting_a_switch_writes():
     page, _ = _page()
 
     text = _text(page)
 
-    assert f"  {BUILTIN} " in text and f"  {INSTALLED} " in text
-    assert text.index(BUILTIN) < text.index("skills") < text.index(INSTALLED) < text.index("monitor")
-    assert "skills.enabled" in text, "a switch of the program's own says which setting it writes"
+    assert text.index("skills") < text.index("monitor"), "one list, in the order the catalog gave"
+    assert "skills.enabled" in text, "a plugin with a setting says which one its switch writes"
     assert "4 of 5 on" in text, "the count is of the switches the page can move"
     assert "could not load: missing binary" in text, "an installed plugin that failed says why"
     assert "could not load: no plugin provi" in text, "and so does a compiled-in one, as far as the column holds"
@@ -262,17 +259,16 @@ def test_a_click_on_a_switch_flips_it_and_a_click_on_the_row_marks_it():
     _harness(page)
     switch = page._switch_column()
 
-    # The list starts three rows down: line 0 is the "Built in" heading, 1 to 3 its plugins, 4 the other
-    # heading, 5 monitor, 6 acme, 7 search, 8 quiet.
-    page.handle(MouseEvent(x=switch + 2, y=3 + 5, action=MouseAction.DOWN), None)
+    # The list starts three rows down: 0 skills, 1 mcp, 2 coding, 3 monitor, 4 acme, 5 search, 6 quiet.
+    page.handle(MouseEvent(x=switch + 2, y=3 + 3, action=MouseAction.DOWN), None)
     assert page.rows[page.mark].name == "monitor"
     assert page.shown["zettcode-monitor"] is False, "a click on the switch is a press on it"
 
-    page.handle(MouseEvent(x=6, y=3 + 6, action=MouseAction.DOWN), None)
+    page.handle(MouseEvent(x=6, y=3 + 4, action=MouseAction.DOWN), None)
     assert page.rows[page.mark].name == "acme"
     assert page.shown["zettcode-acme"] is False, "a click on the name only moves the marker"
 
-    page.handle(MouseEvent(x=6, y=3 + 6, action=MouseAction.SCROLL_DOWN), None)
+    page.handle(MouseEvent(x=6, y=3 + 4, action=MouseAction.SCROLL_DOWN), None)
     assert page.rows[page.mark].name == "search"
 
 
@@ -302,7 +298,8 @@ async def test_the_command_opens_the_page_and_escape_leaves_it_unwritten(tmp_pat
     await _type_command(app, harness, "/plugins")
 
     page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, PluginsPage))
-    assert page.rows == (), "the fake shell's bundle carries no plugins, so there is nothing to switch"
+    names = {row.origin for row in page.rows}
+    assert {"memory", "daemon-guide", "skills", "pets"} <= names, "every plugin has a row, loaded or not"
     assert app.app.screens.top.name == "page"
     harness.press("escape")
     assert not [entry for entry in app.transcript.entries if entry.kind == "notice"]

@@ -79,7 +79,7 @@ def test_a_warm_refresh_does_not_import_plugins(tmp_path, monkeypatch):
 
     cache = tmp_path / "plugin-cli.json"
     cache.write_text(json.dumps({"version": 1, "fingerprint": [], "options": []}), encoding="utf-8")
-    monkeypatch.setattr("zettcode.engine.plugins.loader.installed_entry_points", lambda: ())
+    monkeypatch.setattr("zettcode.engine.plugins.loader.installed_entry_points", lambda **_: ())
     monkeypatch.setattr(
         "zettcode.engine.plugins.cli.installed_options",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("refresh imported plugins")),
