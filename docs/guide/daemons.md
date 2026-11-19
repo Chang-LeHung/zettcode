@@ -19,6 +19,7 @@ It prints the session id. The daemon is reachable as soon as `spawn` returns.
 | `--effort LEVEL` | The reasoning level (default: the middle of what the model takes). |
 | `-n`, `--name LABEL` | A label for `daemon list`. |
 | `--title TEXT` | The session's name; otherwise it names itself after the first answer. |
+| `--system TEXT` | A role, added to the system prompt of every request it makes (default: none). |
 | `--permission LEVEL` | `safe`, `deny` or `full` (default). There is no `ask`. |
 | `--resume SESSION` | Continue a stored session instead of starting empty. |
 | `--json` | Print the same facts as JSON. |
@@ -33,6 +34,25 @@ Nobody approves a daemon's commands, so its shell level matters:
 
 A daemon's conversation is an ordinary stored session. After `daemon kill` you can `zettcode resume <id>` and carry on
 by hand.
+
+## Give it a role
+
+```bash
+zettcode daemon spawn --name reviewer --permission safe \
+  --system "You review changes. You never edit files: you report what to change, file by file, with line numbers."
+```
+
+`--system` adds that text after the instructions in the system prompt of each turn the daemon answers, so one
+background agent is a reviewer and another a builder without either being reminded in every message. (A subagent it
+delegates to runs on its own profile's prompt, not the daemon's.) It is the daemon's, not the session's:
+`daemon list` shows it as `role`, every restart on the same session keeps it — `daemon update --permission`, the
+broker restart, `/hub`, the gateway's Restart — and `zettcode resume <id>` opens the same conversation with the usual
+prompt and no role. To change it, stop the daemon and spawn it again on its session:
+
+```bash
+zettcode daemon stop <id>
+zettcode daemon spawn --resume <id> --system "You build. You run the tests before you call a change done."
+```
 
 ## Talk to one
 

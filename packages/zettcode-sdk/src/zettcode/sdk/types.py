@@ -517,6 +517,8 @@ class DaemonInfo:
         model: The model it runs on.
         effort: The reasoning level it runs at, or ``None`` for the model's own.
         permission: The shell level: ``deny``, ``safe`` or ``full``.
+        system_prompt: The role it was started with, added to the system prompt of every request, or ``None`` when it
+            was given none.
         pid: Its process id, or ``0`` when it never recorded one.
         started_at: Seconds since the epoch when it started, or ``0.0``.
         updated_at: Seconds since the epoch when its record was last written — a status as a turn began or ended, a
@@ -539,6 +541,7 @@ class DaemonInfo:
     model: str | None = None
     effort: str | None = None
     permission: str | None = None
+    system_prompt: str | None = None
     pid: int = 0
     started_at: float = 0.0
     updated_at: float = 0.0

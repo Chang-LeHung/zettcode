@@ -109,10 +109,11 @@ class Daemon:
     """One daemon recorded on this machine, running or not, or a stored session no daemon has (status ``offline``).
 
     ``label`` is what the row is called; ``name`` and ``title`` are the two things it may be called after, kept apart
-    because a search finds either. ``effort`` and ``permission`` are what the record says the daemon ran at, so that
-    starting it again does not change them: a daemon that was denied a shell is not given one by pressing Enter.
-    ``activity`` is when the daemon's record was last written, or for an ``offline`` row when its conversation last
-    changed; the tab is sorted by it, newest first.
+    because a search finds either. ``effort``, ``permission`` and ``system_prompt`` are what the record says the
+    daemon ran at, so that starting it again does not change them: a daemon that was denied a shell is not given one
+    by pressing Enter, and one started as a reviewer is not started as a builder. ``activity`` is when the daemon's
+    record was last written, or for an ``offline`` row when its conversation last changed; the tab is sorted by it,
+    newest first.
     """
 
     session_id: str
@@ -124,6 +125,7 @@ class Daemon:
     title: str = ""
     effort: str = ""
     permission: str = ""
+    system_prompt: str = ""
     activity: float = 0.0
 
 
@@ -1042,12 +1044,13 @@ class HubCommand(TuiPlugin):
     async def _resume(self, page: HubPage, client: object, session_id: str) -> None:
         """Start a daemon on an offline session, resuming it: one whose daemon was stopped, or one that is only stored.
 
-        A daemon that was stopped starts on the workspace, model, reasoning level and shell level its record names, and
-        under the label it had: pressing Enter must not give a shell to a daemon that was denied one, or take it from
-        one that had it. A stored session has no record, so it starts in the reader's own workspace (the store is read
-        for that workspace) on the first configured model, with the SDK's defaults. A record with no workspace falls
-        back to the reader's own, and one with no model to the first configured. A session another process has open is
-        said so before anything is started: a daemon cannot write to it, and would only say so from its log after a start.
+        A daemon that was stopped starts on the workspace, model, reasoning level, shell level and role its record
+        names, and under the label it had: pressing Enter must not give a shell to a daemon that was denied one, take
+        it from one that had it, or turn a reviewer into a plain agent. A stored session has no record, so it starts
+        in the reader's own workspace (the store is read for that workspace) on the first configured model, with the
+        SDK's defaults. A record with no workspace falls back to the reader's own, and one with no model to the first
+        configured. A session another process has open is said so before anything is started: a daemon cannot write to
+        it, and would only say so from its log after a start.
         One start per row at a time, until the page shows it running: a second ``Enter`` while the first is starting
         or the page is being read again is told so, since two processes would share one record and one session lock.
         A running daemon is not started again.
@@ -1082,6 +1085,7 @@ class HubCommand(TuiPlugin):
                         ("effort", chosen.effort),
                         ("name", chosen.name),
                         ("permission", chosen.permission),
+                        ("system_prompt", chosen.system_prompt),
                     )
                     if value
                 }
@@ -1150,6 +1154,7 @@ class HubCommand(TuiPlugin):
                 title=info.title or "",
                 effort=info.effort or "",
                 permission=info.permission or "",
+                system_prompt=info.system_prompt or "",
                 # The record's own last write; a record that never wrote one has nothing, and `started_at` is the
                 # record's birth, not a change to it.
                 activity=info.updated_at,

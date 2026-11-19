@@ -93,6 +93,24 @@ def test_the_file_editing_rule_comes_before_the_environment_snapshot_so_the_head
     assert str(tmp_path) not in prompt[: prompt.index("Runtime environment:")], "nothing that varies sits above it"
 
 
+def test_a_role_given_for_the_run_is_appended_after_the_rules_and_a_blank_one_adds_nothing(tmp_path):
+    """`daemon spawn --system` is a part to play, not another copy of the rules: it goes after them, and only once."""
+    config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "s")
+    role = "You review changes and report what to change. You do not edit files."
+
+    plain = runtime_module.build_system_prompt(config)
+    prompted = runtime_module.build_system_prompt(config, role=role)
+
+    assert prompted.startswith(plain), "the rules and the snapshot are untouched"
+    assert prompted == (
+        f"{plain}\n\n# Your role\n"
+        "This session was started with a role for it. Follow it along with the instructions above:\n\n"
+        f"{role}"
+    )
+    assert runtime_module.build_system_prompt(config, role=" \n\t ") == plain, "a blank role is no role"
+    assert "Your role" not in plain
+
+
 def _config_with(tmp_path, **changes) -> ZettCodeConfig:
     """Return a minimal config, with one workspace-local change applied.
 
@@ -493,6 +511,36 @@ async def test_the_harness_switches_choose_the_tools_the_model_may_use(tmp_path,
         # The task tool is the framework's extension or ZettCode's subclass of it.
         assert any(isinstance(extension, SubAgentExtension) for extension in extensions) is subagent
         assert (TodoWriteExtension in kinds) is todowrite
+
+
+async def test_the_agent_is_built_with_the_role_the_runtime_was_previewed_with(tmp_path, monkeypatch):
+    """The role reaches the request head: it is the system prompt the agent is created with, not a note beside it."""
+    given: dict[str, object] = {}
+
+    class FakeProvider:
+        def __init__(self, model, token, *, base_url, response, **options):
+            pass
+
+        async def aclose(self):
+            pass
+
+    async def fake_create_agent(model, **kwargs):
+        given.update(kwargs)
+        return type("FakeClient", (), {"event_dispatcher": None})()
+
+    monkeypatch.setattr("zett_agent.providers.openai.OpenAIProvider", FakeProvider)
+    monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+
+    runtime = runtime_module.ZettCodeEngine.preview(
+        _config_with(tmp_path), load_agent_plugins, system_prompt="You are a reviewer."
+    )
+    await runtime.start()
+
+    prompt = given["system_prompt"]
+    assert isinstance(prompt, str) and "You are a reviewer." in prompt
+    assert "Your role" in prompt
+    await runtime.aclose()
 
 
 #: How long each import takes in the warm-up test below, and the longest the event loop may go without

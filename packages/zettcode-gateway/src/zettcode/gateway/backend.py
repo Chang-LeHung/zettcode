@@ -210,6 +210,7 @@ class Backend(ABC):
         resume: str | None,
         name: str | None,
         permission: str,
+        system_prompt: str | None = None,
     ) -> DaemonInfo:
         """Start a daemon and return it once it can be messaged."""
 
@@ -392,9 +393,16 @@ class SdkBackend(Backend):
         resume: str | None,
         name: str | None,
         permission: str,
+        system_prompt: str | None = None,
     ) -> DaemonInfo:
         return await sdk_daemons.spawn_daemon(
-            workspace, model=model, effort=effort, resume=resume, name=name, permission=permission
+            workspace,
+            model=model,
+            effort=effort,
+            resume=resume,
+            name=name,
+            permission=permission,
+            system_prompt=system_prompt,
         )
 
     async def stop(self, session_id: str, *, force: bool) -> str:

@@ -1035,6 +1035,10 @@ class Gateway:
         resume = form.get("resume") or None
         if resume is not None and not (isinstance(resume, str) and SESSION_ID.match(resume)):
             raise GatewayError(400, "invalid", "A session to resume is named by its id")
+        raw_role = form.get("system_prompt")
+        if raw_role is not None and not isinstance(raw_role, str):
+            raise GatewayError(400, "invalid", "A system prompt is text")
+        role = (raw_role or "").strip() or None
         try:
             info = await self.backend.spawn(
                 workspace,
@@ -1043,6 +1047,7 @@ class Gateway:
                 resume=resume,
                 name=_label(form.get("name")),
                 permission=permission,
+                system_prompt=role,
             )
         except DaemonStartError as error:
             raise GatewayError(502, "start_failed", str(error)) from error
@@ -1084,11 +1089,12 @@ class Gateway:
         return {"result": said}
 
     async def restart(self, session_id: str) -> dict[str, Any]:
-        """Start a stopped daemon again, on its own conversation, as it was: its folder, model, level and label.
+        """Start a stopped daemon again, on its own conversation, as it was: its folder, model, level, label, role.
 
-        This is what the page's one-click Restart does. Changing any of those is the New form's job (it can be filled in
-        from the daemon). A model that has since been removed from the configuration is replaced by the default one,
-        and the answer says so in ``note``, rather than refusing to start an agent the person only wants back.
+        This is what the page's one-click Restart does. The New form can fill itself in from the daemon and change
+        the folder, model, level and label; the role has no field there, so changing it means starting the daemon on
+        its session with one. A model that has since been removed from the configuration is replaced by the default
+        one, and the answer says so in ``note``, rather than refusing to start an agent the person only wants back.
         """
         if not SESSION_ID.match(session_id):
             raise GatewayError(400, "invalid", "A daemon is named by its session id")
@@ -1119,6 +1125,8 @@ class Gateway:
             "permission": daemon.permission,
             "name": daemon.name,
             "resume": session_id,
+            # The role is the process's, so a restart on the session is the only place it can come back from.
+            "system_prompt": daemon.system_prompt,
         }
         known = {item.name: item for item in self.backend.models()}
         note = ""

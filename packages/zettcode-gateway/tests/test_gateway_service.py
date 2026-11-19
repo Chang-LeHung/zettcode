@@ -419,6 +419,7 @@ async def test_a_daemon_is_started_with_what_the_form_chose_and_listed_at_once(t
             "effort": "high",
             "name": "  Re\x07view   er ",
             "permission": "deny",
+            "system_prompt": "  You review changes.\n",
         }
     )
 
@@ -430,6 +431,7 @@ async def test_a_daemon_is_started_with_what_the_form_chose_and_listed_at_once(t
             "resume": None,
             "name": "Review er",
             "permission": "deny",
+            "system_prompt": "You review changes.",
         }
     ]
     assert answer["thread"]["kind"] == "daemon" and answer["thread"]["name"] == "Review er"
@@ -539,14 +541,30 @@ async def test_the_first_message_goes_once_the_daemon_is_reachable_and_a_failure
 async def test_a_stopped_daemon_is_started_again_in_one_call_as_it_was_on_its_own_conversation(tmp_path):
     gateway, backend = await make(tmp_path)
     work = str(tmp_path / "work")
-    backend.add_daemon(DAEMON, work, name="reviewer", status="dead", online=False, permission="safe")
+    backend.add_daemon(
+        DAEMON,
+        work,
+        name="reviewer",
+        status="dead",
+        online=False,
+        permission="safe",
+        system_prompt="You review changes. You do not edit files.",
+    )
     backend.histories[DAEMON] = []
     await gateway.refresh()
 
     answer = await gateway.restart(DAEMON)
 
     assert backend.spawned == [
-        {"workspace": work, "model": "fast", "effort": None, "resume": DAEMON, "name": "reviewer", "permission": "safe"}
+        {
+            "workspace": work,
+            "model": "fast",
+            "effort": None,
+            "resume": DAEMON,
+            "name": "reviewer",
+            "permission": "safe",
+            "system_prompt": "You review changes. You do not edit files.",
+        }
     ]
     assert answer["thread"]["id"] == DAEMON and answer["thread"]["status"] != "dead" and "note" not in answer
 

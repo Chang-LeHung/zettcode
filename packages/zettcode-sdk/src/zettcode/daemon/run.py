@@ -8,6 +8,8 @@ answered with ``send_message`` if the model chooses to reply. :class:`Daemon` is
   that), because a model call is not something to run several of at once in one session;
 * nobody to ask: the daemon runs at the shell level it was started with (``full`` unless ``spawn`` said otherwise;
   ``ask`` is refused, since there is no reader to answer it), and the ``ask_user`` tool is not offered at all;
+* a role, when ``spawn --system`` gave it one: the text is appended to the system prompt of every request, so one
+  daemon can review and another can build without either being told its part in every message;
 * a state file and a heartbeat, so ``daemon list`` can say what it is doing and whether it is still doing it.
 """
 
@@ -121,6 +123,8 @@ class Options:
         name: A label the reader gave this daemon, so ``daemon list`` says what it is for.
         title: What to call the session, when the reader named it at the start; ``None`` lets it name itself.
         permission: The shell level it runs at: ``deny``, ``safe`` or ``full``. There is nobody to answer ``ask``.
+        system_prompt: A role for this daemon, appended to the system prompt of every request it makes; ``None`` adds
+            none. It is the process's, not the session's: `zettcode resume` opens the conversation without it.
         plugin_arguments: Values the plugin options parsed, by entry-point name.
     """
 
@@ -132,6 +136,7 @@ class Options:
     name: str | None = None
     title: str | None = None
     permission: str = "full"
+    system_prompt: str | None = None
     plugin_arguments: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
 
 
@@ -462,6 +467,7 @@ class Daemon:
             title=self._title(),
             name=self.options.name,  # replaced inside the lock by the label the record already holds
             permission=self.options.permission,
+            system_prompt=self.options.system_prompt,
             input_tokens=sent,
             output_tokens=made,
             context_tokens=context,
@@ -692,7 +698,7 @@ async def serve(options: Options) -> int:
 def _client(options: Options) -> Client:
     """Return the client a daemon runs on: its shell level, reachable, and with nobody to ask.
 
-    Three settings are the daemon's own, whatever the configuration says:
+    Four settings are the daemon's own, whatever the configuration says:
 
     * ``permission=options.permission`` — chosen when it was started, and ``full`` unless that said otherwise. There
       is no reader here to approve a command, so ``ask`` is refused before a daemon is made: it would only make
@@ -701,6 +707,8 @@ def _client(options: Options) -> Client:
     * ``ask_user_enabled=False`` — the ``ask_user`` tool is not offered at all. Declining the question would work
       too, but it would cost the model a turn and teach it that its reader is unavailable, which is not the truth:
       it has no reader.
+    * ``system_prompt=options.system_prompt`` — the role ``daemon spawn --system`` gave it, or nothing. It belongs to
+      the process: a session resumed by hand runs with the usual prompt, which is why `daemon list` records it.
     """
     from zettcode.engine.plugins.services import PLUGIN_CLI
     from zettcode.sdk.client import Client
@@ -711,6 +719,7 @@ def _client(options: Options) -> Client:
         model=options.model,
         effort=options.effort,
         permission=options.permission,
+        system_prompt=options.system_prompt,
         sessions_enabled=True,
         ask_user_enabled=False,
         shared=shared,

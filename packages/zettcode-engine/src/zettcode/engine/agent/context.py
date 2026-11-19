@@ -141,7 +141,7 @@ class ContextMixin(AgentBase):
         reader may have moved to another session by the time it is wanted.
         """
         instructions = self.runtime.context.instructions or (
-            SystemMessage(content=build_system_prompt(self.runtime.config)),
+            SystemMessage(content=build_system_prompt(self.runtime.config, role=self.runtime.system_prompt)),
         )
         checkpoint, tail = session.active()
         stored: list[AnyMessage] = [checkpoint.message[0]] if checkpoint is not None else []

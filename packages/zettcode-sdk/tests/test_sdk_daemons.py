@@ -206,6 +206,8 @@ async def test_spawn_refuses_what_it_can_see_is_wrong_before_it_starts_anything(
         await daemons.spawn_daemon(folders, permission="ask")
     with pytest.raises(ConfigurationError, match="No such directory"):
         await daemons.spawn_daemon(folders / "absent")
+    with pytest.raises(ConfigurationError, match="system prompt"):
+        await daemons.spawn_daemon(folders, system_prompt=" \n\t ")
 
 
 async def test_spawn_starts_with_the_level_given_and_full_when_none_is(folders, monkeypatch):
@@ -231,9 +233,37 @@ async def test_spawn_starts_with_the_level_given_and_full_when_none_is(folders, 
             "name": "review",
             "title": "Fix the parser",
             "permission": "full",
+            "system_prompt": None,
         }
     ]
     assert made.session_id == "01made" and made.permission == "full" and made.name == "review"
+
+
+async def test_spawn_hands_the_role_to_the_daemon_and_a_record_lists_it_back(folders, monkeypatch):
+    """The role is the daemon's own, so it travels to the child and comes back on the record ``list`` reads."""
+    started: list[dict[str, object]] = []
+
+    def start(self, workspace, **options):
+        started.append({"workspace": workspace, **options})
+        record(
+            workspace,
+            "01role",
+            name=options["name"],
+            permission=options["permission"],
+            system_prompt=options["system_prompt"],
+        )
+        return Registry().find("01role")
+
+    monkeypatch.setattr(Daemons, "start", start)
+    project = folders / "project"
+    project.mkdir()
+    role = "You review changes. You never edit: you report what to change."
+
+    made = await daemons.spawn_daemon(project, name="reviewer", system_prompt=f"  {role}\n")
+
+    assert started[0]["system_prompt"] == role, "trimmed before it reaches the child"
+    assert made.system_prompt == role
+    assert daemons.list_daemons()[0].system_prompt == role
 
 
 async def test_a_daemons_label_can_be_changed_and_one_that_is_not_there_says_so(folders):

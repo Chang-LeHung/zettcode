@@ -524,6 +524,7 @@ def _daemon_info(
             "model": "m",
             "effort": None,
             "permission": "safe",
+            "system_prompt": None,
             "started_at": started,
             "updated_at": wrote,
         },
@@ -905,6 +906,40 @@ def test_starting_a_dead_daemon_resumes_its_session_on_the_workspace_and_model_i
 
     assert calls == [("/work", {"model": "m", "resume": "d-2"})], "its own workspace and model, nothing else"
     assert opened.subtitle == "started abcdef12", "already on the Daemons tab: nothing to say about where it went"
+
+
+def test_starting_a_daemon_again_keeps_the_role_and_the_level_it_was_started_with(monkeypatch, tmp_path):
+    """A restart from the page is the same agent coming back: its part and its shell are what its record says."""
+    calls: list[tuple[object, dict[str, object]]] = []
+    _fake_spawn(monkeypatch, calls)
+    client = type("Client", (), {"workspace": tmp_path / "project"})()
+    opened = page(
+        daemons=(
+            Daemon(
+                "d-2",
+                "reviewer",
+                "dead",
+                model="m",
+                workspace="/work",
+                permission="safe",
+                system_prompt="You are a reviewer.",
+            ),
+        )
+    )
+
+    asyncio.run(HubCommand()._resume(opened, client, "d-2"))
+
+    assert calls == [
+        (
+            "/work",
+            {
+                "model": "m",
+                "resume": "d-2",
+                "permission": "safe",
+                "system_prompt": "You are a reviewer.",
+            },
+        )
+    ]
 
 
 def test_a_daemon_with_no_recorded_workspace_resumes_in_the_clients(monkeypatch, tmp_path):
