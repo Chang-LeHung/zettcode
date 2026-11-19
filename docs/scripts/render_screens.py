@@ -863,8 +863,8 @@ SCREENS: tuple[tuple[str, Callable[[], Canvas], str], ...] = (
     (
         "plugins",
         plugins_canvas,
-        "ZettCode's /plugins page: the program's own switches first, then installed ones, each with the key or "
-        "distribution it writes",
+        "ZettCode's /plugins page: the switches a reader can move first, the fixed ones after them, each numbered "
+        "and with the key or distribution it writes, over a search box",
     ),
     (
         "effort",

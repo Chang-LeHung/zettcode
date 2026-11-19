@@ -29,6 +29,8 @@ from zettcode.tui.render.text import truncate
 from zettcode.tui.widgets.list import Part, draw_parts
 from zettcode.wording import UNTITLED_SESSION
 
+from .search_field import BOX_ROWS, draw_search
+
 #: Columns the marker takes at the left of a row, and the gap between the title and the figures, as the list lays them.
 MARKER = 2
 GAP = 2
@@ -48,24 +50,11 @@ CACHE_FLOOR = 0.4
 #: The width the panel is built for before it has been laid out, so a page painted without a layout is complete.
 DEFAULT_WIDTH = 120
 
-#: The corners and rules of the search box, the rounded shape a form's fields are drawn in.
-BOX_TOP_LEFT, BOX_TOP_RIGHT = "\u256d", "\u256e"
-BOX_BOTTOM_LEFT, BOX_BOTTOM_RIGHT = "\u2570", "\u256f"
-BOX_HORIZONTAL, BOX_VERTICAL = "\u2500", "\u2502"
-
-#: The label on the box's top border, and the three rows the box spends: that border, the query, its foot.
-SEARCH_LABEL = "Search"
-BOX_ROWS = 3
-
 #: Rows the page spends above the first session: the top margin, the title, the box, and the heading.
 HEADER_ROWS = 2 + BOX_ROWS + 1
 
 #: What the search box says before anything is typed into it.
 SEARCH_HINT = "search by title or id"
-
-#: Where typing lands in the box: "\u2588", a full block — the solid cursor vim leaves on the cell at the end of
-#: a line, rather than a thin bar that is easy to miss in a terminal.
-CARET = "\u2588"
 
 #: The keys line while nothing is typed; once a search narrows the list, Escape has a job before it can close.
 KEYS = f"type to search {SEPARATOR} enter open {SEPARATOR} esc back"
@@ -92,11 +81,6 @@ def format_ago(moment: datetime, *, now: datetime | None = None) -> str:
 def _plain(theme: Theme) -> str:
     """Return the colour of a column with nothing to say about itself: the readable secondary text."""
     return theme.subtle
-
-
-def _muted(theme: Theme) -> Style:
-    """Return the style of a quiet line on the panel's own surface: the box's label, and what it says while empty."""
-    return Style(foreground=theme.muted, background=theme.surface_alt)
 
 
 class _Column(NamedTuple):
@@ -464,47 +448,10 @@ class SessionsPage(ListPage):
     def _paint_search(self, canvas: Canvas, x: int, y: int, room: int) -> None:
         """Draw the rounded box, its label, and the query — or what the box is for while it is empty.
 
-        The border and the label take the bright accent while the box is the keyboard stop, which is also when
-        the caret is drawn; the box beside a focused list is quiet, since typing still reaches it either way.
+        The box is :mod:`~zettcode.app.ui.widgets.search_field`'s: the same one ``/plugins`` draws, so the two pages
+        that narrow a list by typing are one field, and the caret is drawn only while the box has the keys.
         """
-        if room < 2:
-            return  # narrower than its own two uprights: there is no box to draw
-        theme = self.theme
-        active = self.focused
-        frame = Style(foreground=theme.accent_bright if active else theme.subtle, background=theme.surface_alt)
-        rule = BOX_HORIZONTAL * max(0, room - 2)
-        canvas.draw_text(x, y, f"{BOX_TOP_LEFT}{rule}{BOX_TOP_RIGHT}", frame, max_width=room)
-        canvas.draw_text(x, y + 1, BOX_VERTICAL, frame)
-        canvas.draw_text(x + room - 1, y + 1, BOX_VERTICAL, frame)
-        canvas.draw_text(x, y + 2, f"{BOX_BOTTOM_LEFT}{rule}{BOX_BOTTOM_RIGHT}", frame, max_width=room)
-        if room > 8:
-            label = Style(
-                foreground=theme.accent_bright if active else theme.muted,
-                background=theme.surface_alt,
-                bold=active,
-            )
-            canvas.draw_text(x + 2, y, f" {SEARCH_LABEL} ", label, max_width=room - 4)
-        # A cell of padding inside each upright, then the query itself: no prompt mark, the box already says
-        # that this is where typing goes.
-        field_x = x + 2
-        field_room = max(0, room - 4)
-        if field_room <= 0:
-            return  # a box too narrow to hold a query keeps its border and says nothing inside it
-        caret = Style(foreground=theme.text, background=theme.surface_alt)
-        if self._query:
-            shown = truncate(self._query, max(0, field_room - (1 if active else 0)), ellipsis=ELLIPSIS)
-            canvas.draw_text(
-                field_x, y + 1, shown, Style(foreground=theme.text, background=theme.surface_alt), max_width=field_room
-            )
-            if active:
-                canvas.draw_text(field_x + display_width(shown), y + 1, CARET, caret, max_width=1)
-        elif active:
-            canvas.draw_text(field_x, y + 1, CARET + " ", caret, max_width=field_room)
-            hint = truncate(SEARCH_HINT, max(0, field_room - 2), ellipsis=ELLIPSIS)
-            canvas.draw_text(field_x + 2, y + 1, hint, _muted(theme), max_width=max(0, field_room - 2))
-        else:
-            hint = truncate(SEARCH_HINT, field_room, ellipsis=ELLIPSIS)
-            canvas.draw_text(field_x, y + 1, hint, _muted(theme), max_width=field_room)
+        draw_search(canvas, self.theme, x, y, room, self._query, hint=SEARCH_HINT, active=self.focused)
 
     def _no_match(self) -> str:
         """Return the line a search with no matches leaves in place of the rows."""

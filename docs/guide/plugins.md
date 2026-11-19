@@ -47,11 +47,20 @@ first, and `Esc` closes without applying anything. A report with nothing in it k
 
 ## Turn one off or on
 
-`/plugins` opens a page with a switch for each plugin you can switch: Space flips one, Enter writes, Escape writes
-nothing. `zettcode plugin enable <name>` and `zettcode plugin disable <name>` do the same for one name, and `/plugins
-disable <name>` does it from the composer. Every switch takes effect at the **next start**.
+`/plugins` opens a page with a switch for each plugin you can switch: `←` and `→` flip one (a click on the switch
+does too), Enter writes, Escape writes nothing. Typing narrows the list. `zettcode plugin enable <name>` and
+`zettcode plugin disable <name>` do the same for one name, and `/plugins disable <name>` does it from the composer.
+Every switch takes effect at the **next start**.
 
-![The /plugins page: the program's own plugins first, then installed ones, each row with its switch, the key or distribution the switch writes, and what the plugin adds](/screens/plugins.svg)
+Every row carries the plugin's number in the list, and the rows you can switch come first: a plugin your
+configuration file holds, or one the program cannot run without, is drawn after them with no switch of its own — its
+row says `fixed`, or `failed` when it could not load — and the line under the list says why. Type any part of a
+plugin's name, of the distribution it comes from, or of the line saying what it adds — `search`, `html` — and the list
+keeps the plugins that hold it. The numbers do not change with the search, so the row the marker is on keeps the
+number, the switch and the setting it had before you typed; Backspace takes a character back out, and Escape clears
+the box before it closes the page.
+
+![The /plugins page: each plugin numbered, the ones a reader can switch first and the fixed ones after them, each row with its switch, the key or distribution the switch writes, and what the plugin adds](/screens/plugins.svg)
 
 The row says which side of that line a switch falls on: a compiled-in plugin is switched by a configuration key
 (`rows.enabled`), an installed one by `[plugins] disable`. A plugin that could not load keeps its row — that is how you
