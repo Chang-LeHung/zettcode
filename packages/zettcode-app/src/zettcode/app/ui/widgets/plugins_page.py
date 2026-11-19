@@ -56,7 +56,7 @@ NAME_WIDTH = 24
 WORD_WIDTH = 8
 
 #: What the empty search box says a query is matched against.
-SEARCH_HINT = "search by name or description"
+SEARCH_HINT = "search name, distribution or description"
 
 #: Columns between the plugin's number and the name it belongs to.
 NUMBER_GAP = 1
@@ -264,17 +264,25 @@ class PluginsPage(Widget):
         self.top = 0
 
     def set(self, origin: str, on: bool) -> None:
-        """Send one plugin's switch to on or off, and say on the line below why when it cannot move."""
+        """Send one plugin's switch to on or off, and say on the line below why when it cannot move.
+
+        A name the search box hides is shown first: what this row has to say belongs to a row the reader can see, and
+        a marker left on an unfiltered row would leave the visible ones unmarked. The row is found by position rather
+        than by value, because two rows of one plugin (a name taken, say) are equal.
+        """
         marked = self.rows[self.mark] if self.rows else None
-        row = (
-            marked
+        at = (
+            self.mark
             if marked is not None and marked.origin == origin
-            else next((row for row in self.rows if row.origin == origin), None)
+            else next((index for index, row in enumerate(self.rows) if row.origin == origin), None)
         )
-        if row is None:
+        if at is None:
             return
+        row = self.rows[at]
+        if at not in self._lines:
+            self._set_query("")
         if not self.switchable(row):
-            self.mark = self.rows.index(row)
+            self.mark = at
             self.note = self._why_fixed(row)
             return
         self.note = None
@@ -400,8 +408,12 @@ class PluginsPage(Widget):
         return max(1, self.rect.height - CHROME)
 
     def _switch_column(self) -> int:
-        """Return the column the first switch cell is in, after the marker, the number and the name."""
-        return self.rect.x + 4 + self.digits + NUMBER_GAP + NAME_WIDTH
+        """Return the column the first switch cell is in, right after the name column."""
+        return self._name_column() + NAME_WIDTH
+
+    def _name_column(self) -> int:
+        """Return the column the first letter of a name is in: after the marker, the number and the space after it."""
+        return self.rect.x + 4 + self.digits + NUMBER_GAP + 1
 
     def _reveal(self) -> None:
         """Scroll the list the least that shows the marked plugin."""
@@ -466,7 +478,9 @@ class PluginsPage(Widget):
         elif not self._lines:
             said = truncate(f"No plugin matches \u201c{self._query.strip()}\u201d", room)
             canvas.draw_text(x, self.rect.y + LIST_TOP, said, muted, max_width=room)
-        else:
+        elif self.rect.height > CHROME:
+            # The page is tall enough that the line under the list and the last row are different rows; on a page
+            # that is not, the list keeps the one row it has rather than being written over by what it says.
             row = self.rows[self.mark]
             head = f"{row.name}:"
             said = f"{head} {self.note or self._description(row)}"
@@ -526,7 +540,7 @@ class PluginsPage(Widget):
                 max_width=self.digits + 1,
             )
             canvas.draw_text(
-                x + 2 + self.digits + NUMBER_GAP + 1,
+                self._name_column(),
                 y,
                 truncate(row.name, NAME_WIDTH),
                 Style(foreground=lit, background=surface, bold=marked),
