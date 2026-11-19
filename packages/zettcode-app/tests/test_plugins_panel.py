@@ -6,7 +6,7 @@ groups, what it draws, and what a key or a click does to it.
 
 from __future__ import annotations
 
-from zettcode.app.ui.widgets.plugins_page import OFF_IN_CONFIG, PluginRow, PluginsPage
+from zettcode.app.ui.widgets.plugins_page import LIST_TOP, OFF_IN_CONFIG, PluginRow, PluginsPage
 from zettcode.tui import MouseAction, MouseEvent
 from zettcode.tui.testing import Harness, render_block
 
@@ -146,7 +146,7 @@ def test_the_page_lists_every_plugin_in_one_list_and_says_which_setting_a_switch
     assert "skills.enabled" in text, "a plugin with a setting says which one its switch writes"
     assert "4 of 5 on" in text, "the count is of the switches the page can move"
     assert "could not load: missing binary" in text, "an installed plugin that failed says why"
-    assert "could not load: no plugin provi" in text, "and so does a compiled-in one, as far as the column holds"
+    assert "could not load: no plugin" in text, "and so does a compiled-in one, as far as the column holds"
     assert OFF_IN_CONFIG in text, "a switch the configuration file owns says so"
     assert "esc cancel" in text
 
@@ -193,14 +193,9 @@ def test_the_arrows_move_the_marker_and_the_switch_moves_with_left_and_right():
 
     harness.press("down")
     harness.press("down")
-    harness.press("down")
     assert page.rows[page.mark].name == "monitor"
 
     harness.press("left")
-    assert page.shown["zettcode-monitor"] is False
-    harness.press("right")
-    assert page.shown["zettcode-monitor"] is True
-    harness.press(" ")
     assert page.shown["zettcode-monitor"] is False
 
     text = _text(page)
@@ -208,6 +203,20 @@ def test_the_arrows_move_the_marker_and_the_switch_moves_with_left_and_right():
     assert "monitor: zettcode-monitor is left out of the next start" in text
     # The knob takes a moment to arrive; the word beside it has already changed.
     assert "off" in text
+
+    harness.press("right")
+    assert page.shown["zettcode-monitor"] is True
+
+
+def test_the_space_bar_is_a_character_in_the_search_box_not_a_press_on_the_switch():
+    """A description has spaces in it, so a space belongs to the query; the switch moves with Left, Right or a click."""
+    page, _ = _page((PluginRow("monitor", "zettcode-monitor", description="Every model call, exported as HTML"),))
+
+    _harness(page).write("model call")
+
+    assert page.query == "model call"
+    assert page.changes == {}, "the space bar did not press the switch under the marker"
+    assert "monitor" in _text(page)
 
 
 def test_the_marker_rounds_from_the_last_row_to_the_first_and_back():
@@ -224,7 +233,6 @@ def test_enter_hands_over_only_what_changed_and_escape_hands_over_nothing():
     page, applied = _page()
     harness = _harness(page)
 
-    harness.press("down")
     harness.press("down")
     harness.press("down")
     harness.press("left")
@@ -259,16 +267,17 @@ def test_a_click_on_a_switch_flips_it_and_a_click_on_the_row_marks_it():
     _harness(page)
     switch = page._switch_column()
 
-    # The list starts three rows down: 0 skills, 1 mcp, 2 coding, 3 monitor, 4 acme, 5 search, 6 quiet.
-    page.handle(MouseEvent(x=switch + 2, y=3 + 3, action=MouseAction.DOWN), None)
+    # The list starts five rows down, under the title and the search box: 0 skills, 1 mcp, 2 monitor, 3 acme,
+    # 4 search, 5 coding, 6 quiet.
+    page.handle(MouseEvent(x=switch + 2, y=LIST_TOP + 2, action=MouseAction.DOWN), None)
     assert page.rows[page.mark].name == "monitor"
     assert page.shown["zettcode-monitor"] is False, "a click on the switch is a press on it"
 
-    page.handle(MouseEvent(x=6, y=3 + 4, action=MouseAction.DOWN), None)
+    page.handle(MouseEvent(x=6, y=LIST_TOP + 3, action=MouseAction.DOWN), None)
     assert page.rows[page.mark].name == "acme"
     assert page.shown["zettcode-acme"] is False, "a click on the name only moves the marker"
 
-    page.handle(MouseEvent(x=6, y=3 + 4, action=MouseAction.SCROLL_DOWN), None)
+    page.handle(MouseEvent(x=6, y=LIST_TOP + 3, action=MouseAction.SCROLL_DOWN), None)
     assert page.rows[page.mark].name == "search"
 
 
@@ -284,6 +293,98 @@ def test_a_list_longer_than_the_screen_scrolls_to_the_marked_row():
     assert "third-party-29" in text, "the last row is on screen"
     assert "plugin-0 " not in text, "and the first is not"
     assert "\u25b2" in text, "a mark at the edge says there is more list above"
+
+
+def test_the_rows_a_reader_can_switch_come_first_and_the_fixed_ones_after_them():
+    """The top of the list is the part a reader can act on; a row nothing here can move goes under it."""
+    page, _ = _page()
+
+    assert [row.name for row in page.rows] == [
+        "skills",
+        "mcp",
+        "monitor",
+        "acme",
+        "search",
+        "coding",
+        "quiet",
+    ], "the switchable rows keep the catalog's order, the failed-but-switchable one included"
+
+    text = _text(page)
+    assert text.index("5. search") < text.index("6. coding") < text.index("7. quiet")
+
+
+def test_every_row_carries_its_number_from_the_top_of_the_list():
+    page, _ = _page()
+
+    text = _text(page)
+
+    for number, name in enumerate(("skills", "mcp", "monitor", "acme", "search", "coding", "quiet"), 1):
+        assert f"{number}. {name}" in text, f"{name} is row {number}"
+    assert page.digits == 1
+
+
+def test_typing_narrows_the_list_to_the_names_and_descriptions_that_hold_it():
+    page, _ = _page(
+        (
+            PluginRow("skills", "skills", setting="skills.enabled", description="The slash commands"),
+            PluginRow("monitor", "zettcode-monitor", description="Every model call, exported as HTML"),
+            PluginRow("quiet", "zettcode-quiet", enabled=False, switchable=False, why="the file holds it"),
+        )
+    )
+    harness = _harness(page)
+
+    harness.write("model")
+
+    assert page.query == "model"
+    text = _text(page)
+    assert "monitor" in text and "skills" not in text, "a description is enough to find a plugin by"
+    assert "esc clear" in text, "Escape has the box to clear before it can close the page"
+
+    harness.press("backspace")
+    assert page.query == "mode"
+    harness.press("escape")
+    harness.write("html")
+    assert "monitor" in _text(page) and "skills" not in _text(page), "any word of it finds the plugin"
+
+    harness.press("escape")
+    harness.write("slash")
+    assert "skills" in _text(page) and "monitor" not in _text(page), "and so does a name"
+
+
+def test_a_match_keeps_the_number_it_has_in_the_whole_list():
+    page, _ = _page()
+    harness = _harness(page)
+
+    harness.write("mon")
+
+    text = _text(page)
+    assert "3. monitor" in text, "a search narrows the rows but does not renumber them"
+    assert "1. skills" not in text
+
+
+def test_a_search_with_no_match_says_so_and_takes_the_query_back_before_it_closes():
+    page, applied = _page()
+    harness = _harness(page)
+
+    harness.write("zzz")
+
+    assert "No plugin matches \u201czzz\u201d" in _text(page)
+    harness.press("escape")
+    assert page.query == "" and applied.cancelled == 0, "the box is cleared before the page is given up"
+    assert "1. skills" in _text(page)
+    harness.press("escape")
+    assert applied.cancelled == 1
+
+
+def test_a_plugin_the_search_finds_is_switched_here():
+    page, applied = _page()
+    harness = _harness(page)
+
+    harness.write("moni")
+    harness.press("left")
+    harness.press("enter")
+
+    assert applied.changes == {"zettcode-monitor": False}
 
 
 async def test_the_command_opens_the_page_and_escape_leaves_it_unwritten(tmp_path, monkeypatch):

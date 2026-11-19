@@ -5,6 +5,12 @@ requires has none; the others do, unless a line of the configuration holds them)
 cannot disagree. What a switch writes is a promise about
 the *next* start — the file is read once, when a process starts — and this one keeps what it already loaded.
 
+The page draws the rows it can switch first and the ones nothing here can move — a plugin the configuration file
+holds, or one the program cannot run without — after them, so the list a reader can act on is the top of the list.
+Every row carries its number, and typing narrows the list to the plugins whose name, distribution or description holds
+what was typed, so a reader who knows roughly what a plugin adds finds it without scrolling: the number, the setting
+and the switch beside it are the same as they were.
+
 Nothing here imports the engine: a row is the few facts the page draws, and the command that opens it fills them in.
 """
 
@@ -16,15 +22,30 @@ from time import monotonic
 
 from zettcode.plugin_api.panels import pressed
 from zettcode.plugin_api.switch import SWITCH_WIDTH, Rail, draw_switch
-from zettcode.tui import ARROW_DOWN, ARROW_UP, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
+from zettcode.tui import (
+    ARROW_DOWN,
+    ARROW_UP,
+    SEPARATOR,
+    AnyEvent,
+    Canvas,
+    Host,
+    KeyEvent,
+    MouseAction,
+    MouseEvent,
+    PasteEvent,
+    TextEvent,
+    Widget,
+)
 from zettcode.tui.render import Style, blend, display_width, truncate
 
-#: Rows the page spends on something other than the list: a blank, the title, a blank under it, a blank above the
-#: description, the description, and the keys.
-CHROME = 6
+from .search_field import BOX_ROWS, draw_search
 
-#: The first row of the list, counted from the top of the page.
-LIST_TOP = 3
+#: Rows the page spends on something other than the list: the top margin, the title, the search box, and the two lines
+#: under the list (what the marked plugin does, and the keys).
+CHROME = 2 + BOX_ROWS + 2
+
+#: The first row of the list, counted from the top of the page: under the title and the search box.
+LIST_TOP = 2 + BOX_ROWS
 
 #: What a row without a switch says in the switch column, when the configuration file holds the switch.
 OFF_IN_CONFIG = "fixed"
@@ -33,6 +54,12 @@ OFF_IN_CONFIG = "fixed"
 #: program ships (``project-instructions``) with room to breathe before the switch.
 NAME_WIDTH = 24
 WORD_WIDTH = 8
+
+#: What the empty search box says a query is matched against.
+SEARCH_HINT = "search by name or description"
+
+#: Columns between the plugin's number and the name it belongs to.
+NUMBER_GAP = 1
 
 #: Columns the setting (a compiled-in plugin's key) or the distribution (an installed one's) takes, so that the
 #: description beside it starts in the same place on every row. It fits the longest the program ships
@@ -86,22 +113,35 @@ class PluginsPage(Widget):
 
     Shape::
 
-        Plugins                                                      3 of 5 on
+        Plugins                                                      4 of 6 on
 
-          ▸ skills       ━━━━●  on     skills.enabled    The skills a workspace declares, as @ references
-            mcp          ━━━━●  on     mcp.enabled       MCP servers
-            todos        ●────  off    harness.todowrite The todo_write tool and the plan it keeps
-            coding       failed                          could not load: no plugin provides the model
-            monitor      ━━━━●  on     zettcode-monitor  Every model call, exported as HTML
-            acme         ●────  off    zettcode-acme     Search results from the acme index
-            held         fixed                          zettcode-held
+          ╭─ Search ────────────────────────────────────────────────────────────╮
+          │ search by name or description                                        │
+          ╰──────────────────────────────────────────────────────────────────────╯
+          ▸ 1. skills       ━━━━●  on     skills.enabled    The skills a workspace declares, as @ references
+            2. mcp          ━━━━●  on     mcp.enabled       MCP servers
+            3. todos        ●────  off    harness.todowrite The todo_write tool and the plan it keeps
+            4. monitor      ━━━━●  on     zettcode-monitor  Every model call, exported as HTML
+            5. acme         ●────  off    zettcode-acme     Search results from the acme index
+            6. coding       failed                          could not load: no plugin provides the model
+            7. held         fixed                          zettcode-held
 
           skills (skills.enabled) loads at the next start
-          ↑ ↓ plugin · ← → switch · enter apply · esc cancel
+          type to search · ↑ ↓ plugin · ← → switch · enter apply · esc cancel
 
-    Up and Down move the marker, round from the last row to the first and back; Left, Right and Space move the switch
-    of the marked plugin; Enter hands every change to the caller, which writes them down and closes the page; Escape
-    writes nothing.
+    The rows a reader can switch come first, in the order the catalog gave them, and the ones nothing here can move —
+    a plugin the configuration file holds, and one the program cannot run without — are after them, so the part of
+    the list a reader can act on is the part at the top. Every row keeps the number it has in that order, which a
+    search does not renumber: a match says where the plugin sits in the whole list.
+
+    Up and Down move the marker, round from the last row to the first and back; Left and Right move the switch of the
+    marked plugin, and a click on it does the same. Enter hands every change to the caller, which writes them down and
+    closes the page. Escape clears the search box first; a second press writes nothing and closes the page.
+
+    Typing narrows the list as it goes: every character goes into the search box, Backspace takes one out, and a
+    plugin stays only while the query appears, case folded, in the name it calls itself, the distribution it comes
+    from, or the one line saying what it adds. A search filters the rows the page already ordered, so the numbers keep
+    their places and an empty box is the whole list again.
 
     After the switch a row says where it writes — the plugin's setting, or its distribution —
     and then, where the page is wide enough for both, what the plugin adds in one line. The two columns are a page
@@ -114,12 +154,20 @@ class PluginsPage(Widget):
     leave it out.
 
     Args:
-        rows: The plugins a list shows, in the order the catalog gave them.
+        rows: The plugins a list shows, in the order the catalog gave them; the page puts the fixed ones last.
         on_apply: Receives every changed plugin's origin and the state to write when Enter is pressed.
         on_cancel: Called when the reader backs out.
     """
 
-    HINT = f"{ARROW_UP} {ARROW_DOWN} plugin {SEPARATOR} \u2190 \u2192 switch {SEPARATOR} enter apply {SEPARATOR} esc cancel"
+    HINT = (
+        f"type to search {SEPARATOR} {ARROW_UP} {ARROW_DOWN} plugin {SEPARATOR} \u2190 \u2192 switch "
+        f"{SEPARATOR} enter apply {SEPARATOR} esc cancel"
+    )
+
+    #: The keys line while a search narrows the list: Escape has the box to clear before it can close the page.
+    SEARCHING = (
+        f"{ARROW_UP} {ARROW_DOWN} plugin {SEPARATOR} \u2190 \u2192 switch {SEPARATOR} enter apply {SEPARATOR} esc clear"
+    )
 
     def __init__(
         self,
@@ -128,21 +176,26 @@ class PluginsPage(Widget):
         on_apply: Callable[[dict[str, bool]], None],
         on_cancel: Callable[[], None],
     ) -> None:
-        """Start with every switch where the file has it, and the marker on the first plugin."""
+        """Start with every switch where the file has it, and the marker on the first row the page draws."""
         super().__init__()
-        self.rows: tuple[PluginRow, ...] = tuple(rows)
+        # Stable, so the rows a reader can switch keep the catalog's order and the fixed ones keep theirs after them.
+        self.rows: tuple[PluginRow, ...] = tuple(sorted(rows, key=lambda row: not row.switchable))
+        #: Columns the widest number takes, so the names line up and the switch column moves with the count.
+        self.digits = max(1, len(str(len(self.rows))))
         self.start = {row.origin: row.enabled for row in self.rows if row.switchable}
         self.switches = {row.origin: Rail(("off", "on"), int(row.enabled)) for row in self.rows if row.switchable}
         self.on_apply = on_apply
         self.on_cancel = on_cancel
         #: The plugin the marker is on, as an index into :attr:`rows`.
         self.mark = 0
+        #: What is in the search box; an empty box is the whole list.
+        self._query = ""
         #: The first visible row of the list.
         self.top = 0
         #: Why the last press did nothing, on the line under the list; cleared by the next move.
         self.note: str | None = None
         self._token = f"plugins-panel:{id(self)}"
-        #: The row each list line shows; one line a plugin now that there are no headings.
+        #: The rows the list shows, as positions in :attr:`rows`: every one until a query narrows them.
         self._lines: list[int] = list(range(len(self.rows)))
 
     @property
@@ -171,6 +224,44 @@ class PluginsPage(Widget):
 
     def _now(self) -> float:
         return self.app.clock() if self.app is not None else monotonic()
+
+    @property
+    def query(self) -> str:
+        """Return what is in the search box."""
+        return self._query
+
+    def matching(self, query: str) -> list[int]:
+        """Return the positions of the rows a query keeps, in the order the page draws them.
+
+        A query is trimmed, case folded, and matched anywhere in the name the plugin calls itself, the entry point
+        it is published under (the second column), or the one line saying what it adds. A blank query keeps every
+        row, which is the list the page opened with.
+        """
+        wanted = query.strip().casefold()
+        if not wanted:
+            return list(range(len(self.rows)))
+        return [
+            index
+            for index, row in enumerate(self.rows)
+            if any(wanted in field.casefold() for field in (row.name, row.origin, row.description))
+        ]
+
+    def search(self, text: str) -> None:
+        """Add what was typed to the search box and narrow the list to it."""
+        self._set_query(self._query + text)
+
+    def _set_query(self, query: str) -> None:
+        """Put a query in the box, narrow the list to it, and keep the marker on a row the query leaves."""
+        if not query.strip():
+            query = ""
+        if query == self._query:
+            return
+        self._query = query
+        self._lines = self.matching(query)
+        self.note = None
+        if self.mark not in self._lines and self._lines:
+            self.mark = self._lines[0]
+        self.top = 0
 
     def set(self, origin: str, on: bool) -> None:
         """Send one plugin's switch to on or off, and say on the line below why when it cannot move."""
@@ -208,58 +299,83 @@ class PluginsPage(Widget):
             self.app.scheduler.animate(self._token, active=False)
         return self.moving or landed
 
-    def capture_event(self, event, host: Host) -> bool:
-        """Take Escape before the focused widget can."""
+    def capture_event(self, event: AnyEvent, host: Host) -> bool:
+        """Take typing into the search box, and Escape to clear it before the focused widget can hear it."""
+        if isinstance(event, TextEvent) and not (event.alt or event.control or event.meta):
+            self.search(event.text)
+            return True
+        if isinstance(event, PasteEvent) and not (event.alt or event.control or event.meta):
+            self.search(" ".join(event.text.split()))
+            return True
+        if isinstance(event, KeyEvent) and not (event.alt or event.control or event.meta):
+            if event.key == "backspace":
+                self._set_query(self._query[:-1])
+                return True
+            if event.key == "escape" and self._query:
+                self._set_query("")
+                return True
         if pressed(event) == "escape":
             self.on_cancel()
             return True
         return False
 
-    def handle(self, event, host: Host) -> bool:
-        """Move with Up and Down, flip with Left, Right and Space, and apply with Enter."""
+    def handle(self, event: AnyEvent, host: Host) -> bool:
+        """Move with Up and Down, flip with Left and Right, and apply with Enter.
+
+        The space bar is not the switch here: every printable character, the space included, is a search term, which
+        is what makes a description with spaces in it findable.
+        """
         if isinstance(event, MouseEvent):
             return self._handle_mouse(event)
         if not self.rows:
             return False
+        key = pressed(event)
+        if key == "enter":
+            self.on_apply(self.changes)
+            return True
+        if not self._lines:
+            # Nothing matches, so there is no row to move to or switch; Enter above still writes what was already
+            # switched, and Escape in the box is what takes the query back.
+            return False
         name = self.rows[self.mark].origin
-        match pressed(event):
+        match key:
             case "up" | "backtab":
-                self._move(self.mark - 1)
+                self._move(self._where() - 1)
             case "down" | "tab":
-                self._move(self.mark + 1)
+                self._move(self._where() + 1)
             case "pageup":
-                self._move(self.mark - max(1, self._view() - 1))
+                self._move(self._where() - max(1, self._view() - 1))
             case "pagedown":
-                self._move(self.mark + max(1, self._view() - 1))
+                self._move(self._where() + max(1, self._view() - 1))
             case "home":
                 self._move(0)
             case "end":
-                self._move(len(self.rows) - 1)
+                self._move(len(self._lines) - 1)
             case "left":
                 self.set(name, False)
             case "right":
                 self.set(name, True)
-            case " ":
-                rail = self.switches.get(name)
-                self.set(name, not (rail.selected if rail is not None else False))
-            case "enter":
-                self.on_apply(self.changes)
             case _:
                 return False
         return True
 
-    def _move(self, index: int) -> None:
-        """Put the marker on a row, round the ends, and take back what the last press said."""
+    def _where(self) -> int:
+        """Return the marked plugin's position among the rows the search leaves, or the first when it has none."""
+        return self._lines.index(self.mark) if self.mark in self._lines else 0
+
+    def _move(self, position: int) -> None:
+        """Put the marker on a visible row, round the ends, and take back what the last press said."""
         self.note = None
-        self.mark = index % len(self.rows) if self.rows else 0
+        if self._lines:
+            self.mark = self._lines[position % len(self._lines)]
 
     def _handle_mouse(self, event: MouseEvent) -> bool:
         """Mark the row under a click, and flip its switch when the click is on the switch or its word."""
         if event.action is MouseAction.SCROLL_UP:
-            self._move(self.mark - 1)
+            self._move(self._where() - 1)
             return True
         if event.action is MouseAction.SCROLL_DOWN:
-            self._move(self.mark + 1)
+            self._move(self._where() + 1)
             return True
         if event.action is not MouseAction.DOWN:
             return False
@@ -275,7 +391,8 @@ class PluginsPage(Widget):
             rail = self.switches.get(row.origin)
             self.set(row.origin, not (rail.selected if rail is not None else False))
         else:
-            self._move(at)
+            self.note = None
+            self.mark = at
         return True
 
     def _view(self) -> int:
@@ -283,12 +400,12 @@ class PluginsPage(Widget):
         return max(1, self.rect.height - CHROME)
 
     def _switch_column(self) -> int:
-        """Return the column the first switch cell is in."""
-        return self.rect.x + 4 + NAME_WIDTH
+        """Return the column the first switch cell is in, after the marker, the number and the name."""
+        return self.rect.x + 4 + self.digits + NUMBER_GAP + NAME_WIDTH
 
     def _reveal(self) -> None:
         """Scroll the list the least that shows the marked plugin."""
-        if not self.rows:
+        if self.mark not in self._lines:
             return
         view = self._view()
         row = self._lines.index(self.mark)
@@ -332,17 +449,31 @@ class PluginsPage(Widget):
                 state,
                 Style(foreground=theme.accent if changes else theme.muted, background=surface, bold=bool(changes)),
             )
+        draw_search(
+            canvas,
+            theme,
+            x,
+            self.rect.y + 2,
+            room,
+            self._query,
+            hint=SEARCH_HINT,
+            active=self.focused,
+        )
         self._reveal()
         self._draw_list(canvas)
         if not self.rows:
             canvas.draw_text(x, self.rect.y + LIST_TOP, "No plugin is loaded.", muted, max_width=room)
-        if self.rows:
+        elif not self._lines:
+            said = truncate(f"No plugin matches \u201c{self._query.strip()}\u201d", room)
+            canvas.draw_text(x, self.rect.y + LIST_TOP, said, muted, max_width=room)
+        else:
             row = self.rows[self.mark]
             head = f"{row.name}:"
             said = f"{head} {self.note or self._description(row)}"
             canvas.draw_text(x, self.rect.bottom - 2, truncate(said, room), muted, max_width=room)
             canvas.draw_text(x, self.rect.bottom - 2, head, bold, max_width=min(room, display_width(head)))
-        canvas.draw_text(x, self.rect.bottom - 1, truncate(self.HINT, room), muted, max_width=room)
+        keys = self.SEARCHING if self._query else self.HINT
+        canvas.draw_text(x, self.rect.bottom - 1, truncate(keys, room), muted, max_width=room)
 
     def _description(self, row: PluginRow) -> str:
         """Return what the marked plugin does at the next start, or why it is not the reader's to switch."""
@@ -385,8 +516,17 @@ class PluginsPage(Widget):
             if marked:
                 canvas.draw_text(x, y, "\u25b8", Style(foreground=theme.accent, background=surface, bold=True))
             lit = theme.text if marked or on >= 0.5 else blend(theme.muted, surface, 0.25)
+            # The number is the plugin's place in the whole list, not in what the query leaves: a search narrows the
+            # rows but does not renumber them, so the number a reader saw before typing still names the same plugin.
             canvas.draw_text(
                 x + 2,
+                y,
+                f"{at + 1:>{self.digits}}.",
+                Style(foreground=theme.muted, background=surface, bold=marked),
+                max_width=self.digits + 1,
+            )
+            canvas.draw_text(
+                x + 2 + self.digits + NUMBER_GAP + 1,
                 y,
                 truncate(row.name, NAME_WIDTH),
                 Style(foreground=lit, background=surface, bold=marked),
