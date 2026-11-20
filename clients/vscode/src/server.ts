@@ -163,7 +163,7 @@ export class ServerManager implements vscode.Disposable {
       if (installed === null) {
         throw this.failed(
           new Error(
-            `zettcode-server was not found. Install it with “uv tool install zettcode” (or “pip install zettcode”), or point zettcode.server.command at it.`,
+            `zettcode-server was not found. If it is installed, set zettcode.server.command to its full path ("which zettcode-server" prints it); otherwise install it with “uv tool install zettcode” (or “pip install zettcode”).`,
           ),
           this.generation + 1,
         );

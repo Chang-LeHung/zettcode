@@ -40,6 +40,11 @@ side bar, so you can ask for a change and watch it happen without leaving the ed
    uv tool install zettcode
    ```
 
+   **If the chat says “The server is not running”** and you have `zettcode-server` installed somewhere the extension
+   does not look (a `uv tool` or pipx folder, a virtualenv that is not the workspace's), tell it where: click
+   **Choose zettcode-server…** on the welcome card and pick the file (`which zettcode-server` prints it; on Windows,
+   `where zettcode-server`), or set `zettcode.server.command` to that full path in Settings. The path is saved to your
+   user settings, so every window uses it.
 2. **Open a folder** in VS Code and click the ZettCode icon in the side bar on the right, or run
    **ZettCode: Focus Chat** from the Command Palette. Prefer the left? Drag the icon there.
 3. **Add a model** from the welcome card: the model name, and an API key. If you already use the ZettCode terminal app,
@@ -82,7 +87,7 @@ Open **Settings** and search for *ZettCode*. The ones you are most likely to wan
 | `zettcode.restoreSession` | `true` | Reopen the conversation this folder had last. |
 | `zettcode.autoTitle` | `true` | Let the model name an untitled conversation after its first answer. |
 | `zettcode.answerTimeout` | `90` | Seconds an approval waits before the safe answer is used. A question waits until you answer it. |
-| `zettcode.server.command` | `zettcode-server` | Where the server is, if it is not on your `PATH` or in the workspace's `.venv`. |
+| `zettcode.server.command` | `zettcode-server` | Where the server is, if it is not on your `PATH` or in the workspace's `.venv`: a full path to the executable. **Choose zettcode-server…** on the welcome card sets it for you. |
 | `zettcode.server.autoInstall` | `true` | Install the server into the extension's own environment when the command cannot be found. |
 | `zettcode.server.externalUrl` | empty | Connect to a server you started yourself instead of launching one. |
 

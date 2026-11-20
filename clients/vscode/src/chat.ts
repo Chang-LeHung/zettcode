@@ -752,6 +752,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         await this.server.restart();
         await this.refreshAll();
         return;
+      case "choose-server":
+        await this.chooseServer();
+        return;
       case "resume":
         await this.resumeRun();
         return;
@@ -2212,6 +2215,53 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       this.output.appendLine(`[paste] could not keep ${name}: ${messageOf(error)}`);
       return undefined;
     }
+  }
+
+  /**
+   * Let the reader point the extension at `zettcode-server` when it is installed somewhere the lookup does not reach
+   * (a `uv tool` or pipx folder, a virtualenv that is not the workspace's): a file dialog, the path written to the
+   * user's settings so it follows them to every window, then a restart. Cancelling the dialog changes nothing.
+   */
+  private async chooseServer(): Promise<void> {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      canSelectFolders: false,
+      openLabel: "Use this zettcode-server",
+      title: "Choose the zettcode-server executable (`which zettcode-server`, or `where zettcode-server` on Windows)",
+    });
+    const file = picked?.[0];
+    if (file === undefined) {
+      return;
+    }
+    // Anything can be picked; a file with another name is more likely a slip than a wrapper, so ask once.
+    if (!/^zettcode-server/i.test(file.fsPath.split(/[\\/]/).pop() ?? "")) {
+      const answer = await vscode.window.showWarningMessage(
+        `${file.fsPath} is not called zettcode-server. Use it anyway?`,
+        { modal: true },
+        "Use it",
+      );
+      if (answer !== "Use it") {
+        return;
+      }
+    }
+    const configuration = vscode.workspace.getConfiguration("zettcode");
+    // A value set for this workspace wins over the user's: writing the user's would leave the old one in force and
+    // the same error would come back, so write to the scope that is actually in effect.
+    // The setting is window-scoped, so it has no per-folder value: only the workspace's can shadow the user's.
+    const inspected = configuration.inspect<string>("server.command");
+    const target =
+      inspected?.workspaceValue !== undefined
+        ? vscode.ConfigurationTarget.Workspace
+        : vscode.ConfigurationTarget.Global;
+    try {
+      await configuration.update("server.command", file.fsPath, target);
+    } catch (error) {
+      await vscode.window.showErrorMessage(`Could not write zettcode.server.command: ${String(error)}`);
+      return;
+    }
+    this.output.appendLine(`[server] zettcode.server.command set to ${file.fsPath} (${vscode.ConfigurationTarget[target]} settings)`);
+    await this.server.restart();
+    await this.refreshAll();
   }
 
   /**

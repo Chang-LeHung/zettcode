@@ -48,8 +48,18 @@ function suggest(text: string): void {
         <div class="setup-copy">
           <strong>The server is not running.</strong>
           <span>{{ ui.server.message }}</span>
+          <span id="setup-hint" class="setup-hint">
+            Already installed? Choose where <code>zettcode-server</code> is (<code>which zettcode-server</code>, or
+            <code>where zettcode-server</code> on Windows), or set <code>zettcode.server.command</code> in Settings.
+          </span>
         </div>
-        <button class="btn solid" type="button" @click="post({ type: 'restart-server' })">Start the server</button>
+        <div class="setup-actions">
+          <button id="choose-server" class="btn solid" type="button" @click="post({ type: 'choose-server' })">
+            Choose zettcode-server…
+          </button>
+          <button class="btn" type="button" @click="post({ type: 'open-settings' })">Open Settings</button>
+          <button class="btn" type="button" @click="post({ type: 'restart-server' })">Start the server</button>
+        </div>
       </template>
       <template v-else>
         <div class="setup-copy">
@@ -146,6 +156,22 @@ function suggest(text: string): void {
 
 .setup-copy span {
   color: var(--muted);
+}
+
+.setup-hint {
+  margin-top: 6px;
+}
+
+.setup-hint code {
+  font-family: var(--mono, monospace);
+  font-size: 0.95em;
+}
+
+.setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
 }
 
 .welcome-meta {

@@ -5,18 +5,34 @@ import { post, state } from "../store.js";
 
 type Level = "info" | "warn" | "error";
 
-const banner = computed<{ level: Level; title: string; text: string; action?: string; run?: () => void } | null>(() => {
+const banner = computed<{
+  level: Level;
+  title: string;
+  text: string;
+  hint?: string;
+  action?: string;
+  run?: () => void;
+  other?: string;
+  runOther?: () => void;
+} | null>(() => {
   const ui = state.ui;
   if (ui === null) {
     return null;
   }
   if (ui.server.status === "error") {
+    // With no conversation yet the welcome card draws this same failure, with the same actions: say it once.
+    if (state.turns.length === 0 && !ui.ready) {
+      return null;
+    }
     return {
       level: "error",
       title: "The server is not running",
       text: ui.server.message,
+      hint: "If zettcode-server is installed, choose where it is, or set zettcode.server.command in Settings.",
       action: "Restart",
       run: () => post({ type: "restart-server" }),
+      other: "Choose zettcode-server…",
+      runOther: () => post({ type: "choose-server" }),
     };
   }
   if (ui.server.status === "starting") {
@@ -42,7 +58,11 @@ const banner = computed<{ level: Level; title: string; text: string; action?: st
     <div class="banner-copy">
       <strong>{{ banner.title }}</strong>
       <span>{{ banner.text }}</span>
+      <span v-if="banner.hint" id="banner-hint">{{ banner.hint }}</span>
     </div>
+    <button v-if="banner.other" id="banner-other" class="btn small" type="button" @click="banner.runOther?.()">
+      {{ banner.other }}
+    </button>
     <button v-if="banner.action" class="btn small" type="button" @click="banner.run?.()">{{ banner.action }}</button>
   </div>
 </template>
