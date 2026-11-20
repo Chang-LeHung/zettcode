@@ -165,13 +165,13 @@ and one server are the ordinary case.
 
 ## Harness library
 
-**ZettCode: Harness Library** opens the harnesses you keep in `~/.zettcode/harness`, shared by every workspace and by
+**ZettCode: Harness Library** opens the harnesses you keep in `~/.zettcode/harness/library`, shared by every workspace and by
 the terminal. Each row says where it came from, which commit it is at, how many tools and files it has, and whether
 `[harness] use` names it; **Details** shows its tools, its files and whether the files still match what was installed.
 
 Nothing is kept before you have read it. **Add a harness** and **Update** download the source and show a preview first:
 the tools it defines, every file, the symbolic links in it and where they point, and for an update what would change.
-A harness is code that runs on your machine, so the preview says so. **Keep** (or **Update**) then keeps exactly what
+A harness is code that runs on your machine, so the preview says so. **Keep** (or **Apply update**) then keeps exactly what
 you were shown; if the download is different by then, the server refuses and you preview it again. A harness whose
 files you changed after installing it is refused too; the message says so and offers **Update anyway**, which replaces
 your changes after you have read the preview. **Fork** copies one

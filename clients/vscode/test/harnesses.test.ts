@@ -233,7 +233,7 @@ test("an update shows what would change and keeps only that preview's commit", a
 
   await page.press("Update", ".harness");
   assert.ok(page.$("#harness-preview")?.textContent?.includes("version: 1.0 -> 2.0"));
-  await page.press("Update", "#harness-preview");
+  await page.press("Apply update", "#harness-preview");
 
   assert.deepEqual(calls.filter((call) => call[0] === "previewUpdate"), [["previewUpdate", "todos", { force: false }]]);
   assert.deepEqual(calls.filter((call) => call[0] === "update"), [
@@ -408,7 +408,7 @@ test("an update the server refuses can be pressed again, forced, and keeps with 
   assert.ok(page.$("#harness-status")?.textContent?.includes("changed since it was installed"));
 
   await page.press("Update anyway", "#harness-status");
-  await page.press("Update", "#harness-preview");
+  await page.press("Apply update", "#harness-preview");
 
   assert.deepEqual(calls.filter((call) => call[0] === "previewUpdate").map((call) => call[2]), [
     { force: false },
@@ -444,3 +444,54 @@ test("an update that is already current says so, and a damaged harness shows why
 function $(selector: string, window: { document: Document }): Element | null {
   return window.document.querySelector(selector);
 }
+
+test("a Keep refused because the harness changed since the preview offers Update anyway", async () => {
+  const { client, calls } = fakeClient();
+  const page = await open(client);
+  await page.press("Update", ".harness");
+  (client as any).harnesses.update = async () => {
+    throw new Error("todos cannot be updated safely: `update --force` replaces it");
+  };
+
+  await page.press("Apply update", "#harness-preview");
+  assert.ok(page.$("#harness-status")?.textContent?.includes("Update anyway"));
+  await page.press("Update anyway", "#harness-status");
+
+  assert.deepEqual(calls.filter((call) => call[0] === "previewUpdate").map((call) => call[2]), [
+    { force: false },
+    { force: true },
+  ]);
+});
+
+test("a page that loads again (ready) drops the preview the host held", async () => {
+  const { client, calls } = fakeClient();
+  const page = await open(client);
+  await page.add("acme/fresh");
+
+  await receive({ type: "ready" });
+  await receive({ type: "confirm" });
+
+  assert.equal(calls.some((call) => call[0] === "add"), false);
+  assert.deepEqual(posted.at(-1), { type: "error", text: "There is no preview to keep. Preview it again." });
+});
+
+test("a library that cannot be read at first says so instead of loading forever", async () => {
+  const { client } = fakeClient();
+  (client as any).harnesses.entries = async () => {
+    throw new Error("the server is restarting");
+  };
+  const page = await open(client);
+
+  assert.equal(page.$("#harness-status")?.textContent, "the server is restarting");
+  assert.equal(page.$("#harness-count")?.textContent, "Could not read the library");
+});
+
+test("Details for a harness another window removed says so", async () => {
+  const { client } = fakeClient();
+  const page = await open(client);
+  (client as any).harnesses.entry = async () => entry("ghost", { state: "ok" });
+
+  await page.press("Details", ".harness");
+
+  assert.equal(page.$("#harness-status")?.textContent, "ghost is no longer in the list.");
+});

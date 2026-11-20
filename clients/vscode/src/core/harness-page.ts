@@ -28,7 +28,7 @@ export function harnessesPage(): Page {
       <div class="panel-head"><h2>Library</h2><span id="harness-total" class="muted"></span></div>
       <ul id="harness-list" class="harness-list"></ul>
     </section>
-    <p class="scope">The library is <code>~/.zettcode/harness</code>. The harness a run uses is chosen with
+    <p class="scope">The library is <code>~/.zettcode/harness/library</code>. The harness a run uses is chosen with
     <code>[harness] use</code> in the configuration or <code>/harness use</code> in the terminal; one that is in use
     cannot be removed.</p>`,
     css: HARNESS_CSS,
@@ -185,7 +185,7 @@ function confirmRemove(button, name) {
 
 function showDetail(entry) {
   const item = document.querySelector('.harness[data-name="' + CSS.escape(entry.name) + '"]');
-  if (item === null) { return; }
+  if (item === null) { say(entry.name + " is no longer in the list.", true); return; }
   item.querySelector(".harness-detail")?.remove();
   const detail = h("div", { class: "harness-detail" },
     h("div", { class: "harness-state-" + entry.state }, "state: " + entry.state),
@@ -204,7 +204,7 @@ function showPreview(preview) {
   const slot = $("harness-preview");
   slot.replaceChildren();
   const links = Object.entries(preview.links || {});
-  const verb = preview.action === "add" ? "Keep" : "Update";
+  const verb = preview.action === "add" ? "Keep" : "Apply update";
   slot.append(h("div", { class: "preview" },
     h("div", { class: "preview-title" }, (preview.action === "add" ? "Preview: add " : "Preview: update ") + preview.name),
     h("div", { class: "caution" }, preview.caution),
@@ -256,6 +256,7 @@ window.addEventListener("message", (event) => {
       break;
     case "error":
       lock(false); say(message.text, true);
+      if ($("harness-count").textContent === "Loading…") { $("harness-count").textContent = "Could not read the library"; }
       if (message.retry) {
         // The server refused an update (a harness changed since it was installed): offer it again, forced, on purpose.
         $("harness-status").append(" ", act("Update anyway", "danger", () => {

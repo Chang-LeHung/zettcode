@@ -169,12 +169,16 @@ export async function showHarnessPanel(
         }
       } catch (failure) {
         const why = failure instanceof Error ? failure.message : String(failure);
-        send({
-          type: "error",
-          text: why,
-          // The server's refusal of a changed harness says `update --force`; only that one is offered again, forced.
-          ...(ask.type === "preview-update" && !ask.force && why.includes("`update --force`") ? { retry: ask.name } : {}),
-        });
+        // The server's refusal of a changed harness says `update --force`; only that one is offered again, forced.
+        // It can come back from the preview or from a Keep (the harness changed between the two).
+        const forcible = why.includes("`update --force`");
+        const retry =
+          forcible && ask.type === "preview-update" && !ask.force
+            ? ask.name
+            : forcible && shown !== null && shown.action === "update" && !shownForce
+              ? shown.name
+              : "";
+        send({ type: "error", text: why, ...(retry === "" ? {} : { retry }) });
       }
     });
   }
