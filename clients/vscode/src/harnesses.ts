@@ -63,9 +63,10 @@ export function parseAsk(message: unknown): Ask | null {
  *
  * Adding and updating are two steps and the host keeps the first: the page posts "confirm" and the host sends back the
  * `commit` and `digest` of the preview it showed, so what is kept is exactly what was read, and the page holds nothing
- * to tamper with. The host forgets the preview whenever the page could no longer be showing it (any other request, a
- * failed one, the page loaded again), so a Keep is only ever answered for the preview on screen. The server refuses it
- * when the download has changed since.
+ * to tamper with. The host holds the preview exactly as long as the page shows it: a new preview, Cancel, the page
+ * loaded again, or a kept download, fork or removal (which the page clears on "done") drop it; Details and a request
+ * the server refused leave it, so Keep can be pressed again without downloading twice. The server refuses a Keep when
+ * the download has changed since.
  */
 export async function showHarnessPanel(
   client: () => Promise<ZettCodeClient>,
@@ -98,9 +99,20 @@ export async function showHarnessPanel(
       }
       const shown = ask.type === "confirm" ? pending : null;
       const shownForce = force;
-      // Everything but Keep drops the preview: the page clears or replaces it as it sends the request.
-      pending = null;
-      force = false;
+      // A request that replaces or cancels the preview drops it (the page clears it as it sends). Details, and a Keep
+      // that fails, leave it: the page still shows it, so the next Keep must still be answered.
+      if (["ready", "cancel", "preview-add", "preview-update"].includes(ask.type)) {
+        pending = null;
+        force = false;
+      }
+      const lose = (): void => {
+        pending = null;
+        force = false;
+      };
+      const reread = async (library: ZettCodeClient["harnesses"]): Promise<void> => {
+        // The words are already sent; a list that cannot be read now must not turn them into an error.
+        await refresh(library).catch(() => undefined);
+      };
       try {
         // Resolved per message: a server restarted under the open panel has a new address and token.
         if (reach === null) {
@@ -137,19 +149,22 @@ export async function showHarnessPanel(
               await library.update(shown.name, { ...proof, force: shownForce });
             }
             // It is kept: say so before reading the list again, which may fail on a server that is restarting.
+            lose();
             send({ type: "done", action: "keep", text: `${shown.action === "add" ? "Added" : "Updated"} ${shown.name}.` });
-            await refresh(library);
+            await reread(library);
             return;
           }
           case "fork":
             await library.fork(ask.name, ask.newName);
+            lose(); // the page clears its preview on "done"
             send({ type: "done", action: "fork", text: `Copied ${ask.name} to ${ask.newName}.` });
-            await refresh(library);
+            await reread(library);
             return;
           case "remove":
             await library.remove(ask.name);
+            lose();
             send({ type: "done", action: "remove", text: `Removed ${ask.name}.` });
-            await refresh(library);
+            await reread(library);
             return;
         }
       } catch (failure) {
@@ -158,7 +173,7 @@ export async function showHarnessPanel(
           type: "error",
           text: why,
           // The server's refusal of a changed harness says `update --force`; only that one is offered again, forced.
-          ...(ask.type === "preview-update" && !ask.force && why.includes("--force") ? { retry: ask.name } : {}),
+          ...(ask.type === "preview-update" && !ask.force && why.includes("`update --force`") ? { retry: ask.name } : {}),
         });
       }
     });

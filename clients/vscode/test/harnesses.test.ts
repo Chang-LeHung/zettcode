@@ -367,8 +367,37 @@ test("a kept harness is reported even when the list cannot be read straight afte
 
   await page.press("Keep", "#harness-preview");
 
-  assert.ok(posted.some((message) => (message as { type?: string; text?: string }).text === "Added fresh."));
-  assert.equal(posted.some((message) => (message as { type?: string }).type === "done"), true);
+  assert.equal(page.$("#harness-status")?.textContent, "Added fresh.", "the page ends on the success, not an error");
+  assert.equal(page.$("#harness-status")?.className.includes("error"), false);
+});
+
+test("Details leaves the preview and its Keep working", async () => {
+  const { client, calls } = fakeClient();
+  const page = await open(client);
+  await page.add("acme/fresh", "fresh");
+
+  await page.press("Details", ".harness");
+  await page.press("Keep", "#harness-preview");
+
+  assert.equal(calls.filter((call) => call[0] === "add").length, 1);
+});
+
+test("a Keep the server refuses can be pressed again without a new download", async () => {
+  const { client, calls } = fakeClient();
+  const page = await open(client);
+  await page.add("acme/fresh", "fresh");
+  const real = (client as any).harnesses.add;
+  (client as any).harnesses.add = async () => {
+    throw new Error("a run is in progress");
+  };
+  await page.press("Keep", "#harness-preview");
+  assert.equal(page.$("#harness-status")?.textContent, "a run is in progress");
+
+  (client as any).harnesses.add = real;
+  await page.press("Keep", "#harness-preview");
+
+  assert.equal(calls.filter((call) => call[0] === "previewAdd").length, 1);
+  assert.equal(page.$("#harness-status")?.textContent, "Added fresh.");
 });
 
 test("an update the server refuses can be pressed again, forced, and keeps with force", async () => {
