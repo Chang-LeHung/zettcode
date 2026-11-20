@@ -2347,7 +2347,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     try {
       await this.ensureClient();
     } catch (error) {
-      void vscode.window.showErrorMessage(`The ZettCode server is not running: ${String(error)}`);
+      void vscode.window.showErrorMessage(`The ZettCode server is not running: ${messageOf(error)}`);
       return;
     }
     await showHarnessPanel(() => this.ensureClient(), this.extensionUri, this.workspaceName());

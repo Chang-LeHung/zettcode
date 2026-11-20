@@ -163,7 +163,7 @@ test("the page asks for the library when it opens and draws each harness with it
   const { client } = fakeClient();
   const page = await open(client);
 
-  assert.equal(lastPanel!.title, "ZettCode: Harnesses");
+  assert.equal(lastPanel!.title, "ZettCode: Harness Library");
   assert.equal(page.$("#harness-count")?.textContent, "1 harness");
   const row = page.$('.harness[data-name="todos"]');
   assert.ok(row?.textContent?.includes("in use"));
@@ -494,4 +494,46 @@ test("Details for a harness another window removed says so", async () => {
   await page.press("Details", ".harness");
 
   assert.equal(page.$("#harness-status")?.textContent, "ghost is no longer in the list.");
+});
+
+test("the host resolves the client on every message, so a restarted server is reached", async () => {
+  const first = fakeClient();
+  const second = fakeClient();
+  const page = await open(first.client);
+  const before = first.calls.filter((call) => call[0] === "entries").length;
+
+  await showHarnessPanel(async () => second.client, extension, "zettcode");
+  await receive({ type: "ready" });
+
+  assert.equal(first.calls.filter((call) => call[0] === "entries").length, before, "the old client is not used again");
+  assert.equal(second.calls.filter((call) => call[0] === "entries").length, 1, "the new one is");
+  assert.ok(page.$("#harness-count"));
+});
+
+test("a kept update leaves a source typed into the add form alone", async () => {
+  const { client } = fakeClient();
+  const page = await open(client);
+  ($("#harness-source", page.window) as HTMLInputElement).value = "acme/next";
+
+  await page.press("Update", ".harness");
+  await page.press("Apply update", "#harness-preview");
+
+  assert.equal(page.$("#harness-status")?.textContent, "Updated todos.");
+  assert.equal((page.$("#harness-source") as HTMLInputElement).value, "acme/next");
+});
+
+test("a Keep refused because the download changed drops the preview it can no longer keep", async () => {
+  const { client } = fakeClient();
+  const page = await open(client);
+  await page.add("acme/fresh");
+  (client as any).harnesses.add = async () => {
+    throw new Error("What was downloaded is not what was shown. Preview it again.");
+  };
+
+  await page.press("Keep", "#harness-preview");
+
+  assert.equal(page.$("#harness-preview")?.hasAttribute("hidden"), true);
+  assert.ok(page.$("#harness-status")?.textContent?.includes("Preview it again"));
+  await receive({ type: "confirm" });
+  assert.deepEqual(posted.at(-1), { type: "error", text: "There is no preview to keep. Preview it again." });
 });

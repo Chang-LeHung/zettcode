@@ -78,7 +78,7 @@ export async function showHarnessPanel(
   pending = null;
   force = false;
   if (panel === null) {
-    panel = vscode.window.createWebviewPanel("zettcode.harnesses", "ZettCode: Harnesses", vscode.ViewColumn.Active, {
+    panel = vscode.window.createWebviewPanel("zettcode.harnesses", "ZettCode: Harness Library", vscode.ViewColumn.Active, {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media")],
     });
@@ -116,6 +116,8 @@ export async function showHarnessPanel(
       try {
         // Resolved per message: a server restarted under the open panel has a new address and token.
         if (reach === null) {
+          // Without a client nothing can be answered, and the page locked its buttons for a reply that must come.
+          send({ type: "error", text: "The ZettCode server is not reachable. Open the panel again." });
           return;
         }
         const library = (await reach()).harnesses;
@@ -150,7 +152,7 @@ export async function showHarnessPanel(
             }
             // It is kept: say so before reading the list again, which may fail on a server that is restarting.
             lose();
-            send({ type: "done", action: "keep", text: `${shown.action === "add" ? "Added" : "Updated"} ${shown.name}.` });
+            send({ type: "done", action: shown.action, text: `${shown.action === "add" ? "Added" : "Updated"} ${shown.name}.` });
             await reread(library);
             return;
           }
@@ -178,7 +180,12 @@ export async function showHarnessPanel(
             : forcible && shown !== null && shown.action === "update" && !shownForce
               ? shown.name
               : "";
-        send({ type: "error", text: why, ...(retry === "" ? {} : { retry }) });
+        // What was downloaded is no longer what the preview showed: no press can keep it, so the page drops it.
+        const drop = why.includes("not what was shown");
+        if (drop) {
+          lose();
+        }
+        send({ type: "error", text: why, ...(retry === "" ? {} : { retry }), ...(drop ? { drop: true } : {}) });
       }
     });
   }

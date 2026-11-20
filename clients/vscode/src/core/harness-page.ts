@@ -65,7 +65,6 @@ export const HARNESS_CSS = `
 .harness-repo p { margin: 2px 0; }
 .harness-tools { font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
 .harness-files { max-height: 220px; overflow: auto; font-family: var(--mono); font-size: 11px; margin: 4px 0 0; padding-left: 18px; }
-.harness .pill, .preview .pill { font-size: 11px; }
 .harness-state-changed, .harness-state-missing, .harness-state-damaged { color: var(--red); }
 .preview { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
 .preview .caution { color: var(--red); }
@@ -206,8 +205,8 @@ function showPreview(preview) {
   const links = Object.entries(preview.links || {});
   const verb = preview.action === "add" ? "Keep" : "Apply update";
   slot.append(h("div", { class: "preview" },
-    h("div", { class: "preview-title" }, (preview.action === "add" ? "Preview: add " : "Preview: update ") + preview.name),
-    h("div", { class: "caution" }, preview.caution),
+    h("div", { class: "preview-title", id: "harness-preview-title" }, (preview.action === "add" ? "Preview: add " : "Preview: update ") + preview.name),
+    preview.caution ? h("div", { class: "caution" }, preview.caution) : null,
     h("div", { class: "harness-origin" }, preview.source + " @ " + preview.commit.slice(0, 10) + " · " + preview.size + " bytes"),
     preview.version || preview.description ? h("div", {}, (preview.version ? preview.version + " " : "") + preview.description) : null,
     h("div", { class: "harness-tools" }, preview.tools.length ? "tools: " + preview.tools.join(", ") : "no tools"),
@@ -224,6 +223,11 @@ function showPreview(preview) {
     ),
   ));
   slot.hidden = false;
+  slot.setAttribute("role", "region");
+  slot.setAttribute("aria-labelledby", "harness-preview-title");
+  // The decision is the point of the preview: say it is ready and put the cursor on the button that keeps it.
+  const apply = slot.querySelector("button.primary");
+  apply?.focus();
   slot.scrollIntoView?.({ block: "nearest" });
 }
 
@@ -248,14 +252,16 @@ window.addEventListener("message", (event) => {
     // The list follows a "done" and must not wipe its words.
     case "list": lock(false); renderList(message.harnesses); break;
     case "detail": lock(false); say("", false); showDetail(message.entry); break;
-    case "preview": lock(false); say("", false); showPreview(message.preview); break;
+    case "preview": lock(false); say("Preview of " + message.preview.name + " ready.", false); showPreview(message.preview); break;
     case "done":
       lock(false); clearPreview(); say(message.text, false);
-      // Only a kept download empties the form; a fork or a removal must not lose a source typed but not yet previewed.
-      if (message.action === "keep") { $("harness-source").value = ""; $("harness-name").value = ""; }
+      // Only a download empties the form: a kept update, a fork or a removal must not lose a typed source.
+      if (message.action === "add") { $("harness-source").value = ""; $("harness-name").value = ""; }
       break;
     case "error":
       lock(false); say(message.text, true);
+      // The download is no longer what was shown: that preview can only be refused again, so it goes.
+      if (message.drop === true) { clearPreview(); }
       if ($("harness-count").textContent === "Loading…") { $("harness-count").textContent = "Could not read the library"; }
       if (message.retry) {
         // The server refused an update (a harness changed since it was installed): offer it again, forced, on purpose.
