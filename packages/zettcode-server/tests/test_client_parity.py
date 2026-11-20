@@ -18,6 +18,7 @@ import pytest
 from zettcode.sdk import client as sdk_client
 from zettcode.sdk import errors as sdk_errors
 from zettcode.sdk import events as sdk_events
+from zettcode.sdk import harness_library as sdk_harness_library
 from zettcode.sdk import session as sdk_session
 from zettcode.sdk import types as sdk_types
 from zettcode.server.app import FAILURES
@@ -95,6 +96,7 @@ PYTHON_ONLY: dict[str, dict[str, str]] = {
         "install": "switching a conversation in place is `open(id)` over HTTP; the two halves exist so a terminal can "
         "prepare rows between them",
     },
+    "HarnessLibrary": {},
 }
 
 #: TypeScript public members with no Python twin, and why.
@@ -117,6 +119,7 @@ TYPESCRIPT_ONLY: dict[str, dict[str, str]] = {
         "info": "what Python reads as properties",
     },
     "Sessions": {},
+    "HarnessLibrary": {},
 }
 
 #: Names a type has in both languages. Only listed names are compared; a type that exists on one side is not an error.
@@ -173,6 +176,7 @@ GROUPS = (
     ("Client", sdk_client.Client, ("sessions", "workspace"), "ZettCodeClient"),
     ("Sessions", sdk_client.Sessions, (), "Sessions"),
     ("Session", sdk_session.Session, ("id",), "Session"),
+    ("HarnessLibrary", sdk_harness_library.HarnessLibrary, (), "HarnessLibrary"),
 )
 
 
@@ -181,11 +185,14 @@ def typescript_fields(interface: str) -> set[str]:
     source = (TS / "types.ts").read_text(encoding="utf-8")
     match = re.search(rf"export interface {interface} \{{(.*?)\n\}}", source, re.S)
     assert match is not None, f"clients/typescript/src/types.ts has no {interface}"
-    return set(re.findall(r"^  ([a-z][A-Za-z0-9]*)\??:", match.group(1), re.M))
+    return set(re.findall(r"^  ([a-z][A-Za-z0-9_]*)\??:", match.group(1), re.M))
 
 
 #: Values both languages hand back, and the Python dataclass each is.
 PAYLOADS = (
+    ("HarnessEntry", sdk_types.HarnessEntry),
+    ("HarnessPreview", sdk_types.HarnessPreview),
+    ("HarnessRepository", sdk_types.HarnessRepository),
     ("PluginEntry", sdk_types.PluginEntry),
     ("PluginReport", sdk_client.PluginReport),
     ("TriggerInfo", sdk_client.TriggerInfo),

@@ -22,7 +22,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -37,6 +37,11 @@ LIBRARY_DIRECTORY = "library"
 SOURCE_FILE = "SOURCE.json"
 #: Seconds one ``git`` call may take before it is given up on.
 GIT_TIMEOUT = 120
+#: What every front end says beside a harness before it is kept: its code runs here.
+CAUTION = (
+    "Its code runs on this machine when a session loads it, in the sandbox the permission level gives the harness "
+    "(no sandbox at `/permission full`). Read it first if you do not know where it comes from."
+)
 #: Variables that point git at a repository other than the one in the working directory.
 _GIT_REPOSITORY_VARIABLES = frozenset(
     {
@@ -546,13 +551,19 @@ def modified(entry: Entry) -> bool | None:
         return True
 
 
-def refetch(entry: Entry, workdir: Path) -> Prepared:
-    """Download the entry's source again, at the branch or tag it was installed from, for ``update`` to compare."""
+def refetch(entry: Entry, workdir: Path, *, commit: str = "") -> Prepared:
+    """Download the entry's source again, at the branch or tag it was installed from, for ``update`` to compare.
+
+    ``commit`` pins the download to the one a reader was already shown, instead of whatever the branch is now.
+    """
     url = entry.source.get("url")
     if not isinstance(url, str) or not url:
         raise LibraryError(f"`{entry.name}` has no upstream to update from: it is a {entry.origin}.")
     ref = entry.source.get("ref")
-    return prepare(Source(url, ref if isinstance(ref, str) else ""), workdir)
+    source = Source(url, ref if isinstance(ref, str) else "")
+    prepared = prepare(Source(url, commit) if commit else source, workdir)
+    # What is recorded is what the reader asked for (the branch), not the commit that pinned this download.
+    return replace(prepared, source=source)
 
 
 def update(config: ZettCodeConfig, entry: Entry, prepared: Prepared, *, force: bool = False) -> Entry:
@@ -686,6 +697,94 @@ def keep(config: ZettCodeConfig, folder: Path, new: str, *, origin: str) -> Entr
         shutil.rmtree(target, ignore_errors=True)
         raise
     return get(config, new)
+
+
+@dataclass(frozen=True, slots=True)
+class RepositoryInfo:
+    """One repository of a library harness as a reader sees it: what its manifest says and the files in it."""
+
+    name: str
+    version: str
+    description: str
+    tools: tuple[str, ...]
+    files: tuple[str, ...]
+    #: Why the manifest could not be read, or empty.
+    error: str
+
+
+@dataclass(frozen=True, slots=True)
+class EntryInfo:
+    """One library harness as a panel shows it. ``state`` is :func:`update_state`'s word."""
+
+    name: str
+    origin: str
+    commit: str
+    state: str
+    in_use: bool
+    repositories: tuple[RepositoryInfo, ...]
+
+
+def describe(config: ZettCodeConfig, entry: Entry) -> EntryInfo:
+    """Read an entry's manifests and file lists. Nothing in it is imported, and a link is listed, never followed."""
+    from zett_agent.jit_harness.manifest import read_manifest
+
+    repositories: list[RepositoryInfo] = []
+    for repository in entry.repositories:
+        folder = entry.path / repository
+        try:
+            files = tuple(path.relative_to(folder).as_posix() for path in _tree_files(folder))
+        except OSError:
+            files = ()
+        try:
+            manifest = read_manifest(folder)
+        except (ValueError, OSError) as error:
+            repositories.append(RepositoryInfo(repository, "", "", (), files, str(error)))
+            continue
+        repositories.append(
+            RepositoryInfo(repository, manifest.version, manifest.description, tuple(manifest.tools), files, "")
+        )
+    return EntryInfo(
+        entry.name,
+        entry.origin,
+        entry.commit,
+        update_state(entry),
+        config.harness_use == entry.name,
+        tuple(repositories),
+    )
+
+
+def changes(old: Path, prepared: Prepared, *, limit: int = 40) -> list[str]:
+    """Return what replacing the folder ``old`` with ``prepared`` would change, one line each.
+
+    The version, the tools that come and go, and which files are added, removed or different; at most ``limit`` names
+    a line. A link is compared as the link it is.
+    """
+    from zett_agent.jit_harness.manifest import read_manifest
+
+    lines: list[str] = []
+    try:
+        before = read_manifest(old)
+    except (ValueError, OSError):
+        before = None
+    after = prepared.candidate
+    if before is not None:
+        if before.version != after.version:
+            lines.append(f"version: {before.version} -> {after.version}")
+        gone = sorted(set(before.tools) - set(after.tools))
+        new = sorted(set(after.tools) - set(before.tools))
+        if gone:
+            lines.append(f"tools removed: {', '.join(gone)}")
+        if new:
+            lines.append(f"tools added: {', '.join(new)}")
+    before_files = tree_fingerprints(old) if old.is_dir() else {}
+    after_files = tree_fingerprints(prepared.directory)
+    added = sorted(set(after_files) - set(before_files))
+    removed = sorted(set(before_files) - set(after_files))
+    differ = sorted(path for path in set(after_files) & set(before_files) if after_files[path] != before_files[path])
+    for label, paths in (("files added", added), ("files removed", removed), ("files changed", differ)):
+        if paths:
+            lines.append(f"{label}: {', '.join(paths[:limit])}" + (" ..." if len(paths) > limit else ""))
+    return lines or ["the files are the same, only the commit differs"]
 
 
 def used_entry(config: ZettCodeConfig) -> Entry | None:

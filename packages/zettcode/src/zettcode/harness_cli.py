@@ -28,6 +28,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from zettcode.engine.harness_library import CAUTION
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.config import ZettCodeConfig
     from zettcode.engine.harness_library import Entry, Prepared
@@ -40,10 +42,6 @@ EXIT_INTERRUPTED = 130
 #: Files listed before the rest are counted: a harness is small, and a long list is not a better answer.
 MAX_LISTED_FILES = 40
 
-CAUTION = (
-    "Its code runs on this machine when a session loads it, in the sandbox the permission level gives the harness "
-    "(no sandbox at `/permission full`). Read it first if you do not know where it comes from."
-)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -304,36 +302,9 @@ def _add(config: ZettCodeConfig, text: str, name: str | None, *, yes: bool) -> i
 
 def _changes(old: Path, prepared: Prepared) -> list[str]:
     """Return what an update would change: the version, the tools, and which files come, go or differ."""
-    from zett_agent.jit_harness.manifest import read_manifest
+    from zettcode.engine.harness_library import changes
 
-    lines: list[str] = []
-    try:
-        before = read_manifest(old)
-    except (ValueError, OSError):
-        before = None
-    after = prepared.candidate
-    if before is not None:
-        if before.version != after.version:
-            lines.append(f"version: {before.version} -> {after.version}")
-        gone = sorted(set(before.tools) - set(after.tools))
-        new = sorted(set(after.tools) - set(before.tools))
-        if gone:
-            lines.append(f"tools removed: {', '.join(gone)}")
-        if new:
-            lines.append(f"tools added: {', '.join(new)}")
-    from zettcode.engine.harness_library import tree_fingerprints
-
-    before_files = tree_fingerprints(old) if old.is_dir() else {}
-    after_files = tree_fingerprints(prepared.directory)
-    added = sorted(set(after_files) - set(before_files))
-    removed = sorted(set(before_files) - set(after_files))
-    changed = sorted(path for path in set(after_files) & set(before_files) if after_files[path] != before_files[path])
-    for label, paths in (("files added", added), ("files removed", removed), ("files changed", changed)):
-        if paths:
-            lines.append(
-                f"{label}: {', '.join(paths[:MAX_LISTED_FILES])}" + (" ..." if len(paths) > MAX_LISTED_FILES else "")
-            )
-    return lines or ["the files are the same, only the commit differs"]
+    return changes(old, prepared, limit=MAX_LISTED_FILES)
 
 
 def _update(config: ZettCodeConfig, name: str, *, force: bool, yes: bool) -> int:

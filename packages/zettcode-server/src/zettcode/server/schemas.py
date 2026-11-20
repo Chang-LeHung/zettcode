@@ -755,3 +755,89 @@ class ErrorOut(BaseModel):
 
     error: str
     message: str
+
+
+class HarnessRepositoryOut(BaseModel):
+    """One repository of a library harness: what its manifest says and the files in it."""
+
+    name: str
+    version: str = ""
+    description: str = ""
+    tools: list[str] = Field(default_factory=list)
+    files: list[str] = Field(default_factory=list)
+    error: str = ""
+
+
+class HarnessOut(BaseModel):
+    """One harness of the user-level library.
+
+    Attributes:
+        name: The library name.
+        origin: Where it came from (``owner/repo@ref``, ``fork of x``, ``local``).
+        commit: The commit it was installed at, or empty.
+        state: ``ok``, ``changed``, ``missing`` or ``damaged``.
+        in_use: Whether ``[harness] use`` names it.
+        repositories: What is in it.
+    """
+
+    name: str
+    origin: str
+    commit: str = ""
+    state: str = "ok"
+    in_use: bool = False
+    repositories: list[HarnessRepositoryOut] = Field(default_factory=list)
+
+
+class HarnessesOut(BaseModel):
+    """The harnesses of the library, by name."""
+
+    harnesses: list[HarnessOut]
+
+
+class HarnessPreviewIn(BaseModel):
+    """Ask what installing or updating would bring, without keeping anything.
+
+    Attributes:
+        source: ``owner/repo``, ``owner/repo@ref`` or a GitHub URL (an install only).
+        name: The name to keep it under (an install only); empty for the harness's own.
+        force: Update a harness the library cannot call unchanged (an update only).
+    """
+
+    source: str = ""
+    name: str = ""
+    force: bool = False
+
+
+class HarnessPreviewOut(BaseModel):
+    """A download inspected and not yet kept; the call that keeps it sends ``commit`` and ``digest`` back."""
+
+    action: Literal["add", "update"]
+    name: str
+    source: str
+    commit: str
+    digest: str
+    version: str = ""
+    description: str = ""
+    tools: list[str] = Field(default_factory=list)
+    banned: list[str] = Field(default_factory=list)
+    files: list[str] = Field(default_factory=list)
+    size: int = 0
+    changes: list[str] = Field(default_factory=list)
+    up_to_date: bool = False
+    caution: str = ""
+
+
+class HarnessKeepIn(BaseModel):
+    """Keep what a preview showed: the commit and digest it reported, and the source or name it was asked about."""
+
+    source: str = ""
+    name: str = ""
+    commit: str
+    digest: str
+    force: bool = False
+
+
+class HarnessForkIn(BaseModel):
+    """Copy a harness under a new name."""
+
+    name: str

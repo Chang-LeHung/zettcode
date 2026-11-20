@@ -532,6 +532,10 @@ class Client:
             self._dispose()
             raise
         self.sessions = Sessions(self)
+        from .harness_library import HarnessLibrary
+
+        #: The user-level library of named harnesses (see :class:`~zettcode.sdk.harness_library.HarnessLibrary`).
+        self.harnesses = HarnessLibrary(self)
         self._bind_llm()
         #: One reader for the workspace's ledger, so a second look at the usage reads only what changed.
         self._ledger_reader: Any = None

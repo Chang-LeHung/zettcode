@@ -16,6 +16,8 @@ from .schemas import (
     ContextShareOut,
     CurrentSessionOut,
     DayTotalsOut,
+    HarnessOut,
+    HarnessRepositoryOut,
     ImageIn,
     MentionOut,
     MessageOut,
@@ -38,6 +40,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.sdk.types import (
         Compaction,
         ContextReport,
+        HarnessEntry,
         MentionInfo,
         Message,
         ModelCheck,
@@ -98,6 +101,28 @@ def stats_out(stats: SessionStatsInfo) -> SessionStatsOut:
         reasoning_tokens=stats.reasoning_tokens,
         total_tokens=stats.total_tokens,
         cache_share=stats.cache_share,
+    )
+
+
+def harness_out(entry: HarnessEntry) -> HarnessOut:
+    """Return one library harness with its repositories."""
+    return HarnessOut(
+        name=entry.name,
+        origin=entry.origin,
+        commit=entry.commit,
+        state=entry.state,
+        in_use=entry.in_use,
+        repositories=[
+            HarnessRepositoryOut(
+                name=item.name,
+                version=item.version,
+                description=item.description,
+                tools=list(item.tools),
+                files=list(item.files),
+                error=item.error,
+            )
+            for item in entry.repositories
+        ],
     )
 
 

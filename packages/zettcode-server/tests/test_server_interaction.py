@@ -350,3 +350,50 @@ async def test_the_finished_run_keeps_its_usage_and_its_tools_in_the_result_fram
     result = of(body, "result")[0]
     assert result["usage"]["input_tokens"] == 7 and result["usage"]["output_tokens"] == 3
     assert result["text"] == "all done"
+
+
+async def test_the_library_is_listed_with_its_manifests_and_files():
+    client = FakeClient()
+    async with serve(client) as (http, _app):
+        listed = (await http.get("/harnesses")).json()["harnesses"]
+        one = (await http.get("/harnesses/todos")).json()
+        missing = await http.get("/harnesses/nothing")
+
+    assert [item["name"] for item in listed] == ["todos"]
+    assert one["in_use"] is True and one["state"] == "ok" and one["commit"] == "a" * 40
+    assert one["repositories"][0]["tools"] == ["list_todos"] and "MANIFEST" in one["repositories"][0]["files"]
+    assert missing.status_code == 400 and missing.json()["error"] == "invalid"
+
+
+async def test_a_download_is_previewed_first_and_kept_only_with_the_commit_and_digest_that_were_shown():
+    client = FakeClient()
+    async with serve(client) as (http, _app):
+        preview = (await http.post("/harnesses/preview", json={"source": "acme/fresh", "name": "fresh"})).json()
+        stale = await http.post(
+            "/harnesses", json={"source": "acme/fresh", "commit": preview["commit"], "digest": "0" * 64}
+        )
+        kept = await http.post(
+            "/harnesses",
+            json={"source": "acme/fresh", "name": "fresh", "commit": preview["commit"], "digest": preview["digest"]},
+        )
+
+    assert preview["action"] == "add" and preview["caution"] and preview["files"] == ["__init__.py"]
+    assert stale.status_code == 400 and "not what was shown" in stale.json()["message"]
+    assert kept.status_code == 201 and kept.json()["name"] == "fresh"
+
+
+async def test_an_update_is_previewed_with_its_changes_then_kept_and_a_harness_can_be_forked_and_removed():
+    client = FakeClient()
+    async with serve(client) as (http, _app):
+        preview = (await http.post("/harnesses/todos/preview", json={"force": True})).json()
+        updated = await http.put(
+            "/harnesses/todos", json={"commit": preview["commit"], "digest": preview["digest"], "force": True}
+        )
+        forked = await http.post("/harnesses/todos/fork", json={"name": "mine"})
+        left = await http.delete("/harnesses/todos")
+
+    assert preview["action"] == "update" and preview["changes"] == ["version: 1.0.0 -> 2.0.0"]
+    assert updated.status_code == 200 and forked.status_code == 201 and forked.json()["origin"] == "fork of todos"
+    assert [item["name"] for item in left.json()["harnesses"]] == ["mine"]
+    assert [call[0] for call in client.harnesses.calls] == ["preview_update", "update", "fork", "remove"]
+    assert client.harnesses.calls[1][1] == ("todos", "b" * 40, "c" * 64, True)

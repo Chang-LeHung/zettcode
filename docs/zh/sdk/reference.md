@@ -204,6 +204,23 @@ class Client:
 
 `StoredSession(id, title, model, usage, records)`：`records` 是解析后的文件，给自己绘制对话的前端用；它的类型属于 engine，请不要依赖它的结构。
 
+### `HarnessLibrary`
+
+`client.harnesses`：用户级的命名 harness 库（shell 里的 `zettcode harness`，所有工作区共用）。下载必须先看过才保存，所以安装和更新各是两步：`preview_*` 下载并检查（不导入、不保存），返回 `HarnessPreview`；另一个方法带回它的 `commit` 和 `digest`，只有下载结果仍然是当初展示的那一份才保存。每个方法出错都抛 `ValueError`，内容是库自己的说明（没装 git、名字被占用、更新被拒绝等）。
+
+| 方法 | 返回 | 作用 |
+| --- | --- | --- |
+| `await entries()` | `list[HarnessEntry]` | 所有 harness，带 manifest 和文件列表。 |
+| `await entry(name)` | `HarnessEntry` | 一个 harness。 |
+| `await preview_add(source, *, name=None)` | `HarnessPreview` | `owner/repo`、`owner/repo@ref` 或 GitHub URL，检查后返回。 |
+| `await add(source, *, commit, digest, name=None)` | `HarnessEntry` | 保存 `preview_add` 展示过的那份，固定在它的 commit。 |
+| `await preview_update(name, *, force=False)` | `HarnessPreview` | 更新会改变什么（`changes`、`up_to_date`）。 |
+| `await update(name, *, commit, digest, force=False)` | `HarnessEntry` | 用 `preview_update` 展示过的那份替换。 |
+| `await fork(name, new)` | `HarnessEntry` | 复制成新名字，不带上游。 |
+| `await remove(name)` | — | 删除；正在使用或正在更新时被拒绝。 |
+
+`HarnessEntry(name, origin, commit, state, in_use, repositories)`：`state` 是 `ok`、`changed`、`missing` 或 `damaged`。选定所有会话共用的 harness（`/harness use`）和保存会话自己的 harness 是命令，不是这里的方法。
+
 ### `PluginReport`
 
 冻结的 dataclass：`loaded: tuple[str, ...]`、`failures: tuple[str, ...]`、`plain_commands: tuple[PlainCommand, ...]`、`entries: tuple[PluginEntry, ...]`、`triggers: tuple[TriggerInfo, ...]`。运行时启动之前 `triggers` 是空的；启动之后它是插件注册的每个触发器现在在哪儿——一个 `TriggerInfo(name, scope, state, detail)`，`scope` 是 `process` 或 `machine`，`state` 是 `pending`、`standby`、`running`、`skipped`、`finished`、`failed` 或 `stopped`，`detail` 说明 `standby`、`skipped` 和 `failed` 的原因。

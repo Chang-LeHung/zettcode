@@ -227,6 +227,81 @@ class FakeSessions:
         return self.client.session
 
 
+class FakeHarnesses:
+    """The library of named harnesses, in memory: one installed entry and a download that can be previewed."""
+
+    def __init__(self) -> None:
+        from zettcode.sdk.types import HarnessEntry, HarnessPreview, HarnessRepository
+
+        self.repository = HarnessRepository(
+            "todos", "1.0.0", "Find TODOs.", ("list_todos",), ("__init__.py", "MANIFEST")
+        )
+        first = HarnessEntry("todos", "acme/todos", "a" * 40, "ok", True, (self.repository,))
+        self.preview = HarnessPreview(
+            "add",
+            "fresh",
+            "acme/fresh",
+            "b" * 40,
+            "c" * 64,
+            "1.0.0",
+            "d",
+            ("t",),
+            (),
+            ("__init__.py",),
+            10,
+            (),
+            False,
+            "Read it.",
+        )
+        self.items = [first]
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
+
+    async def entries(self) -> list[Any]:
+        return list(self.items)
+
+    async def entry(self, name: str) -> Any:
+        for item in self.items:
+            if item.name == name:
+                return item
+        raise ValueError(f"There is no harness called `{name}` in the library (todos).")
+
+    async def preview_add(self, source: str, *, name: str | None = None) -> Any:
+        self.calls.append(("preview_add", (source, name)))
+        return self.preview
+
+    async def add(self, source: str, *, commit: str, digest: str, name: str | None = None) -> Any:
+        self.calls.append(("add", (source, commit, digest, name)))
+        if digest != self.preview.digest:
+            raise ValueError("What was downloaded is not what was shown. Preview it again.")
+        from zettcode.sdk.types import HarnessEntry
+
+        kept = HarnessEntry(name or "fresh", source, commit, "ok", False, ())
+        self.items.append(kept)
+        return kept
+
+    async def preview_update(self, name: str, *, force: bool = False) -> Any:
+        import dataclasses as _dc
+
+        self.calls.append(("preview_update", (name, force)))
+        return _dc.replace(self.preview, action="update", name=name, changes=("version: 1.0.0 -> 2.0.0",))
+
+    async def update(self, name: str, *, commit: str, digest: str, force: bool = False) -> Any:
+        self.calls.append(("update", (name, commit, digest, force)))
+        return self.items[0]
+
+    async def fork(self, name: str, new: str) -> Any:
+        from zettcode.sdk.types import HarnessEntry
+
+        self.calls.append(("fork", (name, new)))
+        copy = HarnessEntry(new, f"fork of {name}", "", "ok", False, ())
+        self.items.append(copy)
+        return copy
+
+    async def remove(self, name: str) -> None:
+        self.calls.append(("remove", (name,)))
+        self.items = [item for item in self.items if item.name != name]
+
+
 class FakeClient:
     """The client the endpoints talk to: models, settings, usage, sessions and one prepared run per prompt."""
 
@@ -245,6 +320,7 @@ class FakeClient:
         self.usage = Usage(input_tokens=100, output_tokens=20, requests=2)
         self.session = FakeSession()
         self.sessions = FakeSessions(self)
+        self.harnesses = FakeHarnesses()
         self.runs = list(runs)
         self.asked: list[str] = []
         self.relayed: list[Any] = []

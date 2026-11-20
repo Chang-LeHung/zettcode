@@ -206,6 +206,30 @@ The agent for one workspace. An async context manager. Every configuration field
 
 `StoredSession(id, title, model, usage, records)`: `records` is the parsed file for a front end that draws the conversation itself; its type belongs to the engine, so do not depend on its shape.
 
+### `HarnessLibrary`
+
+`client.harnesses`: the user-level library of named harnesses (`zettcode harness` in a shell, shared by every
+workspace). A download must be seen before it is kept, so installing and updating are two calls: the `preview_*` call
+downloads and inspects (nothing is imported or kept) and returns a `HarnessPreview`; the other sends back its `commit`
+and `digest` and keeps the download only when it is still what was shown. Each method raises `ValueError` with the
+library's own words (git missing, a name taken, an update refused).
+
+| Method | Returns | Does |
+| --- | --- | --- |
+| `await entries()` | `list[HarnessEntry]` | Every harness, with its manifests and files. |
+| `await entry(name)` | `HarnessEntry` | One harness. |
+| `await preview_add(source, *, name=None)` | `HarnessPreview` | `owner/repo`, `owner/repo@ref` or a GitHub URL, inspected. |
+| `await add(source, *, commit, digest, name=None)` | `HarnessEntry` | Keeps what `preview_add` showed, pinned to its commit. |
+| `await preview_update(name, *, force=False)` | `HarnessPreview` | What an update would change (`changes`, `up_to_date`). |
+| `await update(name, *, commit, digest, force=False)` | `HarnessEntry` | Replaces the harness with what `preview_update` showed. |
+| `await fork(name, new)` | `HarnessEntry` | Copies it under a new name, with no upstream. |
+| `await remove(name)` | — | Deletes it; refused while it is in use or being updated. |
+
+`HarnessEntry(name, origin, commit, state, in_use, repositories)`: `state` is `ok`, `changed`, `missing` or `damaged`.
+`HarnessRepository(name, version, description, tools, files, error)`. `HarnessPreview(action, name, source, commit,
+digest, version, description, tools, banned, files, size, changes, up_to_date, caution)`. Choosing the harness every
+session works in (`/harness use`) and saving a session's own are commands, not methods here.
+
 ### `PluginReport`
 
 Frozen dataclass: `loaded: tuple[str, ...]`, `failures: tuple[str, ...]`, `plain_commands: tuple[PlainCommand, ...]`,
