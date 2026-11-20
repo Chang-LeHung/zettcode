@@ -198,6 +198,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_gateway(commands)
     _add_services(commands)
     _add_plugin(commands)
+    _add_harness(commands)
     return parser
 
 
@@ -340,6 +341,9 @@ def _add_gateway(commands: Subcommands) -> None:
 PLUGIN_COMMAND = "plugin"
 PLUGIN_COMMANDS = (PLUGIN_COMMAND, "plugins")
 
+#: The command that keeps harnesses by name (see :mod:`zettcode.harness_cli`).
+HARNESS_COMMAND = "harness"
+
 #: The words that start, stop or restart the background processes (see :mod:`zettcode.services`).
 SERVICE_COMMANDS = ("start", "stop", "restart")
 
@@ -352,6 +356,22 @@ def _add_services(commands: Subcommands) -> None:
             help=f"{word} the broker, the gateway or all of them: {word} [broker|gateway|all]",
             description=f"{word.capitalize()} the session broker, the web gateway, or both (the default).",
         )
+
+
+def _add_harness(commands: Subcommands) -> None:
+    """Add ``harness``: the library of named harnesses, installed from GitHub and shared by every session.
+
+    Only the name is declared here, so that ``zettcode --help`` lists it; the actions are parsed and run by
+    :mod:`zettcode.harness_cli`, which is never imported by a session start.
+    """
+    commands.add_parser(
+        HARNESS_COMMAND,
+        help="keep harnesses by name: harness list | show | add | update | fork | remove",
+        description=(
+            "Install a harness (a repository of Python tools with a MANIFEST) from GitHub, update, copy or remove it. "
+            "Choosing the one every session works in is `/harness use`, inside ZettCode."
+        ),
+    )
 
 
 def _add_plugin(commands: Subcommands) -> None:
@@ -939,6 +959,11 @@ def main() -> None:
         from zettcode.plugin_cli import plugin_program
 
         raise SystemExit(plugin_program(argv[1:]))
+    if argv[:1] == [HARNESS_COMMAND]:
+        # The library of named harnesses, parsed by the command that keeps them; a session start never imports it.
+        from zettcode.harness_cli import harness_program
+
+        raise SystemExit(harness_program(argv[1:]))
     options = parse_args()
     if options.command == "update":
         from zettcode.update import update_program
@@ -952,6 +977,11 @@ def main() -> None:
         from zettcode.oneshot import prompt_program
 
         raise SystemExit(prompt_program(options))
+    if options.command == HARNESS_COMMAND:
+        # Only reached when an option came before the word (`zettcode -w DIR harness`): the library is not a session.
+        from zettcode.harness_cli import harness_program
+
+        raise SystemExit(harness_program([]))
     if options.command in SERVICE_COMMANDS:
         # Only reached when an option came before the word (`zettcode -w DIR start`), which the dispatch above does not
         # see: these are not session options, and a session must not be opened in their place.

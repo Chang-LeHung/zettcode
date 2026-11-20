@@ -19,8 +19,9 @@ See [Getting started](/guide/getting-started#install).
 
 ## JIT harness
 
-The model writes a small Python tool for the task, loads it with `repo_load`, and calls it in the same turn. Use it
-when a task needs a tool of its own, such as listing every `TODO` with its author from `git blame`.
+The model writes the tools the task needs (one repository can hold several), loads them with `repo_load`, and calls
+them in the same turn. Use it when a task needs a tool of its own, such as listing every `TODO` with its author from
+`git blame`.
 
 ```text
 /harness gen find the TODO comments in this repository and group them by file

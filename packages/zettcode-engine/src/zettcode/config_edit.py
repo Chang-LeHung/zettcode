@@ -412,6 +412,11 @@ def set_string_list(text: str, table: str, key: str, values: Sequence[str], *, w
     return _set_key(text, table, key, literal, list(values), where=where, command=command)
 
 
+def set_string(text: str, table: str, key: str, value: str, *, where: Path, command: str) -> str:
+    """Return ``text`` with ``[table] key`` set to a string, touching nothing else, checked like every key edit."""
+    return _set_key(text, table, key, toml_string(value), value, where=where, command=command)
+
+
 def set_boolean(text: str, table: str, key: str, enabled: bool, *, where: Path, command: str) -> str:
     """Return ``text`` with ``[table] key`` set to a boolean, touching nothing else.
 

@@ -216,7 +216,33 @@ test("a server that failed to start is reported instead of waited for", async ()
     server: { status: "error", message: "The command was not found" },
   });
   assert.equal(ui.one("#splash"), null);
+  assert.ok(ui.text("#setup").includes("not running"), "with no conversation the welcome card says it");
+  assert.equal(ui.one("#banner"), null, "and the banner does not say it a second time");
+});
+
+test("once there is a conversation a server failure is a banner that names the setting and offers the file dialog", async () => {
+  const ui = await harness(fixtureTurns(), {
+    ...state,
+    ready: false,
+    server: { status: "error", message: "zettcode-server was not found." },
+  });
+
   assert.ok(ui.text("#banner").includes("not running"));
+  assert.ok(ui.text("#banner-hint").includes("zettcode.server.command"));
+  ui.window.document.querySelector<HTMLElement>("#banner-other")?.click();
+  assert.equal(ui.messages.at(-1)?.type, "choose-server");
+});
+
+test("a server that is not found tells the reader where to set its path and lets them choose the file", async () => {
+  const ui = await harness([], {
+    ...state,
+    ready: false,
+    server: { status: "error", message: "zettcode-server was not found." },
+  });
+
+  assert.ok(ui.text("#setup-hint").includes("zettcode.server.command"), "the setting is named, not left to the docs");
+  ui.window.document.querySelector<HTMLElement>("#choose-server")?.click();
+  assert.equal(ui.messages.at(-1)?.type, "choose-server", "the button asks the host for a file dialog");
 });
 
 test("the view mounts every part the host talks to", async () => {

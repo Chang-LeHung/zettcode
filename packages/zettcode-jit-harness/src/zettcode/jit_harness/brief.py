@@ -1,8 +1,8 @@
 """The words ``/harness`` takes and the brief it hands the model, with nothing a screen owns.
 
 The terminal's command imports these for its panel and its preset; the plain command every front end can run imports
-them too, and neither pulls in the terminal's widgets. ``GEN_*`` and the limits are re-exported by
-:mod:`zettcode.jit_harness.command`, where the tests and the panel have always found them.
+them too, and neither pulls in the terminal's widgets. ``GEN_*``, the limits, ``CACHE_MISS`` and ``NOT_MOUNTED`` are
+re-exported by :mod:`zettcode.jit_harness.command`, where the tests and the panel have always found them.
 """
 
 from __future__ import annotations
@@ -14,12 +14,15 @@ from zettcode.plugin_api.subcommand import Subcommand
 #: ``gen`` (a paid turn) takes a second Enter once the word is in the draft, as does ``reset`` so a menu Enter cannot
 #: flip the switch by itself.
 SUBCOMMANDS: tuple[Subcommand, ...] = (
-    Subcommand("gen", "turn the harness on and have a tool built; add what you want after the word", needs_more=True),
+    Subcommand("gen", "turn the harness on and have tools built; add what you want after the word", needs_more=True),
     Subcommand(
         "reset",
         "turn it off, so later requests have none of its tools, keeping what this session wrote",
         needs_more=True,
     ),
+    Subcommand("use", "share a library harness with every session (--none: each its own)", needs_more=True),
+    Subcommand("save", "keep this session's harness in the library: save <name>", needs_more=True),
+    Subcommand("fork", "copy a library harness to change on its own: fork <name> <new name>", needs_more=True),
 )
 
 #: What ``gen`` answers when another process holds the session: a turn cannot start in one, and the switch must not
@@ -30,21 +33,31 @@ LOCKED = (
     "Run this command there, or close that one and try again."
 )
 
-#: What ``/harness gen`` asks the model for. It is one turn of this conversation, so it says what a good tool is and
-#: what a report of one has to contain; the reader sees only the command in the transcript.
-GEN_BRIEF = """Build one small tool for this workspace in the just-in-time harness, then report it.
+#: Said after the tools in the request change while the harness is on: they are part of the request prefix, so
+#: changing them changes it. Shared by the panel's borrow and by ``reset`` in every front end.
+CACHE_MISS = "The next request may miss the prompt cache, because the tools in it changed."
 
-- Call `repo_create` to make the repository and write a focused tool in it with your file tools; a `MANIFEST` that
-  declares the tool in `tools = [...]` is what makes `repo_load` check your work. Load it before you claim it works.
-  A session keeps one repository: if this one already has it, reuse it rather than creating a second.
-- Keep it small and specific: something this workspace needed more than once, one or two tools, the standard library
-  where it is enough, and output a reader can use without reading the whole workspace.
-- Run it at least once on this workspace and look at what came back, so the report says it works rather than that it
-  should. If it fails, fix it and load it again.
-- Do not change the workspace's own files: the tool lives in the harness's folder for this session. Reading the
-  workspace to decide what to build, and calling your tool to check it, is expected.
-- Then report: the repository and the tool's name, what it does, the call you used to check it and what it returned,
-  and anything a later reader should know before relying on it.
+#: Said after a switch while the harness is off: nothing of it is in the request, so nothing is lost yet.
+NOT_MOUNTED = "The harness is off, so the tools in the request do not change."
+
+#: What ``/harness gen`` asks the model for. It is one turn of this conversation, so it says what good tools are and
+#: what a report of them has to contain; the reader sees only the command in the transcript.
+GEN_BRIEF = """Build the tools this task will need more than once in the just-in-time harness, then report them.
+
+- Call `repo_create` to make the repository and write focused tools in it with your file tools; one repository holds as
+  many as the work needs. A `MANIFEST` that declares them in `tools = [...]` is what makes `repo_load` check your work.
+  Load them before you claim they work. A session keeps one repository: if this one already has it, reuse it rather
+  than creating a second.
+- Keep them small and specific: only as many tools as pay for themselves, the standard library where it is enough,
+  and output a reader can use without reading the whole workspace.
+- Run each at least once on this workspace and look at what came back, so the report says they work rather than that
+  they should. If one fails, fix it and load again.
+- Do not change the workspace's own files: the tools live in the harness's folder, which `repo_create` makes them in.
+  That folder may be shared with other sessions and workspaces (a library harness), so build tools that make no
+  assumption about this workspace's paths. Reading the
+  workspace to decide what to build, and calling your tools to check them, is expected.
+- Then report: the repository and the tools' names, what each does, the call you used to check it and what it
+  returned, and anything a later reader should know before relying on them.
 """
 
 #: What follows the brief when the reader wrote something after ``gen``. It has to read as a change of author, because

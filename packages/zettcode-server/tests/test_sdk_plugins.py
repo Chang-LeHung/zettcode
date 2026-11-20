@@ -386,8 +386,8 @@ async def test_the_harness_words_that_need_more_cross_the_wire(tmp_path: Path):
                 body = (await http.get("/commands")).json()
 
     harness = next(entry for entry in body["commands"] if entry["name"] == "/harness")
-    assert harness["subcommands"] == ["gen", "reset"]
-    assert harness["needs_more"] == ["gen", "reset"]
+    assert harness["subcommands"] == ["gen", "reset", "use", "save", "fork"]
+    assert harness["needs_more"] == ["gen", "reset", "use", "save", "fork"]
 
 
 async def test_hub_opens_the_document_and_names_a_disabled_graph(tmp_path: Path):

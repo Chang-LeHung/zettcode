@@ -154,6 +154,8 @@ export type WebviewMessage =
   | { type: "set-self-compaction"; choice: boolean | null }
   | { type: "refresh" }
   | { type: "restart-server" }
+  /** Pick the zettcode-server executable with a file dialog; the host writes it to `zettcode.server.command`. */
+  | { type: "choose-server" }
   | { type: "resume" }
   | { type: "ask"; question: string; queueId?: number; session?: string }
   | { type: "mentions"; query: string }
