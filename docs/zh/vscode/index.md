@@ -144,6 +144,18 @@ Reasoning Effort** 和 **Select Shell Permission**。**Add Model** 会往终端�
 配置文件（`[skills] enabled`、`[mcp] enabled` 之类）。那个文件是整个读取、整个替换的，所以两个程序同时写时留下的是后写的那份；常见情形就是终端加一个服务器。
 关不掉的内置插件不在列表里：它上面没有可以按的东西。
 
+## Harness 库
+
+**ZettCode: Harness Library** 打开你保存在 `~/.zettcode/harness/library` 里的 harness，所有工作区和终端共用。每一行写明来源、
+所在的 commit、有多少工具和文件，以及 `[harness] use` 是否指向它；**Details** 显示它的工具、文件，以及文件是否仍与安装时一致。
+
+读过之前不会保存任何东西。表单里的 **Preview** 和每一行的 **Update** 都先下载并给出预览：它定义的工具、每个文件、里面的符号链接和指向，
+更新还会写出哪些内容会变。harness 是在你机器上运行的代码，预览里会这样提醒。**Keep**（或 **Apply update**）保存的正是你看到的那一份；
+如果这时下载内容已经不同，服务器会拒绝，你再预览一次。安装后你改过文件的 harness 同样会被拒绝，提示里会出现
+**Update anyway**，读完预览后可以强制替换。**Fork** 以新名字复制一份（没有上游，想保留自己的改动就用它），**Remove** 要按两次。
+正在使用的 harness 不能删除，任何对话有请求在运行时，更新和删除也会被拒绝。面板不负责选择运行用哪个 harness：
+那是终端里的 `/harness use` 或配置里的 `[harness] use`。
+
 ## 设置
 
 在设置里搜 *ZettCode*：

@@ -73,6 +73,7 @@ import {
   retractSteer,
   type Turn,
 } from "./core/state.js";
+import { showHarnessPanel } from "./harnesses.js";
 import { ServerManager } from "./server.js";
 import { showDoctorPanel, showPluginsPanel, showUsagePanel } from "./usage.js";
 
@@ -2338,6 +2339,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     // The panel asks for a client each time it writes, so a server restarted under it is still reachable.
     await showPluginsPanel(() => this.ensureClient(), this.extensionUri, this.workspaceName());
+  }
+
+  /** The harness library: it needs the server, not a model, so it opens whenever the server is up. */
+  async showHarnesses(): Promise<void> {
+    // The library needs the server and no model, so "ready" (a model is configured) is not the gate: a client is.
+    try {
+      await this.ensureClient();
+    } catch (error) {
+      void vscode.window.showErrorMessage(`The ZettCode server is not running: ${messageOf(error)}`);
+      return;
+    }
+    await showHarnessPanel(() => this.ensureClient(), this.extensionUri, this.workspaceName());
   }
 
   /** Switch one plugin for the next server start, as `/plugins enable|disable` asks. Nothing loads or unloads here. */

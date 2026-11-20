@@ -163,6 +163,22 @@ applies it. Where it is written is the plugin's own business: a plugin with a se
 is read and replaced as a whole, so two programs writing it at the same moment keep the last write; the terminal
 and one server are the ordinary case.
 
+## Harness library
+
+**ZettCode: Harness Library** opens the harnesses you keep in `~/.zettcode/harness/library`, shared by every workspace and by
+the terminal. Each row says where it came from, which commit it is at, how many tools and files it has, and whether
+`[harness] use` names it; **Details** shows its tools, its files and whether the files still match what was installed.
+
+Nothing is kept before you have read it. **Preview** in the add form, and **Update** on a row, download the source and show a preview first:
+the tools it defines, every file, the symbolic links in it and where they point, and for an update what would change.
+A harness is code that runs on your machine, so the preview says so. **Keep** (or **Apply update**) then keeps exactly what
+you were shown; if the download is different by then, the server refuses and you preview it again. A harness whose
+files you changed after installing it is refused too; the message says so and offers **Update anyway**, which replaces
+your changes after you have read the preview. **Fork** copies one
+under a new name with no upstream, and **Remove** asks twice. A harness that is in use cannot be removed, and while a run
+is in progress in any conversation an update or a removal is refused. The panel does not choose which harness the
+runs use; that is `/harness use` in the terminal or `[harness] use` in your configuration.
+
 ## Settings
 
 Search for *ZettCode* in Settings:

@@ -173,7 +173,7 @@ def typescript_members(class_name: str) -> set[str]:
 
 
 GROUPS = (
-    ("Client", sdk_client.Client, ("sessions", "workspace"), "ZettCodeClient"),
+    ("Client", sdk_client.Client, ("sessions", "harnesses", "workspace"), "ZettCodeClient"),
     ("Sessions", sdk_client.Sessions, (), "Sessions"),
     ("Session", sdk_session.Session, ("id",), "Session"),
     ("HarnessLibrary", sdk_harness_library.HarnessLibrary, (), "HarnessLibrary"),

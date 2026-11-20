@@ -29,6 +29,8 @@ export interface Page {
   scoped?: boolean;
   /** The page's own script, for a page with a control on it; the panel runs it under a nonce. */
   script?: string;
+  /** Styles only this page needs, after the shared ones. */
+  css?: string;
 }
 
 /**

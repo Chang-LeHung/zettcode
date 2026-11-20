@@ -172,7 +172,8 @@ function show(extensionUri: vscode.Uri, workspaceName: string, page: Page, works
   panel.reveal(vscode.ViewColumn.Active);
 }
 
-function html(
+/** The document around a page, with the editor's security rules: a script runs only under this document's nonce. */
+export function html(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
   workspaceName: string,
@@ -191,7 +192,7 @@ function html(
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; style-src 'unsafe-inline';${scriptRule}">
 <title>ZettCode: ${escapeHtml(page.title)}</title>
-<style>${PAGE_CSS}</style>
+<style>${PAGE_CSS}${page.css ?? ""}</style>
 </head>
 <body>
 <div class="page">

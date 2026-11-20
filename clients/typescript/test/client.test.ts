@@ -175,6 +175,9 @@ describe("the JSON API", () => {
         assert.deepEqual(JSON.parse(request.body), { source: "acme/fresh", name: "fresh", commit: "b", digest: "c" });
         return json(response, { name: "fresh" });
       }
+      if (request.url === "/harnesses/todos" && request.method === "GET") {
+        return json(response, { name: "todos", origin: "acme/todos", commit: "a", state: "changed", in_use: true, repositories: [] });
+      }
       if (request.url === "/harnesses/todos/preview") {
         assert.deepEqual(JSON.parse(request.body), { force: true });
         return json(response, { action: "update", name: "todos", changes: ["version: 1 -> 2"] });
@@ -246,6 +249,18 @@ describe("the JSON API", () => {
       failure: "",
       setting: "",
     });
+    // The library: a download is previewed first, and what is kept is the commit and digest that were shown.
+    const library = client.harnesses;
+    assert.deepEqual((await library.entries()).map((entry) => [entry.name, entry.in_use]), [["todos", true]]);
+    assert.equal((await library.entry("todos")).state, "changed");
+    const fresh = await library.previewAdd("acme/fresh", { name: "fresh" });
+    assert.equal(fresh.caution, "Read it.");
+    assert.equal((await library.add("acme/fresh", { commit: fresh.commit, digest: fresh.digest, name: "fresh" })).name, "fresh");
+    const next = await library.previewUpdate("todos", { force: true });
+    assert.deepEqual(next.changes, ["version: 1 -> 2"]);
+    assert.equal((await library.update("todos", { commit: "b", digest: "c", force: true })).name, "todos");
+    assert.equal((await library.fork("todos", "mine")).name, "mine");
+    await library.remove("todos");
     assert.deepEqual((await client.commands()).map((command) => command.name), ["/greet"]);
     assert.deepEqual(await client.runCommand("/greet", "Ada"), {
       message: "",

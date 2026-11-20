@@ -569,7 +569,10 @@ def test_an_entry_is_ok_changed_missing_or_damaged_and_an_update_says_which(tmp_
 
     (entry.path / "todos" / "extra.py").write_text("y = 1\n", encoding="utf-8")
     assert library.update_state(entry) == "changed"
-    assert "fork todos" in (library.update_refusal(config, entry, force=False) or "")
+    changed_message = library.update_refusal(config, entry, force=False) or ""
+    assert "fork todos" in changed_message
+    # The VS Code panel offers "Update anyway" by looking for this exact phrase (clients/vscode/src/harnesses.ts).
+    assert "`update --force`" in changed_message
     assert library.update_refusal(config, entry, force=True) is None, "--force is the reader's decision"
 
     (entry.path / "todos" / "extra.py").unlink()
