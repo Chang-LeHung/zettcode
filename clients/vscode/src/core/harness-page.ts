@@ -13,7 +13,7 @@ export function harnessesPage(): Page {
   return {
     title: "Harnesses",
     summary: `<span id="harness-count">Loading…</span> <span class="muted">· shared by every workspace</span>`,
-    body: `<div id="harness-status" class="harness-status" role="status" aria-live="polite" hidden></div>
+    body: `<div id="harness-status" class="harness-status" role="status" aria-live="polite" tabindex="-1" hidden></div>
     <section class="panel">
       <div class="panel-head"><h2>Add a harness</h2></div>
       <form id="harness-add" class="harness-form">
@@ -38,6 +38,8 @@ export function harnessesPage(): Page {
 /** The page's styles, appended to the shared page CSS. */
 export const HARNESS_CSS = `
 .harness-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.page .panel { margin-bottom: 14px; }
+.harness-status:focus { outline: none; }
 .harness-form input, .harness-ask input { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; min-width: 0; }
 .harness-form input:focus-visible, .harness-ask input:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 #harness-source { flex: 2 1 260px; }
@@ -168,6 +170,10 @@ function askFork(item, name) {
   });
   const cancel = act("Cancel", "", () => { box.remove(); });
   const box = h("div", { class: "harness-ask" }, input, go, cancel);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); go.click(); }
+    if (event.key === "Escape") { box.remove(); }
+  });
   item.append(box);
   input.focus();
 }
@@ -255,8 +261,9 @@ window.addEventListener("message", (event) => {
     case "preview": lock(false); say("Preview of " + message.preview.name + " ready.", false); showPreview(message.preview); break;
     case "done":
       lock(false); clearPreview(); say(message.text, false);
-      // Only a download empties the form: a kept update, a fork or a removal must not lose a typed source.
-      if (message.action === "add") { $("harness-source").value = ""; $("harness-name").value = ""; }
+      // The preview's button is gone: put the cursor somewhere meaningful instead of at the top of the page.
+      if (message.action === "add") { $("harness-source").value = ""; $("harness-name").value = ""; $("harness-source").focus(); }
+      else { $("harness-status").focus(); }
       break;
     case "error":
       lock(false); say(message.text, true);

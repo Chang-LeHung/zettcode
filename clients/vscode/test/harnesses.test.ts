@@ -537,3 +537,31 @@ test("a Keep refused because the download changed drops the preview it can no lo
   await receive({ type: "confirm" });
   assert.deepEqual(posted.at(-1), { type: "error", text: "There is no preview to keep. Preview it again." });
 });
+
+test("Enter in the fork box forks and Escape closes it", async () => {
+  const { client, calls } = fakeClient();
+  const page = await open(client);
+  await page.press("Fork", ".harness");
+  const input = page.$(".harness-ask input") as HTMLInputElement;
+  input.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  assert.equal(page.$(".harness-ask"), null);
+
+  await page.press("Fork", ".harness");
+  const again = page.$(".harness-ask input") as HTMLInputElement;
+  again.value = "mine";
+  again.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await page.settle();
+
+  assert.deepEqual(calls.filter((call) => call[0] === "fork"), [["fork", "todos", "mine"]]);
+});
+
+test("after a keep the focus goes somewhere real, not back to the top of the page", async () => {
+  const { client } = fakeClient();
+  const page = await open(client);
+  await page.add("acme/fresh", "fresh");
+  assert.equal(page.window.document.activeElement?.textContent, "Keep", "the preview's button has it");
+
+  await page.press("Keep", "#harness-preview");
+
+  assert.equal(page.window.document.activeElement?.id, "harness-source");
+});
