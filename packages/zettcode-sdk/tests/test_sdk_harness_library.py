@@ -186,7 +186,8 @@ async def test_a_link_is_shown_with_where_it_points_and_the_list_carries_only_a_
     preview = await harnesses.preview_add("acme/todos")
     kept = await harnesses.add("acme/todos", commit=preview.commit, digest=preview.digest)
 
-    assert preview.links == {"key": "/etc/hosts"} and "key" in preview.files
+    assert {path: target.replace("\\", "/") for path, target in preview.links.items()} == {"key": "/etc/hosts"}
+    assert "key" in preview.files
     listed = (await harnesses.entries())[0].repositories[0]
     assert listed.files == () and listed.file_count == len(kept.repositories[0].files) > 3
     assert "key" in (await harnesses.entry("todos")).repositories[0].files
