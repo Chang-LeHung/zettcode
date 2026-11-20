@@ -38,6 +38,9 @@ __all__ = [
     "DaemonInfo",
     "DayTotals",
     "Delivered",
+    "HarnessEntry",
+    "HarnessPreview",
+    "HarnessRepository",
     "Image",
     "IncomingMessage",
     "MentionInfo",
@@ -976,3 +979,92 @@ class ModelCheck:
     detail: str = ""
     input_tokens: int | None = None
     output_tokens: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class HarnessRepository:
+    """One repository of a library harness: what its manifest says and the files in it.
+
+    Attributes:
+        name: The folder, which is also the name its manifest gives it.
+        version: The manifest's version, or ``""`` when the manifest could not be read.
+        description: The manifest's description.
+        tools: The tools it declares.
+        files: Every file in it, by relative path; a link is listed, never followed. Empty in the list of all
+            harnesses (``entries()``), which carries only ``file_count``; ``entry(name)`` has the names.
+        error: Why the manifest could not be read, or ``""``.
+        file_count: How many files there are, whether or not ``files`` is filled.
+    """
+
+    name: str
+    version: str
+    description: str
+    tools: tuple[str, ...]
+    files: tuple[str, ...]
+    error: str = ""
+    file_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class HarnessEntry:
+    """One harness in the user-level library, as a panel shows it.
+
+    Attributes:
+        name: The library name.
+        origin: Where it came from, in a phrase (``owner/repo@ref``, ``fork of x``, ``local``).
+        commit: The commit it was installed at, or ``""`` for one that has none.
+        state: ``ok``, ``changed`` (edited since it was installed), ``missing`` (its repository is gone) or
+            ``damaged`` (its record lost what an update needs).
+        in_use: Whether ``[harness] use`` names it.
+        repositories: What is in it.
+    """
+
+    name: str
+    origin: str
+    commit: str
+    state: str
+    in_use: bool
+    repositories: tuple[HarnessRepository, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class HarnessPreview:
+    """A download inspected and not yet kept: what the reader must see before saying yes.
+
+    Nothing in it was imported. ``commit`` and ``digest`` are what was shown; the call that keeps it passes them back,
+    and a download that no longer matches is refused rather than kept.
+
+    Attributes:
+        action: ``add`` or ``update``.
+        name: The name it would be kept under.
+        source: The source as the reader typed it.
+        commit: The commit that was inspected.
+        digest: A digest of every file inspected.
+        version: The manifest's version.
+        description: The manifest's description.
+        tools: The tools it declares.
+        banned: The tools its ban list names.
+        files: Every file it would add, by relative path.
+        size: Their size in bytes.
+        changes: For an update, what would change, one line each; empty for an add.
+        up_to_date: For an update, whether it is already at ``commit``.
+        caution: The sentence to show beside it: its code runs on this machine.
+        links: Each symbolic link in ``files`` and where it points. A link is how code can reach a file outside the
+            harness, so a front end shows these beside the file list.
+    """
+
+    action: str
+    name: str
+    source: str
+    commit: str
+    digest: str
+    version: str
+    description: str
+    tools: tuple[str, ...]
+    banned: tuple[str, ...]
+    files: tuple[str, ...]
+    size: int
+    changes: tuple[str, ...]
+    up_to_date: bool
+    caution: str
+    links: dict[str, str] = field(default_factory=dict)

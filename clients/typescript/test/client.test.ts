@@ -164,6 +164,30 @@ describe("the JSON API", () => {
           triggers: [{ name: "idle", scope: "process", state: "running", detail: "" }],
         });
       }
+      if (request.url === "/harnesses" && request.method === "GET") {
+        return json(response, { harnesses: [{ name: "todos", origin: "acme/todos", commit: "a", state: "ok", in_use: true, repositories: [] }] });
+      }
+      if (request.url === "/harnesses/preview") {
+        assert.deepEqual(JSON.parse(request.body), { source: "acme/fresh", name: "fresh" });
+        return json(response, { action: "add", name: "fresh", commit: "b", digest: "c", caution: "Read it." });
+      }
+      if (request.url === "/harnesses" && request.method === "POST") {
+        assert.deepEqual(JSON.parse(request.body), { source: "acme/fresh", name: "fresh", commit: "b", digest: "c" });
+        return json(response, { name: "fresh" });
+      }
+      if (request.url === "/harnesses/todos/preview") {
+        assert.deepEqual(JSON.parse(request.body), { force: true });
+        return json(response, { action: "update", name: "todos", changes: ["version: 1 -> 2"] });
+      }
+      if (request.url === "/harnesses/todos" && request.method === "PUT") {
+        assert.deepEqual(JSON.parse(request.body), { commit: "b", digest: "c", force: true });
+        return json(response, { name: "todos" });
+      }
+      if (request.url === "/harnesses/todos/fork") {
+        assert.deepEqual(JSON.parse(request.body), { name: "mine" });
+        return json(response, { name: "mine" });
+      }
+      if (request.url === "/harnesses/todos" && request.method === "DELETE") return json(response, { harnesses: [] });
       if (request.url === "/plugins/zettcode-acme" && request.method === "PUT") {
         assert.deepEqual(JSON.parse(request.body), { enabled: false });
         return json(response, {

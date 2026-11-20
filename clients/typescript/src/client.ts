@@ -19,6 +19,8 @@ import type {
   ModelInput,
   ModelUpdate,
   Permission,
+  HarnessEntry,
+  HarnessPreview,
   PluginEntry,
   PluginReport,
   PromptOptions,
@@ -329,6 +331,76 @@ export class ZettCodeClient {
   async cancelRun(): Promise<boolean> {
     const body = await this.request<{ cancelled: boolean }>("/runs/cancel", { method: "POST" });
     return body.cancelled;
+  }
+}
+
+/**
+ * The user-level library of named harnesses, shared by every workspace; reach it as `client.harnesses`.
+ *
+ * Installing and updating are two calls, because a download must be seen before it is kept: `previewAdd` /
+ * `previewUpdate` download and inspect (nothing is imported or kept); `add` / `update` send back the `commit` and
+ * `digest` that were shown and keep it only when the download is still that. A refusal is a `ZettCodeError` with code
+ * `invalid` and the library's own words.
+ */
+export class HarnessLibrary {
+  constructor(private readonly client: ZettCodeClient) {}
+
+  /** Every harness in the library, with its manifests and files. */
+  async entries(): Promise<HarnessEntry[]> {
+    const body = await this.client.request<{ harnesses: HarnessEntry[] }>("/harnesses");
+    return body.harnesses;
+  }
+
+  /** One harness. */
+  entry(name: string): Promise<HarnessEntry> {
+    return this.client.request<HarnessEntry>(`/harnesses/${encodeURIComponent(name)}`);
+  }
+
+  /** Download `source` (`owner/repo`, `owner/repo@ref` or a GitHub URL) and inspect it; keeps nothing. */
+  previewAdd(source: string, options: { name?: string } = {}): Promise<HarnessPreview> {
+    return this.client.request<HarnessPreview>(
+      "/harnesses/preview",
+      jsonInit("POST", { source, name: options.name ?? "" }),
+    );
+  }
+
+  /** Keep what `previewAdd` showed, pinned to its commit. */
+  add(source: string, options: { commit: string; digest: string; name?: string }): Promise<HarnessEntry> {
+    return this.client.request<HarnessEntry>(
+      "/harnesses",
+      jsonInit("POST", { source, name: options.name ?? "", commit: options.commit, digest: options.digest }),
+    );
+  }
+
+  /** Download a harness's source again and say what an update would change; keeps nothing. */
+  previewUpdate(name: string, options: { force?: boolean } = {}): Promise<HarnessPreview> {
+    return this.client.request<HarnessPreview>(
+      `/harnesses/${encodeURIComponent(name)}/preview`,
+      jsonInit("POST", { force: options.force ?? false }),
+    );
+  }
+
+  /** Replace a harness with what `previewUpdate` showed. */
+  update(name: string, options: { commit: string; digest: string; force?: boolean }): Promise<HarnessEntry> {
+    return this.client.request<HarnessEntry>(
+      `/harnesses/${encodeURIComponent(name)}`,
+      jsonInit("PUT", { commit: options.commit, digest: options.digest, force: options.force ?? false }),
+    );
+  }
+
+  /** Copy a harness under a new name, with no upstream. */
+  fork(name: string, newName: string): Promise<HarnessEntry> {
+    return this.client.request<HarnessEntry>(
+      `/harnesses/${encodeURIComponent(name)}/fork`,
+      jsonInit("POST", { name: newName }),
+    );
+  }
+
+  /** Delete a harness; refused while it is in use or being updated. */
+  async remove(name: string): Promise<void> {
+    await this.client.request<{ harnesses: HarnessEntry[] }>(`/harnesses/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    });
   }
 }
 

@@ -16,6 +16,9 @@ from .schemas import (
     ContextShareOut,
     CurrentSessionOut,
     DayTotalsOut,
+    HarnessOut,
+    HarnessPreviewOut,
+    HarnessRepositoryOut,
     ImageIn,
     MentionOut,
     MessageOut,
@@ -38,6 +41,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.sdk.types import (
         Compaction,
         ContextReport,
+        HarnessEntry,
+        HarnessPreview,
         MentionInfo,
         Message,
         ModelCheck,
@@ -98,6 +103,50 @@ def stats_out(stats: SessionStatsInfo) -> SessionStatsOut:
         reasoning_tokens=stats.reasoning_tokens,
         total_tokens=stats.total_tokens,
         cache_share=stats.cache_share,
+    )
+
+
+def harness_out(entry: HarnessEntry) -> HarnessOut:
+    """Return one library harness with its repositories."""
+    return HarnessOut(
+        name=entry.name,
+        origin=entry.origin,
+        commit=entry.commit,
+        state=entry.state,
+        in_use=entry.in_use,
+        repositories=[
+            HarnessRepositoryOut(
+                name=item.name,
+                version=item.version,
+                description=item.description,
+                tools=list(item.tools),
+                files=list(item.files),
+                error=item.error,
+                file_count=item.file_count,
+            )
+            for item in entry.repositories
+        ],
+    )
+
+
+def preview_out(preview: HarnessPreview) -> HarnessPreviewOut:
+    """Return a download that was inspected and not kept, field by field: a field added to the SDK is added here."""
+    return HarnessPreviewOut(
+        action=preview.action,
+        name=preview.name,
+        source=preview.source,
+        commit=preview.commit,
+        digest=preview.digest,
+        version=preview.version,
+        description=preview.description,
+        tools=list(preview.tools),
+        banned=list(preview.banned),
+        files=list(preview.files),
+        size=preview.size,
+        changes=list(preview.changes),
+        up_to_date=preview.up_to_date,
+        caution=preview.caution,
+        links=dict(preview.links),
     )
 
 

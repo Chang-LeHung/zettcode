@@ -22,12 +22,14 @@ import re
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from collections.abc import Callable
+
     from zettcode.config import ZettCodeConfig
 
 #: The folder under ``harness_dir`` the library lives in. A workspace folder always ends in ``-<8 hex>``, so no
@@ -37,6 +39,11 @@ LIBRARY_DIRECTORY = "library"
 SOURCE_FILE = "SOURCE.json"
 #: Seconds one ``git`` call may take before it is given up on.
 GIT_TIMEOUT = 120
+#: What every front end says beside a harness before it is kept: its code runs here.
+CAUTION = (
+    "Its code runs on this machine when a session loads it, in the sandbox the permission level gives the harness "
+    "(no sandbox at `/permission full`). Read it first if you do not know where it comes from."
+)
 #: Variables that point git at a repository other than the one in the working directory.
 _GIT_REPOSITORY_VARIABLES = frozenset(
     {
@@ -112,6 +119,9 @@ class Candidate:
     files: tuple[str, ...]
     size: int
     digest: str
+    #: Each symbolic link as ``(path, target)``: a link is listed in ``files`` like a file, and this is where it points.
+    #: The SDK's ``HarnessPreview.links`` is the same pairs as a dict, which is the JSON object on the wire.
+    links: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +195,56 @@ def parse_source(text: str) -> Source:
     if ref.startswith("-"):
         raise LibraryError(f"`{ref}` cannot be a branch, a tag or a commit: it starts with `-`.")
     return Source(f"https://github.com/{found.group('owner')}/{found.group('repo')}.git", ref)
+
+
+_COMMIT = re.compile(r"[0-9a-f]{40}")
+_DIGEST = re.compile(r"[0-9a-f]{64}")
+
+
+def valid_commit(text: str) -> str:
+    """Return ``text`` when it is a full commit id (40 hex digits), else say what a commit is.
+
+    What a preview reports is always one; a keep request carries it back, so anything else is a mistake of the caller
+    and is refused before a download is started.
+    """
+    if _COMMIT.fullmatch(text) is None:
+        raise LibraryError(f"`{text}` is not a commit: it is the 40 hexadecimal digits a preview reported.")
+    return text
+
+
+def valid_digest(text: str) -> str:
+    """Return ``text`` when it is a digest as a preview reports it (64 hex digits), else refuse it."""
+    if _DIGEST.fullmatch(text) is None:
+        raise LibraryError(f"`{text}` is not a digest: it is the 64 hexadecimal digits a preview reported.")
+    return text
+
+
+#: What :func:`update_state` answers; a panel draws one of these, so the set is fixed and a test pins it.
+UPDATE_STATES = ("ok", "changed", "missing", "damaged")
+
+
+def current_use(config: ZettCodeConfig, settings_file: Path | None = None) -> str:
+    """Return the harness ``[harness] use`` names *now*: what the configuration file says, else what was loaded.
+
+    ``/harness use`` writes the file and moves the sessions of its own process, but never changes the settings object
+    that was loaded at the start; every answer that depends on the choice (``in_use``, a refused ``remove``) reads the
+    file again, so a choice made by a command, or by another process, is seen.
+
+    ``settings_file`` is the file ``config`` was loaded from, when a process was given one of its own (``--config``);
+    without it the default file is read, the one ``/harness use`` writes.
+    """
+    from zettcode._compat import tomllib
+    from zettcode.paths import config_path
+
+    path = config_path(settings_file)
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, ValueError):
+        return config.harness_use
+    table = data.get("harness")
+    if isinstance(table, dict) and isinstance(table.get("use"), str):
+        return str(table["use"]).strip()
+    return config.harness_use
 
 
 def _git(arguments: list[str], cwd: Path) -> str:
@@ -289,6 +349,7 @@ def inspect(directory: Path) -> Candidate:
         files=tuple(path.relative_to(directory).as_posix() for path in files),
         size=size,
         digest=tree_digest(directory),
+        links=tuple((path.relative_to(directory).as_posix(), os.readlink(path)) for path in files if path.is_symlink()),
     )
 
 
@@ -371,7 +432,10 @@ def _repositories(path: Path) -> tuple[str, ...]:
             sorted(
                 item.name
                 for item in path.iterdir()
-                if item.is_dir() and (item / "__init__.py").is_file() and not item.name.startswith(".")
+                if item.is_dir()
+                and not item.is_symlink()
+                and (item / "__init__.py").is_file()
+                and not item.name.startswith(".")
             )
         )
     except OSError:
@@ -546,17 +610,33 @@ def modified(entry: Entry) -> bool | None:
         return True
 
 
-def refetch(entry: Entry, workdir: Path) -> Prepared:
-    """Download the entry's source again, at the branch or tag it was installed from, for ``update`` to compare."""
+def refetch(entry: Entry, workdir: Path, *, commit: str = "") -> Prepared:
+    """Download the entry's source again, at the branch or tag it was installed from, for ``update`` to compare.
+
+    ``commit`` pins the download to the one a reader was already shown, instead of whatever the branch is now.
+    """
     url = entry.source.get("url")
     if not isinstance(url, str) or not url:
         raise LibraryError(f"`{entry.name}` has no upstream to update from: it is a {entry.origin}.")
     ref = entry.source.get("ref")
-    return prepare(Source(url, ref if isinstance(ref, str) else ""), workdir)
+    source = Source(url, ref if isinstance(ref, str) else "")
+    prepared = prepare(Source(url, commit) if commit else source, workdir)
+    # What is recorded is what the reader asked for (the branch), not the commit that pinned this download.
+    return replace(prepared, source=source)
 
 
-def update(config: ZettCodeConfig, entry: Entry, prepared: Prepared, *, force: bool = False) -> Entry:
+def update(
+    config: ZettCodeConfig,
+    entry: Entry,
+    prepared: Prepared,
+    *,
+    force: bool = False,
+    guard: Callable[[], None] | None = None,
+) -> Entry:
     """Replace the entry's repository with a newer download of the same source.
+
+    ``guard`` is called once the new tree is staged and before the old one is touched; whatever it raises leaves
+    everything as it was (the staging folder is removed).
 
     A repository the model or the reader has changed since it was installed is refused unless ``force`` says to
     overwrite it: the way to keep those changes is ``fork``. Other repositories in the entry are left alone.
@@ -576,6 +656,9 @@ def update(config: ZettCodeConfig, entry: Entry, prepared: Prepared, *, force: b
     staging: Path | None = None
     try:
         entry = get(config, entry.name)
+        if entry.source.get("url") != prepared.source.url:
+            # Removed and installed again from somewhere else while this was downloaded: the tree is not its own.
+            raise LibraryError(f"`{entry.name}` now comes from somewhere else than this download: preview it again.")
         refusal = update_refusal(config, entry, force=force)
         if refusal is not None:
             raise LibraryError(refusal)
@@ -594,6 +677,8 @@ def update(config: ZettCodeConfig, entry: Entry, prepared: Prepared, *, force: b
         staged = staging / name
         aside = staging / "previous"
         _copy_tree(prepared.directory, staged)
+        if guard is not None:
+            guard()  # the last thing that can say no: after this the old tree is moved aside
         moved_aside = current.exists() or current.is_symlink()
         if moved_aside:
             os.replace(current, aside)
@@ -621,17 +706,20 @@ def update(config: ZettCodeConfig, entry: Entry, prepared: Prepared, *, force: b
         lock.release()
 
 
-def _used(config: ZettCodeConfig, name: str) -> bool:
+def _used(config: ZettCodeConfig, name: str, settings_file: Path | None) -> bool:
     """Return whether ``name`` is the harness every session is set to work in."""
-    return config.harness_use == name
+    return current_use(config, settings_file) == name
 
 
-def remove(config: ZettCodeConfig, name: str) -> Entry:
-    """Delete a library harness; refused while it is the one every session works in, or while it is being updated."""
+def remove(config: ZettCodeConfig, name: str, *, settings_file: Path | None = None) -> Entry:
+    """Delete a library harness; refused while it is the one every session works in, or while it is being updated.
+
+    ``settings_file`` is the file ``config`` was loaded from, if the process was given one (see :func:`current_use`).
+    """
     from zettcode.filelock import SingletonLock
 
     entry = get(config, name)
-    if _used(config, name):
+    if _used(config, name, settings_file):
         raise LibraryError(
             f"`{name}` is the harness every session works in: run `/harness use --none` in ZettCode first."
         )
@@ -686,6 +774,112 @@ def keep(config: ZettCodeConfig, folder: Path, new: str, *, origin: str) -> Entr
         shutil.rmtree(target, ignore_errors=True)
         raise
     return get(config, new)
+
+
+@dataclass(frozen=True, slots=True)
+class RepositoryInfo:
+    """One repository of a library harness as a reader sees it: what its manifest says and the files in it."""
+
+    name: str
+    version: str
+    description: str
+    tools: tuple[str, ...]
+    files: tuple[str, ...]
+    #: Why the manifest could not be read, or empty.
+    error: str
+    #: How many files there are, also when ``files`` was left out.
+    file_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class EntryInfo:
+    """One library harness as a panel shows it. ``state`` is :func:`update_state`'s word."""
+
+    name: str
+    origin: str
+    commit: str
+    state: str
+    in_use: bool
+    repositories: tuple[RepositoryInfo, ...]
+
+
+def describe(
+    config: ZettCodeConfig,
+    entry: Entry,
+    *,
+    detail: bool = True,
+    use: str | None = None,
+    settings_file: Path | None = None,
+) -> EntryInfo:
+    """Read an entry's manifests and file lists. Nothing in it is imported, and a link is listed, never followed.
+
+    ``detail=False`` is for a list of every harness that is read often: the file names are left out (the count stays)
+    and so is ``state``, which is ``""``, because answering it reads every byte of the repository. ``use`` is what
+    :func:`current_use` answered, when the caller already asked it for the whole list; ``settings_file`` is the file
+    ``config`` was loaded from, if the process was given one.
+    """
+    from zett_agent.jit_harness.manifest import read_manifest
+
+    repositories: list[RepositoryInfo] = []
+    for repository in entry.repositories:
+        folder = entry.path / repository
+        try:
+            names = tuple(path.relative_to(folder).as_posix() for path in _tree_files(folder))
+        except OSError:
+            names = ()
+        shown = names if detail else ()
+        try:
+            manifest = read_manifest(folder)
+        except (ValueError, OSError) as error:
+            repositories.append(RepositoryInfo(repository, "", "", (), shown, str(error), len(names)))
+            continue
+        repositories.append(
+            RepositoryInfo(
+                repository, manifest.version, manifest.description, tuple(manifest.tools), shown, "", len(names)
+            )
+        )
+    return EntryInfo(
+        entry.name,
+        entry.origin,
+        entry.commit,
+        update_state(entry) if detail else "",
+        (current_use(config, settings_file) if use is None else use) == entry.name,
+        tuple(repositories),
+    )
+
+
+def changes(old: Path, prepared: Prepared, *, limit: int = 40) -> list[str]:
+    """Return what replacing the folder ``old`` with ``prepared`` would change, one line each.
+
+    The version, the tools that come and go, and which files are added, removed or different; at most ``limit`` names
+    a line. A link is compared as the link it is.
+    """
+    from zett_agent.jit_harness.manifest import read_manifest
+
+    lines: list[str] = []
+    try:
+        before = read_manifest(old)
+    except (ValueError, OSError):
+        before = None
+    after = prepared.candidate
+    if before is not None:
+        if before.version != after.version:
+            lines.append(f"version: {before.version} -> {after.version}")
+        gone = sorted(set(before.tools) - set(after.tools))
+        new = sorted(set(after.tools) - set(before.tools))
+        if gone:
+            lines.append(f"tools removed: {', '.join(gone)}")
+        if new:
+            lines.append(f"tools added: {', '.join(new)}")
+    before_files = tree_fingerprints(old) if old.is_dir() else {}
+    after_files = tree_fingerprints(prepared.directory)
+    added = sorted(set(after_files) - set(before_files))
+    removed = sorted(set(before_files) - set(after_files))
+    differ = sorted(path for path in set(after_files) & set(before_files) if after_files[path] != before_files[path])
+    for label, paths in (("files added", added), ("files removed", removed), ("files changed", differ)):
+        if paths:
+            lines.append(f"{label}: {', '.join(paths[:limit])}" + (" ..." if len(paths) > limit else ""))
+    return lines or ["the files are the same, only the commit differs"]
 
 
 def used_entry(config: ZettCodeConfig) -> Entry | None:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -227,6 +227,98 @@ class FakeSessions:
         return self.client.session
 
 
+class FakeHarnesses:
+    """The library of named harnesses, in memory: one installed entry and a download that can be previewed."""
+
+    def __init__(self) -> None:
+        from zettcode.sdk.types import HarnessEntry, HarnessPreview, HarnessRepository
+
+        self.repository = HarnessRepository(
+            "todos", "1.0.0", "Find TODOs.", ("list_todos",), ("__init__.py", "MANIFEST"), "", 2
+        )
+        first = HarnessEntry("todos", "acme/todos", "a" * 40, "ok", True, (self.repository,))
+        self.preview = HarnessPreview(
+            "add",
+            "fresh",
+            "acme/fresh",
+            "b" * 40,
+            "c" * 64,
+            "1.0.0",
+            "d",
+            ("t",),
+            (),
+            ("__init__.py",),
+            10,
+            (),
+            False,
+            "Read it.",
+            {"key": "/etc/hosts"},
+        )
+        self.items = [first]
+        #: When set, a keep call refuses with these words, as the real library does; the fake checks nothing itself.
+        self.refuse = ""
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
+
+    async def entries(self) -> list[Any]:
+        """The cheap list, as the real library gives it: no file names and no state, only the count."""
+        import dataclasses as _dc
+
+        return [
+            _dc.replace(item, state="", repositories=tuple(_dc.replace(repo, files=()) for repo in item.repositories))
+            for item in self.items
+        ]
+
+    async def entry(self, name: str) -> Any:
+        for item in self.items:
+            if item.name == name:
+                return item
+        raise ValueError(f"There is no harness called `{name}` in the library (todos).")
+
+    async def preview_add(self, source: str, *, name: str | None = None) -> Any:
+        self.calls.append(("preview_add", (source, name)))
+        return self.preview
+
+    async def add(self, source: str, *, commit: str, digest: str, name: str | None = None) -> Any:
+        self.calls.append(("add", (source, commit, digest, name)))
+        if self.refuse:
+            raise ValueError(self.refuse)
+        from zettcode.sdk.types import HarnessEntry
+
+        kept = HarnessEntry(name or "fresh", source, commit, "ok", False, ())
+        self.items.append(kept)
+        return kept
+
+    async def preview_update(self, name: str, *, force: bool = False) -> Any:
+        import dataclasses as _dc
+
+        self.calls.append(("preview_update", (name, force)))
+        return _dc.replace(self.preview, action="update", name=name, changes=("version: 1.0.0 -> 2.0.0",))
+
+    async def update(
+        self, name: str, *, commit: str, digest: str, force: bool = False, guard: Callable[[], None] | None = None
+    ) -> Any:
+        self.calls.append(("update", (name, commit, digest, force)))
+        if guard is not None:
+            guard()
+        if self.refuse:
+            raise ValueError(self.refuse)
+        return self.items[0]
+
+    async def fork(self, name: str, new: str) -> Any:
+        from zettcode.sdk.types import HarnessEntry
+
+        self.calls.append(("fork", (name, new)))
+        copy = HarnessEntry(new, f"fork of {name}", "", "ok", False, ())
+        self.items.append(copy)
+        return copy
+
+    async def remove(self, name: str, *, guard: Callable[[], None] | None = None) -> None:
+        self.calls.append(("remove", (name,)))
+        if guard is not None:
+            guard()
+        self.items = [item for item in self.items if item.name != name]
+
+
 class FakeClient:
     """The client the endpoints talk to: models, settings, usage, sessions and one prepared run per prompt."""
 
@@ -245,6 +337,7 @@ class FakeClient:
         self.usage = Usage(input_tokens=100, output_tokens=20, requests=2)
         self.session = FakeSession()
         self.sessions = FakeSessions(self)
+        self.harnesses = FakeHarnesses()
         self.runs = list(runs)
         self.asked: list[str] = []
         self.relayed: list[Any] = []

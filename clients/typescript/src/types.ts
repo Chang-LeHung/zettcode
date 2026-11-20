@@ -501,3 +501,55 @@ export interface PromptOptions extends RunOptions {
 export function totalTokens(usage: Usage): number {
   return usage.input_tokens + usage.output_tokens;
 }
+
+/** One repository of a library harness: what its manifest says and the files in it. */
+export interface HarnessRepository {
+  name: string;
+  version: string;
+  description: string;
+  tools: string[];
+  /** Every file, by relative path; a link is listed, never followed. Empty in `entries()`, which has `file_count`. */
+  files: string[];
+  /** Why the manifest could not be read, or empty. */
+  error: string;
+  /** How many files there are, whether or not `files` is filled. */
+  file_count: number;
+}
+
+/** One harness of the user-level library. `state`: `ok`, `changed`, `missing` or `damaged`. */
+export interface HarnessEntry {
+  name: string;
+  /** `owner/repo@ref`, `fork of x` or `local`. */
+  origin: string;
+  commit: string;
+  /** Empty in `entries()`, whose list is cheap; `entry(name)` says it. */
+  state: "" | "ok" | "changed" | "missing" | "damaged";
+  /** Whether `[harness] use` names it. */
+  in_use: boolean;
+  repositories: HarnessRepository[];
+}
+
+/**
+ * A download inspected and not yet kept. Nothing in it was imported. `add` / `update` take `commit` and `digest` back
+ * and keep it only when the download is still what was shown.
+ */
+export interface HarnessPreview {
+  action: "add" | "update";
+  name: string;
+  source: string;
+  commit: string;
+  digest: string;
+  version: string;
+  description: string;
+  tools: string[];
+  banned: string[];
+  files: string[];
+  size: number;
+  /** For an update, what would change, one line each. */
+  changes: string[];
+  up_to_date: boolean;
+  /** Shown beside the preview: the code runs on this machine. */
+  caution: string;
+  /** Each symbolic link in `files` and where it points: how code can reach a file outside the harness. */
+  links: Record<string, string>;
+}
