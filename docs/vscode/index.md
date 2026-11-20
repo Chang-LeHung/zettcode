@@ -172,7 +172,9 @@ the terminal. Each row says where it came from, which commit it is at, how many 
 Nothing is kept before you have read it. **Add a harness** and **Update** download the source and show a preview first:
 the tools it defines, every file, the symbolic links in it and where they point, and for an update what would change.
 A harness is code that runs on your machine, so the preview says so. **Keep** (or **Update**) then keeps exactly what
-you were shown; if the download is different by then, the server refuses and you preview it again. **Fork** copies one
+you were shown; if the download is different by then, the server refuses and you preview it again. A harness whose
+files you changed after installing it is refused too; the message says so and offers **Update anyway**, which replaces
+your changes after you have read the preview (**Fork** keeps them). **Fork** copies one
 under a new name with no upstream, and **Remove** asks twice. A harness that is in use cannot be removed, and while a run
 is in progress in any conversation an update or a removal is refused. The panel does not choose which harness the
 runs use; that is `/harness use` in the terminal or `[harness] use` in your configuration.

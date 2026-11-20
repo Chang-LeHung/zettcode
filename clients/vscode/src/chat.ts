@@ -2343,11 +2343,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
   /** The harness library: it needs the server, not a model, so it opens whenever the server is up. */
   async showHarnesses(): Promise<void> {
-    if (this.health?.ready !== true) {
-      await this.refreshAll();
-    }
-    if (this.health?.ready !== true) {
-      this.readyForPrompt();
+    // The library needs the server and no model, so "ready" (a model is configured) is not the gate: a client is.
+    try {
+      await this.ensureClient();
+    } catch (error) {
+      void vscode.window.showErrorMessage(`The ZettCode server is not running: ${String(error)}`);
       return;
     }
     await showHarnessPanel(() => this.ensureClient(), this.extensionUri, this.workspaceName());

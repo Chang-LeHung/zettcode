@@ -31,6 +31,7 @@ export function harnessesPage(): Page {
     <p class="scope">The library is <code>~/.zettcode/harness</code>. The harness a run uses is chosen with
     <code>[harness] use</code> in the configuration or <code>/harness use</code> in the terminal; one that is in use
     cannot be removed.</p>`,
+    css: HARNESS_CSS,
   };
 }
 
@@ -143,7 +144,7 @@ function row(entry) {
   const actions = h("span", { class: "harness-actions" });
   actions.append(
     act("Details", "", () => { send({ type: "detail", name: entry.name }, "Reading " + entry.name + "…"); }),
-    act("Update", "", () => { send({ type: "preview-update", name: entry.name, force: false }, "Downloading " + entry.name + "…"); }),
+    act("Update", "", () => { clearPreview(); send({ type: "preview-update", name: entry.name, force: false }, "Downloading " + entry.name + "…"); }),
     act("Fork", "", () => { askFork(item, entry.name); }),
     act("Remove", "danger", (button) => { confirmRemove(button, entry.name); }),
   );
@@ -200,7 +201,6 @@ function showDetail(entry) {
 }
 
 function showPreview(preview) {
-  pending = preview;
   const slot = $("harness-preview");
   slot.replaceChildren();
   const links = Object.entries(preview.links || {});
@@ -219,7 +219,7 @@ function showPreview(preview) {
     h("details", {}, h("summary", {}, plural(preview.files.length, "file")),
       h("ul", { class: "harness-files" }, preview.files.map((file) => h("li", {}, file)))),
     h("div", { class: "preview-actions" },
-      act(verb, "primary", () => { send({ type: "confirm" }, "Keeping " + preview.name + "…"); }),
+      act(verb, "primary", () => { send({ type: "confirm" }, (preview.action === "add" ? "Keeping " : "Updating ") + preview.name + "…"); }),
       act("Cancel", "", () => { clearPreview(); api.postMessage({ type: "cancel" }); }),
     ),
   ));
@@ -228,7 +228,6 @@ function showPreview(preview) {
 }
 
 function clearPreview() {
-  pending = null;
   $("harness-preview").hidden = true;
   $("harness-preview").replaceChildren();
 }
@@ -246,14 +245,25 @@ window.addEventListener("message", (event) => {
   const message = event.data;
   if (message === null || typeof message !== "object") { return; }
   switch (message.type) {
-    case "list": lock(false); say("", false); renderList(message.harnesses); break;
+    // The list follows a "done" and must not wipe its words.
+    case "list": lock(false); renderList(message.harnesses); break;
     case "detail": lock(false); say("", false); showDetail(message.entry); break;
     case "preview": lock(false); say("", false); showPreview(message.preview); break;
     case "done":
       lock(false); clearPreview(); say(message.text, false);
-      $("harness-source").value = ""; $("harness-name").value = "";
+      // Only a kept download empties the form; a fork or a removal must not lose a source typed but not yet previewed.
+      if (message.action === "keep") { $("harness-source").value = ""; $("harness-name").value = ""; }
       break;
-    case "error": lock(false); say(message.text, true); break;
+    case "error":
+      lock(false); say(message.text, true);
+      if (message.retry) {
+        // The server refused an update (a harness changed since it was installed): offer it again, forced, on purpose.
+        $("harness-status").append(" ", act("Update anyway", "danger", () => {
+          clearPreview();
+          send({ type: "preview-update", name: message.retry, force: true }, "Downloading " + message.retry + "…");
+        }));
+      }
+      break;
   }
 });
 

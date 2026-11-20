@@ -10,6 +10,9 @@ import { html } from "./usage.js";
 let panel: vscode.WebviewPanel | null = null;
 /** How the open panel reaches the server: replaced on every show, so a panel kept open follows a restarted server. */
 let reach: (() => Promise<ZettCodeClient>) | null = null;
+/** The preview the page is showing, and whether it was made with `force`. Only the host holds what Keep will send. */
+let pending: HarnessPreview | null = null;
+let force = false;
 
 /** What the page may post. Anything else is ignored: the page is ours, but a message is data all the same. */
 type Ask =
@@ -41,11 +44,15 @@ export function parseAsk(message: unknown): Ask | null {
     case "remove":
       return text(raw.name) === "" ? null : { type: raw.type, name: text(raw.name) };
     case "preview-add":
-      return text(raw.source).trim() === "" ? null : { type: "preview-add", source: text(raw.source).trim(), name: text(raw.name).trim() };
+      return text(raw.source).trim() === ""
+        ? null
+        : { type: "preview-add", source: text(raw.source).trim(), name: text(raw.name).trim() };
     case "preview-update":
       return text(raw.name) === "" ? null : { type: "preview-update", name: text(raw.name), force: raw.force === true };
     case "fork":
-      return text(raw.name) === "" || text(raw.newName) === "" ? null : { type: "fork", name: text(raw.name), newName: text(raw.newName) };
+      return text(raw.name) === "" || text(raw.newName) === ""
+        ? null
+        : { type: "fork", name: text(raw.name), newName: text(raw.newName) };
     default:
       return null;
   }
@@ -56,7 +63,9 @@ export function parseAsk(message: unknown): Ask | null {
  *
  * Adding and updating are two steps and the host keeps the first: the page posts "confirm" and the host sends back the
  * `commit` and `digest` of the preview it showed, so what is kept is exactly what was read, and the page holds nothing
- * to tamper with. The server refuses it when the download has changed since.
+ * to tamper with. The host forgets the preview whenever the page could no longer be showing it (any other request, a
+ * failed one, the page loaded again), so a Keep is only ever answered for the preview on screen. The server refuses it
+ * when the download has changed since.
  */
 export async function showHarnessPanel(
   client: () => Promise<ZettCodeClient>,
@@ -64,14 +73,15 @@ export async function showHarnessPanel(
   workspaceName: string,
 ): Promise<void> {
   reach = client;
+  // A page loaded now shows no preview, so none is pending.
+  pending = null;
+  force = false;
   if (panel === null) {
     panel = vscode.window.createWebviewPanel("zettcode.harnesses", "ZettCode: Harnesses", vscode.ViewColumn.Active, {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media")],
     });
     const target = panel;
-    let pending: HarnessPreview | null = null;
-    let force = false;
     target.onDidDispose(() => {
       panel = null;
     });
@@ -86,6 +96,11 @@ export async function showHarnessPanel(
       if (ask === null) {
         return;
       }
+      const shown = ask.type === "confirm" ? pending : null;
+      const shownForce = force;
+      // Everything but Keep drops the preview: the page clears or replaces it as it sends the request.
+      pending = null;
+      force = false;
       try {
         // Resolved per message: a server restarted under the open panel has a new address and token.
         if (reach === null) {
@@ -97,14 +112,12 @@ export async function showHarnessPanel(
             await refresh(library);
             return;
           case "cancel":
-            pending = null;
             return;
           case "detail":
             send({ type: "detail", entry: await library.entry(ask.name) });
             return;
           case "preview-add":
             pending = await library.previewAdd(ask.source, ask.name === "" ? {} : { name: ask.name });
-            force = false;
             send({ type: "preview", preview: pending });
             return;
           case "preview-update":
@@ -113,7 +126,6 @@ export async function showHarnessPanel(
             send({ type: "preview", preview: pending });
             return;
           case "confirm": {
-            const shown = pending;
             if (shown === null) {
               send({ type: "error", text: "There is no preview to keep. Preview it again." });
               return;
@@ -122,26 +134,32 @@ export async function showHarnessPanel(
             if (shown.action === "add") {
               await library.add(shown.source, { ...proof, name: shown.name });
             } else {
-              await library.update(shown.name, { ...proof, force });
+              await library.update(shown.name, { ...proof, force: shownForce });
             }
-            pending = null;
+            // It is kept: say so before reading the list again, which may fail on a server that is restarting.
+            send({ type: "done", action: "keep", text: `${shown.action === "add" ? "Added" : "Updated"} ${shown.name}.` });
             await refresh(library);
-            send({ type: "done", text: `${shown.action === "add" ? "Added" : "Updated"} ${shown.name}.` });
             return;
           }
           case "fork":
             await library.fork(ask.name, ask.newName);
+            send({ type: "done", action: "fork", text: `Copied ${ask.name} to ${ask.newName}.` });
             await refresh(library);
-            send({ type: "done", text: `Copied ${ask.name} to ${ask.newName}.` });
             return;
           case "remove":
             await library.remove(ask.name);
+            send({ type: "done", action: "remove", text: `Removed ${ask.name}.` });
             await refresh(library);
-            send({ type: "done", text: `Removed ${ask.name}.` });
             return;
         }
       } catch (failure) {
-        send({ type: "error", text: failure instanceof Error ? failure.message : String(failure) });
+        const why = failure instanceof Error ? failure.message : String(failure);
+        send({
+          type: "error",
+          text: why,
+          // The server's refusal of a changed harness says `update --force`; only that one is offered again, forced.
+          ...(ask.type === "preview-update" && !ask.force && why.includes("--force") ? { retry: ask.name } : {}),
+        });
       }
     });
   }

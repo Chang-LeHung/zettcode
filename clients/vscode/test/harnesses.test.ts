@@ -40,9 +40,20 @@ const preview = (extra: Partial<HarnessPreview> = {}): HarnessPreview => ({
 });
 
 /** A fake server library that records what the host asked of it. */
-function fakeClient(options: { fail?: string } = {}) {
+function fakeClient(
+  options: {
+    fail?: string;
+    /** Refuse `previewUpdate` unless it is forced, as the server does for a harness changed since it was installed. */
+    refuseUnforced?: string;
+    /** Make the list fail once something was kept, like a server restarting a moment after. */
+    listFailsAfterKeep?: boolean;
+    detail?: Partial<HarnessEntry>;
+    upToDate?: boolean;
+  } = {},
+) {
   const calls: unknown[][] = [];
   let entries = [entry("todos", { in_use: true })];
+  let kept = false;
   const record =
     <T>(name: string, answer: (...args: any[]) => T) =>
     async (...args: unknown[]): Promise<T> => {
@@ -50,15 +61,37 @@ function fakeClient(options: { fail?: string } = {}) {
       if (options.fail !== undefined && name !== "entries") {
         throw new Error(options.fail);
       }
+      if (name === "entries" && kept && options.listFailsAfterKeep === true) {
+        throw new Error("the server is restarting");
+      }
+      if (["add", "update"].includes(name)) {
+        kept = true;
+      }
       return answer(...args);
     };
   const harnesses = {
     entries: record("entries", () => entries),
-    entry: record("entry", (name: string) => entry(name, { state: "ok", repositories: [{ ...entry(name).repositories[0]!, files: ["manifest.toml"] }] })),
-    previewAdd: record("previewAdd", () => preview()),
-    previewUpdate: record("previewUpdate", (name: string) =>
-      preview({ action: "update", name, changes: ["version: 1.0 -> 2.0"], links: {}, banned: [] }),
+    entry: record("entry", (name: string) =>
+      entry(name, {
+        state: "ok",
+        repositories: [{ ...entry(name).repositories[0]!, files: ["manifest.toml"] }],
+        ...options.detail,
+      }),
     ),
+    previewAdd: record("previewAdd", () => preview()),
+    previewUpdate: record("previewUpdate", (name: string, opts: { force?: boolean }) => {
+      if (options.refuseUnforced !== undefined && opts.force !== true) {
+        throw new Error(options.refuseUnforced);
+      }
+      return preview({
+        action: "update",
+        name,
+        changes: options.upToDate === true ? [] : ["version: 1.0 -> 2.0"],
+        up_to_date: options.upToDate === true,
+        links: {},
+        banned: [],
+      });
+    }),
     add: record("add", (_source: string, options: { name: string }) => {
       entries = [...entries, entry(options.name)];
       return entry(options.name);
@@ -253,7 +286,7 @@ test("a refusal is the server's own words, shown as an error, and the buttons wo
   await page.press("Update", ".harness");
 
   const status = page.$("#harness-status")!;
-  assert.equal(status.textContent, "a run is in progress");
+  assert.equal(status.textContent, "a run is in progress", "forcing would not help, so no second button");
   assert.ok(status.className.includes("error"));
   assert.equal((page.$(".harness button") as HTMLButtonElement).disabled, false);
 });
@@ -272,3 +305,113 @@ test("the page builds its markup with text nodes only: no innerHTML or insertAdj
   const source = await readFile("src/core/harness-page.ts", "utf8");
   assert.equal(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(source), false);
 });
+
+test("the page's own styles are in the document the panel loads", async () => {
+  const { client } = fakeClient();
+  await open(client);
+
+  const html = lastPanel!.webview.html;
+  assert.ok(html.includes(".harness-form") && html.includes(".act.primary") && html.includes(".harness-files"), "harness CSS");
+  assert.ok(html.includes(".panel-head"), "and the shared page CSS under it");
+});
+
+test("a preview that failed leaves nothing to Keep: the host forgets the one before it", async () => {
+  const { client, calls } = fakeClient();
+  const page = await open(client);
+  await page.add("acme/fresh");
+  assert.equal(page.$("#harness-preview")?.hasAttribute("hidden"), false);
+
+  // The same page asks for a different download, which fails; a Keep posted anyway must be refused.
+  (client as any).harnesses.previewAdd = async () => {
+    throw new Error("could not download");
+  };
+  await page.add("acme/other");
+  await receive({ type: "confirm" });
+
+  assert.equal(calls.some((call) => call[0] === "add"), false);
+  assert.deepEqual(posted.at(-1), { type: "error", text: "There is no preview to keep. Preview it again." });
+});
+
+test("a fork or a removal also drops the preview, and the page loaded again has none to keep", async () => {
+  const { client, calls } = fakeClient();
+  const page = await open(client);
+  await page.add("acme/fresh");
+  await receive({ type: "fork", name: "todos", newName: "mine" });
+  await receive({ type: "confirm" });
+  assert.deepEqual(posted.at(-1), { type: "error", text: "There is no preview to keep. Preview it again." });
+
+  await page.add("acme/fresh");
+  await showHarnessPanel(async () => client, extension, "zettcode");
+  await receive({ type: "confirm" });
+  assert.deepEqual(posted.at(-1), { type: "error", text: "There is no preview to keep. Preview it again." });
+  assert.equal(calls.some((call) => call[0] === "add"), false);
+});
+
+test("a fork or a removal keeps the source typed in the form; a kept download empties it", async () => {
+  const { client } = fakeClient();
+  const page = await open(client);
+  ($("#harness-source", page.window) as HTMLInputElement).value = "acme/typed";
+
+  await page.press("Fork", ".harness");
+  (page.$(".harness-ask input") as HTMLInputElement).value = "mine";
+  await page.press("Fork", ".harness-ask");
+
+  assert.equal((page.$("#harness-source") as HTMLInputElement).value, "acme/typed");
+  assert.equal(page.$("#harness-status")?.textContent, "Copied todos to mine.", "and the list that follows does not wipe it");
+});
+
+test("a kept harness is reported even when the list cannot be read straight after", async () => {
+  const { client } = fakeClient({ listFailsAfterKeep: true });
+  const page = await open(client);
+  await page.add("acme/fresh", "fresh");
+
+  await page.press("Keep", "#harness-preview");
+
+  assert.ok(posted.some((message) => (message as { type?: string; text?: string }).text === "Added fresh."));
+  assert.equal(posted.some((message) => (message as { type?: string }).type === "done"), true);
+});
+
+test("an update the server refuses can be pressed again, forced, and keeps with force", async () => {
+  const { client, calls } = fakeClient({ refuseUnforced: "todos was changed since it was installed; `update --force` replaces it" });
+  const page = await open(client);
+
+  await page.press("Update", ".harness");
+  assert.ok(page.$("#harness-status")?.textContent?.includes("changed since it was installed"));
+
+  await page.press("Update anyway", "#harness-status");
+  await page.press("Update", "#harness-preview");
+
+  assert.deepEqual(calls.filter((call) => call[0] === "previewUpdate").map((call) => call[2]), [
+    { force: false },
+    { force: true },
+  ]);
+  assert.deepEqual(calls.filter((call) => call[0] === "update"), [
+    ["update", "todos", { commit: "a".repeat(40), digest: "b".repeat(64), force: true }],
+  ]);
+});
+
+test("an update that is already current says so, and a damaged harness shows why", async () => {
+  const { client } = fakeClient({
+    upToDate: true,
+    detail: {
+      state: "damaged",
+      repositories: [{ name: "todos", version: "", description: "", tools: [], files: [], error: "manifest.toml is not valid TOML", file_count: 0 }],
+    },
+  });
+  const page = await open(client);
+
+  await page.press("Update", ".harness");
+  assert.ok(page.$("#harness-preview")?.textContent?.includes("Already at this commit."));
+  await page.press("Cancel", "#harness-preview");
+  await page.press("Details", ".harness");
+
+  const detail = page.$(".harness-detail");
+  assert.ok(detail?.textContent?.includes("state: damaged"));
+  assert.ok(detail?.textContent?.includes("manifest.toml is not valid TOML"));
+  assert.ok(detail?.textContent?.includes("no tools"));
+});
+
+/** `querySelector` on a window, for a test that has the window but not the page helper. */
+function $(selector: string, window: { document: Document }): Element | null {
+  return window.document.querySelector(selector);
+}
