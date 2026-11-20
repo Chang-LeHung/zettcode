@@ -17,6 +17,7 @@ from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 from plugin_helpers import agent_extensions
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
+from zettcode.jit_harness.command import CACHE_MISS, NOT_MOUNTED
 from zettcode.jit_harness.extension import SwitchedHarness
 from zettcode.plugin_api.commands import CommandResult
 from zettcode.sdk.builtins import load_agent_plugins
@@ -605,7 +606,7 @@ async def test_the_command_is_offered_with_the_two_words_it_takes():
     (command,) = context.tui.registered
     assert command.name == "harness"
     assert command.when_busy == "refuse", "gen asks for a turn of its own, so the whole command takes the slot"
-    assert [word.name for word in command.subcommands] == ["gen", "reset"]
+    assert [word.name for word in command.subcommands] == ["gen", "reset", "use", "save", "fork"]
     assert all(word.needs_more for word in command.subcommands), (
         "a menu Enter on the word must not spend a turn or flip the switch by itself"
     )
@@ -752,7 +753,7 @@ def test_the_harness_page_lists_sessions_and_switches_to_the_selected_one(tmp_pa
     assert switched == [mine, other], "Enter on another row borrows that harness"
 
 
-async def test_the_panel_lists_every_session_harness_and_borrows_on_enter(tmp_path: Path):
+async def test_the_panel_lists_every_session_harness_borrows_on_enter_and_announces_only_a_change(tmp_path: Path):
     from zettcode.engine.harness_paths import harness_root
     from zettcode.jit_harness.selection import HarnessChoices
 
@@ -773,12 +774,34 @@ async def test_the_panel_lists_every_session_harness_and_borrows_on_enter(tmp_pa
 
     page.list.activate()
     assert shell.closed == 1 and choices.target("mine") is None, "the current row closes the panel"
+    assert shell.ui.notices == [], "the row you are already on changes nothing, so it says nothing"
 
     page.list.select(1)
     page.list.activate()
     assert choices.target("mine") is not None and choices.target("mine").directory == root / "other", (
         "another row borrows that harness"
     )
+    assert shell.ui.notices[-1].startswith("Borrowed the harness of ") and "other" in shell.ui.notices[-1]
+    assert shell.ui.notices[-1].endswith(NOT_MOUNTED), "with the harness off nothing is mounted, so no cache is lost"
+
+    page.list.activate()
+    assert len(shell.ui.notices) == 1, "the same row again changes nothing, so it says nothing"
+
+    page.list.select(0)
+    page.list.activate()
+    assert shell.ui.notices[-1] == f"Back to this session's own harness. {NOT_MOUNTED}", "returning while it is off"
+
+    page.list.select(1)
+    page.list.activate()
+    client.harness = True
+    page.list.select(0)
+    page.list.activate()
+    assert choices.target("mine") is None
+    assert shell.ui.notices[-1] == f"Back to this session's own harness. {CACHE_MISS}"
+
+    page.list.select(1)
+    page.list.activate()
+    assert shell.ui.notices[-1].endswith(CACHE_MISS), "with the harness on the tools in the request change"
 
 
 async def test_the_panel_says_when_the_chosen_folder_is_gone(tmp_path: Path):
@@ -954,10 +977,11 @@ def test_selecting_the_same_borrowed_harness_twice_keeps_the_host(tmp_path: Path
     choices.add_listener(calls.append)
     target = tmp_path / "other"
 
-    choices.select("mine", "other", target)
-    choices.select("mine", "other", target)
+    assert choices.select("mine", "other", target) is True
+    assert choices.select("mine", "other", target) is False
 
     assert calls == ["mine"], "re-choosing the row already in use does not forget the loaded host"
+    assert choices.clear("mine") is True and choices.clear("mine") is False
 
 
 def test_a_borrowed_harness_replaces_the_sessions_directory(tmp_path: Path):
@@ -974,6 +998,66 @@ def test_a_borrowed_harness_replaces_the_sessions_directory(tmp_path: Path):
     assert extension.session_directory("mine") == tmp_path / "root" / "mine"
 
 
+def test_the_default_every_session_shares_comes_after_a_borrowed_harness_and_before_the_sessions_own(tmp_path: Path):
+    from zettcode.jit_harness.extension import SwitchedHarness
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    choices = HarnessChoices()
+    extension = SwitchedHarness(tmp_path / "root", HarnessSwitch(), choices=choices)
+    shared = tmp_path / "library" / "todos"
+    other = tmp_path / "other"
+
+    assert extension.session_directory("mine") == tmp_path / "root" / "mine", "no default: the session's own"
+    assert choices.use("library/todos", shared) is True and choices.use("library/todos", shared) is False
+    assert extension.session_directory("mine") == shared and extension.session_directory("other") == shared
+    assert choices.select("mine", "other", other) is True
+    assert extension.session_directory("mine") == other, "a harness borrowed in this window still wins"
+    assert extension.session_directory("other") == shared, "and only for the session that borrowed it"
+    assert choices.clear("mine") is True and extension.session_directory("mine") == shared
+    assert choices.unuse() is True and choices.unuse() is False
+    assert extension.session_directory("mine") == tmp_path / "root" / "mine"
+
+
+def test_choosing_what_a_session_already_works_in_changes_nothing(tmp_path: Path):
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    choices = HarnessChoices()
+    shared = tmp_path / "library" / "todos"
+    choices.use("library/todos", shared)
+
+    assert choices.select("mine", "library/todos", shared) is False, "the default it has no borrow over"
+    assert choices.target("mine") is None
+    assert choices.select("mine", "work/other", tmp_path / "other") is True
+
+
+def test_changing_the_default_closes_every_session_s_host_not_one(tmp_path: Path):
+    from zettcode.jit_harness.extension import SwitchedHarness
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    choices = HarnessChoices()
+    extension = SwitchedHarness(tmp_path / "root", HarnessSwitch(), choices=choices)
+    forgotten: list[str] = []
+    extension._sessions.update({"a": object(), "b": object()})  # type: ignore[attr-defined]
+    extension._forget = lambda session_id, **_kw: forgotten.append(session_id) or True  # type: ignore[method-assign]
+
+    choices.use("library/todos", tmp_path / "library" / "todos")
+
+    assert sorted(forgotten) == ["a", "b"]
+
+
+def test_a_library_harness_is_one_more_workspace_for_the_page_to_list(tmp_path: Path):
+    from zettcode.jit_harness.command import HarnessCommand
+
+    config = _configured(tmp_path)
+    entry = config.harness_dir / "library" / "todos"
+    (entry / "todos").mkdir(parents=True)
+    (entry / "todos" / "__init__.py").write_text("", encoding="utf-8")
+
+    found = HarnessCommand._all_harnesses(config.harness_dir)
+
+    assert (entry, "library") in found, "an entry has the shape the page already scans for"
+
+
 async def test_reset_names_the_borrowed_folder(tmp_path: Path):
     from zettcode.jit_harness.selection import HarnessChoices
 
@@ -987,6 +1071,14 @@ async def test_reset_names_the_borrowed_folder(tmp_path: Path):
     result, _ = await _run("reset", _Switch(config, harness=True), choices)
 
     assert str(other) in result.message and "borrowed" in result.message, "reset names the folder actually in use"
+
+
+async def test_reset_says_the_cache_may_miss_only_when_the_harness_was_on(tmp_path: Path):
+    on, _ = await _run("reset", _Switch(_configured(tmp_path), harness=True))
+    off, _ = await _run("reset", _Switch(_configured(tmp_path), harness=False))
+
+    assert CACHE_MISS in on.message, "taking the tools out of the request changes the prefix"
+    assert CACHE_MISS not in off.message, "a harness that was already off changes nothing"
 
 
 async def test_gen_turns_the_harness_on_first_and_asks_for_one_tool_as_one_turn(tmp_path: Path):
@@ -1135,6 +1227,9 @@ async def test_a_word_the_command_does_not_take_lists_the_ones_it_does(tmp_path:
         "- `/harness`",
         "- `/harness gen [description]`",
         "- `/harness reset`",
+        "- `/harness use <name>`",
+        "- `/harness save <name>`",
+        "- `/harness fork <name> <new name>`",
         "- `/plugins`",
     ], bullets
     assert "told to treat it as a requirement" in bullets[1], "the gen line says what a description is for"
@@ -1330,3 +1425,383 @@ def test_the_two_numbers_the_guide_names():
     from zettcode.jit_harness.command import MAX_DESCRIPTION, MAX_SHOWN
 
     assert (MAX_DESCRIPTION, MAX_SHOWN) == (4000, 120)
+
+
+def _library_entry(config: ZettCodeConfig, name: str, *, tool: str = "list_todos") -> Path:
+    """Write a library harness the page and the words can find: one repository a session could load."""
+    folder = config.harness_dir / "library" / name
+    (folder / name).mkdir(parents=True)
+    (folder / name / "__init__.py").write_text("", encoding="utf-8")
+    (folder / name / "MANIFEST").write_text(
+        f'name = "{name}"\nversion = "1"\ndescription = "Find TODOs."\ntools = ["{tool}"]\n', encoding="utf-8"
+    )
+    return folder
+
+
+async def test_use_shares_a_library_harness_with_every_session_and_writes_it_down(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    file = tmp_path / "config.toml"
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(file))
+    config = _configured(tmp_path)
+    folder = _library_entry(config, "todos")
+    choices = HarnessChoices()
+    client = _Switch(config, harness=True)
+
+    result, _ = await _run("use todos", client, choices)
+
+    assert choices.default is not None and choices.default.directory == folder
+    assert choices.directory("any other session") == folder, "every session, not this one"
+    assert 'use = "todos"' in file.read_text(encoding="utf-8")
+    assert "`todos`" in result.message and CACHE_MISS in result.message
+
+    result, _ = await _run("use todos", client, choices)
+    assert "already works in `todos`" in result.message, "choosing it again changes nothing"
+
+    result, _ = await _run("use", client, choices)
+    assert "library harness `todos`" in result.message
+
+    result, _ = await _run("use --none", client, choices)
+    assert choices.default is None and 'use = ""' in file.read_text(encoding="utf-8")
+    assert "its own harness again" in result.message
+
+
+async def test_use_with_a_name_that_is_not_in_the_library_changes_and_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    file = tmp_path / "config.toml"
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(file))
+    choices = HarnessChoices()
+
+    for argument in ("use nope", "use ../escape"):
+        result, _ = await _run(argument, _Switch(_configured(tmp_path)), choices)
+        assert result.message.startswith("Nothing was changed"), result.message
+
+    assert choices.default is None and not file.exists()
+
+
+async def test_the_page_marks_the_shared_harness_in_use_and_says_what_enter_on_your_own_row_returns_to(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "config.toml"))
+    config = _configured(tmp_path)
+    folder = _library_entry(config, "todos")
+    choices = HarnessChoices()
+    choices.use("library/todos", folder)
+    client = _Switch(config)
+
+    result, shell = await _run("", client, choices)
+    page = _page(result)
+
+    assert page.list.items[0].description == "using library/todos", "the session's own row says what it works in"
+    assert any(item.description.endswith("in use") for item in page.list.items[1:]), "the library row is in use"
+    page.list.select(1)
+    page.list.activate()
+    assert shell.ui.notices == [], "choosing what the session already works in changes nothing, so says nothing"
+
+    choices.select("mine", "work/other", tmp_path / "other")
+    (tmp_path / "other").mkdir()
+    result, shell = await _run("", client, choices)
+    page = _page(result)
+    page.list.activate()
+    assert "the harness every session uses (library/todos)" in shell.ui.notices[-1]
+
+
+async def test_save_keeps_this_sessions_harness_and_fork_copies_a_library_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from zettcode.engine.harness_paths import session_path
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "config.toml"))
+    config = _configured(tmp_path)
+    own = session_path(config, "mine") / "kit"
+    own.mkdir(parents=True)
+    (own / "__init__.py").write_text("", encoding="utf-8")
+    (own / "MANIFEST").write_text('name = "kit"\nversion = "1"\ndescription = "Kit."\n', encoding="utf-8")
+    choices = HarnessChoices()
+    client = _Switch(config)
+
+    result, _ = await _run("save", client, choices)
+    assert "Name it" in result.message
+
+    result, _ = await _run("save mine-kit", client, choices)
+    assert "Kept as the library harness `mine-kit`" in result.message
+    assert (config.harness_dir / "library" / "mine-kit" / "kit" / "MANIFEST").is_file()
+
+    result, _ = await _run("fork mine-kit mine-kit-2", client, choices)
+    assert "Copied `mine-kit` as `mine-kit-2`" in result.message
+    result, _ = await _run("fork mine-kit mine-kit-2", client, choices)
+    assert result.message.startswith("Nothing was copied") and "already in the library" in result.message
+
+    choices.use("library/mine-kit", config.harness_dir / "library" / "mine-kit")
+    result, _ = await _run("save again", client, choices)
+    assert (
+        "already works in the library harness `mine-kit`" in result.message and "fork mine-kit again" in result.message
+    )
+
+
+def test_a_start_with_harness_use_makes_the_library_harness_the_one_every_session_works_in(tmp_path: Path):
+    (tmp_path / "work").mkdir()
+    base = {
+        "workspace": tmp_path / "work",
+        "models": (ModelConfig(model="m", token="t"),),
+        "store": tmp_path / "sessions",
+        "harness_dir": tmp_path / "harness",
+        "mcp_enabled": False,
+    }
+    config = ZettCodeConfig(**base, harness_use="todos")
+    folder = _library_entry(config, "todos")
+
+    (harness,) = [e for e in agent_extensions(config) if isinstance(e, SwitchedHarness)]
+    assert harness.session_directory("abc") == folder
+
+    gone = ZettCodeConfig(**{**base, "harness_dir": tmp_path / "elsewhere"}, harness_use="todos")
+    (fallback,) = [e for e in agent_extensions(gone) if isinstance(e, SwitchedHarness)]
+    assert fallback.session_directory("abc").parent.name != "library", "a name with no folder falls back to its own"
+
+    escape = ZettCodeConfig(**base, harness_use="../..")
+    (confined,) = [e for e in agent_extensions(escape) if isinstance(e, SwitchedHarness)]
+    assert confined.session_directory("abc").parent != tmp_path / "harness", "a name that is a path is not followed"
+
+
+async def test_use_that_cannot_be_written_changes_nothing_and_a_retry_writes_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from zettcode.jit_harness import library
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    file = tmp_path / "config.toml"
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(file))
+    config = _configured(tmp_path)
+    _library_entry(config, "todos")
+    choices = HarnessChoices()
+    real = library.write_use
+    monkeypatch.setattr(library, "write_use", lambda name: (_ for _ in ()).throw(OSError("read-only file system")))
+
+    result, _ = await _run("use todos", _Switch(config), choices)
+
+    assert result.message.startswith("Nothing was changed") and "read-only" in result.message
+    assert choices.default is None, "the sessions were not moved to a choice that would be lost at the next start"
+
+    monkeypatch.setattr(library, "write_use", real)
+    result, _ = await _run("use todos", _Switch(config), choices)
+    assert choices.default is not None and 'use = "todos"' in file.read_text(encoding="utf-8")
+    assert str(file) in result.message, "it says which file it wrote"
+
+
+async def test_use_none_always_writes_the_file_even_when_this_window_had_no_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    file = tmp_path / "config.toml"
+    file.write_text('[harness]\nuse = "todos"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(file))
+
+    await _run("use --none", _Switch(_configured(tmp_path)), HarnessChoices())
+
+    assert 'use = ""' in file.read_text(encoding="utf-8"), "the file named a harness whose folder was missing at start"
+
+
+async def test_save_of_a_borrowed_harness_names_where_it_came_from_not_this_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from zettcode.engine import harness_library as engine_library
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "config.toml"))
+    config = _configured(tmp_path)
+    other = tmp_path / "somebody" / "else"
+    (other / "kit").mkdir(parents=True)
+    (other / "kit" / "__init__.py").write_text("", encoding="utf-8")
+    (other / "kit" / "MANIFEST").write_text('name = "kit"\nversion = "1"\ndescription = "d"\n', encoding="utf-8")
+    choices = HarnessChoices()
+    choices.select("mine", "work/else", other)
+
+    await _run("save theirs", _Switch(config), choices)
+
+    entry = engine_library.get(config, "theirs")
+    assert entry.origin == "fork of work/else", "not 'session mine': this session did not write it"
+
+
+async def test_reset_calls_the_shared_default_what_it_is_and_a_borrow_what_it_is(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    config = _configured(tmp_path)
+    folder = _library_entry(config, "todos")
+    choices = HarnessChoices()
+    choices.use("library/todos", folder)
+
+    shared, _ = await _run("reset", _Switch(config, harness=True), choices)
+    assert "the harness every session uses" in shared.message and "borrowed" not in shared.message
+
+    choices.select("mine", "work/else", tmp_path / "else")
+    borrowed, _ = await _run("reset", _Switch(config, harness=True), choices)
+    assert "It is borrowed from `work/else`" in borrowed.message
+
+
+def test_changing_the_default_leaves_a_session_that_borrowed_another_folder_alone(tmp_path: Path):
+    from zettcode.jit_harness.extension import SwitchedHarness
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    choices = HarnessChoices()
+    extension = SwitchedHarness(tmp_path / "root", HarnessSwitch(), choices=choices)
+    forgotten: list[str] = []
+    extension._sessions.update({"borrower": object(), "plain": object()})  # type: ignore[attr-defined]
+    extension._forget = lambda session_id, **_kw: forgotten.append(session_id) or True  # type: ignore[method-assign]
+    choices.select("borrower", "work/else", tmp_path / "else")
+    forgotten.clear()
+
+    choices.use("library/todos", tmp_path / "library" / "todos")
+
+    assert forgotten == ["plain"], "the borrower works in the same folder as before; its host is not closed"
+
+
+def test_a_leftover_staging_folder_is_not_a_row_of_the_page(tmp_path: Path):
+    from zettcode.jit_harness.command import HarnessCommand
+
+    config = _configured(tmp_path)
+    entry = _library_entry(config, "todos")
+    leftover = config.harness_dir / "library" / ".update-abc123" / "todos"
+    leftover.mkdir(parents=True)
+    (leftover / "__init__.py").write_text("", encoding="utf-8")
+
+    found = HarnessCommand._all_harnesses(config.harness_dir)
+
+    assert [path for path, _ in found if path.name.startswith(".")] == []
+    assert (entry, "library") in found
+
+
+def test_changing_the_default_does_not_say_the_no_sandbox_notice_again(tmp_path: Path):
+    from zettcode.jit_harness.extension import SwitchedHarness
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    choices = HarnessChoices()
+    extension = SwitchedHarness(tmp_path / "root", HarnessSwitch(), choices=choices)
+    extension._sessions.update({"plain": object()})  # type: ignore[attr-defined]
+    extension.forget_session = lambda _session_id: None  # type: ignore[method-assign]
+    extension._said_unbounded.add("plain")
+
+    choices.use("library/todos", tmp_path / "library" / "todos")
+
+    assert "plain" in extension._said_unbounded, "a folder change is not a new machine: the notice is not repeated"
+
+
+def test_the_no_sandbox_notice_is_kept_even_when_the_framework_already_dropped_the_session(tmp_path: Path):
+    from zettcode.jit_harness.extension import SwitchedHarness
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    extension = SwitchedHarness(tmp_path / "root", HarnessSwitch(), choices=HarnessChoices())
+    extension._said_unbounded.add("evicted")
+
+    def evicted(_session_id: str) -> None:
+        raise KeyError("evicted")
+
+    extension.forget_session = evicted  # type: ignore[method-assign]
+
+    assert extension._forget("evicted", keep_notice=True) is True
+    assert "evicted" in extension._said_unbounded, "an idle session the framework evicted is not a new machine"
+    assert extension._forget("evicted") is True and "evicted" not in extension._said_unbounded
+
+
+def test_a_borrow_made_in_one_build_is_there_in_the_next(tmp_path: Path):
+    (tmp_path / "work").mkdir()
+    config = ZettCodeConfig(
+        workspace=tmp_path / "work",
+        models=(ModelConfig(model="m", token="t"),),
+        store=tmp_path / "sessions",
+        harness_dir=tmp_path / "harness",
+        mcp_enabled=False,
+    )
+    folder = tmp_path / "harness" / "other"
+    folder.mkdir(parents=True)
+    (first,) = [e for e in agent_extensions(config) if isinstance(e, SwitchedHarness)]
+    assert first._choices is not None
+    first._choices.select("abc", "other", folder)
+
+    (second,) = [e for e in agent_extensions(config) if isinstance(e, SwitchedHarness)]
+
+    assert second.session_directory("abc") == folder
+
+
+async def test_use_none_says_nothing_about_the_cache_when_there_was_no_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from zettcode.jit_harness import library
+    from zettcode.jit_harness.brief import CACHE_MISS
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "config.toml"))
+
+    text = library.use(_configured(tmp_path), HarnessChoices(), "--none", harness_on=True)
+
+    assert CACHE_MISS not in text
+
+
+async def test_enter_on_your_own_row_inside_a_shared_harness_says_where_the_session_works(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "config.toml"))
+    config = _configured(tmp_path)
+    choices = HarnessChoices()
+    choices.use("library/todos", _library_entry(config, "todos"))
+
+    result, shell = await _run("", _Switch(config), choices)
+    page = _page(result)
+    page.list.select(0)
+    page.list.activate()
+
+    assert "shared harness `library/todos`" in shell.ui.notices[-1]
+    assert "/harness use --none" in shell.ui.notices[-1]
+
+
+async def test_a_borrow_that_cannot_be_kept_for_a_resume_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from zettcode.jit_harness.selection import HarnessChoices
+
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "config.toml"))
+    config = _configured(tmp_path)
+    other = tmp_path / "harness" / "ws" / "other"
+    (other / "pkg").mkdir(parents=True)
+    (other / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    blocker = tmp_path / "harness" / ".borrowed"
+    blocker.write_text("in the way", encoding="utf-8")
+    choices = HarnessChoices(blocker)
+
+    result, shell = await _run("", _Switch(config), choices)
+    page = _page(result)
+    page.list.select(1)
+    page.list.activate()
+
+    assert "Borrowed the harness of" in shell.ui.notices[-1]
+    assert "will not be remembered" in shell.ui.notices[-1]
+
+
+def test_a_release_that_waited_for_a_change_of_folder_does_not_say_the_no_sandbox_notice_again(tmp_path: Path):
+    from types import SimpleNamespace
+
+    harness = SwitchedHarness(tmp_path / "root", _Switch(_configured(tmp_path)))
+    seen: list[bool] = []
+
+    def forget(session_id: str, *, keep_notice: bool = False) -> bool:
+        seen.append(keep_notice)
+        return True
+
+    harness._forget = forget  # type: ignore[method-assign]
+    for moved in (True, False):
+        harness._pending.add("s")
+        if moved:
+            harness._moved.add("s")
+        harness._release(SimpleNamespace(session_id="s"))  # type: ignore[arg-type]
+
+    assert seen == [True, False]

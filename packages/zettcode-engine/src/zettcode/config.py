@@ -134,7 +134,7 @@ STATUSLINE_KEYS = frozenset(STATUSLINE_NAMES)
 SHELL_KEYS = frozenset({"network"})
 
 #: Keys the ``[harness]`` table may set.
-HARNESS_KEYS = frozenset({"subagent", "subagent_max_iterations", "subagent_messaging", "todowrite", "jit"})
+HARNESS_KEYS = frozenset({"subagent", "subagent_max_iterations", "subagent_messaging", "todowrite", "jit", "use"})
 
 #: Model calls one subagent may make for the task it was given. A child that is exploring or editing
 #: a real codebase makes dozens (a search, a read, an edit, a re-read, for each file), and the framework's
@@ -520,6 +520,8 @@ class ZettCodeConfig:
         update_file: Where that check leaves what it found; one small JSON file.
         harness_dir: Where the just-in-time harness keeps each session's tools, one folder per session id. Directly
             under ``~/.zettcode`` by default, not inside the session store, so clearing sessions does not take them.
+        harness_use: The name of a library harness (``zettcode harness``) that every session works in, in place of its
+            own folder; empty by default. ``[harness] use`` sets it, and ``/harness use`` writes it.
         plugins_file: The older switch file. It is still read and merged with ``[plugins] disable``; a switch written
             now removes the name from it, so it cannot go on overriding the configuration.
         plugins_dir: Where single-file plugins live, one ``.py`` each; a file there is loaded at the next start
@@ -568,6 +570,8 @@ class ZettCodeConfig:
     update_enabled: bool = True
     update_file: Path = DEFAULT_UPDATE_FILE
     harness_dir: Path = DEFAULT_HARNESS_DIR
+    #: The library harness every session works in (``[harness] use``); empty means each session's own.
+    harness_use: str = ""
     #: Plugins the reader switched off from the shell; a JSON file, read at the next start.
     plugins_file: Path = DEFAULT_PLUGINS_FILE
     #: Single-file plugins: one ``.py`` each, loaded at the next start instead of being installed into site-packages.
@@ -1137,6 +1141,7 @@ def load_config(
         subagent_messaging=bool(_setting(harness, "subagent_messaging", bool, False)),
         todowrite_enabled=bool(_setting(harness, "todowrite", bool, False)),
         jit_harness=bool(_setting(harness, "jit", bool, True)),
+        harness_use=str(_setting(harness, "use", str, "")).strip(),
         shell_network=bool(_setting(shell, "network", bool, False)),
         sessions_enabled=bool(_setting(sessions, "enabled", bool, True)),
         update_enabled=bool(_setting(update, "enabled", bool, True)),

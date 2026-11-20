@@ -13,7 +13,8 @@ from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult, TurnCommandResult
 from zettcode.engine.plugins.services import HARNESS
 
-from .brief import LOCKED, MAX_DESCRIPTION, MAX_SHOWN, SUBCOMMANDS, brief_for, split_argument
+from .brief import CACHE_MISS, LOCKED, MAX_DESCRIPTION, MAX_SHOWN, SUBCOMMANDS, brief_for, split_argument
+from .selection import HARNESS_CHOICES, HarnessChoices
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.engine.plugins.context import PluginContext
@@ -31,14 +32,18 @@ def _usage(switch: HarnessSwitch, tried: str = "") -> str:
     said = f"`/harness {tried}` is not a word `/harness` takes.\n\n" if tried else ""
     return (
         f"{said}The just-in-time harness is **{state}** for this run.\n\n"
-        "- `/harness gen [description]` — turn it on and have a tool built\n"
-        "- `/harness reset` — turn it off for later requests; nothing it wrote is deleted"
+        "- `/harness gen [description]` — turn it on and have tools built\n"
+        "- `/harness reset` — turn it off for later requests; nothing it wrote is deleted\n"
+        "- `/harness use <name>` — share a library harness with every session (`--none`: each its own)\n"
+        "- `/harness save <name>` — keep this session's harness in the library\n"
+        "- `/harness fork <name> <new name>` — copy a library harness to change on its own"
     )
 
 
 def register_plain(ctx: PluginContext) -> None:
     """Register the one plain ``/harness``, with the switch this process's runtime provides."""
     switch = ctx.service(HARNESS, HarnessSwitch)
+    choices = ctx.find(HARNESS_CHOICES, HarnessChoices)
 
     def run(context: PlainCommandContext) -> TextCommandResult | TurnCommandResult:
         word, rest = split_argument(context.argument)
@@ -60,13 +65,28 @@ def register_plain(ctx: PluginContext) -> None:
         if word == "reset":
             if rest:
                 return TextCommandResult(message=f"`/harness reset` takes nothing after it.\n\n{_usage(switch)}")
+            was_on = switch.on
             switch.on = False
+            cost = f"\n\n{CACHE_MISS}" if was_on else ""
             return TextCommandResult(
                 message=(
                     "**Harness is off for this run**: later requests have none of its tools. Nothing was deleted; "
-                    "`/harness gen` builds on it."
+                    f"`/harness gen` builds on it.{cost}"
                 )
             )
+        if word in {"use", "save", "fork"}:
+            from . import library
+
+            if word == "use":
+                text = library.use(ctx.config, choices, rest, harness_on=switch.on)
+            elif word == "save":
+                if context.host is None:
+                    text = "`/harness save` needs a session, and this front end has none to name."
+                else:
+                    text = library.save(ctx.config, choices, context.host.session_id, rest)
+            else:
+                text = library.fork(ctx.config, rest)
+            return TextCommandResult(message=text)
         return TextCommandResult(message=_usage(switch, tried=word))
 
     ctx.commands.register(

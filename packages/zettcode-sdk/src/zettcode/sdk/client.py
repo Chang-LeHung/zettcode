@@ -140,6 +140,7 @@ SETTINGS: tuple[str, ...] = (
     "update_enabled",
     "update_file",
     "harness_dir",
+    "harness_use",
 )
 
 #: What a client switches off unless it is told otherwise. The terminal application joins the broker that lets
@@ -390,7 +391,7 @@ class Client:
         ask_user_enabled, skills_enabled, skill_roots, skills_scope, mcp_enabled, mcp_config, mcp_scope,
         self_compaction, statusline_hidden, plugins_enabled, disabled_plugins, enabled_plugins, plugin_settings, plugins_file, plugins_dir, subagent_enabled,
         subagent_max_iterations, subagent_messaging, todowrite_enabled, jit_harness, shell_network,
-        sessions_enabled, update_enabled, update_file, harness_dir: One
+        sessions_enabled, update_enabled, update_file, harness_dir, harness_use: One
             :class:`~zettcode.config.ZettCodeConfig` field each, laid over the configuration this client read. Every
             one is named and typed here, so a misspelt setting is a ``TypeError`` from Python rather than a
             configuration error; a value of the wrong type is still a ``ConfigurationError``. ``None`` is a value
@@ -468,6 +469,7 @@ class Client:
         update_enabled: bool = _UNSET,
         update_file: str | Path = _UNSET,
         harness_dir: str | Path = _UNSET,
+        harness_use: str = _UNSET,
     ) -> None:
         self._closed = False
         self._stream: RunStream | None = None

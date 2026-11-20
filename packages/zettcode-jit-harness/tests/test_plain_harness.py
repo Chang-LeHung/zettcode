@@ -12,7 +12,7 @@ from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult, TurnCommandResult
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.services import HARNESS
-from zettcode.jit_harness.brief import GEN_BRIEF, LOCKED
+from zettcode.jit_harness.brief import CACHE_MISS, GEN_BRIEF, LOCKED
 from zettcode.jit_harness.plain import register_plain
 
 
@@ -34,7 +34,7 @@ def test_the_plain_command_has_the_terminal_name_and_words(tmp_path: Path):
     (command,) = context.commands.commands
     assert command.name == "/harness"
     assert command.when_busy == "refuse"
-    assert [getattr(word, "name", word) for word in command.subcommands] == ["gen", "reset"]
+    assert [getattr(word, "name", word) for word in command.subcommands] == ["gen", "reset", "use", "save", "fork"]
 
 
 def test_no_word_reports_the_switch_without_a_panel(tmp_path: Path):
@@ -72,7 +72,18 @@ def test_reset_turns_it_off_and_deletes_nothing(tmp_path: Path):
     assert isinstance(result, TextCommandResult)
     assert switch.on is False
     assert "Nothing was deleted" in result.message
+    assert CACHE_MISS in result.message, "the editor says what the terminal says: the tools left the request"
     assert result.notification == "", "the message is the answer; the chat does not also show a toast"
+
+
+def test_reset_of_a_harness_that_was_off_does_not_claim_a_cache_miss(tmp_path: Path):
+    _, context = _context(tmp_path, on=False)
+    register_plain(context)
+    (command,) = context.commands.commands
+
+    result = command.handler(PlainCommandContext(argument="reset"))
+
+    assert isinstance(result, TextCommandResult) and CACHE_MISS not in result.message
 
 
 def test_a_held_session_refuses_gen_without_moving_the_switch(tmp_path: Path):
@@ -123,3 +134,49 @@ def test_importing_the_plain_command_does_not_import_the_widgets():
     )
 
     subprocess.run([sys.executable, "-c", script], check=True)
+
+
+def _library_context(tmp_path: Path):
+    from zettcode.jit_harness.selection import HARNESS_CHOICES, HarnessChoices
+
+    switch = HarnessSwitch(on=True)
+    choices = HarnessChoices()
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="m", token="t"),),
+        harness_dir=tmp_path / "harness",
+    )
+    context = PluginContext(config, {HARNESS: switch, HARNESS_CHOICES: choices}, name="harness")
+    register_plain(context)
+    (command,) = context.commands.commands
+    entry = config.harness_dir / "library" / "todos" / "todos"
+    entry.mkdir(parents=True)
+    (entry / "__init__.py").write_text("", encoding="utf-8")
+    (entry / "MANIFEST").write_text(
+        'name = "todos"\nversion = "1"\ndescription = "d"\ntools = ["t"]\n', encoding="utf-8"
+    )
+    return command, choices, config
+
+
+def test_the_editor_can_share_a_library_harness_and_copy_one(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "config.toml"))
+    command, choices, config = _library_context(tmp_path)
+
+    shared = command.handler(PlainCommandContext(argument="use todos"))
+    assert isinstance(shared, TextCommandResult) and "`todos`" in shared.message and CACHE_MISS in shared.message
+    assert choices.default is not None and choices.default.directory == config.harness_dir / "library" / "todos"
+
+    copied = command.handler(PlainCommandContext(argument="fork todos mine"))
+    assert "Copied `todos` as `mine`" in copied.message
+    assert (config.harness_dir / "library" / "mine" / "todos" / "MANIFEST").is_file()
+
+    assert "Nothing was changed" in command.handler(PlainCommandContext(argument="use nope")).message
+
+
+def test_save_in_the_editor_needs_a_session_to_name(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "config.toml"))
+    command, _, _ = _library_context(tmp_path)
+
+    result = command.handler(PlainCommandContext(argument="save x"))
+
+    assert "needs a session" in result.message

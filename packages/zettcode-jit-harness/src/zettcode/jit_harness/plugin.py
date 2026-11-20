@@ -45,7 +45,7 @@ class Harness(Plugin[PluginContext]):
         switch = ctx.service(HARNESS, HarnessSwitch)
         root = harness_root(ctx.config)
         policy = ctx.service(POLICY, ShellPolicy)
-        choices = HarnessChoices()
+        choices = HarnessChoices(ctx.config.harness_dir / ".borrowed")
         ctx.provide(HARNESS_CHOICES, choices)
 
         def host() -> JITToolHost:
@@ -78,6 +78,16 @@ class Harness(Plugin[PluginContext]):
                 return store.session_path(session_id)
             except ValueError:
                 return None
+
+        def start_in_the_library_harness() -> None:
+            """Make `[harness] use` the default every session works in, when it names a harness that is there."""
+            from zettcode.engine.harness_library import used_entry
+
+            entry = used_entry(ctx.config)
+            if entry is not None:
+                choices.use(f"library/{entry.name}", entry.path)
+
+        start_in_the_library_harness()
 
         def build(_: AgentBuild) -> AgentExtension:
             from .extension import SwitchedHarness

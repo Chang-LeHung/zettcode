@@ -25,7 +25,7 @@ and `providers`, `/theme ` the palettes, `/model ` the configured models. `Enter
 | `/effort` | Set how much the model reasons, for the next request. | `/effort high` |
 | `/permission` | Set how much of the shell may run without asking. | `/permission safe` |
 | `/plugins` | Switch a plugin on or off; the change applies at the next start. | `/plugins disable recap` |
-| `/harness` | The terminal's panel browses harnesses, tools and files; the chat gets the same command's state and its `gen` / `reset` words. `gen` takes up to 4000 characters (120 shown in the row). | `/harness gen a tool that lists TODOs` |
+| `/harness` | The terminal's panel browses harnesses, tools and files; the chat gets the same command's state and its `gen` / `reset` / `use` / `save` / `fork` words. `gen` takes up to 4000 characters (120 shown in the row). | `/harness gen a tool that lists TODOs` |
 | `/btw` | Ask a side question that never joins the conversation. | `/btw what is idempotent here?` |
 | `/code-review` | Review the uncommitted changes; text says what to look for. | `/code-review check error handling` |
 | `/bash` | Open a full-screen shell over the workspace. See [below](#bash). | `/bash git status` |

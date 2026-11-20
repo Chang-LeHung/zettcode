@@ -26,12 +26,14 @@ from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.tui.render import truncate
 
 from .brief import (
+    CACHE_MISS,
     GEN_ASKED,
     GEN_BRIEF,
     GEN_FLOOR_LAST,
     LOCKED,
     MAX_DESCRIPTION,
     MAX_SHOWN,
+    NOT_MOUNTED,
     SUBCOMMANDS,
     brief_for,
     split_argument,
@@ -49,6 +51,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 NOT_KEPT = "What you wrote after the word was not sent — press Up to bring the line back."
 
 __all__ = [
+    "CACHE_MISS",
     "GEN_ASKED",
     "GEN_BRIEF",
     "GEN_FLOOR_LAST",
@@ -56,6 +59,7 @@ __all__ = [
     "MAX_DESCRIPTION",
     "MAX_SHOWN",
     "NOT_KEPT",
+    "NOT_MOUNTED",
     "SUBCOMMANDS",
     "HarnessCommand",
     "brief_for",
@@ -88,7 +92,7 @@ class HarnessCommand(TuiPlugin):
 
     name = "harness-command"
     description = (
-        "the just-in-time harness: /harness (the panel), gen [what you want] (build a tool), reset (switch back)"
+        "the just-in-time harness: /harness (the panel), gen [what you want] (build tools), reset (switch back)"
     )
 
     def __init__(self) -> None:
@@ -131,7 +135,22 @@ class HarnessCommand(TuiPlugin):
             if rest:
                 return CommandResult(message=f"`/harness reset` takes nothing after it.\n\n{self._usage()}")
             return self._reset(host)
+        if word in {"use", "save", "fork"}:
+            return self._library_word(host, word, rest)
         return CommandResult(message=self._usage(tried=word))
+
+    def _library_word(self, host: CommandHost, word: str, rest: str) -> CommandResult:
+        """Run ``use``, ``save`` or ``fork``: they change which folder the next request works in, or copy one."""
+        from . import library
+
+        config = host.client.config
+        if word == "use":
+            message = library.use(config, self.choices, rest, harness_on=bool(host.client.harness))
+        elif word == "save":
+            message = library.save(config, self.choices, host.client.session.id, rest)
+        else:
+            message = library.fork(config, rest)
+        return CommandResult(message=message)
 
     async def _panel(self, host: CommandHost) -> CommandResult:
         """Open the picker over every harness directory under the configured harness root.
@@ -145,7 +164,7 @@ class HarnessCommand(TuiPlugin):
         config = host.client.config
         current_directory = existing_session_path(config, current)
         root = config.harness_dir
-        choice = self.choices.target(current) if self.choices is not None else None
+        choice = self.choices.effective(current) if self.choices is not None else None
         effective_directory = choice.directory if choice is not None else current_directory
         current_title = await asyncio.to_thread(lambda: getattr(host.client.session, "title", None))
         rows = await asyncio.to_thread(
@@ -402,7 +421,7 @@ class HarnessCommand(TuiPlugin):
                 found.append((child, ""))
                 continue
             try:
-                sessions = [path for path in child.iterdir() if path.is_dir()]
+                sessions = [path for path in child.iterdir() if path.is_dir() and not path.name.startswith(".")]
             except OSError:
                 continue
             for session in sessions:
@@ -410,10 +429,23 @@ class HarnessCommand(TuiPlugin):
         return found
 
     def _switch(self, host: CommandHost, current: str, target: HarnessTarget) -> None:
-        """Borrow the selected harness, or close the page on the current row."""
+        """Borrow the selected harness, or close the page on the current row; say what changed, and nothing if none did."""
         if target.directory == existing_session_path(host.client.config, current):
-            if self.choices is not None:
-                self.choices.clear(current)
+            if self.choices is not None and self.choices.clear(current):
+                default = self.choices.default
+                back = f"the harness every session uses ({default.label})" if default else "this session's own harness"
+                lost = self.choices.store_error
+                kept = (
+                    f" The record could not be removed, so a resumed conversation borrows again ({lost})."
+                    if lost
+                    else ""
+                )
+                host.transcript.notice(f"Back to {back}. {self._cost(host)}{kept}")
+            elif self.choices is not None and self.choices.default is not None:
+                host.transcript.notice(
+                    f"This session works in the shared harness `{self.choices.default.label}`, not its own. "
+                    "`/harness use --none` gives every session its own back."
+                )
             host.close_page()
             return
         if self.choices is None:
@@ -424,8 +456,18 @@ class HarnessCommand(TuiPlugin):
             host.transcript.notice(f"That harness folder is gone: `{target.directory}`.")
             host.close_page()
             return
-        self.choices.select(current, target.label, target.directory)
+        if self.choices.select(current, target.label, target.directory):
+            lost = self.choices.store_error
+            kept = f" It will not be remembered when this conversation is resumed ({lost})." if lost else ""
+            host.transcript.notice(f"Borrowed the harness of {target.label}. {self._cost(host)}{kept}")
         host.close_page()
+
+    @staticmethod
+    def _cost(host: CommandHost) -> str:
+        """Return what a switch costs the next request: with the harness off, nothing is mounted yet."""
+        if host.client.harness:
+            return CACHE_MISS
+        return NOT_MOUNTED
 
     async def _generate(self, host: CommandHost, description: str, *, ui: CommandUi) -> CommandResult:
         """Turn the harness on and hand the model the brief, as one ordinary turn of this conversation.
@@ -470,11 +512,17 @@ class HarnessCommand(TuiPlugin):
         switch does not get to throw it away. The path is named, and whether it is there at all, so a reader who does
         want it gone knows exactly what to remove.
         """
+        was_on = bool(host.client.harness)
         host.client.use_harness(False)
         current = host.client.session.id
-        choice = self.choices.target(current) if self.choices is not None else None
+        choice = self.choices.effective(current) if self.choices is not None else None
         directory = choice.directory if choice is not None else directory_of(host)
-        borrowed = f" It is borrowed from `{choice.label}`." if choice is not None else ""
+        if choice is None:
+            borrowed = ""
+        elif self.choices is not None and self.choices.target(current) is None:
+            borrowed = f" It is the harness every session uses (`{choice.label}`)."
+        else:
+            borrowed = f" It is borrowed from `{choice.label}`."
         if directory.is_dir():
             kept = (
                 f"Nothing was deleted: the folder this session's tools live in is still there (`{directory}`).{borrowed} "
@@ -491,8 +539,9 @@ class HarnessCommand(TuiPlugin):
                 f"Nothing was deleted: there is no folder at `{directory}`, so there is nothing here to remove.{borrowed} "
                 "`/harness gen` builds one when you want it."
             )
+        cost = f"\n\n{CACHE_MISS}" if was_on else ""
         return CommandResult(
-            message=f"**Harness is off for this run**: later requests have none of its tools.\n\n{kept}",
+            message=f"**Harness is off for this run**: later requests have none of its tools.\n\n{kept}{cost}",
             notification="Harness reset",
         )
 
@@ -508,9 +557,12 @@ class HarnessCommand(TuiPlugin):
         return (
             f"{said}\n\n"
             "- `/harness` — every session's harness; Enter borrows the selected one, and the current row returns to its own\n"
-            "- `/harness gen [description]` — turn it on (for this run) and have a tool built; anything you write after\n"
+            "- `/harness gen [description]` — turn it on (for this run) and have tools built; anything you write after\n"
             "  the word says what you want, and the model is told to treat it as a requirement\n"
             "- `/harness reset` — turn it off (for this run), so later requests have none of its tools; what this\n"
             "  session wrote stays where it is\n"
+            "- `/harness use <name>` — share a library harness with every session (`--none`: each its own)\n"
+            "- `/harness save <name>` — keep this session's harness in the library\n"
+            "- `/harness fork <name> <new name>` — copy a library harness to change on its own\n"
             "- `/plugins` — whether a run starts with it on, from `harness.jit`"
         ).strip()

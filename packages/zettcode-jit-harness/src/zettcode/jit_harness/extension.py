@@ -25,7 +25,7 @@ from zett_agent.tools.base import AgentTool, ToolExecutionMode, ToolResult, tool
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.mcp_notice import HARNESS_NOTICE_EVENT_NAME, notice_payload
 
-from .selection import HarnessChoices
+from .selection import ALL_SESSIONS, HarnessChoices
 from .stats import Scan, UsageReport, build_report, scan_tool_calls
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -86,7 +86,8 @@ class SwitchedHarness(JITHarnessExtension):
                 wrote then runs with the reader's own access, which they are told once per session.
             legacy_root: The root from before the workspace level, whose session directory is moved under ``root``
                 the first time that session asks for it.
-            choices: A harness another session borrowed; its directory replaces this session's own until cleared.
+            choices: The harness a session works in when it is not its own — one it borrowed, else the default every
+                session shares (``/harness use``); its directory replaces this session's own until cleared.
             session_file: Where a session's stored conversation is, or ``None`` when it has none: ``profile_tools``
                 reads how tools have done from it, instead of counting calls while they run.
         """
@@ -102,24 +103,39 @@ class SwitchedHarness(JITHarnessExtension):
         self._built: dict[str, str] = {}
         #: Sessions whose child must be closed once the request in flight lets go of them.
         self._pending: set[str] = set()
+        #: Those of them waiting because their *folder* changed, not the boundary: they do not say the notice again.
+        self._moved: set[str] = set()
         #: Sessions whose current request has the harness, set by ``on_tool`` and cleared when it is released.
         self._engaged: set[str] = set()
-        #: The harness each session borrowed from another session, if any.
+        #: The harness each session borrowed from another session, and the default every session shares, if any.
         self._choices = choices
         self._session_file = session_file
         if choices is not None:
             choices.add_listener(self._choice_changed)
 
     def session_directory(self, session_id: str) -> Path:
-        """Return the borrowed harness directory, or this session's own when it has not borrowed one."""
+        """Return the harness directory this session works in: borrowed, else the shared default, else its own."""
         selected = self._choices.directory(session_id) if self._choices is not None else None
         return selected if selected is not None else super().session_directory(session_id)
 
     def _choice_changed(self, session_id: str) -> None:
-        """Close the host built for the directory this session used before the choice changed."""
-        if not self._forget(session_id):
-            # The command refuses while a request runs; leave the old host for the release path if one slips through.
-            self._pending.add(session_id)
+        """Close the host built for the directory this session used before the choice changed.
+
+        The default changing moves the folder of every session that has not borrowed another one: those are closed
+        (the one a request still holds is left for the release path). A session that borrowed a folder is working in
+        the same place as before, so its loaded repository and its notices are left alone.
+        """
+        if session_id == ALL_SESSIONS:
+            with self._lock:
+                known = list(self._sessions)
+            affected = [each for each in known if self._choices is None or self._choices.target(each) is None]
+        else:
+            affected = [session_id]
+        for each in affected:
+            if not self._forget(each, keep_notice=True):
+                # The command refuses while a request runs; leave the old host for the release path if one slips by.
+                self._pending.add(each)
+                self._moved.add(each)
 
     def engaged(self, context: AgentRunContext) -> bool:
         """Return whether this request was given the harness."""
@@ -232,29 +248,38 @@ class SwitchedHarness(JITHarnessExtension):
         # Its child was started without (or with) a boundary the reader has since changed: close it, and let the next
         # request build the host the boundary asks for. A fail-open sandbox is the case that matters. The new value is
         # recorded only once the old child is really gone, so a forget that had to wait is tried again next time.
+        # This path and the release path forget alike (neither keeps the notice); a change of folder is the one that
+        # does, because only there the boundary is untouched.
         if self._forget(session_id):
             self._built[session_id] = now
         else:
             self._pending.add(session_id)
 
-    def _forget(self, session_id: str) -> bool:
+    def _forget(self, session_id: str, *, keep_notice: bool = False) -> bool:
         """Close a session's child now, or say that the request in flight still holds it."""
         try:
             self.forget_session(session_id)
         except KeyError:
             # The framework dropped it already (an idle session past its cap): nothing is left to close, and nothing
             # that is keyed by it is worth keeping either.
-            self._drop(session_id)
+            self._drop(session_id, keep_notice=keep_notice)
             return True
         except RuntimeError:
             return False
-        self._drop(session_id)
+        self._drop(session_id, keep_notice=keep_notice)
         return True
 
-    def _drop(self, session_id: str) -> None:
-        """Forget what this window remembered about a session the framework no longer holds."""
+    def _drop(self, session_id: str, *, keep_notice: bool = False) -> None:
+        """Forget what this window remembered about a session the framework no longer holds.
+
+        ``keep_notice`` leaves the record that the no-sandbox notice was said: a change of folder moves what the
+        session runs, not the fact that this machine cannot bound it, and saying it again is noise.
+        """
         self._built.pop(session_id, None)
-        self._said_unbounded.discard(session_id)
+        self._moved.discard(session_id)
+        self._pending.discard(session_id)
+        if not keep_notice:
+            self._said_unbounded.discard(session_id)
 
     async def on_state(self, context: AgentRunContext) -> None:
         """Adopt late tool registrations, for a request that has the harness."""
@@ -298,5 +323,7 @@ class SwitchedHarness(JITHarnessExtension):
         super()._release(context)
         if context.session_id in self._pending:
             self._pending.discard(context.session_id)
-            if self._forget(context.session_id) and self._boundary is not None:
+            moved = context.session_id in self._moved
+            self._moved.discard(context.session_id)
+            if self._forget(context.session_id, keep_notice=moved) and self._boundary is not None:
                 self._built[context.session_id] = self._boundary()

@@ -24,7 +24,7 @@
 | `/effort` | 设置模型思考多少，从下一个请求开始。 | `/effort high` |
 | `/permission` | 设置 shell 命令在多大范围内不用问。 | `/permission safe` |
 | `/plugins` | 打开或关掉一个插件，下次启动生效。 | `/plugins disable recap` |
-| `/harness` | 终端里打开 harness、工具和文件的面板；聊天里是同一条命令的状态和 `gen` / `reset` 两个词。`gen` 最多接收 4000 个字符（行内显示前 120 个）。 | `/harness gen 一个列出 TODO 的工具` |
+| `/harness` | 终端里打开 harness、工具和文件的面板；聊天里是同一条命令的状态和 `gen` / `reset` / `use` / `save` / `fork` 几个词。`gen` 最多接收 4000 个字符（行内显示前 120 个）。 | `/harness gen 一个列出 TODO 的工具` |
 | `/btw` | 问一件只在当场回答、不进入对话的事。 | `/btw 这里的幂等是什么意思？` |
 | `/code-review` | 评审尚未提交的改动；文字说明重点看什么。 | `/code-review 检查错误处理` |
 | `/bash` | 在工作区里打开一个全屏 shell。见[下文](#bash)。 | `/bash git status` |
