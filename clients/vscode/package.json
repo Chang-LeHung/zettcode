@@ -142,6 +142,10 @@
         "title": "ZettCode: Show Plugins"
       },
       {
+        "command": "zettcode.harnesses",
+        "title": "ZettCode: Harness Library"
+      },
+      {
         "command": "zettcode.restartServer",
         "title": "ZettCode: Restart Server"
       },

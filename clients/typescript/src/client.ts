@@ -82,6 +82,8 @@ export class ZettCodeClient {
   readonly sessions: Sessions;
   /** The current conversation: `rename`, `fork`, `compact`, `history`, `ask`, `prompt` and the rest. */
   readonly session: Session;
+  /** The user-level library of named harnesses: `entries`, `previewAdd` / `add`, `previewUpdate` / `update`, `fork`, `remove`. */
+  readonly harnesses: HarnessLibrary;
 
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE).replace(/\/+$/, "");
@@ -93,6 +95,7 @@ export class ZettCodeClient {
     }
     this.sessions = new Sessions(this);
     this.session = new Session(this);
+    this.harnesses = new HarnessLibrary(this);
   }
 
   // -- transport ---------------------------------------------------------

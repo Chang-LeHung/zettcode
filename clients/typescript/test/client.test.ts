@@ -246,6 +246,17 @@ describe("the JSON API", () => {
       failure: "",
       setting: "",
     });
+    // The library: a download is previewed first, and what is kept is the commit and digest that were shown.
+    const library = client.harnesses;
+    assert.deepEqual((await library.entries()).map((entry) => [entry.name, entry.in_use]), [["todos", true]]);
+    const fresh = await library.previewAdd("acme/fresh", { name: "fresh" });
+    assert.equal(fresh.caution, "Read it.");
+    assert.equal((await library.add("acme/fresh", { commit: fresh.commit, digest: fresh.digest, name: "fresh" })).name, "fresh");
+    const next = await library.previewUpdate("todos", { force: true });
+    assert.deepEqual(next.changes, ["version: 1 -> 2"]);
+    assert.equal((await library.update("todos", { commit: "b", digest: "c", force: true })).name, "todos");
+    assert.equal((await library.fork("todos", "mine")).name, "mine");
+    await library.remove("todos");
     assert.deepEqual((await client.commands()).map((command) => command.name), ["/greet"]);
     assert.deepEqual(await client.runCommand("/greet", "Ada"), {
       message: "",
