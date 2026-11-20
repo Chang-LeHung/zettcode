@@ -125,7 +125,7 @@ def test_a_download_is_not_limited_and_a_symbolic_link_is_kept_as_the_link_it_is
 
     assert len(prepared.candidate.files) > 600, "the reader asked for this repository: there is no size limit"
     link = entry.path / "todos" / "link.txt"
-    assert link.is_symlink() and os.readlink(link) == "data/f1.txt"
+    assert link.is_symlink() and os.readlink(link).replace("\\", "/") == "data/f1.txt"
     assert library.modified(entry) is False
     copy = library.fork(config, "todos", "copy")
     assert (copy.path / "todos" / "link.txt").is_symlink()
