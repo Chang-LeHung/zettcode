@@ -62,6 +62,27 @@ loads the plugins, so a model a plugin offers appears in `GET /models` after tha
 `PATCH /settings`. A workspace with no file entry answers every request that needs a model with `409 no_model`
 and the `POST /models` instruction.
 
+## Harness library
+
+The user-level library of named harnesses (`zettcode harness` in a shell), shared by every workspace. It needs no
+model: these answer before one is configured. A download must be seen before it is kept, so installing and updating are
+two calls. The preview downloads and inspects (nothing is imported or kept); the call that keeps sends back the
+`commit` and `digest` it reported, downloads that commit again and keeps it only when it is what was shown (else
+`400 invalid`). A body with a field the endpoint does not take is a `422`.
+
+| Method | Path | Body | Answers |
+| --- | --- | --- | --- |
+| `GET` | `/harnesses` | — | `{"harnesses": [{"name","origin","commit","state","in_use","repositories": [{"name","version","description","tools","files","error","file_count"}]}]}`. `state` is `ok`, `changed`, `missing` or `damaged`; `in_use` is whether `[harness] use` names it, read at the time of the request from the configuration file the server was given (`--config`, else the default one). The list is cheap: `files` is empty (it carries `file_count`) and `state` is empty too, because answering it reads every byte of the harness; `GET /harnesses/{name}` has both. |
+| `GET` | `/harnesses/{name}` | — | One harness, with its `files`. A name the library does not have is `400 invalid` and names the ones it has. |
+| `POST` | `/harnesses/preview` | `{"source", "name"?}` | `{"action","name","source","commit","digest","version","description","tools","banned","files","size","changes","up_to_date","caution","links"}`. `source` is `owner/repo`, `owner/repo@ref` or a GitHub URL; `links` is each symbolic link in `files` and where it points. A network call that can take minutes; downloads run one at a time for the whole server, and one started while another runs is `400 invalid` ("try again when it is done"). |
+| `POST` | `/harnesses` | `{"source", "name"?, "commit", "digest"}` | 201 with the harness. `commit` is the 40 and `digest` the 64 hexadecimal digits a preview reported. |
+| `POST` | `/harnesses/{name}/preview` | `{"force"?}` | The same shape, for an update: `changes` says what would differ and `up_to_date` whether it is already at `commit`. A harness changed since it was installed is refused (`400 invalid`) unless `force` is true. |
+| `PUT` | `/harnesses/{name}` | `{"commit", "digest", "force"?}` | The harness after the update. `409 busy` while a run is in progress in any conversation, checked before the download and again just before the files change. |
+| `POST` | `/harnesses/{name}/fork` | `{"name"}` | 201 with the copy, which has no upstream. |
+| `DELETE` | `/harnesses/{name}` | — | The remaining harnesses. Refused (`400 invalid`) while it is the one every session works in or an update is running; `409 busy` while a run is in progress. |
+
+`/harness use` and `/harness save` act on the running conversation and are commands (`POST /commands/harness`).
+
 ## Sessions
 
 The *current* session is the conversation the next prompt continues. A server starts on a fresh one.

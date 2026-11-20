@@ -990,8 +990,10 @@ class HarnessRepository:
         version: The manifest's version, or ``""`` when the manifest could not be read.
         description: The manifest's description.
         tools: The tools it declares.
-        files: Every file in it, by relative path; a link is listed, never followed.
+        files: Every file in it, by relative path; a link is listed, never followed. Empty in the list of all
+            harnesses (``entries()``), which carries only ``file_count``; ``entry(name)`` has the names.
         error: Why the manifest could not be read, or ``""``.
+        file_count: How many files there are, whether or not ``files`` is filled.
     """
 
     name: str
@@ -1000,6 +1002,7 @@ class HarnessRepository:
     tools: tuple[str, ...]
     files: tuple[str, ...]
     error: str = ""
+    file_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -1046,6 +1049,8 @@ class HarnessPreview:
         changes: For an update, what would change, one line each; empty for an add.
         up_to_date: For an update, whether it is already at ``commit``.
         caution: The sentence to show beside it: its code runs on this machine.
+        links: Each symbolic link in ``files`` and where it points. A link is how code can reach a file outside the
+            harness, so a front end shows these beside the file list.
     """
 
     action: str
@@ -1062,3 +1067,4 @@ class HarnessPreview:
     changes: tuple[str, ...]
     up_to_date: bool
     caution: str
+    links: dict[str, str] = field(default_factory=dict)

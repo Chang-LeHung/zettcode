@@ -28,7 +28,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zettcode.engine.harness_library import CAUTION
+from zettcode.engine.harness_library import CAUTION, current_use
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.config import ZettCodeConfig
@@ -41,7 +41,6 @@ EXIT_INTERRUPTED = 130
 
 #: Files listed before the rest are counted: a harness is small, and a long list is not a better answer.
 MAX_LISTED_FILES = 40
-
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -167,7 +166,7 @@ def _state(config: ZettCodeConfig, entry: Entry) -> str:
     from zettcode.engine.harness_library import update_state
 
     parts = []
-    if config.harness_use == entry.name:
+    if current_use(config) == entry.name:
         parts.append("in use")
     state = update_state(entry)
     if state != "ok":
@@ -189,7 +188,7 @@ def _list(config: ZettCodeConfig, *, as_json: bool) -> int:
                         "repositories": list(entry.repositories),
                         "origin": entry.origin,
                         "commit": entry.commit,
-                        "in_use": config.harness_use == entry.name,
+                        "in_use": current_use(config) == entry.name,
                         "modified": _modified(entry),
                         "state": _update_state(entry),
                     }
@@ -265,9 +264,16 @@ def _summary(prepared: Prepared, name: str) -> str:
     if candidate.banned:
         lines.append(f"  banned:  {', '.join(candidate.banned)}")
     lines.append(f"  files:   {len(candidate.files)} ({candidate.size:,} bytes)")
-    lines.extend(f"    {path}" for path in candidate.files[:MAX_LISTED_FILES])
+    targets = dict(candidate.links)
+    lines.extend(
+        f"    {path} -> {targets[path]}" if path in targets else f"    {path}"
+        for path in candidate.files[:MAX_LISTED_FILES]
+    )
     if len(candidate.files) > MAX_LISTED_FILES:
         lines.append(f"    ... and {len(candidate.files) - MAX_LISTED_FILES} more")
+        # A link is where code can reach outside the harness, so none is left out of what the reader sees.
+        hidden = [path for path in candidate.files[MAX_LISTED_FILES:] if path in targets]
+        lines.extend(f"    {path} -> {targets[path]}  (a link)" for path in hidden)
     return "\n".join(lines)
 
 

@@ -17,6 +17,7 @@ from .schemas import (
     CurrentSessionOut,
     DayTotalsOut,
     HarnessOut,
+    HarnessPreviewOut,
     HarnessRepositoryOut,
     ImageIn,
     MentionOut,
@@ -41,6 +42,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
         Compaction,
         ContextReport,
         HarnessEntry,
+        HarnessPreview,
         MentionInfo,
         Message,
         ModelCheck,
@@ -120,9 +122,31 @@ def harness_out(entry: HarnessEntry) -> HarnessOut:
                 tools=list(item.tools),
                 files=list(item.files),
                 error=item.error,
+                file_count=item.file_count,
             )
             for item in entry.repositories
         ],
+    )
+
+
+def preview_out(preview: HarnessPreview) -> HarnessPreviewOut:
+    """Return a download that was inspected and not kept, field by field: a field added to the SDK is added here."""
+    return HarnessPreviewOut(
+        action=preview.action,
+        name=preview.name,
+        source=preview.source,
+        commit=preview.commit,
+        digest=preview.digest,
+        version=preview.version,
+        description=preview.description,
+        tools=list(preview.tools),
+        banned=list(preview.banned),
+        files=list(preview.files),
+        size=preview.size,
+        changes=list(preview.changes),
+        up_to_date=preview.up_to_date,
+        caution=preview.caution,
+        links=dict(preview.links),
     )
 
 

@@ -38,7 +38,9 @@ from .schemas import ApprovalPolicy, CommandOut, PendingOut, PromptRequest, Resu
 from .serialize import event_payload, result_out
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from zettcode.config import ZettCodeConfig
     from zettcode.sdk.client import Client, RunStream
+    from zettcode.sdk.harness_library import HarnessLibrary
     from zettcode.sdk.session import Session
     from zettcode.sdk.types import (
         Image,
@@ -321,6 +323,8 @@ class Runner:
         #: Conversations put aside while they run, so the reader can look at another one meanwhile.
         self._aside: list[Slot] = []
         self._sequence = 0
+        #: The one harness library of this process, made when first asked for.
+        self._harnesses: HarnessLibrary | None = None
 
     # -- the slots ------------------------------------------------------------
     @property
@@ -754,6 +758,39 @@ class Runner:
         from zettcode.sdk import list_models
 
         return list_models(self.settings.config_path)
+
+    @property
+    def harnesses(self) -> HarnessLibrary:
+        """Return the server's one library of named harnesses, whatever conversation is current.
+
+        It takes the client's configuration when there is a client and reads the file when there is not, so a reader
+        who has not configured a model yet can still install a harness. There is one for the whole process, so its
+        downloads are one at a time for every conversation, and ``[harness] use`` is read from the file the server was
+        given (``--config``), not the default one.
+        """
+        if self._harnesses is None:
+            from zettcode.sdk.harness_library import HarnessLibrary
+
+            def config() -> ZettCodeConfig:
+                from zettcode.config import load_config
+
+                client = self._client
+                if client is not None:
+                    return client.config
+                return load_config(self.settings.workspace, path=self.settings.config_path, require_models=False)
+
+            self._harnesses = HarnessLibrary(config, settings_file=lambda: self.settings.config_path)
+        return self._harnesses
+
+    def ensure_idle(self, what: str) -> None:
+        """Refuse ``what`` while a run is going in any conversation, the ones running aside included.
+
+        Raises:
+            SessionBusyError: A conversation is running; it imports from the harness folders, and what changes under
+                it is not what it was started with.
+        """
+        if self.running_sessions():
+            raise SessionBusyError(f"A run is in progress; {what} when it ends")
 
     @property
     def current_model(self) -> str | None:

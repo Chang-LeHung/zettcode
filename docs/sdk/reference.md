@@ -225,9 +225,16 @@ library's own words (git missing, a name taken, an update refused).
 | `await fork(name, new)` | `HarnessEntry` | Copies it under a new name, with no upstream. |
 | `await remove(name)` | — | Deletes it; refused while it is in use or being updated. |
 
-`HarnessEntry(name, origin, commit, state, in_use, repositories)`: `state` is `ok`, `changed`, `missing` or `damaged`.
-`HarnessRepository(name, version, description, tools, files, error)`. `HarnessPreview(action, name, source, commit,
-digest, version, description, tools, banned, files, size, changes, up_to_date, caution)`. Choosing the harness every
+`HarnessEntry(name, origin, commit, state, in_use, repositories)`: `state` is `ok`, `changed`, `missing` or `damaged` when asked
+for one harness with `entry(name)`, and empty in the `entries()` list, which does not read the harness's bytes.
+`HarnessRepository(name, version, description, tools, files, error, file_count)`: `entries()` leaves `files` empty and
+fills `file_count` (and leaves `HarnessEntry.state` empty, since reading it takes every byte); `entry(name)` has both. `HarnessPreview(action, name, source, commit, digest, version,
+description, tools, banned, files, size, changes, up_to_date, caution, links)`: `links` is each symbolic link in `files`
+and where it points, which a front end shows beside the file list. `commit` is the 40 and `digest` the 64 hexadecimal
+digits a preview reports, anything else is a `ValueError` before a download starts. Downloads, updates, forks and removals
+run one at a time per library (`client.harnesses` is one per client): a second while one runs raises `ValueError`
+instead of waiting. `update` and `remove` take a `guard` that runs right before the files change. `in_use` is read when
+asked from the configuration file the client was given, so a `/harness use` made after the start is seen. The library needs no model, so `zettcode-server` answers it before one is configured. Choosing the harness every
 session works in (`/harness use`) and saving a session's own are commands, not methods here.
 
 ### `PluginReport`

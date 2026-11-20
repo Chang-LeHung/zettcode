@@ -114,6 +114,7 @@ await client.updateSettings({ compact_percent: 70 });            // 窗口用到
 | `health()` | `GET /health` |
 | `models()`、`addModel(entry)`、`updateModel(name, changes)`、`removeModel(name)` | `/models`、`/models/{name}` |
 | `settings()`、`updateSettings(change)`、`useModel(name)`、`useEffort(name)`、`usePermission(name)`、`useHarness(on)`、`plugins()`、`setPluginEnabled(name, enabled)`、`commands()`、`runCommand(name, argument?)` | `/settings`、`/plugins`、`/plugins/{name}`、`/commands`、`/commands/{name}` |
+| `harnesses.entries()`、`harnesses.entry(name)`、`harnesses.previewAdd(source, {name})` / `harnesses.add(source, {commit, digest, name})`、`harnesses.previewUpdate(name, {force})` / `harnesses.update(name, {commit, digest, force})`、`harnesses.fork(name, newName)`、`harnesses.remove(name)` | `/harnesses`、`/harnesses/{name}`、`/harnesses/preview`、`/harnesses/{name}/preview`、`/harnesses/{name}/fork`（下载先预览；`add`/`update` 带回预览给出的 `commit` 和 `digest`） |
 | `sessions.list({limit})`、`sessions.new(title?)`、`sessions.open(id)`、`sessions.latest()`、`session.info()` | `/sessions`、`/sessions/current` |
 | `session.rename(title)`、`session.nameIt()`、`session.fork()` | `/sessions/current/...` |
 | `session.compact()`、`session.context()`、`session.history({full})`、`session.export()`、`session.ask(question)`、`session.askStream(question)` | `/sessions/current/...` |

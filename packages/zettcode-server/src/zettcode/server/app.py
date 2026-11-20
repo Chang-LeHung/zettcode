@@ -7,7 +7,6 @@ a stream frame looks like, and that a second prompt while one runs is refused ra
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import hmac
 import json
 import tempfile
@@ -53,12 +52,14 @@ from .schemas import (
     DoctorOut,
     DoctorRequest,
     ErrorOut,
+    HarnessAddIn,
+    HarnessAddPreviewIn,
     HarnessesOut,
     HarnessForkIn,
-    HarnessKeepIn,
     HarnessOut,
-    HarnessPreviewIn,
     HarnessPreviewOut,
+    HarnessUpdateIn,
+    HarnessUpdatePreviewIn,
     HealthOut,
     HistoryOut,
     InboxMessageOut,
@@ -105,6 +106,7 @@ from .serialize import (
     mention_out,
     message_out,
     model_out,
+    preview_out,
     session_out,
     stats_out,
     usage_out,
@@ -678,54 +680,68 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
 
     @protected.get("/harnesses", response_model=HarnessesOut, tags=["harnesses"])
     async def harnesses(runner: RunnerDep) -> HarnessesOut:
-        """List the harnesses of the user-level library, with their manifests and files."""
-        return HarnessesOut(harnesses=[harness_out(item) for item in await runner.client.harnesses.entries()])
+        """List the harnesses of the user-level library; a repository carries ``file_count``, not its ``files``.
+
+        The library needs no model: it answers before one is configured.
+        """
+        return HarnessesOut(harnesses=[harness_out(item) for item in await runner.harnesses.entries()])
 
     @protected.get("/harnesses/{name}", response_model=HarnessOut, tags=["harnesses"])
     async def harness(name: str, runner: RunnerDep) -> HarnessOut:
-        """Return one library harness; ``400 invalid`` names the ones there are when it is not one of them."""
-        return harness_out(await runner.client.harnesses.entry(name))
+        """Return one library harness with its files; ``400 invalid`` names the ones there are when it is not one."""
+        return harness_out(await runner.harnesses.entry(name))
 
     @protected.post("/harnesses/preview", response_model=HarnessPreviewOut, tags=["harnesses"])
-    async def preview_harness_add(body: HarnessPreviewIn, runner: RunnerDep) -> HarnessPreviewOut:
+    async def preview_harness_add(body: HarnessAddPreviewIn, runner: RunnerDep) -> HarnessPreviewOut:
         """Download a GitHub repository and inspect it, keeping nothing: what a reader must see before saying yes.
 
         Nothing in it is imported. The answer carries the ``commit`` and ``digest`` inspected; ``POST /harnesses``
-        sends them back and keeps the download only when it is still what was shown.
+        sends them back and keeps the download only when it is still what was shown. A preview is a network call
+        that can take minutes, and downloads run one at a time.
         """
-        shown = await runner.client.harnesses.preview_add(body.source, name=body.name or None)
-        return HarnessPreviewOut(**dataclasses.asdict(shown))
+        shown = await runner.harnesses.preview_add(body.source, name=body.name or None)
+        return preview_out(shown)
 
     @protected.post("/harnesses", response_model=HarnessOut, tags=["harnesses"], status_code=201)
-    async def add_harness(body: HarnessKeepIn, runner: RunnerDep) -> HarnessOut:
-        """Keep a previewed download, pinned to its commit."""
-        kept = await runner.client.harnesses.add(
-            body.source, commit=body.commit, digest=body.digest, name=body.name or None
-        )
+    async def add_harness(body: HarnessAddIn, runner: RunnerDep) -> HarnessOut:
+        """Keep a previewed download, pinned to its commit; refused when it is no longer what was shown."""
+        kept = await runner.harnesses.add(body.source, commit=body.commit, digest=body.digest, name=body.name or None)
         return harness_out(kept)
 
     @protected.post("/harnesses/{name}/preview", response_model=HarnessPreviewOut, tags=["harnesses"])
-    async def preview_harness_update(name: str, body: HarnessPreviewIn, runner: RunnerDep) -> HarnessPreviewOut:
+    async def preview_harness_update(name: str, body: HarnessUpdatePreviewIn, runner: RunnerDep) -> HarnessPreviewOut:
         """Download a harness's source again and say what an update would change, keeping nothing."""
-        shown = await runner.client.harnesses.preview_update(name, force=body.force)
-        return HarnessPreviewOut(**dataclasses.asdict(shown))
+        return preview_out(await runner.harnesses.preview_update(name, force=body.force))
 
     @protected.put("/harnesses/{name}", response_model=HarnessOut, tags=["harnesses"])
-    async def update_harness(name: str, body: HarnessKeepIn, runner: RunnerDep) -> HarnessOut:
-        """Replace a harness with a previewed update; the files change, a running session keeps what it loaded."""
-        updated = await runner.client.harnesses.update(name, commit=body.commit, digest=body.digest, force=body.force)
+    async def update_harness(name: str, body: HarnessUpdateIn, runner: RunnerDep) -> HarnessOut:
+        """Replace a harness with a previewed update.
+
+        ``409 busy`` while a run is going in any conversation: it imports from these files, and a new version under it
+        is not what that run was started with. Checked before the download and again just before the files change.
+        """
+        runner.ensure_idle("update the harness")
+        updated = await runner.harnesses.update(
+            name,
+            commit=body.commit,
+            digest=body.digest,
+            force=body.force,
+            guard=lambda: runner.ensure_idle("update the harness"),
+        )
         return harness_out(updated)
 
     @protected.post("/harnesses/{name}/fork", response_model=HarnessOut, tags=["harnesses"], status_code=201)
     async def fork_harness(name: str, body: HarnessForkIn, runner: RunnerDep) -> HarnessOut:
         """Copy a harness under a new name, with no upstream."""
-        return harness_out(await runner.client.harnesses.fork(name, body.name))
+        return harness_out(await runner.harnesses.fork(name, body.name))
 
     @protected.delete("/harnesses/{name}", response_model=HarnessesOut, tags=["harnesses"])
     async def delete_harness(name: str, runner: RunnerDep) -> HarnessesOut:
-        """Delete a harness from the library; refused while it is in use or being updated."""
-        await runner.client.harnesses.remove(name)
-        return HarnessesOut(harnesses=[harness_out(item) for item in await runner.client.harnesses.entries()])
+        """Delete a harness; refused while it is the one every session works in or while an update runs, and ``409
+        busy`` while a run is going."""
+        runner.ensure_idle("remove the harness")
+        await runner.harnesses.remove(name, guard=lambda: runner.ensure_idle("remove the harness"))
+        return HarnessesOut(harnesses=[harness_out(item) for item in await runner.harnesses.entries()])
 
     @protected.get("/mentions", response_model=MentionsOut, tags=["models"])
     async def mentions(

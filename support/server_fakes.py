@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -234,7 +234,7 @@ class FakeHarnesses:
         from zettcode.sdk.types import HarnessEntry, HarnessPreview, HarnessRepository
 
         self.repository = HarnessRepository(
-            "todos", "1.0.0", "Find TODOs.", ("list_todos",), ("__init__.py", "MANIFEST")
+            "todos", "1.0.0", "Find TODOs.", ("list_todos",), ("__init__.py", "MANIFEST"), "", 2
         )
         first = HarnessEntry("todos", "acme/todos", "a" * 40, "ok", True, (self.repository,))
         self.preview = HarnessPreview(
@@ -252,12 +252,21 @@ class FakeHarnesses:
             (),
             False,
             "Read it.",
+            {"key": "/etc/hosts"},
         )
         self.items = [first]
+        #: When set, a keep call refuses with these words, as the real library does; the fake checks nothing itself.
+        self.refuse = ""
         self.calls: list[tuple[str, tuple[object, ...]]] = []
 
     async def entries(self) -> list[Any]:
-        return list(self.items)
+        """The cheap list, as the real library gives it: no file names and no state, only the count."""
+        import dataclasses as _dc
+
+        return [
+            _dc.replace(item, state="", repositories=tuple(_dc.replace(repo, files=()) for repo in item.repositories))
+            for item in self.items
+        ]
 
     async def entry(self, name: str) -> Any:
         for item in self.items:
@@ -271,8 +280,8 @@ class FakeHarnesses:
 
     async def add(self, source: str, *, commit: str, digest: str, name: str | None = None) -> Any:
         self.calls.append(("add", (source, commit, digest, name)))
-        if digest != self.preview.digest:
-            raise ValueError("What was downloaded is not what was shown. Preview it again.")
+        if self.refuse:
+            raise ValueError(self.refuse)
         from zettcode.sdk.types import HarnessEntry
 
         kept = HarnessEntry(name or "fresh", source, commit, "ok", False, ())
@@ -285,8 +294,14 @@ class FakeHarnesses:
         self.calls.append(("preview_update", (name, force)))
         return _dc.replace(self.preview, action="update", name=name, changes=("version: 1.0.0 -> 2.0.0",))
 
-    async def update(self, name: str, *, commit: str, digest: str, force: bool = False) -> Any:
+    async def update(
+        self, name: str, *, commit: str, digest: str, force: bool = False, guard: Callable[[], None] | None = None
+    ) -> Any:
         self.calls.append(("update", (name, commit, digest, force)))
+        if guard is not None:
+            guard()
+        if self.refuse:
+            raise ValueError(self.refuse)
         return self.items[0]
 
     async def fork(self, name: str, new: str) -> Any:
@@ -297,8 +312,10 @@ class FakeHarnesses:
         self.items.append(copy)
         return copy
 
-    async def remove(self, name: str) -> None:
+    async def remove(self, name: str, *, guard: Callable[[], None] | None = None) -> None:
         self.calls.append(("remove", (name,)))
+        if guard is not None:
+            guard()
         self.items = [item for item in self.items if item.name != name]
 
 

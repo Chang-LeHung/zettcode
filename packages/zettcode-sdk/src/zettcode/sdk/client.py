@@ -535,7 +535,9 @@ class Client:
         from .harness_library import HarnessLibrary
 
         #: The user-level library of named harnesses (see :class:`~zettcode.sdk.harness_library.HarnessLibrary`).
-        self.harnesses = HarnessLibrary(self)
+        self.harnesses = HarnessLibrary(
+            lambda: self.config, settings_file=lambda: self.config_file, check_open=self._check_open
+        )
         self._bind_llm()
         #: One reader for the workspace's ledger, so a second look at the usage reads only what changed.
         self._ledger_reader: Any = None

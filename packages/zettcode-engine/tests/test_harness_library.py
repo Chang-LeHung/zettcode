@@ -643,3 +643,56 @@ def test_a_staging_folder_is_not_swept_while_an_update_holds_a_lock(tmp_path: Pa
     finally:
         holder.release()
     assert library.sweep_leftovers(config) == 1
+
+
+def test_changes_name_the_version_the_tools_and_the_files_and_cut_a_long_list(tmp_path: Path):
+    old = _repository(tmp_path / "before" / "todos", version="1.0.0", tools='"a"')
+    new = _repository(tmp_path / "new", version="2.0.0", tools='"b"')
+    for index in range(5):
+        (new / f"f{index}.py").write_text("y\n", encoding="utf-8")
+    _git(new, "add", "-A")
+    _git(new, "commit", "-q", "-m", "more")
+    prepared = _download(new, tmp_path)
+
+    lines = library.changes(old, prepared, limit=2)
+
+    assert "version: 1.0.0 -> 2.0.0" in lines and "tools removed: a" in lines and "tools added: b" in lines
+    assert any(line.startswith("files added: ") and line.endswith(" ...") for line in lines)
+
+
+def test_a_link_that_now_points_elsewhere_is_a_changed_file(tmp_path: Path):
+    old = _repository(tmp_path / "old")
+    (old / "k").symlink_to("one")
+    new = _repository(tmp_path / "new")
+    (new / "k").symlink_to("two")
+    _git(new, "add", "-A")
+    _git(new, "commit", "-q", "-m", "link")
+
+    lines = library.changes(old, _download(new, tmp_path))
+
+    assert any(line.startswith("files changed:") and "k" in line for line in lines)
+
+
+def test_describe_reports_an_unreadable_manifest_and_never_a_repository_that_is_a_link(tmp_path: Path):
+    config = _config(tmp_path)
+    library.install(config, _download(_repository(tmp_path / "up"), tmp_path))
+    entry = library.get(config, "todos")
+    (entry.path / "todos" / "MANIFEST").write_text("not = [valid", encoding="utf-8")
+    (entry.path / "alias").symlink_to(entry.path / "todos", target_is_directory=True)
+
+    info = library.describe(config, library.get(config, "todos"))
+
+    assert [item.name for item in info.repositories] == ["todos"], "a linked folder is not a repository"
+    assert info.repositories[0].error and info.repositories[0].file_count == len(info.repositories[0].files)
+    light = library.describe(config, entry, detail=False)
+    assert light.repositories[0].files == () and light.state == "", "the cheap form reads no bytes and names no files"
+    assert light.repositories[0].file_count == info.repositories[0].file_count
+
+
+def test_a_commit_and_a_digest_are_what_a_preview_reports_and_nothing_else():
+    assert library.valid_commit("a" * 40) == "a" * 40 and library.valid_digest("0" * 64) == "0" * 64
+    for bad in ("", "main", "A" * 40, "a" * 39, "-" + "a" * 39):
+        with pytest.raises(LibraryError, match="not a commit"):
+            library.valid_commit(bad)
+    with pytest.raises(LibraryError, match="not a digest"):
+        library.valid_digest("a" * 40)

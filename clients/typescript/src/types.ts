@@ -508,10 +508,12 @@ export interface HarnessRepository {
   version: string;
   description: string;
   tools: string[];
-  /** Every file, by relative path; a link is listed, never followed. */
+  /** Every file, by relative path; a link is listed, never followed. Empty in `entries()`, which has `file_count`. */
   files: string[];
   /** Why the manifest could not be read, or empty. */
   error: string;
+  /** How many files there are, whether or not `files` is filled. */
+  file_count: number;
 }
 
 /** One harness of the user-level library. `state`: `ok`, `changed`, `missing` or `damaged`. */
@@ -520,7 +522,8 @@ export interface HarnessEntry {
   /** `owner/repo@ref`, `fork of x` or `local`. */
   origin: string;
   commit: string;
-  state: "ok" | "changed" | "missing" | "damaged" | string;
+  /** Empty in `entries()`, whose list is cheap; `entry(name)` says it. */
+  state: "" | "ok" | "changed" | "missing" | "damaged";
   /** Whether `[harness] use` names it. */
   in_use: boolean;
   repositories: HarnessRepository[];
@@ -547,4 +550,6 @@ export interface HarnessPreview {
   up_to_date: boolean;
   /** Shown beside the preview: the code runs on this machine. */
   caution: string;
+  /** Each symbolic link in `files` and where it points: how code can reach a file outside the harness. */
+  links: Record<string, string>;
 }

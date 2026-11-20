@@ -59,6 +59,23 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 
 服务器用配置文件里的模型启动 agent：第一条 `POST /models` 写下的条目让 client 就绪并加载插件，之后插件提供的模型会出现在 `GET /models` 里，可以用 `PATCH /settings` 选择。文件里没有任何条目时，所有需要模型的请求都返回 `409 no_model` 和 `POST /models` 的提示。
 
+## Harness 库
+
+用户级的命名 harness 库（shell 里的 `zettcode harness`），所有工作区共用。它不需要模型：还没配置模型时这些接口也能回答。下载必须先看过才保存，所以安装和更新各是两步。预览会下载并检查（不导入、不保存）；保存的那一步带回预览报告的 `commit` 和 `digest`，重新下载该 commit，只有结果就是当初展示的才保存（否则 `400 invalid`）。请求体里有接口不接受的字段是 `422`。
+
+| 方法 | 路径 | 请求体 | 返回 |
+| --- | --- | --- | --- |
+| `GET` | `/harnesses` | — | `{"harnesses": [{"name","origin","commit","state","in_use","repositories": [{"name","version","description","tools","files","error","file_count"}]}]}`。`state` 是 `ok`、`changed`、`missing` 或 `damaged`；`in_use` 表示 `[harness] use` 是否指向它，每次请求时从服务器启动时指定的配置文件读取（`--config`，否则默认文件）。列表很轻：`files` 为空（只给 `file_count`），`state` 也为空，因为回答它要读完 harness 的每个字节；`GET /harnesses/{name}` 两者都有。 |
+| `GET` | `/harnesses/{name}` | — | 一个 harness，带 `files`。库里没有这个名字是 `400 invalid`，并列出已有的。 |
+| `POST` | `/harnesses/preview` | `{"source", "name"?}` | `{"action","name","source","commit","digest","version","description","tools","banned","files","size","changes","up_to_date","caution","links"}`。`source` 是 `owner/repo`、`owner/repo@ref` 或 GitHub URL；`links` 是 `files` 里每个符号链接及其指向。这是一次可能耗时数分钟的网络调用，整个服务器一次只跑一个下载，别的下载在它运行时开始会得到 `400 invalid`（“等它结束后再试”）。 |
+| `POST` | `/harnesses` | `{"source", "name"?, "commit", "digest"}` | 201，返回该 harness。`commit` 是预览报告的 40 位、`digest` 是 64 位十六进制。 |
+| `POST` | `/harnesses/{name}/preview` | `{"force"?}` | 同样的结构，用于更新：`changes` 说明会有什么不同，`up_to_date` 表示是否已在 `commit`。安装后被改过的 harness 会被拒绝（`400 invalid`），除非 `force` 为 true。 |
+| `PUT` | `/harnesses/{name}` | `{"commit", "digest", "force"?}` | 更新后的 harness。任何对话里有运行在进行时返回 `409 busy`，下载前检查一次，文件真正改动前再检查一次。 |
+| `POST` | `/harnesses/{name}/fork` | `{"name"}` | 201，返回副本，副本没有上游。 |
+| `DELETE` | `/harnesses/{name}` | — | 剩下的 harness。正在被所有会话使用或正在更新时被拒绝（`400 invalid`）；有运行在进行时返回 `409 busy`。 |
+
+`/harness use` 和 `/harness save` 作用于正在运行的对话，是命令（`POST /commands/harness`）。
+
 ## 会话
 
 *当前*会话就是下一次 prompt 继续的对话。服务器启动时是一个新会话。

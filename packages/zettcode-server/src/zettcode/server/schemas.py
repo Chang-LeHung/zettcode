@@ -766,6 +766,7 @@ class HarnessRepositoryOut(BaseModel):
     tools: list[str] = Field(default_factory=list)
     files: list[str] = Field(default_factory=list)
     error: str = ""
+    file_count: int = 0
 
 
 class HarnessOut(BaseModel):
@@ -775,7 +776,8 @@ class HarnessOut(BaseModel):
         name: The library name.
         origin: Where it came from (``owner/repo@ref``, ``fork of x``, ``local``).
         commit: The commit it was installed at, or empty.
-        state: ``ok``, ``changed``, ``missing`` or ``damaged``.
+        state: ``ok``, ``changed``, ``missing`` or ``damaged`` (``UPDATE_STATES`` in the engine, pinned by a test), or
+            empty in the list of all harnesses, where reading it would take every byte of every one.
         in_use: Whether ``[harness] use`` names it.
         repositories: What is in it.
     """
@@ -783,7 +785,7 @@ class HarnessOut(BaseModel):
     name: str
     origin: str
     commit: str = ""
-    state: str = "ok"
+    state: Literal["", "ok", "changed", "missing", "damaged"] = ""
     in_use: bool = False
     repositories: list[HarnessRepositoryOut] = Field(default_factory=list)
 
@@ -794,17 +796,29 @@ class HarnessesOut(BaseModel):
     harnesses: list[HarnessOut]
 
 
-class HarnessPreviewIn(BaseModel):
-    """Ask what installing or updating would bring, without keeping anything.
+class HarnessAddPreviewIn(BaseModel):
+    """Ask what installing a GitHub repository would bring, without keeping anything.
 
     Attributes:
-        source: ``owner/repo``, ``owner/repo@ref`` or a GitHub URL (an install only).
-        name: The name to keep it under (an install only); empty for the harness's own.
-        force: Update a harness the library cannot call unchanged (an update only).
+        source: ``owner/repo``, ``owner/repo@ref`` or a GitHub URL.
+        name: The name to keep it under; empty for the repository's own.
     """
 
-    source: str = ""
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
     name: str = ""
+
+
+class HarnessUpdatePreviewIn(BaseModel):
+    """Ask what updating a harness would change, without keeping anything.
+
+    Attributes:
+        force: Preview an update the library would refuse (changed files, a missing repository, a damaged record).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     force: bool = False
 
 
@@ -825,13 +839,29 @@ class HarnessPreviewOut(BaseModel):
     changes: list[str] = Field(default_factory=list)
     up_to_date: bool = False
     caution: str = ""
+    links: dict[str, str] = Field(default_factory=dict)
 
 
-class HarnessKeepIn(BaseModel):
-    """Keep what a preview showed: the commit and digest it reported, and the source or name it was asked about."""
+class HarnessAddIn(BaseModel):
+    """Keep what an install preview showed: the ``commit`` and ``digest`` it reported, and what it was asked about.
 
-    source: str = ""
+    ``source`` and ``name`` are not part of what was inspected: the download is made again from ``source`` at
+    ``commit`` and kept under ``name`` only when its digest is the one that was shown.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
     name: str = ""
+    commit: str
+    digest: str
+
+
+class HarnessUpdateIn(BaseModel):
+    """Keep what an update preview showed: the ``commit`` and ``digest`` it reported, and whether it was forced."""
+
+    model_config = ConfigDict(extra="forbid")
+
     commit: str
     digest: str
     force: bool = False
@@ -839,5 +869,7 @@ class HarnessKeepIn(BaseModel):
 
 class HarnessForkIn(BaseModel):
     """Copy a harness under a new name."""
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str

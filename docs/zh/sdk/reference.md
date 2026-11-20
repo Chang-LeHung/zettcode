@@ -219,7 +219,7 @@ class Client:
 | `await fork(name, new)` | `HarnessEntry` | 复制成新名字，不带上游。 |
 | `await remove(name)` | — | 删除；正在使用或正在更新时被拒绝。 |
 
-`HarnessEntry(name, origin, commit, state, in_use, repositories)`：`state` 是 `ok`、`changed`、`missing` 或 `damaged`。选定所有会话共用的 harness（`/harness use`）和保存会话自己的 harness 是命令，不是这里的方法。
+`HarnessEntry(name, origin, commit, state, in_use, repositories)`：用 `entry(name)` 取单个 harness 时 `state` 是 `ok`、`changed`、`missing` 或 `damaged`，`entries()` 列表里为空（不读 harness 的字节）。`HarnessRepository(name, version, description, tools, files, error, file_count)`：`entries()` 的 `files` 为空、只给 `file_count`，`entry(name)` 才有文件名。`HarnessPreview(action, name, source, commit, digest, version, description, tools, banned, files, size, changes, up_to_date, caution, links)`：`links` 是 `files` 里每个符号链接及其指向，前端应把它放在文件列表旁边显示。`commit` 是预览报告的 40 位、`digest` 是 64 位十六进制，别的内容会在开始下载前抛 `ValueError`。下载、更新、fork 和删除在同一个库里一次只跑一个（`client.harnesses` 是每个 client 一个）：一个在跑时再来一个会抛 `ValueError`，不会排队等。`update` 和 `remove` 可以带一个 `guard`，在文件真正改动前调用。`in_use` 每次询问时从 client 所用的配置文件读取，所以启动之后做的 `/harness use` 也能看到；`entries()` 返回的 `HarnessEntry.state` 为空（读它要读完每个字节），`entry(name)` 才有。库不需要模型，所以 `zettcode-server` 在配置模型之前也能回答。选定所有会话共用的 harness（`/harness use`）和保存会话自己的 harness 是命令，不是这里的方法。
 
 ### `PluginReport`
 
