@@ -563,6 +563,12 @@ export const ZH: Record<string, string> = {
     "令牌保存在此设备上。切换服务器会重新加载页面,因此不会把一个网关的内容画在另一个网关旁边。",
   // The Dashboard page and the group's restart strip.
   Dashboard: "仪表盘",
+  "Back to chat": "返回聊天",
+  "No saved daemon record is available on this gateway.": "此网关没有保存这个成员的 daemon 启动记录。",
+  "This daemon is not marked as stopped.": "这个 daemon 尚未被标记为已停止。",
+  "This conversation is open in another process.": "这个会话正被另一个进程打开。",
+  "Read-only access cannot restart daemons.": "只读权限不能重启 daemon。",
+  "Full access is disabled. Change settings before restarting.": "此网关禁用了 Full 权限，请修改启动配置后重启。",
   Overview: "总览",
   "Terminal sessions": "终端会话",
   Requests: "请求数",

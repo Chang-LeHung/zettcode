@@ -5,11 +5,10 @@ import { gateway } from "../../api/gateway";
 import { ApiError } from "../../api/http";
 import { t } from "../../i18n";
 import { copyText } from "../../lib/clipboard";
-import { auth } from "../../stores/auth";
-import { settings } from "../../stores/config";
 import { go, route } from "../../stores/route";
 import { fromThread } from "../../stores/spawn";
-import { loadThreads, lobby } from "../../stores/threads";
+import { loadThreads } from "../../stores/threads";
+import { canRestart, restartable } from "../../lib/restart";
 import { openSheet, toast } from "../../stores/ui";
 import type { Thread } from "../../types";
 import { confirmAction, showMenu, type MenuEntry } from "../sheets/sheets";
@@ -52,23 +51,10 @@ async function deleteDaemon(thread: Thread): Promise<void> {
   if (route.nav === "chats" && route.arg === thread.id) go("chats");
 }
 
-/** Whether a stopped daemon can be started again at all from here: it has a record, nothing else has its session open, and
- * the reader may change things. (A session that is merely offline has no record to start from.) */
-export const canStartAgain = (thread: Thread | undefined): thread is Thread =>
-  !!thread && thread.kind === "daemon" && thread.status === "dead" && !thread.locked && !auth.readOnly;
-
-/** Whether the one-press Restart is offered: as above, and not for a daemon that ran at the full shell level on a gateway
- * that was started with `--no-full`, which would refuse it. That one can still be changed and restarted from the form. */
-export const canRestart = (thread: Thread | undefined): thread is Thread =>
-  canStartAgain(thread) && !(thread.permission === "full" && settings.data?.allow_full === false);
+export { canStartAgain, canRestart, restartable } from "../../lib/restart";
 
 /** The daemons being started right now, for a spinner and so that a second press does nothing. */
 export const restarting = reactive(new Set<string>());
-
-/** Of these session ids, the stopped daemons that one press can start again, as threads. The one rule for "can be restarted
- * from here", so a strip, a card and a list cannot disagree about it. */
-export const restartable = (ids: readonly string[]): Thread[] =>
-  ids.map((id) => lobby.threads.find((item) => item.id === id)).filter(canRestart);
 
 /** Ask for one daemon to be started; returns what the gateway said (`note`: what it could not keep) or the error's message. */
 async function startOne(thread: Thread): Promise<{ note?: string } | { error: string }> {
@@ -120,7 +106,9 @@ export async function restartAll(ids: readonly string[]): Promise<number> {
   } finally {
     for (const thread of todo) restarting.delete(thread.id);
   }
-  if (started === todo.length) toast(t("Started {count} daemons", { count: started }));
+  if (started === todo.length) {
+    toast(started === 1 ? t("Started {name}", { name: todo[0]!.name }) : t("Started {count} daemons", { count: started }));
+  }
   else toast(t("Started {started} of {total}: {error}", { started, total: todo.length, error: failure }), "bad");
   return started;
 }

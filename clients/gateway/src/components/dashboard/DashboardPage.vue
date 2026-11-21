@@ -2,7 +2,7 @@
 import { computed, watch, type Component } from "vue";
 import { t } from "../../i18n";
 import { DASHBOARD_SECTIONS } from "../../sections";
-import { route } from "../../stores/route";
+import { href, lastChat, route } from "../../stores/route";
 import { lobby } from "../../stores/threads";
 import { loadUsage, usage, useUsage } from "../../stores/usage";
 import PageBar from "../common/PageBar.vue";
@@ -21,7 +21,9 @@ useUsage();
 </script>
 
 <template>
-  <PageBar :title="title" back />
+  <PageBar :title="title">
+    <a class="btn sm ghost" :href="href('chats', lastChat.arg)">{{ t("Back to chat") }}</a>
+  </PageBar>
   <div class="page">
     <div class="page-inner dash">
       <p v-if="usage.error" class="errcard">{{ usage.error }}</p>

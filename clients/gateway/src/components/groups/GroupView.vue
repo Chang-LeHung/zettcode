@@ -387,7 +387,7 @@ watch(text, () => void nextTick(resize));
       <button class="iconbtn" :aria-label="t('More')" :title="t('More')" @click="menu"><Icon name="more" /></button>
     </header>
     <GroupUsage :name="name" />
-    <div v-if="stopped.length" class="group-stopped" role="status">
+    <div v-if="stopped.length && !showMembers" class="group-stopped" role="status">
       <span class="group-stopped-text">
         {{ stopped.length === 1 ? t("{name} is stopped and can be restarted.", { name: stopped[0]!.name }) : t("{count} daemons are stopped and can be restarted.", { count: stopped.length }) }}
       </span>

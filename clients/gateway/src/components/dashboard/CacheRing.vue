@@ -10,7 +10,7 @@ const style = computed(() => ({
   width: `${props.size}px`,
   height: `${props.size}px`,
   "--share": `${(props.share ?? 0) * 360}deg`,
-  fontSize: `${Math.round(props.size * 0.17)}px`,
+  fontSize: `${Math.max(10, Math.round(props.size * 0.17))}px`,
 }));
 </script>
 
