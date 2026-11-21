@@ -15,7 +15,7 @@ useUsage();
 
 <template>
   <div v-if="mine" class="gusage" :title="t('What this group\'s members have spent, from their stored conversations')">
-    <CacheRing :share="mine.cache_rate" :size="52" />
+    <CacheRing :share="mine.cache_rate" :size="44" />
     <span class="gchip"><b>{{ mine.requests.toLocaleString() }}</b>{{ t("Requests") }}</span>
     <span class="gchip"><b>{{ tokens(mine.input_tokens) }}</b>{{ t("Input") }}</span>
     <span class="gchip"><b>{{ tokens(mine.output_tokens) }}</b>{{ t("Output") }}</span>

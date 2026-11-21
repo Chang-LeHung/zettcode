@@ -5,7 +5,9 @@ import { percent, tokens } from "../../lib/format";
 import { usage, useUsage } from "../../stores/usage";
 import { href } from "../../stores/route";
 import type { Member } from "../../stores/groups";
-import { restartable, restartNow, restarting } from "../chat/threadActions";
+import { restartable, restartAll, restartNow, restarting } from "../chat/threadActions";
+import { restartBlocker } from "../../lib/restart";
+import { threadOf } from "../../stores/threads";
 import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
 
@@ -30,9 +32,13 @@ const rows = computed(() =>
   props.members.map((member) => ({
     member,
     state: [wordOf(member), spentOf(member)].filter(Boolean).join(" · "),
-    stopped: restartable([member.id])[0],
+    stopped: !member.online && !member.me ? restartable([member.id])[0] : undefined,
+    blocker: !member.online && !member.me && threadOf(member.id)?.kind === "daemon"
+      ? restartBlocker(threadOf(member.id)) : undefined,
   })),
 );
+const stoppedIds = computed(() => rows.value.flatMap(({ stopped }) => stopped ? [stopped.id] : []));
+const starting = computed(() => stoppedIds.value.some((id) => restarting.has(id)));
 </script>
 
 <template>
@@ -45,8 +51,15 @@ const rows = computed(() =>
       </button>
       <button class="iconbtn" :aria-label="t('Close')" @click="$emit('close')"><Icon name="close" size="sm" /></button>
     </div>
+    <div v-if="stoppedIds.length" class="members-restarts" role="status">
+      <span>{{ stoppedIds.length === 1 ? t("{name} is stopped and can be restarted.", { name: rows.find((row) => row.stopped)?.member.name ?? "" }) : t("{count} daemons are stopped and can be restarted.", { count: stoppedIds.length }) }}</span>
+      <button class="btn sm" type="button" :disabled="starting" @click="restartAll(stoppedIds)">
+        <span v-if="starting" class="spin" />
+        <Icon v-else name="refresh" size="sm" />{{ stoppedIds.length === 1 ? t("Restart it") : t("Restart all") }}
+      </button>
+    </div>
     <ul>
-      <li v-for="{ member, state, stopped } in rows" :key="member.id">
+      <li v-for="{ member, state, stopped, blocker } in rows" :key="member.id">
         <component :is="member.chat ? 'a' : 'div'" class="member" :href="member.chat ? href('chats', member.id) : undefined">
           <Avatar
             :thread="{ id: member.id, name: member.name, kind: 'session', status: member.online ? member.status : 'dead' }"
@@ -55,14 +68,15 @@ const rows = computed(() =>
           <span class="member-body">
             <span class="member-name">{{ member.name }}</span>
             <span class="member-state" :class="{ on: member.online }">{{ state }}</span>
+            <span v-if="blocker" class="member-state member-blocker">{{ t(blocker) }}</span>
           </span>
         </component>
         <button
           v-if="stopped"
-          class="iconbtn member-out member-restart"
+          class="iconbtn member-restart"
           type="button"
           :disabled="restarting.has(member.id)"
-          :aria-label="t('Restart it')"
+          :aria-label="t('Restart {name}', { name: member.name })"
           :title="t('Restart {name}', { name: member.name })"
           @click="restartNow(stopped)"
         >
@@ -85,7 +99,10 @@ const rows = computed(() =>
 </template>
 
 <style>
-.members { flex: none; width: 260px; display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--divider); overflow-y: auto; }
+.members { flex: none; width: 320px; display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--divider); overflow-y: auto; }
+.members-restarts { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--divider); color: var(--muted); font-size: 0.8rem; }
+.member-restart { flex: none; width: 34px; height: 34px; color: var(--accent); }
+.member-state.member-blocker { color: var(--warn); overflow-wrap: anywhere; }
 .members-head { display: flex; align-items: center; gap: 8px; padding: 10px 8px 6px 14px; position: sticky; top: 0; background: var(--surface); }
 .members-head b { flex: 1; }
 .members-count { color: var(--muted); font-size: 0.85rem; }
@@ -101,8 +118,8 @@ a.member:hover { background: var(--hover); }
 .member-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member-state { font-size: 0.8rem; color: var(--muted); }
 .member-state.on { color: var(--ok); }
-@media (max-width: 719px) {
-  .members { position: absolute; inset: 56px 0 0 auto; width: min(82vw, 320px); z-index: 5; box-shadow: var(--shadow); }
+@media (max-width: 1100px) {
+  .members { position: absolute; inset: 0 0 0 auto; width: min(82%, 320px); z-index: 5; box-shadow: var(--shadow); }
   .group-body { position: relative; }
 }
 </style>

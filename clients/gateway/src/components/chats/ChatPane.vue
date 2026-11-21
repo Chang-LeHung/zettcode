@@ -18,6 +18,7 @@ import { openSheet, toast } from "../../stores/ui";
 import SearchBox from "./SearchBox.vue";
 import Skeleton from "../common/Skeleton.vue";
 import { search } from "./search";
+import { restartable, restartAll, restarting } from "../chat/threadActions";
 
 const matches = (thread: Thread, needle: string): boolean =>
   [thread.name, thread.title, thread.workspace, thread.id, thread.handle, thread.preview].some((field) =>
@@ -48,6 +49,10 @@ const shownGroups = computed(() => {
 const rest = computed(() => shown.value.filter((thread) => !pinned.value.includes(thread)));
 const daemons = computed(() => rest.value.filter((thread) => thread.kind === "daemon"));
 const firstOffline = computed(() => daemons.value.find((thread) => !thread.online)?.id ?? "");
+const stoppedIds = computed(() =>
+  restartable(daemons.value.filter((thread) => !thread.online).map((thread) => thread.id)).map((thread) => thread.id),
+);
+const starting = computed(() => stoppedIds.value.some((id) => restarting.has(id)));
 const others = computed(() => rest.value.filter((thread) => thread.kind !== "daemon"));
 const open = computed(() => (route.nav === "chats" ? route.arg : chat.id));
 
@@ -104,7 +109,12 @@ onBeforeUnmount(() => detach?.());
       <GroupRow v-for="group in shownGroups" :key="group.name" :group="group" :current="groupArg(group.name) === open" />
     </template>
     <template v-if="daemons.length">
-      <div class="pane-group">{{ t("Daemons") }}</div>
+      <div class="pane-group daemon-heading">
+        <span>{{ t("Daemons") }}</span>
+        <button v-if="stoppedIds.length" class="btn sm ghost" type="button" :disabled="starting" @click="restartAll(stoppedIds)">
+          <span v-if="starting" class="spin" /><Icon v-else name="refresh" size="sm" />{{ t("Restart all") }} · {{ stoppedIds.length }}
+        </button>
+      </div>
       <template v-for="thread in daemons" :key="thread.id">
         <div v-if="thread.id === firstOffline && firstOffline !== daemons[0]?.id" class="pane-subgroup">{{ t("Offline") }}</div>
         <ChatRow :thread="thread" :current="thread.id === open" />
@@ -127,6 +137,7 @@ onBeforeUnmount(() => detach?.());
 </template>
 
 <style>
+.daemon-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 56px; }
 .pull-indicator { flex: none; display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--muted); }
 .pane-list:not(.pulling) .pull-indicator { transition: height 0.18s ease; }
 .pull-indicator svg { transform: rotate(90deg); transition: transform 0.15s ease, color 0.15s ease; }

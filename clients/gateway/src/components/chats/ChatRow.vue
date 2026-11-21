@@ -5,7 +5,7 @@ import { folderName, listTime } from "../../lib/format";
 import { badge } from "../../lib/unread";
 import { href } from "../../stores/route";
 import type { Thread } from "../../types";
-import { showRowMenu } from "../chat/threadActions";
+import { canRestart, restartNow, restarting, showRowMenu } from "../chat/threadActions";
 import Avatar from "../common/Avatar.vue";
 import Icon from "../common/Icon.vue";
 
@@ -36,29 +36,39 @@ const line = computed(() => {
 </script>
 
 <template>
-  <a class="row" :href="href('chats', thread.id)" :aria-current="current ? 'true' : undefined" @contextmenu.prevent="onContext" @click="onClick">
-    <Avatar :thread="thread" />
-    <div class="row-body">
-      <div class="row-top">
-        <Icon class="row-kind" :name="kindIcon" size="xs" />
-        <span class="row-name">{{ thread.name }}</span>
-        <Icon v-if="thread.pinned" class="row-pin" name="pin" size="xs" :aria-label="t('Pinned')" />
-        <span class="row-time">{{ listTime(thread.updated_at) }}</span>
+  <div class="chat-row" :class="{ 'has-start': !thread.online && canRestart(thread) }">
+    <a class="row" :href="href('chats', thread.id)" :aria-current="current ? 'true' : undefined" @contextmenu.prevent="onContext" @click="onClick">
+      <Avatar :thread="thread" />
+      <div class="row-body">
+        <div class="row-top">
+          <Icon class="row-kind" :name="kindIcon" size="xs" />
+          <span class="row-name">{{ thread.name }}</span>
+          <Icon v-if="thread.pinned" class="row-pin" name="pin" size="xs" :aria-label="t('Pinned')" />
+          <span class="row-time">{{ listTime(thread.updated_at) }}</span>
+        </div>
+        <div class="row-bottom">
+          <span class="row-sub">
+            <span v-if="typing" class="row-typing">{{ t("typing…") }}</span>
+            <template v-else>
+              <span v-if="mine" class="row-you">{{ t("You") }}: </span>{{ line }}
+            </template>
+          </span>
+          <span v-if="thread.unread" class="badge">{{ badge(thread.unread) }}</span>
+        </div>
       </div>
-      <div class="row-bottom">
-        <span class="row-sub">
-          <span v-if="typing" class="row-typing">{{ t("typing…") }}</span>
-          <template v-else>
-            <span v-if="mine" class="row-you">{{ t("You") }}: </span>{{ line }}
-          </template>
-        </span>
-        <span v-if="thread.unread" class="badge">{{ badge(thread.unread) }}</span>
-      </div>
-    </div>
-  </a>
+    </a>
+    <button v-if="!thread.online && canRestart(thread)" class="iconbtn row-start" type="button"
+      :disabled="restarting.has(thread.id)" :aria-label="t('Restart {name}', { name: thread.name })"
+      :title="t('Restart {name}', { name: thread.name })" @click="restartNow(thread)">
+      <span v-if="restarting.has(thread.id)" class="spin" /><Icon v-else name="refresh" size="sm" />
+    </button>
+  </div>
 </template>
 
 <style>
+.chat-row.has-start { display: flex; align-items: center; padding-right: 12px; }
+.chat-row.has-start > .row { flex: 1; min-width: 0; width: auto; margin-right: 4px; }
+.row-start { flex: none; }
 .row {
   position: relative; display: flex; align-items: center; gap: 12px; width: calc(100% - 12px); margin: 2px 6px;
   padding: 8px 12px; min-height: var(--row); border-radius: 14px; text-align: left; color: inherit; text-decoration: none !important;

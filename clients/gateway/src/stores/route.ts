@@ -9,6 +9,8 @@ export const NAVS = ["chats", "new", "config", "logs", "graph", "dashboard", "se
 export type Nav = (typeof NAVS)[number];
 
 export const route = reactive<{ nav: Nav; arg: string }>({ nav: "chats", arg: "" });
+/** Keep the open conversation when visiting another section, including Dashboard subpages. */
+export const lastChat = reactive({ arg: "" });
 
 export function parseRoute(hash: string): { nav: Nav; arg: string } {
   const [name = "", arg = ""] = hash.replace(/^#\/?/, "").split("/");
@@ -32,7 +34,9 @@ export function go(nav: Nav, arg = ""): void {
 }
 
 export function readRoute(): void {
+  if (route.nav === "chats") lastChat.arg = route.arg;
   Object.assign(route, parseRoute(location.hash));
+  if (route.nav === "chats") lastChat.arg = route.arg;
 }
 
 export function watchRoute(): void {
