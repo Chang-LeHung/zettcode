@@ -262,6 +262,28 @@ class WorkspaceLabel(TuiPlugin):
 还没配置模型时，`context.model.name` 是空的，`context.model.efforts` 是空的，`context.model.config` 是
 `None`。读它的片段应该说没有模型，而不是假设有。
 
+## 子会话与子进程交接
+
+插件有时要造一个**子会话**：`task` 工具起的进程内子代理，或者新解释器里的 daemon。`ChildSession` 说明是哪一种——
+`kind` 是 `"subagent"` 或 `"daemon"`，`profile` 是子代理的工具边界（`explore`、`coding`、`reasoning`）。
+
+- `export_child(child)` 为 **daemon** 返回 JSON；返回 `None` 表示不继承任何东西。只放新解释器需要的东西（目标、模式），
+  绝不放活连接或凭据，因为它会写进 daemon 自己的状态文件。不是 JSON 的表会直接让这次启动失败，而不是悄悄丢掉一个后端。
+- `restore_child(state)` 在新进程里**先于** `activate()` 调用，所以不用连接就知道之前导出了什么；`activate()` 随后
+  照常读配置。
+- `child_extensions(child)` 为一次进程内子会话返回新的扩展，每次调用现造，从不与父会话共用。同名扩展会替换默认的
+  或共享的那个，插件就是这样把本地后端换掉而不让子会话同时留着两者。
+- `fail_closed_activation = True` 让 `activate()` 的任何失败都变成拒绝启动，而不是少一个插件继续跑。只在“少了它会
+  悄悄改变工具在哪里执行”时用它：缺一个可选的 *service* 应该在每次动作时报错，而不是在启动时。
+
+`CHILD_STATE` 是前后端和加载器之间传这些表的 service 名；真正给 daemon 填交接的是 `Client.spawn_daemon` 和
+`zettcode daemon spawn`。`CHILD_STATE_ENV` 与 `PLUGIN_ARGS_ENV` 是这次交接用的两个环境变量，自己再起子进程的
+插件要先把它们摘掉：它们属于本地解释器。
+
+自己起进程的工具用 `shell_environment({...})` 带上同一个交接——按任务生效的覆盖层，值为 `None` 表示删除该变量——
+再用 `subprocess_environment()` 读出来，而不是去写 `os.environ`。两者都以任务为界：嵌套会叠加，并行的工具调用只看得到
+自己的值。
+
 ## 默认关闭
 
 读者没表态时，插件是否开启由插件自己决定。覆盖 `default_enabled` 返回 `False`；加载器会把它放下，直到
@@ -861,6 +883,9 @@ trigger 只是报告“发生了什么”。要让 agent 真的动手，把事�
 | `setting` | 只给程序用：开关一个编译进程序的插件的配置键 |
 | `rank` | 只给程序用：一个角色组内的顺序；第三方插件留 `0` |
 | `default_enabled()` | 类方法；返回 `False` 表示要 `[plugins] enable = ["name"]` 才开 |
+| `fail_closed_activation` | 类属性；`True` 时 `activate()` 失败就拒绝启动，而不是少这个插件。默认 `False` |
+| `export_child(child)` / `restore_child(state)` | daemon 继承的 JSON，以及在 `activate()` 之前读回它的钩子。默认什么都不做 |
+| `child_extensions(child)` | 一次进程内子会话的新扩展，同名替换默认扩展。默认为空 |
 | `cli_arguments()` | 类方法；返回启动和 `daemon spawn` 用的 `CliOption` 声明 |
 | `activate(ctx)` | 同步；注册插件贡献的一切 |
 | `aclose()` | 异步；释放长期资源，只调一次，按激活的逆序 |

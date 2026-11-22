@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import logging
 from abc import ABC
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
+from .children import ChildSession, encode_child_state, validate_child_state
 from .context import PluginContext
 from .mixins import PluginAgentMixin
 from .services import lookup, require
@@ -111,6 +112,9 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
     #: activated in a stated order and not in the order entry points happen to sort. Most plugins have no preference.
     rank: ClassVar[int] = 0
     priority: ClassVar[int] = 100
+    #: Opt in to stopping startup when activation fails, rather than continuing without this plugin.
+    #: Use for environment/security plugins whose absence would silently change where tools execute.
+    fail_closed_activation: ClassVar[bool] = False
     #: The configuration key that decides whether a plugin does its work, or ``None`` when `[plugins] disable` does:
     #: the panel lists the plugin either way, and the switch writes whichever belongs to it.
     setting: ClassVar[PluginSetting | None] = None
@@ -145,6 +149,25 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
         Args:
             container: The resolved settings and the registration surface.
         """
+
+    def export_child(self, child: ChildSession) -> dict[str, Any] | None:
+        """Export JSON state for a daemon; ``None`` opts out of inheritance.
+
+        Called on the active instance. Return only JSON values, never live connections or credentials that
+        should not be recorded in the daemon's private state file.
+        """
+        return None
+
+    def restore_child(self, state: dict[str, Any]) -> None:
+        """Restore named inherited state BEFORE ``activate`` in a new interpreter; default is a no-op."""
+
+    def child_extensions(self, child: ChildSession) -> tuple[AgentExtension, ...]:
+        """Build fresh extensions for one subagent call, for every profile (including reasoning).
+
+        The child gets no plugin host. Extensions returned here replace defaults and shared extensions of the
+        same name. A plugin controls its own profile boundary; export/restore is not used for in-process children.
+        """
+        return ()
 
     async def aclose(self) -> None:
         """Release what the plugin holds beyond one turn, when the runtime closes.
@@ -233,8 +256,49 @@ class Plugins:
             build: What exists while the agent is being built. Factories are called with it; without it
                 (outside a build) only the extensions registered whole are returned.
         """
+        if build is not None and build.plugins is None:
+            build = replace(build, plugins=self)
         built = (contribution.build(build) for contribution in self.contributed)
         return tuple(extension for extension in built if extension is not None)
+
+    def export_child(self, child: ChildSession) -> dict[str, dict[str, Any]]:
+        """Snapshot inheritable state under exact plugin identities, rejecting invalid JSON."""
+        state: dict[str, dict[str, Any]] = {}
+        for plugin in self.plugins:
+            exported = plugin.export_child(child)
+            if exported is None:
+                continue
+            # One plugin at a time, so a snapshot a daemon cannot inherit names the plugin that wrote it instead of
+            # surfacing as a failed ``bash`` with no owner.
+            try:
+                state[plugin.name] = validate_child_state({plugin.name: exported})[plugin.name]
+            except ValueError as error:
+                raise ValueError(f"Plugin {plugin.name!r} exported state a daemon cannot inherit: {error}") from error
+        try:
+            # The size limit is on the handoff as a whole, not on one plugin's table: a start that cannot carry this
+            # snapshot should say so here, where the caller knows it is plugin state, rather than from a failed spawn.
+            encode_child_state(state)
+        except ValueError as error:
+            raise ValueError(
+                f"The plugins' combined child state cannot be inherited ({', '.join(sorted(state))}): {error}"
+            ) from error
+        return state
+
+    def child_extensions(self, child: ChildSession) -> tuple[AgentExtension, ...]:
+        """Build one child's extensions, refusing duplicate names rather than picking a backend."""
+        extensions: list[AgentExtension] = []
+        owners: dict[str, str] = {}
+        for plugin in self.plugins:
+            for extension in plugin.child_extensions(child):
+                first = owners.get(extension.name)
+                if first is not None:
+                    raise ValueError(
+                        f"Plugins {first!r} and {plugin.name!r} supply duplicate child extension names "
+                        f"({extension.name!r})"
+                    )
+                owners[extension.name] = plugin.name
+                extensions.append(extension)
+        return tuple(extensions)
 
     @property
     def plugins(self) -> tuple[Plugin[Any], ...]:

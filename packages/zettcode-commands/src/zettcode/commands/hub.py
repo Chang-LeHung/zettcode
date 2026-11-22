@@ -40,7 +40,7 @@ import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from zettcode.commands import hub_graph
 from zettcode.commands.hub_graph import Link, Node, Picture
@@ -1089,7 +1089,10 @@ class HubCommand(TuiPlugin):
                     )
                     if value
                 }
-                started = await spawn_daemon(workspace, model=chosen.model or None, resume=session_id, **kept)
+                # The table above holds string options only, not the structured plugin_state parameter.
+                started = await spawn_daemon(
+                    workspace, model=chosen.model or None, resume=session_id, **cast("dict[str, Any]", kept)
+                )
             except Exception as error:  # noqa: BLE001 - the page says what happened, whatever it was
                 text = str(error)
                 # The store has no such session: a daemon that never held a conversation leaves none (an empty one is

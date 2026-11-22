@@ -259,8 +259,9 @@ smoke: gateway-page
 	@# holds the ranges against the versions built here until then.
 	$(UV) build --package zettcode-monitor --out-dir $(SMOKE_DIR)/plugins
 	$(UV) build --package zettcode-recap --out-dir $(SMOKE_DIR)/plugins
+	$(UV) build --package zettcode-ssh --out-dir $(SMOKE_DIR)/plugins
 	$(UV) pip install --python $(SMOKE_DIR)/venv/bin/python --find-links $(SMOKE_DIR) $(SMOKE_DIR)/plugins/*.whl
-	$(SMOKE_DIR)/venv/bin/python -c "import tempfile, pathlib; from zettcode.config import ModelConfig, ZettCodeConfig; from zettcode.app.plugins.loader import load_terminal_plugins; root = pathlib.Path(tempfile.mkdtemp()); (root / 'w').mkdir(); config = ZettCodeConfig(workspace=root / 'w', models=(ModelConfig(model='m', token='t'),), store=root / 'store', plugins_file=root / 'plugins.json', mcp_enabled=False, skills_enabled=False, harness_dir=root / 'harness'); bundle = load_terminal_plugins(config); names = [command.name for command in bundle.commands]; failed = dict(bundle.failed); assert '/monitor' in names and '/recap' in names, repr({k: failed[k] for k in ('monitor', 'recap') if k in failed}); print('plugins:', '/monitor', '/recap')"
+	$(SMOKE_DIR)/venv/bin/python -c "import tempfile, pathlib; from zettcode.config import ModelConfig, ZettCodeConfig; from zettcode.app.plugins.loader import load_terminal_plugins; root = pathlib.Path(tempfile.mkdtemp()); (root / 'w').mkdir(); config = ZettCodeConfig(workspace=root / 'w', models=(ModelConfig(model='m', token='t'),), store=root / 'store', plugins_file=root / 'plugins.json', mcp_enabled=False, skills_enabled=False, harness_dir=root / 'harness'); bundle = load_terminal_plugins(config); names = [command.name for command in bundle.commands]; failed = dict(bundle.failed); assert all(n in names for n in ('/monitor', '/recap', '/ssh')), repr({k: failed[k] for k in ('monitor', 'recap', 'ssh') if k in failed}); print('plugins:', '/monitor', '/recap', '/ssh')"
 
 check:
 	@echo "--- changed since $(BASE) ---"

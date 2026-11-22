@@ -13,7 +13,7 @@
 | [网页网关](#网页网关) | 管理 daemon、会话和群的网页，手机上也能用 | `zettcode gateway start` |
 | [Codex 与 Claude Code](#codex-与-claude-code) | 两者都作为可发消息的智能体运行 | `zettcode[code-agents]`，以及对应的命令行 |
 
-除最后一行外，其余都在普通的 `zettcode` 里；`[all]` 另外带来 `/monitor`、`/recap`、各厂商模型和最后一行。
+除最后一行外，其余都在普通的 `zettcode` 里；`[all]` 另外带来 `/monitor`、`/recap`、各厂商模型、`/ssh` 和最后一行。
 见[快速开始](/zh/guide/getting-started#安装)。
 
 ## JIT harness

@@ -22,6 +22,8 @@ dependencies = [
   "zettcode-tools>=0.5.1,<0.6",
   # The extension, its hooks and the messages it rewrites.
   "zett-agent>=0.3.0,<0.4",
+  # `Annotated[int, Field(...)]` on the retained reader's schema, which is the bound the reader enforces.
+  "pydantic>=2,<3",
 ]
 
 # A part of the program, not a plugin: the `[tool.zettcode] plugin = true` marker is what the plugin release line looks for. It is

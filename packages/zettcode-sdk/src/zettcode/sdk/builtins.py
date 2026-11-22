@@ -88,6 +88,13 @@ class CodingTools(Plugin[PluginContext]):
 
         ctx.agent.register_extension_factory("CodingBundle", build)
 
+        def environment(agent: AgentBuild) -> AgentExtension | None:
+            from .children import ChildEnvironment
+
+            return ChildEnvironment(agent.plugins) if agent.plugins is not None else None
+
+        ctx.agent.register_extension_factory("PluginChildEnvironment", environment)
+
 
 class Capabilities(Plugin[PluginContext]):
     """What the configured models can do, so a tool is not offered to one that cannot use it."""
@@ -133,6 +140,7 @@ class Subagents(Plugin[PluginContext]):
                 workspace=config.workspace if config.agents_md_enabled else None,
                 max_iterations=config.subagent_max_iterations,
                 shares=_shared_with_children(messaging=messaging),
+                child_extensions=agent.plugins.child_extensions if agent.plugins is not None else None,
             )
 
         ctx.agent.register_extension_factory("ParentModelSubAgents", build)

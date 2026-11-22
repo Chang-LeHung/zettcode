@@ -189,6 +189,10 @@ def load_plugins(
     return run(Loader(config, shared), config, builtins=builtins, entry_points=entry_points, required=required)
 
 
+class PluginActivationError(ValueError):
+    """An explicitly selected fail-closed plugin could not activate; startup must not continue."""
+
+
 class RequiredPluginError(RuntimeError):
     """A plugin the program cannot run without did not load.
 
@@ -362,6 +366,7 @@ def run(
         if candidate.plugin is None
         or candidate.offered
         or candidate.plugin.default_enabled()
+        or candidate.name in loader.child_state
         or candidate.name in enabled
         or candidate.origin in enabled
         or candidate.name in required
@@ -486,6 +491,11 @@ class Loader:
         self.providers: list[Provider] = []
         self.contributed: list[Contribution] = []
         self.services: dict[str, object] = dict(shared or {})
+        from .children import CHILD_STATE, validate_child_state
+
+        self.child_state = validate_child_state(self.services.get(CHILD_STATE, {}))
+        if CHILD_STATE in self.services:
+            self.services[CHILD_STATE] = self.child_state
         self.plain_commands: list[object] = []
         self.triggers: list[TriggerRegistration] = []
         #: One ``(origin, why)`` per plugin that could not be loaded; the messages a front end shows are built from
@@ -584,6 +594,11 @@ class Loader:
 
     def bundle(self) -> Plugins:
         """Return everything the accepted plugins contributed."""
+        missing = self.child_state.keys() - {plugin.name for plugin in self.plugins}
+        if missing:
+            raise PluginActivationError(
+                "Cannot inherit child state without loaded plugins: " + ", ".join(sorted(missing))
+            )
         host = PluginExtension(self.plugins) if self.plugins else None
         return Plugins(
             host=host,
@@ -642,11 +657,19 @@ class Loader:
             plugin.origin = origin or name
         container = self.new_context(name)
         try:
+            if name in self.child_state:
+                from .children import validate_child_state
+
+                plugin.restore_child(validate_child_state({name: self.child_state[name]})[name])
             plugin.activate(container)
             self.activated(plugin, container)
         except KeyboardInterrupt:
             raise
         except BaseException as error:
+            if plugin.fail_closed_activation:
+                raise PluginActivationError(
+                    f"Cannot activate fail-closed plugin {name!r} (origin {origin!r}): {_reason(error)}"
+                ) from error
             self.fail(origin, error, label=label)
             return False
         clash = self.clash(container)

@@ -138,6 +138,7 @@ class Options:
     permission: str = "full"
     system_prompt: str | None = None
     plugin_arguments: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
+    plugin_state: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 class Daemon:
@@ -162,6 +163,8 @@ class Daemon:
         self._naming_attempts = 0
         #: When each running tool call began, by call id, so its end can say how long it took.
         self._calls: dict[str, float] = {}
+        #: The plugins this daemon inherited, and what its record carries; a stop writes it without asking again.
+        self._plugin_state: dict[str, dict[str, object]] = dict(options.plugin_state)
 
     # -- the life of the process -------------------------------------------------------------------
     def take(self, message: IncomingMessage) -> Receipt:
@@ -189,12 +192,32 @@ class Daemon:
         _stop_on_signals(self.stopping)
         # Written before the connection is attempted: a start that fails after this point leaves a record the start
         # that made it can recognise as its own and remove, rather than a folder nobody can account for.
-        await self.mark("starting")
-        if not await self.client.join_sessions(self.take, direct=True):
-            self.record.log("the session broker is switched off, so no session can reach this daemon")
-            self.record.remove()
-            return EXIT_UNUSABLE
-        await self.mark("idle")
+        previous = self.record.state
+        ready = False
+        try:
+            await self.mark("starting")
+            if not await self.client.join_sessions(self.take, direct=True):
+                self.record.log("the session broker is switched off, so no session can reach this daemon")
+                return EXIT_UNUSABLE
+            await self.mark("idle")
+            ready = True
+        finally:
+            if not ready:
+                if previous is not None:
+
+                    def restore(current: State | None) -> State:
+                        if current is not None and current.token not in (self.options.token, previous.token):
+                            raise OSError("another start replaced this daemon's record; refusing rollback")
+                        return previous
+
+                    self.record.change(restore)
+                    self.record.end_beat()
+                else:
+                    current = State.load(self.record.folder)
+                    if (current is not None and current.token == self.options.token) or not (
+                        self.record.folder / "state.json"
+                    ).exists():
+                        self.record.remove()
         beating = asyncio.ensure_future(self._beat())
         try:
             await self.stopping.wait()
@@ -453,6 +476,17 @@ class Daemon:
         """
         if self.stopping.is_set() and status != "stopping":
             return
+        if status == "stopping":
+            # A daemon that is stopping is not inheritable any more, and this write is its last one: an export that
+            # failed here would raise out of `serve`'s finally, leaving a record a `kill` asked to remove.
+            plugin_state = self._plugin_state
+        else:
+            try:
+                plugin_state = self._plugin_state = self.client._export_daemon_state()
+            except Exception:
+                self.stopping.set()
+                self.record.end_beat()
+                raise
         self.record.beat()
         sent, made, context = self._spend()
         state = State(
@@ -474,6 +508,7 @@ class Daemon:
             context_window=self._window(),
             broker=self._connected(),
             plugin_arguments={key: dict(value) for key, value in self.options.plugin_arguments.items()} or None,
+            plugin_state=plugin_state,
         )
         # The lock is tried, not waited for: this runs on the event loop, and a reader changing a label holds it for
         # a moment. A write that missed is made by the next mark — the turn did not fail for it.
@@ -710,10 +745,13 @@ def _client(options: Options) -> Client:
     * ``system_prompt=options.system_prompt`` — the role ``daemon spawn --system`` gave it, or nothing. It belongs to
       the process: a session resumed by hand runs with the usual prompt, which is why `daemon list` records it.
     """
+    from zettcode.engine.plugins.children import CHILD_STATE, validate_child_state
     from zettcode.engine.plugins.services import PLUGIN_CLI
     from zettcode.sdk.client import Client
 
-    shared = {PLUGIN_CLI: options.plugin_arguments} if options.plugin_arguments else None
+    shared: dict[str, object] = {CHILD_STATE: validate_child_state(options.plugin_state)}
+    if options.plugin_arguments:
+        shared[PLUGIN_CLI] = options.plugin_arguments
     return Client(
         options.workspace,
         model=options.model,

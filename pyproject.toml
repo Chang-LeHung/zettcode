@@ -34,12 +34,13 @@ dev = [
   # the whole thing, the way `pip install zettcode` would, without `--all-packages`.
   "zettcode",
   # The plugins are developed beside the program and are workspace members, so this checkout's environment carries
-  # them: `/recap` and `/monitor` are in the menu when the terminal runs from here. They are not dependencies of the
-  # package; a reader installs one from an extra in `packages/zettcode/pyproject.toml` instead.
+  # them: `/recap`, `/monitor` and `/ssh` are in the menu when the terminal runs from here. They are not dependencies
+  # of the package; a reader installs one from an extra in `packages/zettcode/pyproject.toml` instead.
   "zettcode-monitor",
   "zettcode-recap",
   "zettcode-models",
   "zettcode-code-agents",
+  "zettcode-ssh",
   # The chat bridge is a program of its own, not a dependency of `zettcode`, but its suite runs in this environment
   # like every other member's.
   "zettcode-im",
@@ -81,6 +82,7 @@ zettcode-monitor = { workspace = true }
 zettcode-recap = { workspace = true }
 zettcode-models = { workspace = true }
 zettcode-code-agents = { workspace = true }
+zettcode-ssh = { workspace = true }
 zettcode-im = { workspace = true }
 
 [tool.mypy]
@@ -117,6 +119,7 @@ mypy_path = [
   "packages/zettcode-im/src",
   "packages/zettcode-models/src",
   "packages/zettcode-code-agents/src",
+  "packages/zettcode-ssh/src",
   "packages/zettcode/src",
   "packages/zettcode",
   ".github/scripts",
@@ -154,6 +157,7 @@ files = [
   "packages/zettcode-recap/src",
   "packages/zettcode-models/src",
   "packages/zettcode-code-agents/src",
+  "packages/zettcode-ssh/src",
   ".github/scripts",
 ]
 # Check the pydantic storage models as models, not as plain classes.

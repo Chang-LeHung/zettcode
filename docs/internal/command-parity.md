@@ -56,6 +56,7 @@ question, `HARNESS` for the harness switch, `SESSION_STORE`/`USAGE_LEDGER` where
 | `/usage`, `/context` | View | — | page | panel | same endpoints |
 | `/help` | View | — | page | document | the editor builds it from its command list |
 | `/hub` | View | document | page | document | the host reads the broker and daemons; the graph is the terminal's page |
+| `/ssh` | State + View | — | panel | no | terminal-only: it selects the target the terminal's tools run against, and the panel needs a screen. A daemon inherits the target as plugin state instead |
 | `/theme`, `/pet`, `/statusline`, `/bash`, `/quit`, `/exit` | Terminal | — | yes | no | terminal interaction or window lifecycle; not a missing editor feature |
 
 Editor-only names — `/rename`, `/name`, `/doctor`, `/stop` — are the editor's spellings of a state change or an

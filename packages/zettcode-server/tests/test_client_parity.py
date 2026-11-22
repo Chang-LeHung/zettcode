@@ -68,6 +68,7 @@ PYTHON_ONLY: dict[str, dict[str, str]] = {
         "unwatch": "the same: see `watch`",
         "watch_streams": "the same: see `watch`",
         "send_back": "the answer of a direct turn goes back over the broker, which only a Python process joins",
+        "spawn_daemon": "detached processes and active plugin inheritance are the gateway's concern, not this HTTP API",
         "service": "in-process plugin services; the server exposes its own resources over HTTP",
         "find": "in-process plugin services; the server exposes its own resources over HTTP",
         "services": "in-process plugin services; the server exposes its own resources over HTTP",

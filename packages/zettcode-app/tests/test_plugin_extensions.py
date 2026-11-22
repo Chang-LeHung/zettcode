@@ -354,6 +354,7 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_in_reg
     assert [extension.name for extension in extensions] == [
         "AskUserExtension",
         "CodingBundle",
+        "PluginChildEnvironment",
         "DaemonGuideExtension",
         "SwitchedHarness",
         "LongOutputExtension",
@@ -381,6 +382,7 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_in_reg
         "AgentsMdExtension",
         "DaemonGuideExtension",
         "ShellDenyExtension",
+        "PluginChildEnvironment",
         "AskUserExtension",
         "CodingBundle",
         "LongOutputExtension",
@@ -414,6 +416,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     # `messaging` part sorts there among the rank-0 activations.
     assert shared == [
         "CodingBundle",
+        "PluginChildEnvironment",
         "DaemonGuideExtension",
         "LongOutputExtension",
         "OneSystemMessage",
@@ -426,7 +429,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     assert "ParentModelSubAgents" not in shared and "SwitchedHarness" not in shared, "no task, no harness"
     assert "AskUserExtension" not in shared, "a child works through its task; it does not ask the person"
     assert "TodoWriteExtension" not in shared, "its plan would be drawn for nobody"
-    assert with_messaging == [*shared[:3], "SessionMessagingExtension", *shared[3:]]
+    assert with_messaging == [*shared[:4], "SessionMessagingExtension", *shared[4:]]
 
 
 def test_every_switch_adds_its_extension_at_its_place(tmp_path):
@@ -441,6 +444,7 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
         # `capabilities`.
         "AskUserExtension",
         "CodingBundle",
+        "PluginChildEnvironment",
         "DaemonGuideExtension",
         "SwitchedHarness",
         "LongOutputExtension",
@@ -484,6 +488,7 @@ def test_the_order_the_agent_runs_them_in_is_the_priority_of_each(tmp_path):
         "DaemonGuideExtension",
         "ShellDenyExtension",
         "SkillExtension",
+        "PluginChildEnvironment",
         "AskUserExtension",
         "CodingBundle",
         "LongOutputExtension",
@@ -542,6 +547,7 @@ async def test_the_tools_the_model_is_offered_are_in_the_order_the_extensions_re
             "write_file",
             "edit",
             "bash",
+            "read_tool_output",
             "todo_write",
             "task",
             # The harness is on by default, so its four control tools come last, after every other extension's.

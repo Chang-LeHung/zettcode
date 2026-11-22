@@ -33,7 +33,7 @@ from zettcode.truncation.extension import (
 LONG = "".join(f"line {n}\n" for n in range(1, 3001))
 
 #: Where the text says the whole of a result is; the note names the file by absolute path.
-WHERE = re.compile(r"the whole of it is at (\S+) \u2014 read that file with the read tool")
+WHERE = re.compile(r"the whole of it is at (\S+) \u2014 read with read_tool_output")
 
 
 @pytest.fixture

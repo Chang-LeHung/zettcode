@@ -7,20 +7,25 @@ on every later request of the session, and once it is cut nothing in it can be r
 
 So after a call, and before its result is stored or sent anywhere, a result over the budget is written whole into the
 session's folder beside the shell's kept streams (``tool-output/``), and what replaces it is its start and its end
-around a note naming that file. The model reads the rest with ``read``, by absolute path, which is the same way it
-reads what a long command printed. The file goes away with the session it belongs to, and the reader's project never
-sees it.
+around a note naming that file. The model reads the rest with ``read_tool_output``, a bounded local reader restricted
+to files this extension retained for the current session. It stays local even when workspace tools are remote.
+The file goes away with the session it belongs to, and the reader's project never sees it.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 import re
+import stat
 from pathlib import Path
+from typing import Annotated
 
+from pydantic import Field
 from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.messages import ToolCall, ToolMessage
+from zett_agent.tools.base import tool
 
 from zettcode.engine.storage import KEPT_OUTPUT, SessionStore
 from zettcode.tools.output import MAX_OUTPUT_BYTES, MAX_OUTPUT_LINES, stream_preview
@@ -53,6 +58,66 @@ class LongOutputExtension(AgentExtension):
     def __init__(self, store: SessionStore) -> None:
         """Keep the store whose session folders the output is written into."""
         self._store = store
+
+    async def on_tool(self, context: AgentRunContext) -> None:
+        session_id = context.config.session_id
+        if not isinstance(session_id, str):
+            return
+
+        @tool
+        async def read_tool_output(
+            file_path: str,
+            offset: Annotated[int, Field(ge=1, le=1_000_000)] = 1,
+            limit: Annotated[int, Field(ge=1, le=2000)] = 2000,
+        ) -> str:
+            """Read retained local tool output for this session, even when workspace tools use SSH.
+
+            Guidelines:
+                - Use only for the file named in a retained-output hint, never for workspace files.
+                - Pass offset and limit to read the next bounded range.
+            """
+            return await asyncio.to_thread(self._read, session_id, file_path, offset, limit)
+
+        context.register_tool(read_tool_output)
+
+    def _read(self, session_id: str, file_path: str, offset: int, limit: int) -> str:
+        if type(offset) is not int or not 1 <= offset <= 1_000_000 or type(limit) is not int or not 1 <= limit <= 2000:
+            raise ValueError("offset must be 1..1000000 and limit must be 1..2000")
+        path = Path(file_path)
+        expected = self._store.session_dir(session_id) / KEPT_OUTPUT
+        parent = path.parent
+        direct = parent.resolve() == expected.resolve()
+        shell_stream = (
+            parent.name.startswith("shell-")
+            and path.name in {"stdout.txt", "stderr.txt"}
+            and parent.parent.resolve() == expected.resolve()
+            and not parent.is_symlink()
+        )
+        if path.is_symlink() or not (direct or shell_stream):
+            raise ValueError("Not retained tool output for this session")
+        if expected.is_symlink():
+            raise ValueError("Retained output directory was replaced")
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, "r", encoding="utf-8", newline="") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise ValueError("Retained output must be a regular file")
+            lines: list[str] = []
+            size = 0
+            number = 0
+            while True:
+                line = handle.readline(MAX_OUTPUT_BYTES + 1)
+                if not line:
+                    return "".join(lines)
+                number += 1
+                if number < offset:
+                    continue
+                rendered = f"{number}\t{line}"
+                size += len(rendered.encode("utf-8"))
+                if size > MAX_OUTPUT_BYTES or len(line) > MAX_OUTPUT_BYTES:
+                    return "".join(lines) + f"\n... [byte limit reached at line {number}; request a smaller range]"
+                lines.append(rendered)
+                if len(lines) >= limit:
+                    return "".join(lines) + f"\n... [continue with offset={number + 1}]"
 
     async def after_tool(
         self,
@@ -88,7 +153,7 @@ class LongOutputExtension(AgentExtension):
         if not over_budget(text):
             return None
         path = self._write(text, call, session_id)
-        marker = f"\n... [middle omitted; the whole of it is at {path} — read that file with the read tool] ...\n"
+        marker = f"\n... [middle omitted; the whole of it is at {path} — read with read_tool_output] ...\n"
         preview = stream_preview(path, marker=marker)
         if not preview.truncated:
             # The budget here is a little over the preview's, so this cannot happen while the two constants

@@ -446,7 +446,7 @@ def test_each_extra_names_a_plugin_this_workspace_builds_in_a_range_that_admits_
     """
     project = tomllib.loads((PROJECT / "pyproject.toml").read_text(encoding="utf-8"))
     extras = project["project"]["optional-dependencies"]
-    assert set(extras) == {"all", "code-agents", "models", "monitor", "recap"}, (
+    assert set(extras) == {"all", "code-agents", "models", "monitor", "recap", "ssh"}, (
         "one extra per plugin this repository publishes"
     )
 
@@ -456,6 +456,7 @@ def test_each_extra_names_a_plugin_this_workspace_builds_in_a_range_that_admits_
         "models": "zettcode-models",
         "monitor": "zettcode-monitor",
         "recap": "zettcode-recap",
+        "ssh": "zettcode-ssh",
     }
     for extra, distribution in plugins.items():
         assert distribution in built, f"packages/{distribution} is what the {extra!r} extra names"
@@ -1348,6 +1349,7 @@ KNOWS_THE_CONTRACT = {
     "zettcode-plugin-api",
     "zettcode-presenters",
     "zettcode-recap",
+    "zettcode-ssh",
 }
 
 
@@ -1518,6 +1520,7 @@ def test_the_screen_group_holds_exactly_the_plugins_that_draw():
         "zettcode-models",
         "zettcode-monitor",
         "zettcode-recap",
+        "zettcode-ssh",
     }, "the plugin line covers every plugin"
     assert not marked & on_screen, "a plugin that is released on its own line is not the program's screen"
 

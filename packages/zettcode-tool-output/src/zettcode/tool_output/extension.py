@@ -90,6 +90,8 @@ class ToolOutputExtension(AgentExtension):
         result.content = (
             text[: note.start("out")] + out + text[note.end("out") : note.start("err")] + err + text[note.end("err") :]
         )
+        if "read_tool_output" in getattr(context, "tools", {}):
+            result.content = "Use read_tool_output for these retained local streams.\n" + result.content
 
     @staticmethod
     def _tidy() -> None:

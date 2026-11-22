@@ -805,7 +805,9 @@ def test_a_daemon_names_its_own_session_and_keeps_a_label_a_reader_put_there(hom
 
     usage = SimpleNamespace(input_tokens=0, output_tokens=0, context_tokens=0)
     model = SimpleNamespace(name="fast", context_window=200_000)
-    client = SimpleNamespace(session=Session(), model=model, effort="medium", usage=usage)
+    client = SimpleNamespace(
+        session=Session(), model=model, effort="medium", usage=usage, _export_daemon_state=lambda: {}
+    )
     daemon = Daemon(client, Options(workspace=home, token="t", name="spawned"))
     asyncio.run(daemon.mark("idle"))
     assert daemon.record.state is not None and daemon.record.state.name == "spawned"
@@ -1193,6 +1195,9 @@ def test_list_shows_a_pending_request_and_why_the_last_one_failed(home, capsys):
     from zettcode.daemon.run import Daemon
 
     class Client:
+        def _export_daemon_state(self):
+            return {}
+
         def __init__(self) -> None:
             self.session = SimpleNamespace(id="01a1", title=None)
             self.model = SimpleNamespace(name="fake", context_window=200_000)
@@ -1810,6 +1815,9 @@ class _Session:
 
 
 class _Client:
+    def _export_daemon_state(self):
+        return {}
+
     def __init__(self) -> None:
         self.session = _Session()
         self.model = type("Model", (), {"name": "fake"})()
@@ -2002,7 +2010,7 @@ def test_a_new_shell_level_is_recorded_and_put_in_force_by_a_restart_on_the_same
 
 def test_a_shell_level_for_a_daemon_that_is_gone_is_only_recorded(home, monkeypatch):
     record = Registry().record(home, "01a1", create=True)
-    record.save(state_for(home, status="dead"))
+    record.save(state_for(home, pid=0, status="idle"))
     called: list[str] = []
     monkeypatch.setattr(process.Daemons, "start", lambda *a, **k: called.append("start"))
 

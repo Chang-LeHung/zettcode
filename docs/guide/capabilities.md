@@ -14,8 +14,8 @@ with the command that starts it.
 | [The web gateway](#the-web-gateway) | A page for daemons, sessions and groups, also on a phone | `zettcode gateway start` |
 | [Codex and Claude Code](#codex-and-claude-code) | Both run as members you can message and put in a group | `zettcode[code-agents]` and that CLI |
 
-Every row but the last is in plain `zettcode`; `[all]` adds `/monitor`, `/recap`, the vendor models and the last row.
-See [Getting started](/guide/getting-started#install).
+Every row but the last is in plain `zettcode`; `[all]` adds `/monitor`, `/recap`, the vendor models, `/ssh` and the
+last row. See [Getting started](/guide/getting-started#install).
 
 ## JIT harness
 

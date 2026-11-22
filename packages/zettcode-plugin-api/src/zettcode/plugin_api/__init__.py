@@ -78,12 +78,20 @@ _EXPORTS = {
     "ModelState": ".state",
     "MouseAction": "zettcode.tui",
     "MouseEvent": "zettcode.tui",
+    "TextEvent": "zettcode.tui",
+    "PasteEvent": "zettcode.tui",
     "NextPresenter": ".presenters",
     "NoticeLevel": ".entries",
     "Pet": ".pets",
     "PetSource": ".pets",
     "PlainCommandContext": "zettcode.engine.plugins.commands",
     "PlainCommandHost": "zettcode.engine.plugins.commands",
+    "shell_environment": "zettcode.engine.plugins.environment",
+    "subprocess_environment": "zettcode.engine.plugins.environment",
+    "CHILD_STATE": "zettcode.engine.plugins.children",
+    "CHILD_STATE_ENV": "zettcode.engine.plugins.children",
+    "PLUGIN_ARGS_ENV": "zettcode.engine.plugins.children",
+    "ChildSession": "zettcode.engine.plugins.children",
     "Plugin": "zettcode.engine.plugins",
     "PluginAgentMixin": "zettcode.engine.plugins",
     "PluginContext": "zettcode.engine.plugins",
@@ -217,6 +225,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         TriggerEvent,
         TriggerScope,
     )
+    from zettcode.engine.plugins.children import CHILD_STATE, CHILD_STATE_ENV, PLUGIN_ARGS_ENV, ChildSession
     from zettcode.engine.plugins.commands import (
         CommandGroups,
         PlainCommandContext,
@@ -224,6 +233,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         TextCommandResult,
         TurnCommandResult,
     )
+    from zettcode.engine.plugins.environment import shell_environment, subprocess_environment
     from zettcode.engine.plugins.groups import AgentGroups
     from zettcode.engine.plugins.services import (
         APPROVAL,
@@ -259,7 +269,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from zettcode.plugin_tui import TuiGroup
     from zettcode.providers import Api, ProvidedModel, Provider
     from zettcode.registry import Registry
-    from zettcode.tui import Canvas, Host, MouseAction, MouseEvent, Span, Style, TextLine, Widget
+    from zettcode.tui import Canvas, Host, MouseAction, MouseEvent, PasteEvent, Span, Style, TextEvent, TextLine, Widget
     from zettcode.tui.render import blend, display_width, truncate
 
     from .commands import (
@@ -397,6 +407,8 @@ __all__ = [
     "ModelState",
     "MouseAction",
     "MouseEvent",
+    "PasteEvent",
+    "TextEvent",
     "NextPresenter",
     "NoticeLevel",
     "Pet",
@@ -421,6 +433,12 @@ __all__ = [
     "LLM",
     "ModelAccess",
     "CliOption",
+    "ChildSession",
+    "CHILD_STATE",
+    "CHILD_STATE_ENV",
+    "PLUGIN_ARGS_ENV",
+    "shell_environment",
+    "subprocess_environment",
     "PLUGIN_CLI",
     "PLUGIN_AGENT",
     "PLUGIN_COMMANDS",

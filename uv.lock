@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -38,6 +38,7 @@ members = [
     "zettcode-sdk",
     "zettcode-server",
     "zettcode-skills",
+    "zettcode-ssh",
     "zettcode-todos",
     "zettcode-tool-output",
     "zettcode-tools",
@@ -3004,6 +3005,7 @@ all = [
     { name = "zettcode-models" },
     { name = "zettcode-monitor" },
     { name = "zettcode-recap" },
+    { name = "zettcode-ssh" },
 ]
 code-agents = [
     { name = "zettcode-code-agents" },
@@ -3016,6 +3018,9 @@ monitor = [
 ]
 recap = [
     { name = "zettcode-recap" },
+]
+ssh = [
+    { name = "zettcode-ssh" },
 ]
 
 [package.metadata]
@@ -3049,13 +3054,15 @@ requires-dist = [
     { name = "zettcode-sdk", editable = "packages/zettcode-sdk" },
     { name = "zettcode-server", editable = "packages/zettcode-server" },
     { name = "zettcode-skills", editable = "packages/zettcode-skills" },
+    { name = "zettcode-ssh", marker = "extra == 'all'", editable = "packages/zettcode-ssh" },
+    { name = "zettcode-ssh", marker = "extra == 'ssh'", editable = "packages/zettcode-ssh" },
     { name = "zettcode-todos", editable = "packages/zettcode-todos" },
     { name = "zettcode-tool-output", editable = "packages/zettcode-tool-output" },
     { name = "zettcode-tools", editable = "packages/zettcode-tools" },
     { name = "zettcode-truncation", editable = "packages/zettcode-truncation" },
     { name = "zettcode-tui", editable = "packages/zettcode-tui" },
 ]
-provides-extras = ["all", "code-agents", "models", "monitor", "recap"]
+provides-extras = ["all", "code-agents", "models", "monitor", "recap", "ssh"]
 
 [[package]]
 name = "zettcode-app"
@@ -3558,6 +3565,36 @@ requires-dist = [
 ]
 
 [[package]]
+name = "zettcode-ssh"
+source = { editable = "packages/zettcode-ssh" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "zett-agent" },
+    { name = "zettcode-plugin-api" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "packaging" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2,<3" },
+    { name = "zett-agent", specifier = ">=0.3.0,<0.4" },
+    { name = "zettcode-plugin-api", editable = "packages/zettcode-plugin-api" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "packaging", specifier = ">=24,<27" },
+    { name = "pytest", specifier = ">=8,<9" },
+    { name = "pytest-asyncio", specifier = ">=0.26,<2" },
+]
+
+[[package]]
 name = "zettcode-todos"
 source = { editable = "packages/zettcode-todos" }
 dependencies = [
@@ -3654,6 +3691,7 @@ dev = [
     { name = "zettcode-models" },
     { name = "zettcode-monitor" },
     { name = "zettcode-recap" },
+    { name = "zettcode-ssh" },
 ]
 
 [package.metadata]
@@ -3676,4 +3714,5 @@ dev = [
     { name = "zettcode-models", editable = "packages/zettcode-models" },
     { name = "zettcode-monitor", editable = "packages/zettcode-monitor" },
     { name = "zettcode-recap", editable = "packages/zettcode-recap" },
+    { name = "zettcode-ssh", editable = "packages/zettcode-ssh" },
 ]

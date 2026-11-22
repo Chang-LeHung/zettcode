@@ -286,6 +286,33 @@ Before a model is configured, `context.model.name` is empty, `context.model.effo
 `context.model.config` — the entry itself — is `None`. A segment that reads the entry should say it has no model rather
 than assume one is there.
 
+## Children and the subprocess handoff
+
+A plugin may have to build a **child**: an in-process subagent the `task` tool starts, or a daemon in a new
+interpreter. `ChildSession` says which — `kind` is `"subagent"` or `"daemon"`, and `profile` names a subagent's tool
+boundary (`explore`, `coding`, `reasoning`).
+
+- `export_child(child)` returns JSON for a **daemon**; `None` means "inherit nothing". Only what a new interpreter
+  needs belongs there — a target, a mode — never a live connection or a credential, because it is written into the
+  daemon's state file. A table that is not JSON refuses the spawn rather than quietly dropping a backend.
+- `restore_child(state)` runs **before** `activate()` in the new process, so what was exported is known without
+  connecting to anything; `activate()` then finds the configuration it would have read anyway.
+- `child_extensions(child)` returns fresh extensions for one in-process child, built per call and never shared with the
+  parent. An extension returned here replaces a default or shared one of the same `name`, which is how a plugin swaps
+  a local backend for its own without the child keeping both.
+- `fail_closed_activation = True` turns any failure of `activate()` into a refused start instead of a plugin that is
+  silently missing. Use it only when absence would silently change where tools execute: a missing optional *service*
+  is reported per action, not at startup.
+
+`CHILD_STATE` carries the exported tables between a front end and the loader; `Client.spawn_daemon` and
+`zettcode daemon spawn` are what fill in the handoff a daemon actually starts with. `CHILD_STATE_ENV` and
+`PLUGIN_ARGS_ENV` are the two environment variables that handoff uses, and a plugin that spawns a subprocess strips
+both first: they belong to a local interpreter.
+
+A tool that starts a process of its own carries the same handoff with `shell_environment({...})` — a per-task overlay
+where `None` removes a variable — and reads it with `subprocess_environment()`. Both are scoped to the task: nested
+scopes compose, parallel tool calls see only their own values, and `os.environ` is never written.
+
 ## Off by default
 
 A plugin chooses whether it is on when the reader has not asked. Override `default_enabled` and return `False`; the
@@ -937,6 +964,9 @@ The sections above explain when to use each piece; this is the exact name, type 
 | `setting` | the config key that switches this plugin instead of `[plugins] disable`; most plugins declare none. |
 | `rank` | ordering among plugins that have no `deps` between them, lowest first; leave it at `0` unless you need to come before or after another. A plugin that reads another's service (`ctx.service(...)`) must list that plugin in `deps`: nothing else orders them. |
 | `default_enabled()` | class method; return `False` to require `[plugins] enable = ["name"]`. |
+| `fail_closed_activation` | class attribute; `True` makes a failure of `activate()` refuse the start instead of leaving the plugin out. Default `False`. |
+| `export_child(child)` / `restore_child(state)` | JSON a daemon inherits, and the hook that reads it back before `activate()`. Both do nothing by default. |
+| `child_extensions(child)` | fresh extensions for one in-process child, replacing defaults of the same `name`. Empty by default. |
 | `cli_arguments()` | class method; returns `CliOption` declarations for startup and `daemon spawn`. |
 | `activate(ctx)` | synchronous; register everything the plugin contributes. |
 | `aclose()` | async; release long-lived resources, once, in reverse activation order. |
