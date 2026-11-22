@@ -11,8 +11,10 @@ on:
   push:
     # `monitor-v0.2.0`: the plugin name its entry point declares, or the directory name, then `-v` and the version.
     # ZettCode's own `v0.3.3` tag does not match this, and `release.yml` owns it. Neither does `desktop-v0.2.0`, which
-    # `desktop.yml` owns: it is the desktop app's installers, not a package on PyPI.
-    tags: ["*-v*", "!desktop-v*"]
+    # `desktop.yml` owns: it is the desktop app's installers, not a package on PyPI. The clients' tags
+    # (`zettcode-vscode-0.1.9`, `zettcode-server-v0.1.1`) match `*-v*` only by accident, through the `-v` of `vscode`
+    # and of `-v0.1.1`: no distribution under `packages/` answers to them, so a run started by one could only fail.
+    tags: ["*-v*", "!desktop-v*", "!zettcode-vscode-*", "!zettcode-mobile-*", "!zettcode-server-*"]
   workflow_dispatch:
     inputs:
       package:
