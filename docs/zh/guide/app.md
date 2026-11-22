@@ -6,7 +6,7 @@
 | 应用 | 平台 | 怎么得到 |
 | --- | --- | --- |
 | 桌面端（Electron） | macOS Apple Silicon、Windows、Linux | `desktop-v<版本>` 安装包，或从仓库 `make desktop` |
-| 安卓端（WebView） | Android | `make mobile` 和 `make mobile-apk`（需要 `ANDROID_HOME`） |
+| 安卓端（WebView） | Android | [0.1.1 的 APK](https://github.com/Chang-LeHung/zettcode/releases/tag/zettcode-mobile-0.1.1)，或 `make mobile` 和 `make mobile-apk`（需要 `ANDROID_HOME`） |
 
 APK 位于 `clients/mobile/android/app/build/outputs/apk/debug/`。`make desktop-package` 为当前系统写出安装包。
 

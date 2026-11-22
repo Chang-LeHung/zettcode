@@ -8,7 +8,10 @@
   <a href="https://chang-lehung.github.io/zettcode/guide/getting-started">Get started</a> ·
   <a href="https://chang-lehung.github.io/zettcode/guide/capabilities">What it can do</a> ·
   <a href="https://chang-lehung.github.io/zettcode/">Documentation</a> ·
-  <a href="https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode">VS Code extension</a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode">VS Code extension</a><br />
+  Latest releases:
+  <a href="https://github.com/Chang-LeHung/zettcode/releases/tag/zettcode-vscode-0.1.9">VS Code extension 0.1.9</a> ·
+  <a href="https://github.com/Chang-LeHung/zettcode/releases/tag/zettcode-mobile-0.1.1">Android app 0.1.1</a>
 </p>
 
 <p align="center">

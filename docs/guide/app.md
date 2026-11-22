@@ -7,7 +7,7 @@ window and opens a link from a conversation in your real browser.
 | App | Platform | How to get it |
 | --- | --- | --- |
 | Desktop (Electron) | macOS Apple Silicon, Windows, Linux | The `desktop-v<version>` installer, or `make desktop` |
-| Android (WebView) | Android | `make mobile` and `make mobile-apk`, which needs `ANDROID_HOME` |
+| Android (WebView) | Android | The [0.1.1 APK](https://github.com/Chang-LeHung/zettcode/releases/tag/zettcode-mobile-0.1.1), or `make mobile` and `make mobile-apk`, which needs `ANDROID_HOME` |
 
 The APK is written to `clients/mobile/android/app/build/outputs/apk/debug/`. `make desktop-package` writes the
 installers for the machine it runs on.

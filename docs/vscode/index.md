@@ -22,10 +22,11 @@ HTTP on your own machine, and the server does the work.
 The extension is on the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode),
 under the publisher **zettcode**.
 
-1. Open the extensions view (`Ctrl/Cmd+Shift+X`), search for **ZettCode**, and install it. Or install the `.vsix`:
+1. Open the extensions view (`Ctrl/Cmd+Shift+X`), search for **ZettCode**, and install it. Or install the `.vsix` from
+   the [0.1.9 release](https://github.com/Chang-LeHung/zettcode/releases/tag/zettcode-vscode-0.1.9):
 
    ```bash
-   code --install-extension zettcode-0.1.8.vsix
+   code --install-extension zettcode-0.1.9.vsix
    ```
 
    The [marketplace page](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode) says which version is

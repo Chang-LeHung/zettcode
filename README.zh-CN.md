@@ -8,7 +8,10 @@
   <a href="https://chang-lehung.github.io/zettcode/zh/guide/getting-started">快速开始</a> ·
   <a href="https://chang-lehung.github.io/zettcode/zh/guide/capabilities">它能做什么</a> ·
   <a href="https://chang-lehung.github.io/zettcode/zh/">使用文档</a> ·
-  <a href="https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode">VS Code 扩展</a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode">VS Code 扩展</a><br />
+  最新发布：
+  <a href="https://github.com/Chang-LeHung/zettcode/releases/tag/zettcode-vscode-0.1.9">VS Code 扩展 0.1.9</a> ·
+  <a href="https://github.com/Chang-LeHung/zettcode/releases/tag/zettcode-mobile-0.1.1">安卓端 0.1.1</a>
 </p>
 
 <p align="center">

@@ -19,10 +19,11 @@ shell 命令都在你的控制之下。它通过 HTTP 和本机的 `zettcode-ser
 扩展已经上架 [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode)，发布者
 是 **zettcode**。
 
-1. 打开扩展视图（`Ctrl/Cmd+Shift+X`），搜 **ZettCode**，安装。或者装 `.vsix`：
+1. 打开扩展视图（`Ctrl/Cmd+Shift+X`），搜 **ZettCode**，安装。或者从
+   [0.1.9 发布](https://github.com/Chang-LeHung/zettcode/releases/tag/zettcode-vscode-0.1.9)下载 `.vsix` 安装：
 
    ```bash
-   code --install-extension zettcode-0.1.8.vsix
+   code --install-extension zettcode-0.1.9.vsix
    ```
 
    [市场页面](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode)上写着最新版本；
