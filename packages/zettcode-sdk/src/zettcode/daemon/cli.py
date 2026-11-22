@@ -431,6 +431,13 @@ def _spawn(args: argparse.Namespace, plugin_arguments: dict[str, dict[str, objec
     from .process import Daemons, SpawnFailed
 
     try:
+        plugin_state = _plugin_state()
+    except ValueError as error:
+        # Read before the start: a handoff a parent wrote, or one a caller set by hand, that is not the JSON this
+        # daemon can inherit is reported here, and `start` keeps its one honest failure type below.
+        sys.stderr.write(f"zettcode daemon: could not start: {error}\n")
+        return EXIT_FAILED
+    try:
         record = Daemons().start(
             args.workspace,
             model=args.model,
@@ -443,17 +450,12 @@ def _spawn(args: argparse.Namespace, plugin_arguments: dict[str, dict[str, objec
             permission=args.permission,
             system_prompt=args.system,
             plugin_arguments=plugin_arguments,
-            plugin_state=_plugin_state(),
+            plugin_state=plugin_state,
         )
     except SpawnFailed as error:
         sys.stderr.write(f"zettcode daemon: could not start: {error}\n")
         if error.log is not None:
             sys.stderr.write(f"the daemon's first words are in {error.log}\n")
-        return EXIT_FAILED
-    except ValueError as error:
-        # `_plugin_state` reads a handoff a parent wrote, or a variable a caller set by hand: a value that is not the
-        # JSON this daemon can inherit is reported like every other start failure, not as a traceback.
-        sys.stderr.write(f"zettcode daemon: could not start: {error}\n")
         return EXIT_FAILED
     state = record.state
     if args.json:

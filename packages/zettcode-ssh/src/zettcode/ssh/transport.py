@@ -20,6 +20,10 @@ from zettcode.plugin_api import CHILD_STATE_ENV, PLUGIN_ARGS_ENV, subprocess_env
 from .remote import MAX_IMAGE, MAX_REQUEST, duration
 
 MAX_RESPONSE = 6 * 1024 * 1024
+#: How long the local side waits for an operation that is not a bash call. The worker's own alarm for those is
+#: `remote.DEFAULT_ALARM` (125 s), and the margin over any deadline is what keeps the remote message the one seen.
+OPERATION_TIMEOUT = 120.0
+LOCAL_MARGIN = 15.0
 HOST = re.compile(r"(?:[A-Za-z0-9_][A-Za-z0-9_.-]*@)?(?:[A-Za-z0-9_][A-Za-z0-9_.:-]*|\[[0-9a-fA-F:]+\])\Z")
 
 
@@ -218,7 +222,7 @@ class Transport:
             ).encode("utf-8")
             if len(request) > MAX_REQUEST:
                 raise ValueError("SSH request exceeds 4 MiB")
-            timeout = duration(arguments.get("timeout_seconds", 60)) if operation == "bash" else 120.0
+            timeout = duration(arguments.get("timeout_seconds", 60)) if operation == "bash" else OPERATION_TIMEOUT
             try:
                 process = await self._start()
                 assert process.stdin is not None and process.stdout is not None
@@ -238,7 +242,7 @@ class Transport:
                         raise ValueError("SSH response exceeds output limit or is not framed")
                     return output
 
-                output = await asyncio.wait_for(exchange(), timeout + 15)
+                output = await asyncio.wait_for(exchange(), timeout + LOCAL_MARGIN)
                 response = json.loads(output)
                 if (
                     not isinstance(response, dict)
@@ -266,7 +270,7 @@ class Transport:
         return await self._run_once(operation, arguments)
 
     async def _run_once(self, operation: str, arguments: dict[str, Any]) -> Any:
-        timeout = duration(arguments.get("timeout_seconds", 60)) if operation == "bash" else 120.0
+        timeout = duration(arguments.get("timeout_seconds", 60)) if operation == "bash" else OPERATION_TIMEOUT
         request = json.dumps(
             {"operation": operation, "workspace": self.target.path, "arguments": arguments},
             ensure_ascii=False,
@@ -323,7 +327,7 @@ class Transport:
                 asyncio.create_task(bounded(process.stderr, 16 * 1024)),
                 asyncio.create_task(process.wait()),
             ]
-            _, output, error, code = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout + 15)
+            _, output, error, code = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout + LOCAL_MARGIN)
             if code:
                 raise RuntimeError(f"SSH failed (exit {code}): {error.decode('utf-8', errors='replace')}")
             try:

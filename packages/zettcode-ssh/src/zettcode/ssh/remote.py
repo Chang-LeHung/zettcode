@@ -23,6 +23,8 @@ MAX_OUTPUT = 50 * 1024
 MAX_TIMEOUT = 600
 #: Room over a request's own deadline: the alarm must not fire before bash has killed and reported its process group.
 ALARM_MARGIN = 5
+#: The alarm every operation other than bash runs under, and what a bash call falls back to when its timeout is bad.
+DEFAULT_ALARM = 125
 MAX_IMAGE = 4 * 1024 * 1024
 MAX_REQUEST = 4 * 1024 * 1024
 TRUNCATED = "\n... [truncated; narrow the request]"
@@ -65,8 +67,8 @@ def alarm_for(request: dict[str, Any]) -> int:
             try:
                 return int(duration(arguments.get("timeout_seconds", 60))) + ALARM_MARGIN
             except ValueError:
-                return 125
-    return 125
+                return DEFAULT_ALARM
+    return DEFAULT_ALARM
 
 
 def prefix(value: str, size: int = MAX_OUTPUT) -> str:

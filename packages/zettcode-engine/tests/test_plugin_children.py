@@ -126,6 +126,41 @@ def test_malformed_json_handoff_is_refused(raw):
         decode_child_state(raw)
 
 
+def test_a_snapshot_a_daemon_cannot_inherit_names_the_plugin_or_the_set(tmp_path):
+    class NotJson(Plugin[PluginContext]):
+        name = "not-json"
+
+        def export_child(self, child):
+            return {"target": object()}
+
+    class NineKib(Plugin[PluginContext]):
+        """Under the limit on its own; two of these together are over it."""
+
+        name = "nine-kib"
+
+        def export_child(self, child):
+            return {"blob": "x" * (9 * 1024)}
+
+    class AlsoNineKib(NineKib):
+        name = "also-nine-kib"
+
+        def export_child(self, child):
+            return {"blob": "y" * (9 * 1024)}
+
+    class Fine(Plugin[PluginContext]):
+        name = "fine"
+
+        def export_child(self, child):
+            return {"target": {"host": "remote"}}
+
+    with pytest.raises(ValueError, match="'not-json'.*cannot inherit"):
+        load_plugins(config(tmp_path), builtins=[NotJson, Fine], entry_points=()).export_child(ChildSession("daemon"))
+    with pytest.raises(ValueError, match="combined child state cannot be inherited \\(also-nine-kib, nine-kib"):
+        load_plugins(config(tmp_path), builtins=[NineKib, AlsoNineKib], entry_points=()).export_child(
+            ChildSession("daemon")
+        )
+
+
 def test_inherited_default_off_plugin_is_selected_but_restored_by_name_not_origin(tmp_path, monkeypatch):
     class Backend(Plugin[PluginContext]):
         name = "backend"
