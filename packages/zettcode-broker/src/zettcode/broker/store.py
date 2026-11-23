@@ -386,14 +386,8 @@ class Store:
         ).fetchone()
         return None if row is None else row["sid"]
 
-    def edges(self) -> list[dict[str, Any]]:
-        """Return, for each pair of sessions that exchanged messages, how many and when last.
-
-        The totals are counted once, from the messages the file holds, and then kept up to date as messages are added:
-        counting them again for every look at the graph would read every message there is, which is most of a second
-        for a full history. They are not taken back when old messages are deleted, so a total is what this broker has
-        handled since it opened the file, plus what the file held then.
-        """
+    def _seed_pairs(self) -> dict[tuple[str, str], list[float]]:
+        """Return the counted pairs, counting them from the file the first time."""
         if self._pairs is None:
             self._pairs = {
                 (row["a"], row["b"]): [row["count"], row["last"]]
@@ -402,8 +396,84 @@ class Store:
                     " FROM messages WHERE kind = 'session' GROUP BY 1, 2"
                 )
             }
-        newest = heapq.nlargest(500, self._pairs.items(), key=lambda item: item[1][1])
+        return self._pairs
+
+    def edges(self) -> list[dict[str, Any]]:
+        """Return, for each pair of sessions that exchanged messages, how many and when last.
+
+        The totals are counted once, from the messages the file holds, and then kept up to date as messages are added:
+        counting them again for every look at the graph would read every message there is, which is most of a second
+        for a full history. They are not taken back when old messages are deleted, so a total is what this broker has
+        handled since it opened the file, plus what the file held then.
+
+        A pair is one entry whichever way the messages went: the key is the two ids, lowest first.
+        """
+        newest = heapq.nlargest(500, self._seed_pairs().items(), key=lambda item: item[1][1])
         return [{"a": a, "b": b, "count": int(total[0]), "last": total[1]} for (a, b), total in newest]
+
+    def recent_edges(self, window: int) -> tuple[list[dict[str, Any]], bool]:
+        """Return the pairs of the newest ``window`` one-to-one messages, and whether older ones are stored.
+
+        ``count`` is what the two said in that stretch of messages and ``total`` what they have said since the file
+        was opened — one call, one answer: a page that widens its stretch must not be told two different things about
+        the same moment, which is why the pairs and ``more`` come back from one call rather than from two a message
+        could land between. A pair is one entry whichever way the messages went, and ``more`` is whether anything is
+        stored before the stretch, so the page knows when widening has nothing left to find. The stretch is read from
+        the file every time (it is a page or so of messages), while the totals come from the cache.
+
+        ``window`` is a count of messages and is read as at least one: SQLite takes a negative ``LIMIT`` as no limit
+        at all, which would answer with the whole history while claiming to be a stretch of it.
+        """
+        window = max(1, int(window))
+        counted = self._db.execute(
+            "SELECT MIN(from_id, to_id) AS a, MAX(from_id, to_id) AS b, COUNT(*) AS count, MAX(ts) AS last"
+            " FROM (SELECT from_id, to_id, ts FROM messages WHERE kind = 'session' ORDER BY id DESC LIMIT ?)"
+            " GROUP BY 1, 2",
+            (window,),
+        ).fetchall()
+        pairs = self._seed_pairs()
+        recent = [
+            {
+                "a": row["a"],
+                "b": row["b"],
+                "count": int(row["count"]),
+                "total": int(pairs.get((row["a"], row["b"]), [row["count"]])[0]),
+                "last": row["last"],
+            }
+            for row in counted
+        ]
+        recent.sort(key=lambda pair: -pair["last"])
+        return recent, self._has_older_than(window)
+
+    def _has_older_than(self, window: int) -> bool:
+        """Return whether one-to-one messages older than the newest ``window`` ones are stored."""
+        found = self._db.execute(
+            "SELECT 1 FROM messages WHERE kind = 'session' ORDER BY id DESC LIMIT 1 OFFSET ?", (window,)
+        ).fetchone()
+        return found is not None
+
+    def sessions_seen(self) -> int:
+        """Return how many sessions this broker has recorded a one-to-one message for, either end counting once.
+
+        It is the population a picture of the recent past is a slice of, so a page can say ``9 of 208 nodes`` instead
+        of measuring that against the sessions connected at this moment — which a quiet session has long left. It is
+        the cache's history, counted when the file was opened and kept up to date since, so it does not fall when old
+        messages are trimmed out of the file: a session that once spoke here is still one of them.
+        """
+        return len({end for pair in self._seed_pairs() for end in pair})
+
+    def last_seen(self) -> dict[str, float]:
+        """Return, by session id, when it last took part in a one-to-one message: the whole history's own answer.
+
+        A list of sessions dates a row by this, and the picture may be a slice of the recent past: a session that
+        spoke an hour ago is not undated because that hour is outside the slice. Like :meth:`sessions_seen` it is the
+        cache's history, so it survives the trimming of the oldest messages.
+        """
+        seen: dict[str, float] = {}
+        for (a, b), (_count, last) in self._seed_pairs().items():
+            seen[a] = max(seen.get(a, 0.0), last)
+            seen[b] = max(seen.get(b, 0.0), last)
+        return seen
 
     # -- groups -----------------------------------------------------------------------------------
     def group_names(self) -> list[str]:

@@ -64,6 +64,29 @@ def test_the_two_directions_of_a_pair_are_one_line_with_the_counts_added():
     assert len(picture.routes) == 1 and len(picture.labels) == 1, "one line, one number"
 
 
+def test_two_entries_for_one_pair_add_their_totals_too_and_a_missing_one_leaves_it_unknown():
+    """The stretch and the whole history are added per direction the same way: a total that either side did not say
+    stays unknown rather than being reported as the half that was said."""
+    both = {
+        "sessions": [{"session_id": "a", "handle": "a"}, {"session_id": "b", "handle": "b"}],
+        "edges": [
+            {"a": "a", "b": "b", "count": 2, "total": 10},
+            {"a": "b", "b": "a", "count": 3, "total": 11},
+        ],
+    }
+    half = {
+        "sessions": [],
+        "edges": [{"a": "a", "b": "b", "count": 2, "total": 10}, {"a": "b", "b": "a", "count": 3}],
+    }
+
+    (_, links), (_, partial) = graph.build(both), graph.build(half)
+
+    assert [(link.count, link.total) for link in links] == [(5, 21)], "counts and totals are added alike"
+    assert [(link.count, link.total) for link in partial] == [(5, None)], (
+        "one silent direction leaves the whole unknown"
+    )
+
+
 def test_a_daemon_whose_process_is_gone_is_offline_even_with_no_messages():
     nodes, _ = graph.build({}, titles={"d-1": "watcher"}, offline=["d-1"])
 
@@ -95,7 +118,47 @@ def test_the_busiest_are_kept_and_the_readers_own_session_is_never_the_one_cut()
     assert graph.rank(nodes, links)[0].me, "rank puts the reader's own first whatever it has said"
     by_total = [totals.get(node.key, 0) for node in graph.rank(nodes, links)[1:]]
     assert by_total == sorted(by_total, reverse=True), "and the rest busiest first, so a cut drops the quietest"
+
+
+def test_a_session_working_now_keeps_its_box_when_the_picture_is_full():
+    """The page promises a box to whatever is working now: a daemon started a moment ago has said nothing, so it must
+    come before the quietest talker rather than after it — and the summary counts the working boxes actually drawn."""
+    sessions = [{"session_id": str(index), "handle": f"session-{index}", "status": "idle"} for index in range(18)]
+    sessions.append({"session_id": "busy", "handle": "builder", "status": "working"})
+    edges = [{"a": "0", "b": str(index), "count": index + 1} for index in range(1, 18)]
+    nodes, links = graph.build(
+        {"sessions": sessions, "edges": edges}, me="0", only={str(index) for index in range(19)} | {"busy"}
+    )
+
+    picture = graph.layout(nodes, links, 150, 44)
+
+    drawn = {node.key for node in picture.nodes}
+    assert len(drawn) == graph.MAX_NODES, "the picture is full"
+    assert "busy" in drawn, "a working session keeps its box: it is ranked before the talkers"
+    assert graph.rank(nodes, links)[1].key == "busy", "the reader's own first, the working one next"
+    assert "1 working" in graph.summary(nodes, links, picture), "and the count is of the boxes the picture has"
     assert [node.key for node in picture.nodes] == [node.key for node in graph.rank(nodes, links)[: len(picture.nodes)]]
+
+
+def test_many_working_sessions_take_half_the_seats_and_leave_the_traffic_in_the_picture():
+    """Sixteen sessions working at once must not turn the traffic picture into a census of them: half the seats are
+    held for the working, the rest goes to traffic, and the summary counts only what the picture holds."""
+    sessions = [{"session_id": "me", "handle": "main", "status": "idle"}]
+    sessions += [{"session_id": f"w{index}", "handle": f"worker-{index}", "status": "working"} for index in range(17)]
+    sessions += [{"session_id": f"t{index}", "handle": f"talker-{index}", "status": "idle"} for index in range(3)]
+    edges = [{"a": "t0", "b": "t1", "count": 40}, {"a": "t1", "b": "t2", "count": 40}]
+    nodes, links = graph.build({"sessions": sessions, "edges": edges}, me="me")
+
+    picture = graph.layout(nodes, links, 150, 44)
+
+    drawn = [node.key for node in picture.nodes]
+    assert {"t0", "t1", "t2", "me"} <= set(drawn), "the traffic and the reader are still there, whatever is working"
+    assert picture.routes, "with their lines: a picture of the conversation is what this tab is for"
+    assert drawn.index("w0") < drawn.index("t0"), "a session working now is seated before the talkers"
+    busy = sum(1 for node in picture.nodes if node.state == "working")
+    line = graph.summary(nodes, links, picture)
+    assert f"{busy} working" in line, "the count is of the working boxes the picture has"
+    assert "80 messages lately" in line, "and only the messages between the boxes it holds"
 
 
 # (20, 5) and (40, 10) are not here: `layout` draws nothing or one box in them, and the loops below would pass over an
@@ -269,6 +332,134 @@ def test_the_summary_says_when_a_number_found_no_place():
     assert "2 without a number" in graph.summary(nodes, links, picture)
 
 
+def test_a_wide_whole_history_is_written_where_there_is_room_rather_than_left_out():
+    """Five digits do not fit between a label and the box beside it; the picture has rows to spare, so the number goes
+    two or three rows out instead of being dropped as though the picture were full."""
+    wire = {
+        "sessions": [
+            {"session_id": "me", "handle": "main", "status": "working"},
+            {"session_id": "a", "handle": "review", "status": "idle"},
+        ],
+        "edges": [{"a": "me", "b": "a", "count": 3, "total": 32000}],
+    }
+    nodes, links = graph.build(wire, me="me")
+
+    picture = graph.layout(nodes, links, 110, 32)
+
+    assert [text for _, _, text, _ in picture.totals] == ["32000"], "the room is there, so the number is written"
+    left, top, _, index = picture.totals[0]
+    first_x, first_y, first_text = next((x, y, t) for x, y, t, at in picture.labels if at == index)
+    assert left == first_x + first_text.index("3"), "in its own digit's column"
+    assert 1 <= abs(top - first_y) <= 3, "and one to three rows out, where the picture had room"
+
+
+def test_a_line_whose_two_have_said_more_in_all_writes_the_whole_history_beside_its_own_number():
+    """The number on the line is the stretch the page read; the whole history follows it in a plainer style, lined up
+    with its digits, and only when the broker said what it was and it is not that same number again."""
+    sessions = [{"session_id": str(index), "handle": f"session-{index}", "status": "idle"} for index in range(6)]
+    edges = [{"a": "0", "b": str(index), "count": 3, "total": 58} for index in range(1, 5)]
+    edges.append({"a": "0", "b": "5", "count": 2, "total": 2})
+    nodes, links = graph.build({"sessions": sessions, "edges": edges}, me="0")
+
+    picture = graph.layout(nodes, links, 110, 32)
+
+    assert len(picture.totals) >= 3, "most second numbers find a place in a roomy picture"
+    for left, top, text, index in picture.totals:
+        route = picture.routes[index]
+        assert text == str(route.link.total) == "58", "the pair that said as much in all as lately gets no second one"
+        first_x, first_y, first_text = next((x, y, t) for x, y, t, at in picture.labels if at == index)
+        digit = first_x + first_text.index(str(route.link.count))
+        if top == first_y:
+            assert left in (digit + len(first_text), first_x - len(text)), "beside the number, on its row"
+        else:
+            assert 1 <= abs(top - first_y) <= 3 and left == digit, "one to three rows over its own digits, or under"
+
+
+def test_the_whole_history_is_written_quieter_than_the_number_on_the_line():
+    theme = Theme()
+    wire = {
+        "sessions": [
+            {"session_id": "me", "handle": "main", "status": "working"},
+            {"session_id": "a", "handle": "review", "status": "idle"},
+        ],
+        "edges": [{"a": "me", "b": "a", "count": 3, "total": 58}],
+    }
+    nodes, links = graph.build(wire, me="me")
+    picture = graph.layout(nodes, links, 110, 32)
+    canvas = painted(picture)
+
+    assert picture.totals and picture.labels
+    for left, top, text, _index in picture.totals:
+        for offset in range(len(text)):
+            assert canvas.cells[top][left + offset].style.foreground == theme.muted
+    for left, top, _text, _index in picture.labels:
+        assert canvas.cells[top][left].style.foreground != theme.muted, "the number on the line keeps the line's colour"
+
+
+@pytest.mark.parametrize("size", [(80, 24), (110, 32), (150, 44), (44, 20)])
+@pytest.mark.parametrize("pairs", [5, 8, 12])
+def test_a_second_number_never_stacks_on_another_or_loses_its_way_back_to_its_own(size, pairs):
+    """Two numbers in one column with a row between them read as one figure, and a total two or three rows out is
+    only its own number's when nothing sits between the two — no other number, and no line running across."""
+    sessions = [
+        {"session_id": str(index), "handle": f"session-{index}", "status": "idle"} for index in range(pairs + 1)
+    ]
+    edges = [{"a": str(index), "b": str(index + 1), "count": index + 2, "total": 32000} for index in range(pairs)]
+    nodes, links = graph.build({"sessions": sessions, "edges": edges}, me="0")
+
+    picture = graph.layout(nodes, links, *size)
+
+    numbers = {(x + i, y): index for x, y, text, index in picture.labels for i in range(len(text))}
+    assert picture.totals, "something was written, or there is nothing to check"
+    for left, top, text, index in picture.totals:
+        own_x, own_y, own_text = next((x, y, t) for x, y, t, at in picture.labels if at == index)
+        own = {(own_x + i, own_y) for i in range(len(own_text))}
+        foreign = set(numbers) - own
+        own_cells = {(left + i, top) for i in range(len(text))}
+        assert not own_cells & foreign, "never on another number"
+        for x, y in own_cells:
+            assert (x, y - 1) not in foreign and (x, y + 1) not in foreign, "nor a row above or below another number"
+        step = 1 if top > own_y else -1
+        for between in range(own_y + step, top, step):
+            assert not {(x, between) for x, _ in own_cells} & (foreign | set(picture.cells)), (
+                "nothing between it and its own number: no other number, no line running across"
+            )
+
+
+def test_build_keeps_only_the_sessions_the_page_read_out_of_the_broker():
+    """A roster entry the stretch of messages did not touch gets no box, and a line with an end outside the set is
+    dropped, so the picture never holds a line to a box it does not draw."""
+    wire = {
+        "sessions": [
+            {"session_id": "me", "handle": "main", "status": "working"},
+            {"session_id": "quiet", "handle": "asleep", "status": "idle"},
+        ],
+        "edges": [{"a": "me", "b": "a", "count": 4, "total": 9}, {"a": "quiet", "b": "b", "count": 2}],
+    }
+
+    nodes, links = graph.build(wire, me="me", only={"me", "a"})
+
+    assert [node.key for node in nodes] == ["me", "a"], "the quiet entry and the unnamed end are both gone"
+    assert [(link.a, link.b, link.count, link.total) for link in links] == [("me", "a", 4, 9)]
+
+
+def test_the_summary_says_how_many_of_the_sessions_the_broker_knows_the_picture_shows():
+    nodes, links = crowd(4)
+    picture = graph.layout(nodes, links, 110, 32)
+
+    assert "4 nodes" in graph.summary(nodes, links, picture), "nothing to compare against: every one of them"
+    assert "4 of 209 nodes" in graph.summary(nodes, links, picture, total=209)
+
+
+def test_a_picture_that_holds_more_nodes_than_the_history_names_is_not_a_slice_of_it():
+    """A session working now, or the reader's own, is in the picture without being in the message file's history:
+    ``of N`` would then describe a slice smaller than the picture, so the line says only what it holds."""
+    nodes, links = crowd(4)
+    picture = graph.layout(nodes, links, 110, 32)
+
+    assert graph.summary(nodes, links, picture, total=2).startswith("4 nodes")
+
+
 def test_two_wide_boxes_in_the_narrowest_area_the_page_draws_both_and_the_line():
     nodes, links = graph.build(
         {
@@ -295,7 +486,7 @@ def test_a_summary_cut_by_a_narrow_page_loses_the_working_count_and_not_what_was
 
     line = graph.summary(nodes, links, picture)
 
-    assert line.index("quieter not drawn") < line.index("working"), "what is left out comes first"
+    assert line.index("not drawn") < line.index("working"), "what is left out comes first"
     assert line.endswith("working")
 
 
@@ -465,7 +656,7 @@ def test_the_summary_says_what_the_graph_holds_and_what_a_selected_node_is_part_
     assert "4 nodes" in overall and "1 working" in overall and "57 messages" in overall
     assert "review" in chosen and "2 lines" in chosen and "57 messages" in chosen
     many, many_links = crowd(40)
-    assert "quieter not drawn" in graph.summary(many, many_links, graph.layout(many, many_links, 110, 32))
+    assert "not drawn" in graph.summary(many, many_links, graph.layout(many, many_links, 110, 32))
 
 
 def test_the_legend_names_every_state_with_its_own_colour_and_starts_with_what_a_number_means():

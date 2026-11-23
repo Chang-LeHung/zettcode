@@ -560,6 +560,46 @@ def test_pair_totals_are_counted_once_and_kept_up_to_date_without_counting_again
     assert Store(tmp_path / "broker.db", clock=lambda: 0.0).edges() == again
 
 
+def test_a_window_counts_the_newest_messages_and_keeps_each_pair_s_whole_history(tmp_path: Path):
+    """The stretch a page read is what its picture is made of, while ``total`` stays what the file holds, and asking
+    for more than is stored says so instead of pretending there is more."""
+    store = Store(tmp_path / "broker.db")
+    for _ in range(60):
+        _say(store, A, B)
+    for _ in range(10):
+        _say(store, A, C)
+
+    edges, more = store.recent_edges(16)
+
+    assert {(e["a"], e["b"]): (e["count"], e["total"]) for e in edges} == {(A, C): (10, 10), (A, B): (6, 60)}, (
+        "the newest sixteen, and how much each pair has said in all"
+    )
+    assert [e["last"] for e in edges] == sorted((e["last"] for e in edges), reverse=True), "the busiest now first"
+    assert more, "fifty-four older messages are still stored"
+    assert not store.recent_edges(70)[1], "and nothing is older than the seventieth"
+
+
+def test_the_end_of_a_stretch_is_an_off_by_one_nobody_should_get_wrong(tmp_path: Path):
+    store = Store(tmp_path / "broker.db")
+    for _ in range(70):
+        _say(store, A, B)
+
+    assert store.recent_edges(69)[1], "one message is older than the newest sixty-nine"
+    assert not store.recent_edges(70)[1], "and none older than all seventy"
+
+
+def test_a_group_message_is_no_part_of_a_pair_s_window(tmp_path: Path):
+    store = Store(tmp_path / "broker.db")
+    for _ in range(4):
+        _say(store, A, B)
+    _say(store, A, "team", kind="group")
+
+    edges, more = store.recent_edges(5)
+
+    assert [(e["a"], e["b"], e["count"]) for e in edges] == [(A, B, 4)], "a group has no far end to pair with"
+    assert not more, "and it is not a message this window counts"
+
+
 def test_the_totals_are_not_taken_back_when_old_messages_are_deleted():
     store = Store(keep=10)
     store.edges()  # counting starts, so that what follows is kept up to date

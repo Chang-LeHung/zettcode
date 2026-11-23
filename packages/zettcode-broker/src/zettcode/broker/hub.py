@@ -756,13 +756,32 @@ class Hub:
         found = self.store.before(before, limit)
         return {"messages": found, "more": bool(found) and self.store.has_before(found[0]["id"])}
 
-    def graph(self) -> dict[str, Any]:
-        """Return who is here, the groups, how much each pair has said and the latest messages: the gateway's graph."""
+    def graph(self, window: int = 0) -> dict[str, Any]:
+        """Return who is here, the groups, how much each pair has said and the latest messages: the gateway's graph.
+
+        With ``window``, only the newest ``window`` one-to-one messages are counted: an edge's ``count`` is that
+        stretch and its ``total`` is what the two have said since the file was opened. The answer also carries a
+        ``window`` line — the count asked for, whether older messages are stored, and how many sessions this broker
+        has recorded one for — which is what a page needs to widen its stretch of the recent past and to say how much
+        of the whole it is showing, and a ``last`` map: when each session last took part in a one-to-one message, over
+        the whole history, so a list that dates its rows is not dated by a slice. All of it comes from one call, so
+        the numbers describe the same moment.
+        """
+        if not window:
+            return {
+                "sessions": [entry.to_wire() for entry in self.roster.snapshot()],
+                "groups": [self._group_wire(group, last=True) for group in self.store.groups()],
+                "edges": self.store.edges(),
+                "recent": self.store.recent(limit=50),
+            }
+        edges, more = self.store.recent_edges(window)
         return {
             "sessions": [entry.to_wire() for entry in self.roster.snapshot()],
             "groups": [self._group_wire(group, last=True) for group in self.store.groups()],
-            "edges": self.store.edges(),
+            "edges": edges,
             "recent": self.store.recent(limit=50),
+            "last": self.store.last_seen(),
+            "window": {"asked": int(window), "more": more, "sessions": self.store.sessions_seen()},
         }
 
     def _sender(self, key: str | None, body: dict[str, Any]) -> Sender:

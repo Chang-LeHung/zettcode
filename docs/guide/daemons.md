@@ -93,6 +93,19 @@ row under the mark takes one of four keys.
 | `s` | Stop it and **keep** its record, shown as `idle`. |
 | `d` | Delete the record **and its conversation**. Two presses: the first asks, any other key forgets. |
 
+### The Graph tab
+
+It is a picture of the recent past: a box per session, a line between two that have messaged each other, and the
+number on the line is what they said in the newest stretch of messages — 64 of them, widened to 128, 192 and so on
+until the picture has enough sessions to fill it, and no further than 1024. When the two have said more over time, the
+whole history is written beside that number in grey, though there is only room for it on some lines.
+
+So a session that has said nothing in that stretch is not drawn, and a daemon nobody has written to for a week keeps
+its record on the other tabs without a box here; one that is working right now gets a box ahead of the talkers — up to
+half the picture, so a machine with many of them working still draws the conversation. The line over the picture says
+how many of the sessions the broker has recorded are shown (`9 of 208 nodes`). Arrow keys move to the nearest box and
+dim the rest, `Esc` lets go of it, and `r` reads the machine again.
+
 `/` searches the tab, `r` reads the machine again, and `Esc` clears the search before it closes the page.
 
 `stop` and `kill` refuse a daemon in the middle of a turn; add `--force` to stop it anyway. A model or effort change

@@ -155,8 +155,14 @@ class Web:
         return await self._guarded(request, work)
 
     async def _graph(self, request: Request) -> JSONResponse:
-        async def work(_: Request) -> dict[str, Any]:
-            return self.hub.graph()
+        async def work(asked: Request) -> dict[str, Any]:
+            try:
+                window = int(asked.query_params.get("window") or 0)
+            except ValueError:
+                raise Refused("invalid", "window is a count of messages") from None
+            if window < 0:
+                raise Refused("invalid", "window is a count of messages")
+            return self.hub.graph(window)
 
         return await self._guarded(request, work)
 

@@ -14,7 +14,16 @@ HTTP, for anyone who holds the token — a session, a script, a hook, ``curl``::
     POST /groups       {"action": "create"|"add"|"remove"|"leave"|"delete", "name", "members"?}
     GET  /history      ?with=<session>|group=<name>&limit=&before=   (X-Session-Key: only the asker's own;
                        the owner's token alone: ?a=&b= or ?group=)  ->  {"messages": [...]}
-    GET  /graph        ->  {"sessions", "groups", "edges", "recent"}   (token only; for the gateway's graph)
+    GET  /graph        ?window=<count>  ->  {"sessions", "groups", "edges", "recent", "window"?, "last"?}   (token
+                       only; for the gateway's graph. An edge is one entry per unordered pair: `a` and `b` with the
+                       lowest id first, `count` the messages, `last` when the newest one was. With ``window`` only the
+                       newest that many one-to-one messages are counted — `count` is that stretch and `total` the
+                       whole history — "window" says `asked`, whether older messages are stored (`more`) and how many
+                       sessions this broker has recorded one for (`sessions`), and "last" maps a session id to when it
+                       last took part in a one-to-one message, so a list that dates its rows is not dated by a slice.
+                       "last" is one-to-one only: a session that has only ever spoken in a group is not in it, as it
+                       was not in `edges` before. Both are what a page needs to widen its picture of the recent past
+                       and to say how much of the whole it shows)
     GET  /older        ?before=<message id>&limit=  ->  {"messages", "more"}   the stored messages before one
     GET  /timeline     ?since=&until=&limit=  ->  {"messages", "truncated", "span", "now"}   stored messages, to replay on
                        screen (at most MAX_WINDOW; "truncated" says the stretch held more and its start is missing)

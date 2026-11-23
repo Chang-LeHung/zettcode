@@ -1,10 +1,15 @@
 """The picture on ``/hub``'s first tab: sessions as boxes, messages as lines, one colour per state.
 
 Nothing here reads anything. :func:`build` turns the broker's graph into :class:`Node` and :class:`Link` values;
-:func:`layout` ranks the nodes by how much they talk, keeps as many of the busiest as fit the rectangle without
-touching, puts the reader's own session in the middle with the rest on a ring, and routes every line around the boxes
-it does not belong to; :func:`paint` draws the result, and may be called again with another node selected without
-routing anything again.
+:func:`layout` ranks the nodes by how much they say in the stretch of messages the page read, keeps as many of the
+busiest as fit the rectangle without touching, puts the reader's own session in the middle with the rest on a ring,
+and routes every line around the boxes it does not belong to; :func:`paint` draws the result, and may be called again
+with another node selected without routing anything again.
+
+The picture is a slice of the recent past, not a census: the page hands :func:`build` the sessions of the newest
+messages it read (its ``only``), from :data:`WINDOW_STEP` of them upwards until that stretch would fill
+:data:`MAX_NODES` boxes, which is the page's loop and not this module's. A session nothing runs and nobody has
+written to for a week is not drawn, however busy it once was.
 
 How a line is drawn:
 
@@ -12,9 +17,11 @@ How a line is drawn:
   and joins the lines it meets (``├ ┬ ┼ ...``). It is found by A* over the character grid: a step down costs twice a
   step across (a cell is about twice as tall as it is wide), a turn costs, and a cell another line already uses costs
   more, so lines keep apart where they can.
-* Its number is the messages the two exchanged, both ways, written beside the end it is drawn from: the other end
-  than the reader's own session, otherwise the busier one. The line has the colour of that end's state, so the number
-  and the colour say whose line it is.
+* Its number is the messages the two exchanged in that stretch, both ways, written beside the end it is drawn from:
+  the other end than the reader's own session, otherwise the busier one. The line has the colour of that end's state,
+  so the number and the colour say whose line it is.
+* The whole history is written beside that number, in the muted colour, whenever the broker said what it was and it
+  differs from the stretch: `` 3 `` with ``58`` over it reads "three lately, fifty-eight ever".
 * With a node selected its lines stay as they are and everything else is dimmed.
 
 A state has one colour; the legend says which. They are the theme's own, so a palette change recolours the picture, and
@@ -25,7 +32,7 @@ from __future__ import annotations
 
 import heapq
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -35,7 +42,9 @@ from zettcode.tui.render import Style, display_width, truncate
 __all__ = [
     "BOX_HEIGHT",
     "MAX_NODES",
+    "MAX_STRETCH",
     "STATES",
+    "WINDOW_STEP",
     "Link",
     "Node",
     "Picture",
@@ -59,6 +68,22 @@ STATES: tuple[State, ...] = ("working", "idle", "external", "offline")
 #: How many nodes the picture draws at most, and how many lines; more is a smear.
 MAX_NODES = 16
 MAX_LINKS = 40
+
+#: How many of the newest one-to-one messages the page reads for one picture, and how many more it adds at a time while
+#: that stretch would fill fewer boxes than :data:`MAX_NODES`: 64, then 128, 192, ... until the picture has enough
+#: sessions in it, the stored messages run out, or :data:`MAX_STRETCH` is reached.
+WINDOW_STEP = 64
+
+#: How many of the picture's seats a session working now may take ahead of traffic, the reader's own not counting:
+#: enough that a handful of daemons are never the boxes cut, few enough that a machine with many of them working still
+#: draws the traffic it is there to show.
+WORKING_SEATS = MAX_NODES // 2
+
+#: The widest stretch one picture reads. A hub whose newest thousand messages still name fewer than
+#: :data:`MAX_NODES` sessions is drawn from those: reading a whole history for one keypress is not worth it, and the
+#: summary says how many of the sessions there are (`9 of 208 nodes`). It is named for the picture and not for the
+#: broker's own cap of a timeline's messages, which is :data:`zettcode.broker.store.MAX_WINDOW`.
+MAX_STRETCH = MAX_NODES * WINDOW_STEP
 
 #: A box is this many rows tall, and at most this many columns wide, label included.
 BOX_HEIGHT = 3
@@ -101,11 +126,14 @@ class Node:
 
 @dataclass(frozen=True, slots=True)
 class Link:
-    """Two nodes that exchanged messages, and how many."""
+    """Two nodes that exchanged messages: how many in the stretch the page read, and how many in all."""
 
     a: str
     b: str
     count: int
+    #: What the two have said since the broker opened its file, when the broker said it: ``None`` for a picture of the
+    #: whole graph, where it would only repeat ``count``. The label is left out where the two are equal anyway.
+    total: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +155,7 @@ class Picture:
         routes: The lines, strongest first.
         cells: For each cell a line runs through, which routes and which sides of the cell each joins.
         labels: ``(x, y, text, route index)`` for each number that found a place.
+        totals: ``(x, y, text, route index)`` for each whole-history total that found a place beside its line's number.
         hidden_nodes: How many nodes did not fit.
         undrawn: How many lines join two drawn nodes and are not drawn: only the strongest :data:`MAX_LINKS` are
             routed, and a line with no way round the boxes is not drawn either.
@@ -138,6 +167,7 @@ class Picture:
     routes: tuple[Route, ...] = ()
     cells: Mapping[Cell, tuple[tuple[int, int], ...]] = field(default_factory=dict)
     labels: tuple[tuple[int, int, str, int], ...] = ()
+    totals: tuple[tuple[int, int, str, int], ...] = ()
     hidden_nodes: int = 0
     undrawn: int = 0
     unnumbered: int = 0
@@ -171,6 +201,7 @@ def build(
     me: str = "",
     titles: Mapping[str, str] | None = None,
     offline: Sequence[str] = (),
+    only: Collection[str] | None = None,
 ) -> tuple[tuple[Node, ...], tuple[Link, ...]]:
     """Return the nodes and links of the broker's graph.
 
@@ -178,17 +209,23 @@ def build(
     nothing runs it, whether it was a daemon that was stopped or a session that was only stored.
 
     Args:
-        graph: What ``Client.traffic_graph`` returned: ``sessions`` and ``edges``.
+        graph: What ``Client.traffic_graph`` returned: ``sessions`` and ``edges``. An edge is one entry per unordered
+            pair — the broker sends it that way — but two entries naming the same pair are added, counts and the
+            totals the broker said, rather than drawn twice.
         me: The reader's own session id, drawn in the middle.
         titles: Names for sessions that are stored but not registered, by id.
         offline: Ids of daemons of this workspace whose process is gone, which get a node even with no messages.
+        only: The sessions that may have a box — the ones the page's stretch of the newest messages touched, and the
+            ones working now — or ``None`` for every session the broker knows. A line with an end outside it is left
+            out, so the picture never keeps a line to a box it does not draw.
     """
     names = dict(titles or {})
     gone = set(offline)
+    allowed = None if only is None else set(only)
     nodes: dict[str, Node] = {}
     for entry in graph.get("sessions", ()):
         key = str(entry.get("session_id", ""))
-        if not key:
+        if not key or (allowed is not None and key not in allowed):
             continue
         label = str(entry.get("handle") or entry.get("title") or key[:8])
         nodes[key] = Node(key, label, state_of(str(entry.get("status", "idle")), str(entry.get("kind", ""))), key == me)
@@ -197,16 +234,28 @@ def build(
         a, b = str(edge.get("a", "")), str(edge.get("b", ""))
         if not a or not b or a == b:
             continue
+        if allowed is not None and (a not in allowed or b not in allowed):
+            continue
         for key in (a, b):
             if key not in nodes:
                 nodes[key] = Node(key, names.get(key) or key[:8], "offline", key == me)
-        # A pair is one line whichever way the messages went: two entries for it are added, not drawn twice.
         count = int(edge.get("count", 1))
+        total = edge.get("total")
+        total = int(total) if total is not None else None
         seen = pairs.get(frozenset((a, b)))
-        pairs[frozenset((a, b))] = Link(a, b, count + (seen.count if seen else 0))
+        # A second entry for the same pair is the other direction of it: the counts are added, and so are the totals
+        # when the broker said both — a total that is missing on either side leaves the whole unknown rather than
+        # undercounted.
+        if seen is None:
+            both = total
+        elif seen.total is None or total is None:
+            both = None
+        else:
+            both = seen.total + total
+        pairs[frozenset((a, b))] = Link(a, b, count + (seen.count if seen else 0), both)
     links = list(pairs.values())
     for key in gone:
-        if key not in nodes and key in names:
+        if key not in nodes and key in names and (allowed is None or key in allowed):
             nodes[key] = Node(key, names[key], "offline", key == me)
     return tuple(nodes.values()), tuple(links)
 
@@ -234,10 +283,23 @@ def _totals(links: Sequence[Link]) -> dict[str, int]:
 
 
 def rank(nodes: Sequence[Node], links: Sequence[Link]) -> list[Node]:
-    """Return the nodes busiest first, the reader's own at the head whatever it has said."""
+    """Return the nodes busiest first, the reader's own at the head and up to half the seats held for the working ones.
+
+    Working comes before traffic because the page promises a box to a session that is working now: a daemon spawned a
+    moment ago has said nothing, and the page would otherwise cut exactly the one box its reader knows to look for.
+    The cost is paid by the quietest talker when the picture is full, which is the seat worth giving up.
+
+    Only :data:`WORKING_SEATS` of them are held, though: a machine with sixteen sessions working at once is a normal
+    day here, and a picture that gave them every box would be a census of the working with no traffic and no lines at
+    all — the opposite of what this page is for. Past that, traffic decides like everything else.
+    """
     total = _totals(links)
     order = sorted(range(len(nodes)), key=lambda i: (not nodes[i].me, -total.get(nodes[i].key, 0), i))
-    return [nodes[i] for i in order]
+    ranked = [nodes[i] for i in order]
+    mine = [node for node in ranked if node.me]
+    working = [node for node in ranked if not node.me and node.state == "working"][:WORKING_SEATS]
+    seated = {node.key for node in working}
+    return mine + working + [node for node in ranked if not node.me and node.key not in seated]
 
 
 def _ring_order(nodes: Sequence[Node], links: Sequence[Link]) -> list[Node]:
@@ -517,13 +579,14 @@ def layout(nodes: Sequence[Node], links: Sequence[Link], width: int, height: int
         for cell, sides in zip(path, _sides(path, start_bit, end_bit), strict=True):
             cells.setdefault(cell, []).append((index, sides))
             used[cell] = used.get(cell, 0) | (1 if sides & (_E | _W) else 0) | (2 if sides & (_N | _S) else 0)
-    labels = _place_labels(routes, cells, owner, width, height)
+    labels, totals = _place_labels(routes, cells, owner, width, height)
     return Picture(
         nodes=tuple(shown),
         boxes=boxes,
         routes=tuple(routes),
         cells={cell: tuple(parts) for cell, parts in cells.items()},
         labels=tuple(labels),
+        totals=tuple(totals),
         hidden_nodes=len(nodes) - len(shown),
         undrawn=len(inside) - len(routes),
         unnumbered=len(routes) - len(labels),
@@ -536,16 +599,28 @@ def _place_labels(
     owner: Mapping[Cell, str],
     width: int,
     height: int,
-) -> list[tuple[int, int, str, int]]:
+) -> tuple[list[tuple[int, int, str, int]], list[tuple[int, int, str, int]]]:
     """Put each line's number on its own line close to the end it is drawn from, or beside it, where nothing else is.
 
     On the line it replaces a straight stretch only (never a corner, never the cell that joins the box at the far
     end). Beside it, any side of any of the first cells will do, including the first, so a line of one cell still gets
     its number. A number is never written over a box, over a cell any line runs through or over another number, and
     it never touches a box other than the two its line joins, where it would read as that box's own label.
+
+    A line whose two have said more in all than in the stretch gets the whole history as a second number, above,
+    below or beside the first, in the same free cells: the first number is the present, and the one without a
+    surrounding space is what keeps it from reading as part of the line. A second number with nowhere to go is left
+    out rather than pushed onto a line or a box.
+
+    Every number on a line is placed before any whole history is: a quiet line's second number must not take the cell
+    a later line's number needed, because the number that cannot be written is counted on the summary and the one that
+    cannot be written beside it is not. A second number is also kept a column clear of any other number, since
+    ``7 58 3`` read as one figure.
     """
     taken: set[Cell] = set()
     out: list[tuple[int, int, str, int]] = []
+    totals: list[tuple[int, int, str, int]] = []
+    written: dict[int, tuple[int, int, str]] = {}
 
     def free(spot: set[Cell], ends: tuple[str, str]) -> bool:
         for x, y in spot:
@@ -555,10 +630,54 @@ def _place_labels(
                 return False
         return True
 
+    def apart(spot: set[Cell], own: set[Cell], row: int) -> bool:
+        """Return whether a second number stands alone and is still read as part of the number it belongs to.
+
+        ``7 58 3`` on one row reads as one figure, and so do two numbers in one column with only a row between them,
+        so a spot keeps a column clear on its row and a row clear in its columns. A number two or three rows out is
+        also only its neighbour's when nothing at all sits between the two — another number, or a line running across
+        the column, its own pair's included — so the rows in between have to be clear in the same columns of both, or
+        the pair is read as two unrelated figures.
+        """
+        foreign = taken - own
+        y = next(iter(spot))[1]
+        for x, _ in spot:
+            if any((x + step, y) in foreign for step in (-1, 1)):
+                return False
+            if (x, y - 1) in foreign or (x, y + 1) in foreign:
+                return False
+        if y != row:
+            step = 1 if y > row else -1
+            for between in range(row + step, y, step):
+                if any((x, between) in foreign or (x, between) in cells for x, _ in spot):
+                    return False
+        return True
+
+    def beside(
+        number: str, left: int, digit: int, row: int, text: str, ends: tuple[str, str], own: set[Cell]
+    ) -> tuple[int, int] | None:
+        """Return a place for a second number: over its own number's digits, under them, after the first, before it.
+
+        The candidates are lined up with the digits of the number already there, not with its surrounding spaces, so
+        the two read as one pair rather than as two figures a column apart. The rows further out are tried because a
+        five-digit history does not fit in the one row a box may be covering: a number that had a dozen rows to choose
+        from must not be left out as though the picture were full. Before the first is measured from the label's own
+        left edge, so that a label written on its line has somewhere to put it too.
+        """
+        for x, y in (
+            *((digit, row - away) for away in (1, 2, 3)),
+            *((digit, row + away) for away in (1, 2, 3)),
+            (digit + len(text), row),
+            (left - len(number), row),
+        ):
+            spot = {(x + i, y) for i in range(len(number))}
+            if free(spot, ends) and apart(spot, own, row):
+                return x, y
+        return None
+
     for index, route in enumerate(routes):
         text = f" {route.link.count} "
         path = route.cells
-        placed = False
         for start in range(1, len(path) - len(text)):
             run = path[start : start + len(text)]
             straight = all(cell[1] == run[0][1] for cell in run) and all(
@@ -568,11 +687,12 @@ def _place_labels(
                 continue
             if any(len(cells[cell]) != 1 for cell in run):
                 continue
-            out.append((min(cell[0] for cell in run), run[0][1], text, index))
+            left = min(cell[0] for cell in run)
+            written[index] = (left, run[0][1], text)
+            out.append((left, run[0][1], text, index))
             taken.update(run)
-            placed = True
             break
-        if placed:
+        if index in written:
             continue
         number = str(route.link.count)
         for cell_x, cell_y in path[:12]:
@@ -584,13 +704,26 @@ def _place_labels(
             ):
                 spot = {(left + i, top) for i in range(len(number))}
                 if free(spot, (route.link.a, route.link.b)):
+                    written[index] = (left, top, number)
                     out.append((left, top, number, index))
                     taken |= spot
-                    placed = True
                     break
-            if placed:
+            if index in written:
                 break
-    return out
+    for index, route in enumerate(routes):
+        if index not in written:
+            continue
+        total = route.link.total
+        if total is None or total == route.link.count:
+            continue
+        left, row, text = written[index]
+        digit = left + text.index(str(route.link.count))
+        own = {(left + i, row) for i in range(len(text))}
+        placed = beside(str(total), left, digit, row, text, (route.link.a, route.link.b), own)
+        if placed is not None:
+            totals.append((placed[0], placed[1], str(total), index))
+            taken |= {(placed[0] + i, placed[1]) for i in range(len(str(total)))}
+    return out, totals
 
 
 # -- painting ---------------------------------------------------------------------------------------
@@ -623,6 +756,12 @@ def paint(canvas: Canvas, theme: Theme, x: int, y: int, picture: Picture, select
     for left, top, text, index in picture.labels:
         route = picture.routes[index]
         canvas.draw_text(x + left, y + top, text, Style(foreground=colour_of(route), background=page, bold=lit(route)))
+    for left, top, text, index in picture.totals:
+        # The whole history is the quieter half of the pair: it says how busy the two have been, while the number on
+        # the line says how busy they are now, and a second number in the line's own colour would compete with it.
+        route = picture.routes[index]
+        quiet = theme.muted if lit(route) else theme.border
+        canvas.draw_text(x + left, y + top, text, Style(foreground=quiet, background=page))
 
     near = {selected} if selected is not None else set()
     for route in picture.routes:
@@ -695,8 +834,20 @@ def nearest(picture: Picture, selected: str | None, direction: str) -> str | Non
     return chosen[1] if chosen else None
 
 
-def summary(nodes: Sequence[Node], links: Sequence[Link], picture: Picture, selected: str | None = None) -> str:
-    """Return the line over the picture: what the whole graph holds, or what the selected node is part of."""
+def summary(
+    nodes: Sequence[Node],
+    links: Sequence[Link],
+    picture: Picture,
+    selected: str | None = None,
+    *,
+    total: int | None = None,
+) -> str:
+    """Return the line over the picture: what the whole graph holds, or what the selected node is part of.
+
+    ``total`` is how many sessions this broker has recorded, when the picture is a slice of the recent past rather
+    than every session there is: the line then says ``9 of 208 nodes`` instead of claiming those are all there are.
+    ``None`` says the picture is the whole graph, and that nothing is being left out by the stretch.
+    """
     chosen = next((node for node in nodes if node.key == selected), None)
     if chosen is not None:
         mine = [link for link in links if selected in (link.a, link.b)]
@@ -706,11 +857,18 @@ def summary(nodes: Sequence[Node], links: Sequence[Link], picture: Picture, sele
             f"{glyph(chosen.state)} {_text(chosen)} \u00b7 {chosen.state} \u00b7 "
             f"{shown} {'line' if len(mine) == 1 else 'lines'} \u00b7 {sum(link.count for link in mine)} messages"
         )
-    working = sum(1 for node in nodes if node.state == "working")
+    working = sum(1 for node in (picture.nodes or nodes) if node.state == "working")
     # What was left out comes before the count of working ones, so a narrow page that cuts the line cuts that.
-    text = f"{len(nodes)} nodes \u00b7 {sum(link.count for link in links)} messages"
+    held = f"{len(nodes)} of {total} nodes" if total is not None and total > len(nodes) else f"{len(nodes)} nodes"
+    # `lately`, because the count is the stretch's and the line has just said how much of the whole the nodes are: the
+    # same word for both would read as the same population. Only what the picture holds is counted: a line whose end
+    # was cut is not in the picture, and a full picture claiming its messages would be a figure over an empty space.
+    here = {node.key for node in (picture.nodes or nodes)}
+    lately = sum(link.count for link in links if link.a in here and link.b in here)
+    text = f"{held} \u00b7 {lately} messages lately"
     if picture.hidden_nodes:
-        text += f" \u00b7 {picture.hidden_nodes} quieter not drawn"
+        # Not `quieter`: a seat held for the working, or a busy one past the cap, can be what was cut.
+        text += f" \u00b7 {picture.hidden_nodes} not drawn"
     if picture.undrawn:
         text += f" \u00b7 {picture.undrawn} lines not drawn"
     if picture.unnumbered:
