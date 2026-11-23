@@ -83,6 +83,45 @@ async def test_what_a_broker_remembers_is_there_after_it_restarts(tmp_path: Path
         await second.aclose()
 
 
+async def test_the_graph_can_be_asked_for_a_stretch_of_the_newest_messages(tmp_path: Path):
+    """``?window=`` counts what the two said in the newest that many messages and keeps their whole history beside it,
+    saying whether older messages are stored: how a page fills a picture from the recent past without reading it all.
+    """
+    run = await started(store=Store(tmp_path / "broker.db"))
+    try:
+        alpha = await run.peer(A, "alpha")
+        bravo = await run.peer(B, "bravo")
+        for text in ("one", "two", "three"):
+            task = asyncio.ensure_future(alpha.post(to=B, text=text))
+            await bravo.accept("queued")
+            await task
+
+        whole = (await http(run.port, "GET", "/graph")).json()
+        assert [e["count"] for e in whole["edges"]] == [3], "no window: one count, the stretch is the history"
+        assert "total" not in whole["edges"][0], "and no second number to tell it apart from"
+        assert "window" not in whole, "and nothing is said about a stretch nobody asked for"
+        assert "last" not in whole, "nor a map the stretch makes unnecessary"
+
+        narrow = (await http(run.port, "GET", "/graph", params={"window": 2})).json()
+        assert [(e["count"], e["total"]) for e in narrow["edges"]] == [(2, 3)]
+        assert narrow["window"] == {"asked": 2, "more": True, "sessions": 2}
+        assert set(narrow["last"]) == {A, B}, "the whole history's own times, which a slice must not lose"
+
+        all_of_it = (await http(run.port, "GET", "/graph", params={"window": 8})).json()
+        assert [(e["count"], e["total"]) for e in all_of_it["edges"]] == [(3, 3)]
+        assert all_of_it["window"] == {"asked": 8, "more": False, "sessions": 2}, (
+            "the beginning of the file, not a made-up count"
+        )
+
+        assert (await http(run.port, "GET", "/graph", params={"window": 0})).json()["edges"] == whole["edges"], (
+            "a window of none is the answer an older reader expects"
+        )
+        assert (await http(run.port, "GET", "/graph", params={"window": "soon"})).status_code == 400
+        assert (await http(run.port, "GET", "/graph", params={"window": -2})).status_code == 400
+    finally:
+        await run.aclose()
+
+
 async def test_a_groups_own_messages_are_read_for_a_chat_window_and_the_graph_shows_the_last_one(tmp_path: Path):
     run = await started(store=Store(tmp_path / "broker.db"))
     try:

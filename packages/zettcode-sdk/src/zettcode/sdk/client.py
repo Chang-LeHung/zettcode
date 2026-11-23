@@ -841,14 +841,22 @@ class Client:
         if messenger is not None:
             messenger.client.observe(callback)
 
-    async def traffic_graph(self) -> dict[str, Any]:
+    async def traffic_graph(self, window: int = 0) -> dict[str, Any]:
         """Return the broker's picture: ``sessions``, ``groups``, ``edges`` (messages per pair) and ``recent``.
+
+        With ``window``, only the newest that many one-to-one messages are counted: an edge's ``count`` is what the
+        two said in that stretch and ``total`` what they have said since the broker opened its file. The answer then
+        also carries ``window`` — ``asked``, ``more`` (whether older messages remain) and ``sessions`` (how many
+        sessions this broker has recorded one for) — and ``last``, a map from a session id to when it last took part
+        in a one-to-one message. A page that draws the recent past widens its stretch with ``more`` until it holds
+        enough sessions to fill its picture, instead of ranking every session ever seen, and dates its list rows by
+        ``last`` rather than by the stretch. :mod:`zettcode.broker.protocol` is the shape itself.
 
         Raises:
             ConfigurationError: This client did not join the sessions.
             SendError: The broker is not reachable.
         """
-        return await self._traffic("graph")
+        return await self._traffic("graph", window)
 
     async def traffic_older(self, before: int, limit: int = 50, group: str = "") -> dict[str, Any]:
         """Return the stored messages before the one with id ``before``, oldest first, and whether ``more`` remain.
@@ -875,7 +883,7 @@ class Client:
         try:
             client = messenger.client
             if what == "graph":
-                return await client.graph()
+                return await client.graph(*args)
             return await (client.older(*args) if what == "older" else client.timeline(*args))
         except BrokerSendError as error:
             raise SendError(error.reason, str(error)) from error

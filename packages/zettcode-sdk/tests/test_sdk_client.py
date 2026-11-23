@@ -477,6 +477,29 @@ async def test_a_real_run_says_begin_its_text_and_end_to_whoever_watches_it(tmp_
     await client.aclose()
 
 
+async def test_the_graph_can_be_asked_for_a_stretch_of_the_newest_messages(tmp_path):
+    asked: list[int] = []
+
+    class Wire:
+        async def graph(self, window: int = 0):
+            asked.append(window)
+            return {"sessions": [], "groups": [], "edges": [], "recent": [], "window": {"asked": window, "more": False}}
+
+    class Messenger:
+        client = Wire()
+
+        async def close(self):
+            """Leaving the client closes the line; this one holds nothing."""
+
+    async with client_for(tmp_path) as client:
+        client._messenger = Messenger()  # type: ignore[assignment]
+
+        await client.traffic_graph()
+        await client.traffic_graph(window=128)
+
+    assert asked == [0, 128], "no window is the whole history, and a window reaches the broker as it was asked"
+
+
 def test_a_stream_line_of_the_broker_is_read_in_one_place():
     from zettcode.sdk.types import StreamEvent
 

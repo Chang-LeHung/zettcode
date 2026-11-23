@@ -1,12 +1,19 @@
 """``/hub``: who is here, what the daemons are doing, and who talked to whom, on one full-screen page with four tabs.
 
-The gateway's page shows this in a browser; this is the same picture where the work happens. What it reads is the
-broker's roster and message graph through the SDK, the sessions stored for this workspace, and the daemons' records
-through :mod:`zettcode.sdk.daemons`, so nothing new is listened to and nothing is stored here.
+The gateway's page shows who is here and which messages passed in a browser, and draws its own traffic picture; this
+is the terminal's, and the one page that draws the recent past as boxes. What it reads is the broker's roster and
+message graph through the SDK, the sessions stored for this workspace, and the daemons' records through
+:mod:`zettcode.sdk.daemons`, so nothing new is listened to and nothing is stored here.
 
-* **Graph**: the busiest sessions as boxes, coloured by state, and a line between two that exchanged messages, with
-  the number beside the end it is drawn from (:mod:`~zettcode.commands.hub_graph` says how). Every box has a place, so
-  an arrow key selects the nearest box that way, which keeps its lines and dims the rest; ``Esc`` deselects.
+* **Graph**: the sessions of the recent past as boxes, coloured by state, and a line between two that exchanged
+  messages, with the messages of that stretch beside the end it is drawn from and the whole history after them
+  (:mod:`~zettcode.commands.hub_graph` says how). The stretch is the newest 64 one-to-one messages, widened by 64 at a
+  time while it would name fewer sessions than the picture holds — and no further than 1024, because a hub whose
+  newest thousand messages name two sessions must not be read to the start of its file on every refresh. So the
+  busiest of *now* are what is drawn: a session nobody has written to for a week is not, though one working now takes a
+  box ahead of the talkers, up to :data:`~zettcode.commands.hub_graph.WORKING_SEATS` of them, and the summary says how
+  many of all the sessions this broker has recorded are shown. Every box has a place, so an arrow key selects the
+  nearest box that way, which keeps its lines and dims the rest; ``Esc`` deselects.
 * **Sessions**: the sessions that are running, as the broker's roster has them, and nothing else. Only looked at here:
   it is a daemon that can be started.
 * **Daemons**: every daemon recorded on this machine, running or not, and nothing else, so the count is the
@@ -141,6 +148,10 @@ class HubData:
     note: str = ""
     nodes: tuple[Node, ...] = ()
     links: tuple[Link, ...] = ()
+    #: How many sessions this broker has recorded, when the picture is a slice of the recent past rather than all of
+    #: them: the summary says ``9 of 208 nodes`` so the reader knows a week of quiet sessions is not drawn. ``None``
+    #: when the picture is the whole graph.
+    total_nodes: int | None = None
     #: Whether the message graph could be read; an empty picture says which of the two it is.
     graph_ok: bool = True
     #: The reader's own session: the name the other sessions call it by and its title, either of which may be empty.
@@ -604,7 +615,7 @@ class HubPage(ListPage):
         if not picture.nodes:
             self._forget_picture()
         if data.nodes:
-            line = hub_graph.summary(data.nodes, data.links, picture, self.selected)
+            line = hub_graph.summary(data.nodes, data.links, picture, self.selected, total=data.total_nodes)
             canvas.draw_text(left, self.rect.y + 2, truncate(line, room), hint, max_width=room)
         if said:
             if height > 0:
@@ -1181,8 +1192,10 @@ class HubCommand(TuiPlugin):
         listed = listed[:OFFLINE_LIMIT]
         lap("sessions")
         graph_ok = True
+        only: set[str] | None = None
+        seen: int | None = None
         try:
-            graph = await client.traffic_graph()  # type: ignore[attr-defined]
+            graph, only, seen = await _recent_graph(client, me)
         except Exception as error:  # noqa: BLE001 - without a broker the picture is empty, the lists still work
             graph, graph_ok = {}, False
             note = note or f"the message graph cannot be read: {error}"
@@ -1210,7 +1223,11 @@ class HubCommand(TuiPlugin):
         for daemon in ours:
             titles.setdefault(daemon.session_id, daemon.label)
         nodes, links = hub_graph.build(
-            graph, me=me, titles=titles, offline=[daemon.session_id for daemon in ours if daemon.status in GONE]
+            graph,
+            me=me,
+            titles=titles,
+            offline=[daemon.session_id for daemon in ours if daemon.status in GONE],
+            only=only,
         )
         if not graph_ok:
             # Nothing to say about who talks to whom, so the picture is empty and says why, not a lone stopped box.
@@ -1273,6 +1290,7 @@ class HubCommand(TuiPlugin):
             nodes=nodes,
             links=links,
             graph_ok=graph_ok,
+            total_nodes=seen,
             me_name=me_name,
             me_title=me_title,
             offline_cut=cut,
@@ -1281,6 +1299,59 @@ class HubCommand(TuiPlugin):
             took=round((time.perf_counter() - began) * 1000),
             steps=tuple(steps),
         )
+
+
+async def _recent_graph(client: object, me: str) -> tuple[dict[str, Any], set[str] | None, int | None]:
+    """Return the broker's graph over the recent past, the sessions to draw, and how many it has recorded.
+
+    The picture is of what is happening now: the newest :data:`~zettcode.commands.hub_graph.WINDOW_STEP` one-to-one
+    messages, and one more step while that stretch would name fewer sessions than
+    :data:`~zettcode.commands.hub_graph.MAX_NODES`. Three things end the widening: enough sessions to fill the
+    picture, the beginning of the stored messages, and :data:`~zettcode.commands.hub_graph.MAX_STRETCH` — the last one
+    because a hub where the newest thousand messages still name two sessions must not be read to the start of its
+    file, one step at a time, on every refresh.
+
+    It also ends as soon as the stretch names every session the broker has recorded: no wider stretch can add one, so
+    a hub of two talkers costs one reading instead of thousands.
+
+    The reader's own session counts towards "enough" although it is added whether the stretch touched it or not: the
+    picture has a seat for it in the middle, and a stretch that fills the ring around it is a full picture.
+
+    The sessions to draw are the ends of those lines, the reader's own — drawn whether or not it has said anything
+    lately — and every session working now, which is the one kind of news a stretch of old messages cannot carry. Those
+    are ranked next after the reader's own, so a full picture gives up its quietest talker rather than the session its
+    reader is watching — but only for :data:`~zettcode.commands.hub_graph.WORKING_SEATS` of them: past that a working
+    session is one more candidate for the seats the traffic is already filling. A broker too old to know ``window``
+    answers without it, and all three come back empty: what it sends is the whole history, and the picture is the one
+    that page drew before.
+
+    Raises:
+        Whatever the client raises when the broker cannot be read, which the reading counts as an empty picture.
+    """
+    size = hub_graph.WINDOW_STEP
+    while True:
+        graph: dict[str, Any] = await client.traffic_graph(window=size)  # type: ignore[attr-defined]
+        report = graph.get("window")
+        if not isinstance(report, Mapping):
+            # No word on the stretch: a broker too old to know it sent the whole history, and the picture is every
+            # session it names, as it always was.
+            return graph, None, None
+        touched = {
+            str(end) for edge in graph.get("edges", ()) for end in (edge.get("a"), edge.get("b")) if end is not None
+        }
+        if me:
+            touched.add(me)
+        seen = report.get("sessions")
+        seen = seen if isinstance(seen, int) and not isinstance(seen, bool) else 0
+        enough = len(touched) >= (min(hub_graph.MAX_NODES, seen) if seen else hub_graph.MAX_NODES)
+        if enough or not report.get("more") or size >= hub_graph.MAX_STRETCH:
+            working = {
+                str(entry.get("session_id"))
+                for entry in graph.get("sessions", ())
+                if isinstance(entry, Mapping) and entry.get("status") == "working" and entry.get("session_id")
+            }
+            return graph, touched | working, seen or None
+        size += hub_graph.WINDOW_STEP
 
 
 async def _open_elsewhere(client: object, session_id: str, workspace: str) -> bool:
@@ -1326,11 +1397,12 @@ def _is_in(workspace: str, here: Path) -> bool:
 def _traffic(graph: Mapping[str, Any]) -> dict[str, float]:
     """Return, by session id, the newest moment each session took part in a message the broker remembers.
 
-    Two places say it and both are used: ``recent``, the newest messages, and ``edges``, whose ``last`` is the newest
-    message of each pair — so a session that has talked a lot recently is dated even when it is not in ``recent``.
-    A group's message names the group in ``to`` and no session, so the sessions that took it are read from
-    ``recipients``; without that, every member of a busy group would look quieter than it is. Anything that is not the
-    shape the broker's protocol describes is skipped rather than believed: this reads a page, and a page is not a
+    Three places say it and all are used: ``recent``, the newest messages of any kind; ``last``, when each session last
+    took part in a one-to-one message over the whole history, which is what the broker sends when the picture is a
+    slice of the recent past; and ``edges``, whose ``last`` is the newest message of each pair, which is all an older
+    broker sends. A group's message names the group in ``to`` and no session, so the sessions that took it are read
+    from ``recipients``; without that, every member of a busy group would look quieter than it is. Anything that is not
+    the shape the broker's protocol describes is skipped rather than believed: this reads a page, and a page is not a
     reason to fail one.
     """
     newest: dict[str, float] = {}
@@ -1355,6 +1427,9 @@ def _traffic(graph: Mapping[str, Any]) -> dict[str, float]:
         takers = message.get("recipients")
         for taker in takers if isinstance(takers, (list, tuple)) else ():
             note(taker, when)
+    last = graph.get("last")
+    for session_id, when in last.items() if isinstance(last, Mapping) else ():
+        note(session_id, when)
     edges = graph.get("edges", ())
     for edge in edges if isinstance(edges, (list, tuple)) else ():
         if not isinstance(edge, Mapping):

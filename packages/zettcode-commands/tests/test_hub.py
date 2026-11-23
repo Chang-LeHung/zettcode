@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from zettcode.commands import hub_graph
 from zettcode.commands.hub import (
     DAEMONS,
     GRAPH,
@@ -475,6 +476,8 @@ class _FakeClient:
         self.session = type("Session", (), {"id": "self-1"})()
         self.sessions = _FakeSessions(["self-1", "p-1", "old-9", "run-1"], moments)
         self.workspace = workspace
+        #: The stretch of messages each reading asked the broker for, oldest request first: one call per widening.
+        self.asked: list[int] = []
         # The broker's roster agrees with the client's cached peers unless one has just disconnected.
         self._graph = (
             graph
@@ -498,7 +501,8 @@ class _FakeClient:
             )()
         ]
 
-    async def traffic_graph(self) -> dict[str, object]:
+    async def traffic_graph(self, window: int = 0) -> dict[str, object]:
+        self.asked.append(window)
         if isinstance(self._graph, Exception):
             raise self._graph
         return self._graph
@@ -775,12 +779,15 @@ def test_a_stopped_daemon_stays_on_the_daemons_tab_as_offline_and_can_be_started
 
 
 def test_the_graph_becomes_nodes_and_links_with_the_reader_in_it(tmp_path, daemons_on_disk):
+    """The picture holds the sessions its stretch of messages touches, and the reader's own whatever it has said: a
+    dead daemon nothing has written to lately stays on the Daemons tab and is not drawn."""
     graph = {
         "sessions": [
             {"session_id": "self-1", "handle": "main", "status": "working"},
             {"session_id": "p-1", "handle": "parser", "status": "idle"},
         ],
         "edges": [{"a": "p-1", "b": "self-1", "count": 7}, {"a": "p-1", "b": "old-9", "count": 2}],
+        "window": {"asked": 64, "more": False},
     }
 
     reading = _read(_FakeClient(tmp_path, graph))
@@ -789,10 +796,145 @@ def test_the_graph_becomes_nodes_and_links_with_the_reader_in_it(tmp_path, daemo
         "self-1": ("main", "working", True),
         "p-1": ("parser", "idle", False),
         "old-9": ("old-9", "offline", False),
-        "dead-1": ("worker", "offline", False),
     }
     assert [(link.a, link.b, link.count) for link in reading.links] == [("p-1", "self-1", 7), ("p-1", "old-9", 2)]
     assert reading.graph_ok
+    assert "dead-1" not in {node.key for node in reading.nodes}, "its record is on the Daemons tab, not in the picture"
+
+
+def test_the_picture_widens_its_stretch_of_messages_until_it_has_enough_sessions(tmp_path, daemons_on_disk):
+    """The newest 64 one-to-one messages, then 128, and so on, until the stretch would fill the picture: a picture
+    chosen by the messages of the last few minutes rather than by every total the broker ever counted."""
+    narrow = {
+        "sessions": [{"session_id": "self-1", "handle": "main", "status": "working"}],
+        "edges": [{"a": "self-1", "b": "a", "count": 1, "total": 40}],
+        "window": {"asked": 64, "more": True},
+    }
+    wide = {
+        "sessions": [{"session_id": "self-1", "handle": "main", "status": "working"}],
+        "edges": [{"a": "self-1", "b": f"n{index}", "count": 1, "total": 2} for index in range(20)],
+        "window": {"asked": 128, "more": True},
+    }
+    pages = {64: narrow, 128: wide}
+    client = _FakeClient(tmp_path, narrow)
+
+    async def traffic_graph(window: int = 0) -> dict[str, object]:
+        client.asked.append(window)
+        return pages[window]
+
+    client.traffic_graph = traffic_graph  # type: ignore[method-assign]
+    reading = _read(client)
+
+    assert client.asked == [64, 128], "one step at a time, and no third step once the picture is full"
+    assert len(reading.nodes) == 21, "the stretch that filled the picture is the one drawn"
+    assert reading.links[0].count == 1 and reading.links[0].total == 2, "what the pair said in that stretch, and in all"
+
+
+def test_the_picture_stops_widening_when_the_stored_messages_run_out(tmp_path, daemons_on_disk):
+    graph = {
+        "sessions": [{"session_id": "self-1", "handle": "main", "status": "idle"}],
+        "edges": [{"a": "self-1", "b": "p-1", "count": 3}],
+        "window": {"asked": 64, "more": False},
+    }
+    client = _FakeClient(tmp_path, graph)
+
+    reading = _read(client)
+
+    assert client.asked == [64], "the beginning of the file is where the widening ends, not a made-up count"
+    assert {node.key for node in reading.nodes} == {"self-1", "p-1"}
+
+
+def test_a_broker_that_does_not_know_the_window_is_read_once_like_before(tmp_path, daemons_on_disk):
+    """An older broker answers without a ``window`` line: one reading, and the picture is the one it always sent."""
+    graph = {"sessions": [{"session_id": "p-1", "handle": "p-1", "status": "idle"}], "edges": []}
+    client = _FakeClient(tmp_path, graph)
+
+    reading = _read(client)
+
+    assert client.asked == [64] and reading.graph_ok
+    assert {node.key for node in reading.nodes} == {"p-1", "dead-1"}, "every session it names, as before: no filtering"
+    assert reading.total_nodes is None, "nothing is a slice of anything: there is no stretch to be part of"
+
+
+def test_widening_stops_when_the_stretch_names_every_session_the_file_names(tmp_path, daemons_on_disk):
+    """Two talkers are two sessions in all, so no wider stretch can name a third: one reading, not a walk back to the
+    beginning of a file that holds hundreds of thousands of their messages."""
+    page = {
+        "sessions": [{"session_id": "self-1", "handle": "main", "status": "idle"}],
+        "edges": [{"a": "self-1", "b": "a", "count": 4, "total": 900}],
+        "window": {"asked": 64, "more": True, "sessions": 2},
+    }
+    client = _FakeClient(tmp_path, page)
+
+    reading = _read(client)
+
+    assert client.asked == [64], "there is nothing wider to find: the file names two sessions"
+    assert {node.key for node in reading.nodes} == {"self-1", "a"}
+    assert reading.total_nodes == 2
+
+
+def test_widening_stops_at_the_widest_stretch_one_picture_reads(tmp_path, daemons_on_disk):
+    """A hub whose newest messages still name three sessions is read no further than ``MAX_STRETCH``: sixteen steps at
+    most, so one refresh cannot become thousands of reads of the file."""
+
+    def page(window: int) -> dict[str, object]:
+        return {
+            "sessions": [{"session_id": "self-1", "handle": "main", "status": "idle"}],
+            "edges": [{"a": "self-1", "b": "a", "count": 1, "total": 9}],
+            "window": {"asked": window, "more": True, "sessions": 300},
+        }
+
+    client = _FakeClient(tmp_path, page(hub_graph.WINDOW_STEP))
+
+    async def traffic_graph(window: int = 0) -> dict[str, object]:
+        client.asked.append(window)
+        return page(window)
+
+    client.traffic_graph = traffic_graph  # type: ignore[method-assign]
+    _read(client)
+
+    assert client.asked == [hub_graph.WINDOW_STEP * step for step in range(1, len(client.asked) + 1)], (
+        "one step at a time, and no gap"
+    )
+    assert client.asked[-1] == hub_graph.MAX_STRETCH and len(client.asked) == hub_graph.MAX_NODES
+
+
+def test_a_session_working_now_is_drawn_even_when_the_stretch_never_touched_it(tmp_path, daemons_on_disk):
+    """A stretch of old messages cannot say that a daemon is running now: that is the roster's word, and a box for it
+    is what stops `/hub` hiding a session that was just started."""
+    graph = {
+        "sessions": [
+            {"session_id": "self-1", "handle": "main", "status": "idle"},
+            {"session_id": "busy-1", "handle": "builder", "status": "working"},
+            {"session_id": "a", "handle": "a", "status": "idle"},
+        ],
+        "edges": [{"a": "a", "b": "b", "count": 3, "total": 8}],
+        "window": {"asked": 64, "more": False, "sessions": 9},
+    }
+
+    reading = _read(_FakeClient(tmp_path, graph))
+
+    assert {node.key for node in reading.nodes} == {"self-1", "busy-1", "a", "b"}
+    assert reading.total_nodes == 9, "and the summary says how many sessions there are to be a slice of"
+
+
+def test_a_reading_dates_a_peer_by_the_whole_history_the_slice_sends(tmp_path, daemons_on_disk):
+    """A peer whose last message is older than the stretch is still dated: the picture may be a slice, the `LAST`
+    column is not."""
+    when = NOW - 120
+    graph = {
+        "sessions": [
+            {"session_id": "self-1", "handle": "main", "status": "idle"},
+            {"session_id": "p-1", "handle": "p-1", "status": "idle"},
+        ],
+        "edges": [{"a": "self-1", "b": "a", "count": 1, "total": 4}],
+        "last": {"p-1": when},
+        "window": {"asked": 64, "more": False, "sessions": 7},
+    }
+
+    reading = _read(_FakeClient(tmp_path, graph))
+
+    assert reading.peers[0].activity == when, "the broker's whole history dates the row, not the slice drawn"
 
 
 def test_only_this_workspaces_dead_daemons_are_in_the_picture_and_a_title_beats_a_daemons_name(

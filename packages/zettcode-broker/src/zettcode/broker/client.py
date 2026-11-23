@@ -538,9 +538,14 @@ class BrokerClient:
             peer if isinstance(peer, str) else ""
         )
 
-    async def graph(self) -> dict[str, Any]:
-        """Return the broker's whole picture: sessions, groups, how much each pair has said, the latest messages."""
-        return await self._request("GET", "/graph")
+    async def graph(self, window: int = 0) -> dict[str, Any]:
+        """Return the broker's whole picture: sessions, groups, how much each pair has said, the latest messages.
+
+        With ``window``, only the newest that many one-to-one messages are counted, and the answer also says what the
+        stretch is (``window``) and when each session last spoke in all (``last``); :mod:`.protocol` has the shape.
+        """
+        params = {"window": window} if window else None
+        return await self._request("GET", "/graph", params=params)
 
     async def older(self, before: int, limit: int = 50, group: str = "") -> dict[str, Any]:
         """Return the messages stored before the message with id ``before``, oldest first, and ``more``.
