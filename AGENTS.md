@@ -171,7 +171,11 @@ from the root.
   publishes only versions PyPI does not already have, so a re-run is a no-op; adding a package needs a
   `pyproject.toml` and nothing in the workflow.
 - Publishing requires the `PYPI_API_TOKEN` repository secret; see `RELEASING.md`.
-- When `zett-agent` is released, raise the `zett-agent` floor in the same change
-  — the dependency is a range (`>=0.1.13,<0.2`), never an exact pin, because
-  zettcode shares that dependency with other tools — re-lock, and run
-  `make check` before tagging.
+- When `zett-agent` is released, raise the `zett-agent` floor in the same change — the dependency is a range
+  (`>=<release>,<next minor>`, the ceiling taken from the release's own minor: 0.3.1 takes `<0.4`) in every
+  `packages/*/pyproject.toml` that declares it, never an exact pin, because zettcode shares that dependency with other
+  tools. Nothing here compares those floors — `test_versions.py` and `.github/scripts/versions.py` read our own
+  distributions only — and the newer release still satisfies the old range, so a file left behind does not fail in this
+  checkout: it ships a wheel whose floor admits the old release, and the reader's environment resolves it. Check that
+  `grep -rn '"zett-agent' packages/*/pyproject.toml` prints one line per declaring file and the same floor — then
+  re-lock, and run `make check` before the pull request.

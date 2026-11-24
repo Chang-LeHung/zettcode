@@ -12,10 +12,11 @@ from zett_agent.events import AgentEventType
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.jit_harness import JITHarness
 from zett_agent.messages import AssistantMessage, SystemMessage
-from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
+from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, RetryOptions
 
 from plugin_helpers import agent_extensions
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
+from zettcode.engine.extensions.guidance import tool_guidance
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.jit_harness.command import CACHE_MISS, NOT_MOUNTED
 from zettcode.jit_harness.extension import SwitchedHarness
@@ -56,12 +57,19 @@ async def _turn(agent: Agent, session: str = "s") -> None:
     assert events[-1].type is AgentEventType.RUN_COMPLETED
 
 
-async def _agent(tmp_path: Path, switch: HarnessSwitch, model: _Model, probe: _Probe) -> Agent:
+async def _agent(
+    tmp_path: Path, switch: HarnessSwitch, model: _Model, probe: _Probe, *, guidance: bool = False
+) -> Agent:
     return await Agent.create(
         model,
         config=AgentRunConfig(session_id="s"),
-        extensions=[SwitchedHarness(tmp_path / "harness", switch), probe],
+        extensions=[SwitchedHarness(tmp_path / "harness", switch), probe, *([tool_guidance()] if guidance else [])],
     )
+
+
+def _instructions(request: ModelRequest) -> str:
+    """Return every system message of the request as one text."""
+    return "\n\n".join(message.content for message in request.messages if isinstance(message, SystemMessage))
 
 
 def test_a_run_starts_with_the_harness_on_and_the_config_can_start_it_off(tmp_path: Path):
@@ -119,7 +127,7 @@ async def test_a_session_that_never_writes_a_tool_leaves_nothing_on_disk_even_wi
     assert not (tmp_path / "harness").exists(), "no folder for a session that wrote no tool"
 
 
-async def test_with_the_switch_on_a_request_has_the_four_tools_and_their_guidance(tmp_path: Path):
+async def test_with_the_switch_on_a_request_has_the_four_tools_and_the_blocks_instructions(tmp_path: Path):
     model, probe, switch = _Model(), _Probe(), HarnessSwitch(on=True)
     agent = await _agent(tmp_path, switch, model, probe)
 
@@ -132,6 +140,35 @@ async def test_with_the_switch_on_a_request_has_the_four_tools_and_their_guidanc
         isinstance(message, SystemMessage) and "repo_create" in message.content
         for message in model.requests[0].messages
     )
+
+
+#: One rule of the harness's own ``profile_tools``: it travels with the tool's description when the guidance plugin is
+#: registered, and in the harness's block when it is not — never in both, which is what zett-agent 0.3.1 fixed.
+USAGE_RULE = "A low success rate or a repeated error means fix the tool"
+
+
+async def test_a_tools_rules_ride_in_its_description_and_not_in_the_block_as_well(tmp_path: Path):
+    """The stack registers the guidance in the description placement, so the block has no tool rules to repeat."""
+    model, probe, switch = _Model(), _Probe(), HarnessSwitch(on=True)
+    agent = await _agent(tmp_path, switch, model, probe, guidance=True)
+
+    await _turn(agent)
+
+    request = model.requests[0]
+    descriptions = {tool.name: tool.description for tool in request.tools}
+    assert USAGE_RULE in descriptions["profile_tools"], "the rule is in the tool's own description"
+    assert USAGE_RULE not in _instructions(request), "and not a second time in the instructions"
+    assert "repo_create" in _instructions(request), "the block itself still reaches the provider"
+
+
+async def test_without_the_guidance_plugin_the_block_carries_the_rules(tmp_path: Path):
+    """`[plugins] disable = ["tool-guidelines"]` is a configuration a reader can run: the rules must still arrive."""
+    model, probe, switch = _Model(), _Probe(), HarnessSwitch(on=True)
+    agent = await _agent(tmp_path, switch, model, probe, guidance=False)
+
+    await _turn(agent)
+
+    assert USAGE_RULE in _instructions(model.requests[0]), "nothing else carries them, so the block has to"
 
 
 def test_the_guidance_names_the_repository_notes_without_their_bodies(tmp_path: Path):

@@ -25,7 +25,7 @@ dependencies = [
   "zettcode-messaging>=0.5.1,<0.6",
   "zettcode-plugin-api>=0.5.1,<0.6",
   "zettcode-presenters>=0.5.1,<0.6",
-  "zett-agent>=0.3.0,<0.4",
+  "zett-agent>=0.3.1,<0.4",
   # The release check verifies the index against the system trust store; imported by `update.py` with a
   # fallback, so it is a hint rather than a requirement.
   "truststore>=0.10,<1",
