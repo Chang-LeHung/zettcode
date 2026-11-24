@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   # The tool contract, the message types and the @tool builder.
-  "zett-agent>=0.3.0,<0.4",
+  "zett-agent>=0.3.1,<0.4",
   # A tool's parameters are described with the schema library the framework uses.
   "pydantic>=2,<3",
 ]
