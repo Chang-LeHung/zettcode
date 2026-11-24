@@ -56,7 +56,7 @@ def test_two_instructions_become_one_in_the_order_they_were_in():
     messages = (
         SystemMessage(content="You are ZettCode."),
         UserMessage(content="hello"),
-        SystemMessage(content="The project uses tabs."),
+        SystemMessage(content="\n  The project uses tabs.  \n"),
     )
 
     assert merge_system(messages) == (
@@ -100,24 +100,106 @@ def test_blank_instructions_are_dropped_rather_than_joined():
     assert len(merged) == 1 and merged[0].content == "real one"
 
 
+def test_a_blank_first_instruction_keeps_the_first_slot():
+    """The slot is the first system message's, blank or not: an instruction never moves behind a question to stay one."""
+    messages = (SystemMessage(content="  "), UserMessage(content="hi"), SystemMessage(content="real"))
+
+    merged = merge_system(messages)
+
+    assert [type(message).__name__ for message in merged] == ["SystemMessage", "UserMessage"]
+    assert merged[0].content == "real" and merged[1] is messages[1], "the dialogue keeps its object, below the line"
+
+
 def test_a_request_of_nothing_but_blanks_is_left_as_it_was():
     messages = (SystemMessage(content="  "), SystemMessage(content="\n"))
 
     assert merge_system(messages) is messages
 
 
-def test_the_first_messages_own_flags_and_attributes_survive():
+def test_a_later_messages_attributes_come_along():
+    """The reported bug: an attribute on any part but the first used to be dropped."""
     messages = (
-        SystemMessage(content="kept", include_in_messages=True, persist=False, attributes={"from": "the app"}),
-        SystemMessage(content="also kept"),
+        SystemMessage(content="app", attributes={"from": "the app"}),
+        SystemMessage(content="project", attributes={"scope": "project"}),
     )
 
     merged = merge_system(messages)
 
-    assert isinstance(merged[0], SystemMessage)
-    assert merged[0].include_in_messages is True and merged[0].persist is False
-    assert merged[0].attributes == {"from": "the app"}
-    assert messages[0].content == "kept", "the message the runtime keeps is not rewritten in place"
+    assert merged[0].attributes == {"from": "the app", "scope": "project"}, "no part's attributes are dropped"
+
+
+def test_the_earliest_part_wins_a_key_two_of_them_set():
+    messages = (
+        SystemMessage(content="app", attributes={"from": "the app"}),
+        SystemMessage(content="harness", attributes={"from": "the harness"}),
+    )
+
+    assert merge_system(messages)[0].attributes == {"from": "the app"}, "the first part's value wins"
+
+
+def test_attributes_are_merged_flat():
+    messages = (
+        SystemMessage(content="app", attributes={"scope": {"workspace": "w"}}),
+        SystemMessage(content="project", attributes={"scope": {"project": "p"}}),
+    )
+
+    assert merge_system(messages)[0].attributes == {"scope": {"workspace": "w"}}
+
+
+def test_a_blank_part_carries_nothing_into_the_join():
+    messages = (
+        SystemMessage(content="  \n ", persist=False, include_in_messages=True, attributes={"from": "blank"}),
+        SystemMessage(content="real", attributes={"from": "real"}),
+    )
+
+    merged = merge_system(messages)
+
+    assert merged[0].content == "real"
+    assert merged[0].attributes == {"from": "real"}, "its text is not in the join, so neither is what it carried"
+    # The whole message, so a field the merge stops setting is caught here — a new one only once this blank part
+    # carries something other than its default.
+    assert merged[0] == SystemMessage(content="real", attributes={"from": "real"})
+
+
+def test_a_plain_request_becomes_a_plain_message():
+    messages = (SystemMessage(content="one"), SystemMessage(content="two"))
+
+    merged = merge_system(messages)[0]
+
+    assert merged.attributes == {}
+    assert merged.persist is True and merged.include_in_messages is False
+
+
+def test_a_flag_holds_only_when_every_part_agreed():
+    refused = (SystemMessage(content="durable"), SystemMessage(content="ephemeral", persist=False))
+    agreed = (
+        SystemMessage(content="one", persist=True, include_in_messages=True),
+        SystemMessage(content="two", persist=True, include_in_messages=True),
+    )
+
+    assert merge_system(refused)[0].persist is False, "storing the joined message would store the ephemeral text too"
+    assert merge_system(agreed)[0].persist is True, "a part's own wish is kept when nothing contradicts it"
+    assert merge_system(agreed)[0].include_in_messages is True
+
+
+def test_one_part_asking_to_be_replayed_does_not_drag_the_rest_with_it():
+    """The flag on the first part, so a merge that kept only that part's wish would replay the rest with it."""
+    messages = (SystemMessage(content="replayed", include_in_messages=True), SystemMessage(content="durable"))
+
+    assert merge_system(messages)[0].include_in_messages is False
+
+
+def test_the_merge_leaves_the_parts_as_they_were():
+    messages = (
+        SystemMessage(content="app", attributes={"from": "the app"}),
+        SystemMessage(content="project", attributes={"scope": "project"}),
+    )
+
+    merged = merge_system(messages)
+
+    assert messages[0].attributes == {"from": "the app"} and messages[1].attributes == {"scope": "project"}
+    assert messages[0].content == "app" and messages[1].content == "project", "their own text is not rewritten either"
+    assert merged[0] is not messages[0] and merged[0].attributes is not messages[0].attributes
 
 
 def test_the_hook_hands_the_provider_one_instruction():
@@ -127,6 +209,20 @@ def test_the_hook_hands_the_provider_one_instruction():
 
     assert [type(message).__name__ for message in messages] == ["SystemMessage", "UserMessage"]
     assert messages[0].content == "a\n\nb"
+
+
+def test_the_hook_hands_the_provider_what_every_part_carried():
+    messages, _ = run(
+        OneSystemMessage(),
+        (
+            SystemMessage(content="a", attributes={"from": "the app"}),
+            UserMessage(content="hi"),
+            SystemMessage(content="b", attributes={"scope": "project"}, include_in_messages=True),
+        ),
+    )
+
+    assert messages[0].attributes == {"from": "the app", "scope": "project"}
+    assert messages[0].include_in_messages is False, "the part that did not ask is in the join too"
 
 
 def test_the_hook_passes_the_same_request_through_when_there_is_nothing_to_join():
@@ -257,15 +353,22 @@ async def test_the_provider_sees_one_message_while_the_state_keeps_both(tmp_path
     assert len([line for line in store.read("s").messages if isinstance(line.message[0], SystemMessage)]) == 2
 
 
-async def test_a_part_that_ties_with_the_framework_plan_mode_still_runs_after_it():
-    """A tie is broken by registration order, so the hook has to sit above 1_000_000 (plan mode) to be innermost."""
+def test_the_hook_sits_above_the_extension_that_filters_by_attribute():
+    """The framework's own guidance is dropped by attribute, and that filter has to run before the merge, not after it."""
+    from zett_agent.jit_harness import JITHarnessExtension
+
+    assert OneSystemMessage.priority > JITHarnessExtension.priority
+
+
+async def test_a_part_that_ties_with_the_highest_number_the_framework_claims_still_runs_after_it():
+    """A tie is broken by registration order: a stand-in at 1_000_000, the highest number the framework claims, still loses."""
     model = _Model()
 
-    class _PlanLike(AgentExtension):
+    class _AtTheTop(AgentExtension):
         priority = 1_000_000
 
         async def on_model_request(self, context, request, call_next):  # noqa: ANN001
-            added = replace(request, messages=[*request.messages, SystemMessage(content="plan mode note")])
+            added = replace(request, messages=[*request.messages, SystemMessage(content="note from the top")])
             async for event in call_next(added):
                 yield event
 
@@ -273,10 +376,10 @@ async def test_a_part_that_ties_with_the_framework_plan_mode_still_runs_after_it
     agent = await Agent.create(
         model,  # type: ignore[arg-type]
         config=AgentRunConfig(session_id="s"),
-        extensions=[OneSystemMessage(), _PlanLike()],
+        extensions=[OneSystemMessage(), _AtTheTop()],
     )
     async for _event in agent.stream("hi", config=AgentRunConfig(session_id="s")):
         pass
 
     system = [m for m in model.requests[0].messages if isinstance(m, SystemMessage)]
-    assert len(system) == 1 and "plan mode note" in system[0].content
+    assert len(system) == 1 and "note from the top" in system[0].content
