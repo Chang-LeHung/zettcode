@@ -18,13 +18,24 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
+from copy import copy
+from dataclasses import dataclass
 from dataclasses import fields as dataclass_fields
 from typing import Any, ClassVar, Generic, TypeVar
 
 from zettcode.tui import LineSource, Span, StaticLines, Style, TextLine, Theme
 from zettcode.tui.render import inset_line, layout_rich_lines, wrap_words
 
-from .entries import Entry
+from .entries import Entry, ToolEntry
+
+
+@dataclass(frozen=True)
+class ToolRenderingAlias:
+    """An explicit tool rendering family and title prefix, never a change to its runtime identity."""
+
+    name: str
+    title_prefix: str = ""
+
 
 #: Columns a row's content is inset by, past the gutter marker.
 CONTENT_INDENT = 2
@@ -76,6 +87,13 @@ class Presenter(Generic[E], ABC):
 
     gutter: ClassVar[bool] = False
     priority: ClassVar[int] = 0
+
+    def tool_rendering_alias(self, name: str) -> ToolRenderingAlias | None:
+        """Opt a tool into another rendering family; unrecognized names must return ``None``.
+
+        The alias applies only to rendering. Events and transcript entries retain the actual tool name.
+        """
+        return None
 
     @abstractmethod
     def handle(self, entry: Entry, next: NextPresenter) -> Presenter[Any]:
@@ -235,6 +253,24 @@ class Presenters:
         """Return a registry that appends the given presenters to this chain."""
         return Presenters((*self._registered, *presenters))
 
+    def tool_rendering_alias(self, name: str) -> ToolRenderingAlias | None:
+        """Resolve an explicit alias in priority order, without inferring namespace suffixes."""
+        for presenter in self._chain:
+            alias = presenter.tool_rendering_alias(name)
+            if alias is not None:
+                return alias
+        return None
+
+    def _rendering_entry(self, entry: Entry) -> Entry:
+        """Give presenters a rendering-only copy when a plugin supplied an alias."""
+        if isinstance(entry, ToolEntry):
+            alias = self.tool_rendering_alias(entry.tool)
+            if alias is not None:
+                shown = copy(entry)
+                shown.tool = alias.name
+                return shown
+        return entry
+
     def for_entry(self, entry: Entry) -> Presenter[Any]:
         """Ask the chain, presenter by presenter, which one draws the entry, else raise.
 
@@ -250,12 +286,17 @@ class Presenters:
                 raise ValueError(f"No presenter for a {current.kind.value} row")
             return chain[index].handle(current, lambda entry: ask(entry, index + 1))
 
-        return ask(entry, 0)
+        return ask(self._rendering_entry(entry), 0)
 
     def lines(self, entry: Entry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Return the rows an entry paints, rendered now and not cached."""
-        return self.for_entry(entry).lines(entry, width, theme, frame)
+        shown = self._rendering_entry(entry)
+        return self.for_entry(shown).lines(shown, width, theme, frame)
 
     def block(self, entry: Entry, width: int, theme: Theme, frame: int) -> LineSource:
         """Return an entry's rows as a cached line source, in the gutter's layout."""
-        return self.for_entry(entry).block(entry, width, theme, frame, self)
+        shown = self._rendering_entry(entry)
+        block = self.for_entry(shown).block(shown, width, theme, frame, self)
+        if shown is not entry:
+            entry.block, entry.block_key = shown.block, shown.block_key
+        return block

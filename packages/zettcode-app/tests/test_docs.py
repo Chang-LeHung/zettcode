@@ -118,10 +118,8 @@ class ExampleCommandUi(CommandUi):
 @pytest.mark.parametrize("path", ["docs/guide/plugin-api.md", "docs/zh/guide/plugin-api.md"])
 async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     examples = code_blocks(path, "python")
-    # Sixteen blocks: one complete plugin, one testing helper, one tool, one default-off plugin, the window hooks and
-    # settings, a slow command, the command this test loads, a document answer, dependencies, a trigger, and the
-    # command that asks the model.
-    assert len(examples) == 16
+    # Eighteen blocks: the original examples plus child hooks and explicit rendering aliases.
+    assert len(examples) == 18
     namespace = {}
     for example in examples:
         exec(compile(example, path, "exec"), namespace)

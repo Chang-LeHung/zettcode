@@ -1033,6 +1033,62 @@ agent 的命令（`/new`、`/compact`、`/export`）占用的名字会被悄悄�
 不报失败；装完看一眼 `/help`。被别的插件——包括 `/model`、`/resume` 这样的程序插件——占用的名字会让插件加载
 失败，报 "command … is already registered by another plugin"，并出现在 `Plugins.failures` 里。
 
+## 子会话与渲染别名
+
+插件可以把不含秘密的后端描述交给 daemon。先看三个可选 hook：
+
+```python
+from typing import Any
+from zettcode.plugin_api import ChildSession, Plugin, PluginContext
+
+class Backend(Plugin[PluginContext]):
+    name = "backend"
+
+    def export_child(self, child: ChildSession) -> dict[str, Any] | None:
+        return {"host": self.host}  # 只交 JSON，不交密码和连接对象
+
+    def restore_child(self, state: dict[str, Any]) -> None:
+        self.host = state["host"]  # 在 activate() 之前调用，激活时不要覆盖它
+
+    def child_extensions(self, child: ChildSession) -> tuple:
+        if child.profile == "reasoning":
+            return ()
+        return (self.make_extension(child.profile),)  # 每个子会话一个新 extension
+```
+
+`ChildSession.kind` 是 `"daemon"` 或 `"subagent"`；`profile` 是子 agent 的 profile，daemon 则是 `None`。
+三个 hook 默认分别返回 `None`、不做事、返回 `()`。进程内子会话对**每种 profile** 调用
+`child_extensions`，不走 export/restore；只读和无工具的边界由插件自己守住。extension 按名字替换默认或
+共享的 extension，hook 返回重复名字会被拒绝。
+
+`Client.spawn_daemon` 在调用时导出，以 **`Plugin.name`** 为键，和插件 CLI 参数分开保存。恢复先于激活。
+继承的插件缺失、被明确禁用或激活失败，整个启动都会抛 `PluginActivationError`（SDK 表面是
+`ConfigurationError`），不会悄悄丢掉后端。普通插件激活失败仍然只拒绝该插件。恢复已有 daemon 会保留
+描述；导出的数据必须是 JSON 安全且不含秘密的值，交接上限 16 KiB，不是加密的凭据存储。
+
+渲染别名则解决另一件事：复用工具行的画法，不改变执行身份。
+
+```python
+from zettcode.plugin_api import Presenter, ToolRenderingAlias
+
+class RemoteNames(Presenter):
+    def tool_rendering_alias(self, name: str) -> ToolRenderingAlias | None:
+        if name == "myremote__read":
+            return ToolRenderingAlias("read", "remote/")
+        return None
+
+    def handle(self, entry, next):
+        return next(entry)  # 不抢画法，交给正常的 presenter 链
+
+    def lines(self, entry, width, theme, frame):
+        return []  # handle() 不认领，所以不会调用这里
+```
+
+在 `ctx.tui` 存在时，用 `ctx.tui.register_presenter(RemoteNames())` 注册。这个**显式映射**让
+`myremote__read` 复用 `read` 的 entry、高亮、行数、折叠和预览，标题加 `remote/`。
+执行工具名、tool-call ID、完成以及保存/恢复后的身份仍然是 `myremote__read`，只有渲染副本使用 `read`。
+不认识的名字返回 `None`；不会根据 MCP 名字的后缀猜别名。
+
 ## 下一步
 
 - [插件](/zh/guide/plugins)：安装、关掉，以及配置放在哪。

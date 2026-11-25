@@ -47,7 +47,7 @@ import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from zettcode.commands import hub_graph
 from zettcode.commands.hub_graph import Link, Node, Picture
@@ -134,6 +134,15 @@ class Daemon:
     permission: str = ""
     system_prompt: str = ""
     activity: float = 0.0
+
+
+class _ResumeOptions(TypedDict, total=False):
+    """Only recorded optional fields accepted by the SDK's daemon spawn."""
+
+    effort: str
+    name: str
+    permission: str
+    system_prompt: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -1088,18 +1097,16 @@ class HubCommand(TuiPlugin):
                     raise RuntimeError(
                         "that session is open in another ZettCode process, so a daemon cannot write to it"
                     )
-                # What the record says, and nothing it does not: an offline session has none of these, and the SDK's
-                # own defaults are the right ones for it.
-                kept = {
-                    key: value
-                    for key, value in (
-                        ("effort", chosen.effort),
-                        ("name", chosen.name),
-                        ("permission", chosen.permission),
-                        ("system_prompt", chosen.system_prompt),
-                    )
-                    if value
-                }
+                # Spell out the typed keys: omit fields that were never recorded.
+                kept: _ResumeOptions = {}
+                if chosen.effort:
+                    kept["effort"] = chosen.effort
+                if chosen.name:
+                    kept["name"] = chosen.name
+                if chosen.permission:
+                    kept["permission"] = chosen.permission
+                if chosen.system_prompt:
+                    kept["system_prompt"] = chosen.system_prompt
                 started = await spawn_daemon(workspace, model=chosen.model or None, resume=session_id, **kept)
             except Exception as error:  # noqa: BLE001 - the page says what happened, whatever it was
                 text = str(error)

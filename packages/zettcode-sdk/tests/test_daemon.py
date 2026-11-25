@@ -431,6 +431,39 @@ async def test_a_daemon_that_is_stopping_takes_no_message_runs_no_turn_and_write
     assert daemon.record.state is not None and daemon.record.state.status == "idle"
 
 
+@pytest.mark.parametrize("broken", [False, True])
+async def test_failed_start_rolls_back_without_masking_failure_or_overwriting_corruption(home, monkeypatch, broken):
+    from zettcode.daemon import run
+
+    client = _Client()
+    daemon = run.Daemon(client, Options(workspace=home, token="new"))
+    previous = state_for(home)
+    daemon.record.save(previous)
+    descriptor = daemon.record.folder / "state.json"
+    failure = RuntimeError("original broker failure")
+
+    async def mark(status):
+        daemon.record.change(lambda state: replace(state, token="new", status=status))
+        daemon.record.beat()
+
+    async def join(*args, **kwargs):
+        if broken:
+            descriptor.write_text("corrupted descriptor", encoding="utf-8")
+        raise failure
+
+    monkeypatch.setattr(run, "_stop_on_signals", lambda stopping: None)
+    monkeypatch.setattr(daemon, "mark", mark)
+    monkeypatch.setattr(client, "join_sessions", join, raising=False)
+    with pytest.raises(RuntimeError) as stopped:
+        await daemon.serve()
+    assert stopped.value is failure
+    assert not daemon.record.beating()
+    if broken:
+        assert descriptor.read_text(encoding="utf-8") == "corrupted descriptor"
+    else:
+        assert State.load(daemon.record.folder) == previous
+
+
 async def test_only_the_stop_that_this_process_was_sent_decides_that_its_record_stays(home):
     from zettcode.daemon.run import Daemon
 
@@ -805,7 +838,9 @@ def test_a_daemon_names_its_own_session_and_keeps_a_label_a_reader_put_there(hom
 
     usage = SimpleNamespace(input_tokens=0, output_tokens=0, context_tokens=0)
     model = SimpleNamespace(name="fast", context_window=200_000)
-    client = SimpleNamespace(session=Session(), model=model, effort="medium", usage=usage)
+    client = SimpleNamespace(
+        session=Session(), model=model, effort="medium", usage=usage, _export_daemon_state=lambda: {}
+    )
     daemon = Daemon(client, Options(workspace=home, token="t", name="spawned"))
     asyncio.run(daemon.mark("idle"))
     assert daemon.record.state is not None and daemon.record.state.name == "spawned"
@@ -1193,6 +1228,9 @@ def test_list_shows_a_pending_request_and_why_the_last_one_failed(home, capsys):
     from zettcode.daemon.run import Daemon
 
     class Client:
+        def _export_daemon_state(self):
+            return {}
+
         def __init__(self) -> None:
             self.session = SimpleNamespace(id="01a1", title=None)
             self.model = SimpleNamespace(name="fake", context_window=200_000)
@@ -1810,6 +1848,9 @@ class _Session:
 
 
 class _Client:
+    def _export_daemon_state(self):
+        return {}
+
     def __init__(self) -> None:
         self.session = _Session()
         self.model = type("Model", (), {"name": "fake"})()
@@ -2002,7 +2043,7 @@ def test_a_new_shell_level_is_recorded_and_put_in_force_by_a_restart_on_the_same
 
 def test_a_shell_level_for_a_daemon_that_is_gone_is_only_recorded(home, monkeypatch):
     record = Registry().record(home, "01a1", create=True)
-    record.save(state_for(home, status="dead"))
+    record.save(state_for(home, pid=0, status="idle"))
     called: list[str] = []
     monkeypatch.setattr(process.Daemons, "start", lambda *a, **k: called.append("start"))
 

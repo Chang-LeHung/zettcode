@@ -45,6 +45,7 @@ from zettcode.engine.plugins import (
     PluginTurnMixin,
 )
 from zettcode.engine.plugins import loader as loader_module
+from zettcode.engine.plugins.children import CHILD_STATE
 from zettcode.engine.plugins.commands import CommandGroups
 from zettcode.engine.plugins.groups import AgentGroups
 from zettcode.pets.plugin import PetsPlugin
@@ -802,7 +803,8 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
 
     def nothing(plugins: TuiPlugins) -> TuiPlugins:
         """Return the bundle without the link to the shell, which every load provides and which holds no plugin."""
-        assert set(plugins.services) == {HOST_LINK}
+        # The loader always provides the inherited-child table beside the shell's link.
+        assert set(plugins.services) - {CHILD_STATE} == {HOST_LINK}
         return replace(plugins, services={})
 
     assert (

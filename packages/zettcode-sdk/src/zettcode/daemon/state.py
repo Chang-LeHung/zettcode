@@ -20,6 +20,7 @@ The folder is named after the session id, so the id is the one handle a reader n
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import time
@@ -154,6 +155,8 @@ class State:
     #: Kept so a restart (a new shell level, a companion coming back) starts the same agent, not one whose plugins
     #: fell back to their defaults.
     plugin_arguments: dict[str, dict[str, object]] | None = None
+    #: Explicit inherited state, by Plugin.name; independent of command-line arguments and kept across restarts.
+    plugin_state: dict[str, dict[str, object]] | None = None
     keep: bool = False
     #: Written by ``kill``, the one stop that wants the record gone (``delete`` refuses a live daemon, and removes the
     #: record of a dead one itself). Without it a daemon that is told to stop leaves
@@ -168,16 +171,52 @@ class State:
         A file that does not parse, or that names another protocol, is no answer: the folder is then reported by its
         name alone, which is enough to kill it and see it is not one of ours.
         """
+        from zettcode.engine.plugins.children import decode_json, validate_child_state
+
         try:
-            data = json.loads((folder / STATE_FILE).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
-        if not isinstance(data, dict) or data.get("protocol") != PROTOCOL:
-            return None
-        known = {item.name for item in fields(cls)}
-        try:
-            return cls(**{key: value for key, value in data.items() if key in known})
-        except TypeError:
+            data = decode_json((folder / STATE_FILE).read_text(encoding="utf-8"))
+            if not isinstance(data, dict) or type(data.get("protocol")) is not int or data["protocol"] != PROTOCOL:
+                return None
+            known = {item.name for item in fields(cls)}
+            state = cls(**{key: value for key, value in data.items() if key in known})
+            strings = ("session_id", "workspace", "status", "token")
+            if any(not isinstance(getattr(state, key), str) or not getattr(state, key) for key in strings):
+                return None
+            if state.status not in STATUSES or type(state.pid) is not int or state.pid < 0:
+                return None
+            if type(state.started_at) not in (int, float) or not math.isfinite(state.started_at):
+                return None
+            optional_strings = (
+                "model",
+                "effort",
+                "title",
+                "name",
+                "permission",
+                "system_prompt",
+                "requested_model",
+                "requested_effort",
+                "requested_error",
+            )
+            if any(
+                getattr(state, key) is not None and not isinstance(getattr(state, key), str) for key in optional_strings
+            ):
+                return None
+            if state.permission not in (None, "deny", "safe", "full"):
+                return None
+            if type(state.keep) is not bool or type(state.remove) is not bool:
+                return None
+            if state.broker is not None and type(state.broker) is not bool:
+                return None
+            for key in ("input_tokens", "output_tokens", "context_tokens", "context_window"):
+                value = getattr(state, key)
+                if value is not None and (type(value) is not int or value < 0):
+                    return None
+            for key in ("plugin_arguments", "plugin_state"):
+                value = getattr(state, key)
+                if value is not None:
+                    validate_child_state(value)
+            return state
+        except (OSError, ValueError, TypeError, OverflowError):
             return None
 
     def save(self, folder: Path) -> None:
@@ -290,7 +329,10 @@ class Record:
         if not lock.acquire(wait=wait):
             raise OSError("another process is writing the daemon's state")
         try:
-            state = produce(State.load(self.folder))
+            current = State.load(self.folder)
+            if current is None and (self.folder / STATE_FILE).exists():
+                raise OSError("the daemon state is malformed; refusing to overwrite its saved descriptor")
+            state = produce(current)
             state.save(self.folder)
             self.state = state
             return state

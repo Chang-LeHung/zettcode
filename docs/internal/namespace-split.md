@@ -68,7 +68,8 @@ union of what is installed and every distribution contributes its own parts to i
 | `zettcode` | `zettcode/cli.py`, `plugin_cli.py`, `oneshot.py`, the console scripts | all of the above |
 
 The plugins are distributions too, and they ship inside the same namespace: `zettcode-code-agents` puts its module at `zettcode/code_agents/`, `zettcode-models` at `zettcode/models/`,
-`zettcode-monitor` at `zettcode/monitor/` and `zettcode-recap` at `zettcode/recap/`, so no
+`zettcode-monitor` at `zettcode/monitor/`, `zettcode-recap` at `zettcode/recap/`, and `zettcode-ssh` at
+`zettcode/ssh/` (remote tools over OpenSSH, depending only on `zettcode-plugin-api` and `zett-agent`), so no
 distribution has a top-level import root of its own. A test holds that:
 `test_every_distribution_ships_under_the_zettcode_namespace`.
 

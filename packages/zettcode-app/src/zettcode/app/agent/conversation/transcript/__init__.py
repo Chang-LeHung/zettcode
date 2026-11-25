@@ -72,7 +72,7 @@ class Transcript(OneOffMixin, FoldMixin, StreamMixin, EntryLog, CommandTranscrip
         """
         super().__init__(max_entries=max_entries)
         self.clock = clock
-        self.renderers = renderers
+        self.renderers = renderers.with_aliases(presenters.tool_rendering_alias)
         self.presenters = presenters
         self.frame = 0
         #: Where the tips under the waiting row come from; ``None`` shows none.

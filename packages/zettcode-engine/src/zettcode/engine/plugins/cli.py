@@ -18,7 +18,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from zettcode.paths import DEFAULT_PLUGIN_CLI_CACHE
 
@@ -54,14 +54,16 @@ class CliOption:
     def add(self, parser: argparse.ArgumentParser, *, prefix: str) -> str:
         """Add the option to ``parser`` under ``prefix`` and return the namespace key it uses."""
         key = f"{prefix}{self.dest}"
+        extra: dict[str, Any] = {}
+        if self.action == "store":
+            extra = {"choices": self.choices, "metavar": self.metavar}
         parser.add_argument(
             *self.flags,
             dest=key,
             default=self.default,
             help=self.help,
             action=self.action,
-            choices=self.choices,
-            metavar=self.metavar,
+            **extra,
         )
         return key
 

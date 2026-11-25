@@ -15,6 +15,9 @@ import asyncio
 import os
 import signal
 import tempfile
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Annotated
 
@@ -32,6 +35,43 @@ OUTPUT_ROOT = ".zett-tool-output"
 #: The runtime a command is given unless the model asks for another, and the most it may ask for.
 DEFAULT_TIMEOUT_SECONDS = 60
 MAX_TIMEOUT_SECONDS = 600
+
+_ENVIRONMENT: ContextVar[Mapping[str, str | None] | None] = ContextVar("zettcode_shell_environment", default=None)
+
+
+@contextmanager
+def shell_environment(values: Mapping[str, str | None]) -> Iterator[None]:
+    """Overlay environment variables for this task's subprocesses only; ``None`` removes a variable.
+
+    Nested scopes compose, parallel tool calls stay isolated, and cancellation restores the prior scope.
+    The process environment is never changed. Tool backends that start their own subprocess may use
+    :func:`subprocess_environment` to carry the same handoff.
+    """
+    token = _ENVIRONMENT.set({**(_ENVIRONMENT.get() or {}), **values})
+    try:
+        yield
+    finally:
+        _ENVIRONMENT.reset(token)
+
+
+def shell_environment_values() -> dict[str, str | None]:
+    """Return only the task overlay, without inheriting process credentials or stale handoffs."""
+    return dict(_ENVIRONMENT.get() or {})
+
+
+def subprocess_environment() -> dict[str, str] | None:
+    """Return a fresh process environment with the current task's overlay, or ``None`` to inherit normally."""
+    values = _ENVIRONMENT.get()
+    if not values:
+        return None
+    env = dict(os.environ)
+    for key, value in values.items():
+        if value is None:
+            env.pop(key, None)
+        else:
+            env[key] = value
+    return env
+
 
 Command = Annotated[str, Field(min_length=1)]
 WorkDir = Annotated[str, Field(min_length=1)]
@@ -95,6 +135,7 @@ async def run_command(command: str, timeout_seconds: int, directory: Path | None
             stdout=stdout_target,
             stderr=stderr_target,
             start_new_session=os.name == "posix",
+            env=subprocess_environment(),
         )
         try:
             await asyncio.wait_for(process.wait(), timeout_seconds)
@@ -181,5 +222,7 @@ __all__ = [
     "OUTPUT_ROOT",
     "CommandFailed",
     "run_command",
+    "shell_environment",
+    "subprocess_environment",
     "shell_tool",
 ]

@@ -314,9 +314,9 @@ def test_the_wrapper_hands_the_library_the_directory_the_command_runs_in(monkeyp
     seen: list[Path] = []
 
     class _Library:
-        def wrap(self, command: str, *, cwd: Path):
+        def wrap(self, command: str, *, cwd: Path, env=None):
             seen.append(cwd)
-            return SimpleNamespace(argv=["true"], env={})
+            return SimpleNamespace(argv=["true"], env=env or {})
 
     sandbox = ShellSandbox(tmp_path)
     sandbox._sandbox = _Library()  # type: ignore[assignment]

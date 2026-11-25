@@ -298,6 +298,7 @@ async def spawn_daemon(
     title: str | None = None,
     permission: str = "full",
     system_prompt: str | None = None,
+    plugin_state: dict[str, dict[str, object]] | None = None,
 ) -> DaemonInfo:
     """Start a background agent and return it once it can be messaged.
 
@@ -317,6 +318,9 @@ async def spawn_daemon(
             agent is a reviewer and another a builder. It belongs to the process, so ``resume`` by hand opens the
             conversation without it; every restart that stays on the session keeps it — :func:`update_daemon`, the
             broker restart, `/hub` and the gateway's Restart — and a blank role is refused.
+        plugin_state: Explicit JSON inheritance, keyed by ``Plugin.name``. ``Client.spawn_daemon`` snapshots its
+            active plugins for this; this module-level helper has no active client to inherit from. A remembered
+            daemon resume preserves its saved state and refuses a conflicting nonempty snapshot.
 
     Raises:
         ConfigurationError: The permission is not one of :data:`PERMISSIONS`, the workspace is not a directory, or
@@ -346,6 +350,7 @@ async def spawn_daemon(
             title=title or None,
             permission=permission,
             system_prompt=role,
+            **({"plugin_state": plugin_state} if plugin_state is not None else {}),
         )
 
     try:

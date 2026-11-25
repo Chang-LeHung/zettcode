@@ -1118,6 +1118,62 @@ reported; check `/help` after installing. A name held by another plugin — incl
 `/resume` — makes the plugin fail to load with "command … is already registered by another plugin", and that appears in
 `Plugins.failures`.
 
+## Child sessions and rendering aliases
+
+A plugin can preserve a non-secret backend descriptor when an active SDK client starts a daemon:
+
+```python
+from typing import Any
+from zettcode.plugin_api import ChildSession, Plugin, PluginContext
+
+class Backend(Plugin[PluginContext]):
+    name = "backend"
+
+    def export_child(self, child: ChildSession) -> dict[str, Any] | None:
+        return {"host": self.host}  # JSON only, never credentials or a live connection
+
+    def restore_child(self, state: dict[str, Any]) -> None:
+        self.host = state["host"]  # Called before activate(); do not overwrite it there.
+
+    def child_extensions(self, child: ChildSession) -> tuple:
+        if child.profile == "reasoning":
+            return ()
+        return (self.make_extension(child.profile),)  # A fresh extension for this child
+```
+
+`ChildSession.kind` is `"daemon"` or `"subagent"`; `profile` names the subagent profile, otherwise `None`.
+The hooks default to `None`, no work, and `()` respectively. In-process children call `child_extensions` for
+**every profile**, not export/restore; the plugin must enforce its own read-only or tool-free boundaries.
+Extension names replace defaults/shared extensions; duplicate hook-produced names are refused.
+`Client.spawn_daemon` exports at call time, keyed by **`Plugin.name`**, separately from plugin CLI arguments.
+Restore happens before activation. A missing, explicitly disabled, or failed inherited plugin makes the whole
+start fail with `PluginActivationError` (SDK `ConfigurationError`), rather than silently losing its backend.
+Ordinary plugin activation failures still reject only that plugin. Saved daemon resumes preserve the descriptor.
+Export only JSON-safe non-secret data: handoffs are bounded to 16 KiB, not encrypted credential storage.
+
+A presenter can explicitly reuse a built-in tool's rendering without changing tool execution:
+
+```python
+from zettcode.plugin_api import Presenter, ToolRenderingAlias
+
+class RemoteNames(Presenter):
+    def tool_rendering_alias(self, name: str) -> ToolRenderingAlias | None:
+        if name == "myremote__read":
+            return ToolRenderingAlias("read", "remote/")
+        return None
+
+    def handle(self, entry, next):
+        return next(entry)  # Alias provider delegates drawing to the normal chain.
+
+    def lines(self, entry, width, theme, frame):
+        return []  # Never claimed by handle().
+```
+
+Register it with `ctx.tui.register_presenter(RemoteNames())` when `ctx.tui` exists. This explicit mapping makes
+`myremote__read` use the `read` entry, highlighting, line count, fold and preview, with `remote/` on its title.
+The executed tool name, tool-call ID, completion and stored/resumed identity remain `myremote__read`; only a
+rendering copy uses `read`. Unknown names return `None`: MCP suffixes are never inferred as aliases.
+
 ## Next steps
 
 - [Plugins](/guide/plugins): install, switch off, and where settings live.

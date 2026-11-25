@@ -78,6 +78,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.messaging.messenger import Messenger
     from zettcode.messaging.relayed import Relayed
 
+    from .types import DaemonInfo
+
 __all__ = ["Client", "PluginReport", "SETTINGS", "Sessions", "TriggerInfo", "prompt", "prompt_sync"]
 
 _T = TypeVar("_T")
@@ -488,6 +490,7 @@ class Client:
         # Imported here, not at the top of the module: importing the SDK costs nothing until a client is made.
         from zettcode.engine.agent import ZettCodeAgent
         from zettcode.engine.core import ZettCodeEngine
+        from zettcode.engine.plugins.loader import PluginActivationError
         from zettcode.messaging.messenger import SESSION_LINK, Messenger
 
         from .builtins import load_agent_plugins
@@ -495,6 +498,9 @@ class Client:
 
         try:
             runtime = ZettCodeEngine.preview(resolved, load_agent_plugins, shared=shared, system_prompt=system_prompt)
+        except PluginActivationError as error:
+            self._unregister()
+            raise ConfigurationError(str(error)) from error
         except BaseException:
             self._unregister()
             raise
@@ -732,6 +738,55 @@ class Client:
     def session(self) -> Session:
         """Return the current conversation, which a new client starts empty."""
         return self._handle(self._agent.session_id)
+
+    async def spawn_daemon(
+        self,
+        workspace: str | Path | None = None,
+        *,
+        model: str | None = None,
+        effort: str | None = None,
+        resume: str | None = None,
+        name: str | None = None,
+        title: str | None = None,
+        permission: str | None = None,
+        system_prompt: str | None = None,
+    ) -> DaemonInfo:
+        """Spawn from this active client, inheriting its plugins and current shell policy.
+
+        An omitted permission uses the current policy; ``ask`` becomes ``deny`` because a daemon has nobody to
+        approve commands. Trusted callers may explicitly choose another level, including ``full``. Model and
+        effort keep the module helper's defaults; the workspace defaults to this one.
+        """
+        from .daemons import spawn_daemon
+
+        self._check_open()
+        level = permission if permission is not None else ("deny" if self.permission == "ask" else self.permission)
+        return await spawn_daemon(
+            self.workspace if workspace is None else workspace,
+            model=model,
+            effort=effort,
+            resume=resume,
+            name=name,
+            title=title,
+            permission=level,
+            system_prompt=system_prompt,
+            plugin_state=self._export_daemon_state(),
+        )
+
+    def _export_daemon_state(self) -> dict[str, dict[str, Any]]:
+        """Snapshot the actual active plugins for a new daemon or its durable record.
+
+        Export failures are fatal to inheritance, never replaced with an empty/local backend.
+        """
+        from zettcode.engine.plugins.children import ChildSession
+
+        from .errors import DaemonStartError
+
+        self._check_open()
+        try:
+            return self._agent.runtime.plugins.export_child(ChildSession("daemon"))
+        except Exception as error:
+            raise DaemonStartError(f"Plugin child state could not be exported: {error}") from error
 
     # -- the other sessions --
     async def join_sessions(self, on_message: Callable[[IncomingMessage], Receipt], *, direct: bool = False) -> bool:

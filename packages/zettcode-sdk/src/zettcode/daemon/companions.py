@@ -63,6 +63,7 @@ class DaemonCompanions(Companions):
                     system_prompt=state.system_prompt,
                     # The values its plugin options parsed, so the agent that comes back is the one that stopped.
                     plugin_arguments=state.plugin_arguments,
+                    plugin_state=state.plugin_state,
                 )
             except SpawnFailed as error:
                 results.append((False, f"{state.session_id}  could not be started again: {error}"))

@@ -71,12 +71,14 @@ models = ["zettcode-models>=0.5.1,<0.6"]
 # Codex and Claude Code as members of your sessions, groups and the gateway's page. A gateway plugin: it adds nothing to
 # the terminal, and needs the Codex or Claude Code command line installed and signed in to do anything.
 code-agents = ["zettcode-code-agents>=0.5.1,<0.6"]
+ssh = ["zettcode-ssh>=0.5.1,<0.6"]
 # Every plugin this repository publishes, for a reader who wants the lot: `pip install "zettcode[all]"`.
 all = [
   "zettcode-monitor>=0.5.1,<0.6",
   "zettcode-recap>=0.5.1,<0.6",
   "zettcode-models>=0.5.1,<0.6",
   "zettcode-code-agents>=0.5.1,<0.6",
+  "zettcode-ssh>=0.5.1,<0.6",
 ]
 
 [project.scripts]
