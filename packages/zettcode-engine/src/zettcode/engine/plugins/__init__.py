@@ -23,6 +23,7 @@ The pieces live in focused modules — :mod:`~zettcode.engine.plugins.mixins` fo
 
 from __future__ import annotations
 
+from .children import CHILD_STATE, ChildSession
 from .cli import CliOption, installed_options
 from .context import PluginContext
 from .extension import PluginExtension
@@ -55,6 +56,8 @@ from .switches import PluginEntry, applied, catalog, off_names, set_enabled, set
 from .triggers import Trigger, TriggerEvent, TriggerHost, TriggerScope, TriggerState, TriggerStatus
 
 __all__ = [
+    "CHILD_STATE",
+    "ChildSession",
     "PLUGIN_ENTRY_POINT_GROUP",
     "TERMINAL_ENTRY_POINT_GROUP",
     "LLM",

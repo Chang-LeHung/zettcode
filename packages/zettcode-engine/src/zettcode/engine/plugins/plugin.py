@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import logging
 from abc import ABC
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
+from .children import ChildSession, validate_child_state
 from .context import PluginContext
 from .mixins import PluginAgentMixin
 from .services import lookup, require
@@ -146,6 +147,25 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
             container: The resolved settings and the registration surface.
         """
 
+    def export_child(self, child: ChildSession) -> dict[str, Any] | None:
+        """Export JSON state for a daemon; ``None`` opts out of inheritance.
+
+        Called on the active instance. Return only JSON values, never live connections or credentials that
+        should not be recorded in the daemon's private state file.
+        """
+        return None
+
+    def restore_child(self, state: dict[str, Any]) -> None:
+        """Restore named inherited state BEFORE ``activate`` in a new interpreter; default is a no-op."""
+
+    def child_extensions(self, child: ChildSession) -> tuple[AgentExtension, ...]:
+        """Build fresh extensions for one subagent call, for every profile (including reasoning).
+
+        The child gets no plugin host. Extensions returned here replace defaults and shared extensions of the
+        same name. A plugin controls its own profile boundary; export/restore is not used for in-process children.
+        """
+        return ()
+
     async def aclose(self) -> None:
         """Release what the plugin holds beyond one turn, when the runtime closes.
 
@@ -233,8 +253,27 @@ class Plugins:
             build: What exists while the agent is being built. Factories are called with it; without it
                 (outside a build) only the extensions registered whole are returned.
         """
+        if build is not None and build.plugins is None:
+            build = replace(build, plugins=self)
         built = (contribution.build(build) for contribution in self.contributed)
         return tuple(extension for extension in built if extension is not None)
+
+    def export_child(self, child: ChildSession) -> dict[str, dict[str, Any]]:
+        """Snapshot inheritable state under exact plugin identities, rejecting invalid JSON."""
+        state = {}
+        for plugin in self.plugins:
+            exported = plugin.export_child(child)
+            if exported is not None:
+                state[plugin.name] = exported
+        return validate_child_state(state)
+
+    def child_extensions(self, child: ChildSession) -> tuple[AgentExtension, ...]:
+        """Build one child's extensions, refusing duplicate names rather than picking a backend."""
+        extensions = tuple(extension for plugin in self.plugins for extension in plugin.child_extensions(child))
+        names = [extension.name for extension in extensions]
+        if len(set(names)) != len(names):
+            raise ValueError("Plugins supplied duplicate child extension names")
+        return extensions
 
     @property
     def plugins(self) -> tuple[Plugin[Any], ...]:

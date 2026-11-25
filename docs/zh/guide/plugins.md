@@ -31,10 +31,14 @@ ZettCode 所在的环境里 `pip install /path/to/greeter`。
 | `zettcode-recap` | `/recap`：你离开时，说明这个会话到哪儿了 | `zettcode[recap]` |
 | `zettcode-monitor` | `/monitor`：每次模型调用和它的回答导出成 HTML，不脱敏 | `zettcode[monitor]` |
 | `zettcode-code-agents` | 把 Codex 与 Claude Code 作为会话和群组的成员 | `zettcode[code-agents]` |
+| `zettcode-ssh` | 终端 `/ssh` 面板：选择 SSH 主机，用密钥/agent 或密码登录，通过长连接操作远端文件 | `zettcode[ssh]` |
 
-`zettcode[all]` 把四个一起装上；最后一个是网关插件，终端里看不到它。
+`zettcode[all]` 把五个一起装上；`code-agents` 是网关插件，终端里看不到它。
+`/ssh` 列出 `~/.ssh/config` 中的具体主机别名，也支持手动输入，连接需要 full 权限。
+密码在面板里输入，只留在内存中，不会保存，也不会被子进程 daemon 继承。
+远端需要 Python 3.10+，不需要安装 ZettCode。
 
-`/monitor` 是唯一自带面板的：这个会话的两个开关——记录它的模型调用、连图片数据一起记——再加一行把目前为止
+`/monitor` 自带面板：这个会话的两个开关——记录它的模型调用、连图片数据一起记——再加一行把目前为止
 记下的内容写成工作区里的一个 HTML 文件，不脱敏。
 
 ![`/monitor` 面板：记录开关、图片开关，以及写出报告的那一行](/screens/monitor.svg)

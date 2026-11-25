@@ -22,7 +22,7 @@ pip install "zettcode[all]"
 :::
 
 引号要保留：`fish` 和 `zsh` 会把没加引号的 `[all]` 当作通配符。单独的 `zettcode` 是终端、网页网关、服务器和
-SDK；`[all]` 另外带来四个插件：`/monitor`、`/recap`、各厂商模型，以及 Codex 和 Claude Code。
+SDK；`[all]` 另外带来五个插件：`/monitor`、`/recap`、各厂商模型、Codex 和 Claude Code，以及远端工作区面板 `/ssh`。
 
 ## 连接模型 {#先配一个模型}
 

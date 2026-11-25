@@ -26,8 +26,9 @@ import difflib
 import json
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from copy import copy
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
 
 from zettcode.plugin_api.entries import (
@@ -39,6 +40,7 @@ from zettcode.plugin_api.entries import (
     ToolEntry,
     WriteEntry,
 )
+from zettcode.plugin_api.presenters import ToolRenderingAlias
 from zettcode.presenters.text import DECLINED_NOTE, limit_output
 from zettcode.tui import ELLIPSIS, SEPARATOR
 from zettcode.tui.render import GENERIC, language_for
@@ -190,8 +192,21 @@ class Renderers:
             arrived.
     """
 
-    def __init__(self, handlers: Sequence[RenderHandler]) -> None:
+    def __init__(
+        self,
+        handlers: Sequence[RenderHandler],
+        *,
+        aliases: Callable[[str], ToolRenderingAlias | None] | None = None,
+    ) -> None:
         self.handlers = tuple(handlers)
+        self._aliases = aliases
+
+    def with_aliases(self, aliases: Callable[[str], ToolRenderingAlias | None]) -> Renderers:
+        """Derive a transcript-local chain with explicit plugin aliases, leaving this chain unchanged."""
+        return Renderers(self.handlers, aliases=aliases)
+
+    def _alias(self, name: str) -> ToolRenderingAlias | None:
+        return None if self._aliases is None else self._aliases(name)
 
     def _claim(self, kind: str, name: str = "") -> RenderHandler | None:
         """Return the first link that claims one piece of output."""
@@ -199,28 +214,50 @@ class Renderers:
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
         """Return the row for one call, asking each link until one claims it."""
-        handler = self._claim(TOOL, name)
-        return ToolRow(name) if handler is None else handler.describe(name, arguments)
+        alias = self._alias(name)
+        canonical = name if alias is None else alias.name
+        handler = self._claim(TOOL, canonical)
+        row = ToolRow(canonical) if handler is None else handler.describe(canonical, arguments)
+        return row if alias is None else replace(row, title=alias.title_prefix + row.title)
 
     def open_tool(
         self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
     ) -> ToolEntry:
         """Return the entry for one call, of the class its claiming link builds."""
-        handler = self._claim(TOOL, name)
+        alias = self._alias(name)
+        canonical = name if alias is None else alias.name
+        handler = self._claim(TOOL, canonical)
         if handler is None:
-            return ToolEntry(id=id, call_id=call_id, tool=name, title=name, started_at=started_at)
-        return handler.open_tool(name, arguments, id=id, call_id=call_id, started_at=started_at)
+            entry = ToolEntry(id=id, call_id=call_id, tool=name, title=canonical, started_at=started_at)
+        else:
+            entry = handler.open_tool(canonical, arguments, id=id, call_id=call_id, started_at=started_at)
+        if alias is not None:
+            entry.tool = name
+            entry.title = alias.title_prefix + entry.title
+        return entry
 
     def body(self, name: str, output: str) -> str:
         """Return the body for one call's result, through the claiming link."""
-        handler = self._claim(TOOL, name)
-        return output if handler is None else handler.body(name, output)
+        alias = self._alias(name)
+        canonical = name if alias is None else alias.name
+        handler = self._claim(TOOL, canonical)
+        return output if handler is None else handler.body(canonical, output)
 
     def finished(self, entry: ToolEntry, text: str, status: EntryStatus) -> None:
         """Let the claiming link adjust a row once its result is in."""
-        handler = self._claim(TOOL, entry.tool)
+        alias = self._alias(entry.tool)
+        canonical = entry.tool if alias is None else alias.name
+        handler = self._claim(TOOL, canonical)
         if handler is not None:
-            handler.finished(entry, text, status)
+            if alias is None:
+                handler.finished(entry, text, status)
+            else:
+                shown = copy(entry)
+                shown.tool = canonical
+                handler.finished(shown, text, status)
+                for field in fields(entry):
+                    if field.name != "tool":
+                        setattr(entry, field.name, getattr(shown, field.name))
 
     def text(self, kind: str, text: str, *, opening: bool = False) -> str:
         """Return one streamed fragment of ``kind``, shaped by the claiming link."""

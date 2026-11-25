@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
-import json
 import os
 import secrets
 import shutil
@@ -23,7 +22,7 @@ import time
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, NoReturn
 
-from . import PERMISSIONS, PLUGIN_ARGS_ENV
+from . import CHILD_STATE_ENV, PERMISSIONS, PLUGIN_ARGS_ENV
 from .state import START_SECONDS, Record, Registry, pid_runs
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -86,6 +85,7 @@ class Daemons:
         permission: str = "full",
         system_prompt: str | None = None,
         plugin_arguments: Mapping[str, Mapping[str, object]] | None = None,
+        plugin_state: dict[str, dict[str, object]] | None = None,
     ) -> Record:
         """Start one daemon in ``workspace`` and return the record it wrote once it was reachable.
 
@@ -120,42 +120,102 @@ class Daemons:
             # A blank role is not a role: the daemon would run with the usual prompt and the reader would think it
             # had one. Refused here, like a blank title, and with the argument named.
             raise SpawnFailed("a system prompt needs at least one character")
+        from zettcode.engine.plugins.children import MAX_HANDOFF_BYTES, encode_child_state, validate_child_state
+
+        previous = self.registry.find(resume) if resume is not None else None
+        try:
+            if plugin_state is not None:
+                plugin_state = validate_child_state(plugin_state)
+            # Snapshot before the child can replace the sole durable descriptor. Omitted arguments keep the
+            # saved values centrally, so SDK, CLI and companion resumes all behave the same way.
+            if previous is not None and previous.state is None:
+                from .state import STATE_FILE
+
+                try:
+                    (previous.folder / STATE_FILE).stat()
+                except FileNotFoundError:
+                    previous = None  # An ordinary session with no saved daemon backend is safe to resume.
+                except OSError as error:
+                    raise SpawnFailed(
+                        f"the saved daemon state cannot be read: {error}; recover access or run "
+                        f"zettcode daemon kill {resume} before resuming"
+                    ) from error
+                else:
+                    raise SpawnFailed(
+                        "the saved daemon state is malformed or uses an unsupported protocol; "
+                        f"refusing to resume without its backend. Run zettcode daemon kill {resume} "
+                        "to remove the bad daemon record before resuming"
+                    )
+            if previous is not None:
+                assert previous.state is not None
+                if previous.alive:
+                    raise SpawnFailed("the daemon is already running; stop it before resuming")
+                if Path(previous.state.workspace).resolve() != workspace:
+                    raise SpawnFailed("the saved daemon belongs to another workspace")
+                if plugin_arguments is None:
+                    plugin_arguments = previous.state.plugin_arguments
+                if previous.state.plugin_state is not None:
+                    saved = validate_child_state(previous.state.plugin_state)
+                    if saved and plugin_state and validate_child_state(plugin_state) != saved:
+                        raise SpawnFailed("inherited plugin state conflicts with the daemon being resumed")
+                    if saved:
+                        plugin_state = saved
+            inherited = validate_child_state(plugin_state if plugin_state is not None else {})
+            arguments = validate_child_state(
+                {key: dict(value) for key, value in plugin_arguments.items()} if plugin_arguments is not None else {}
+            )
+            state_json, arguments_json = encode_child_state(inherited), encode_child_state(arguments)
+            if len(state_json.encode("utf-8")) + len(arguments_json.encode("utf-8")) > MAX_HANDOFF_BYTES:
+                raise SpawnFailed("Combined plugin JSON handoff exceeds 16384 bytes (16 KiB)")
+        except ValueError as error:
+            raise SpawnFailed(str(error)) from error
         token = secrets.token_hex(8)
-        early = self.registry.workspace(workspace, create=True) / ".spawn"
-        early.mkdir(parents=True, exist_ok=True)
+        try:
+            early = self.registry.workspace(workspace, create=True) / ".spawn"
+        except OSError as error:
+            raise SpawnFailed(f"the daemon could not be launched: {error}") from error
         log_path = early / f"{token}.log"
-        with log_path.open("wb") as log:
-            env = None
-            if plugin_arguments:
+        child: _Child | None = None
+        try:
+            early.mkdir(parents=True, exist_ok=True)
+            with log_path.open("wb") as log:
                 env = {
                     **os.environ,
-                    PLUGIN_ARGS_ENV: json.dumps(plugin_arguments, separators=(",", ":"), sort_keys=True),
+                    CHILD_STATE_ENV: state_json,
                 }
-            child = _Child(
-                self._command(
-                    _options(
-                        workspace,
-                        token,
-                        model,
-                        effort,
-                        resume,
-                        name,
-                        title,
-                        permission,
-                        system_prompt,
-                        plugin_arguments or {},
-                    )
-                ),
-                workspace,
-                log,
-                env=env,
-            )
-        record = self._await(child, token, START_SECONDS)
-        if record is None:
-            child.abandon()
-            self._forget(token)
-            _clear(early, log_path)
-            raise SpawnFailed(_tail(log_path), log_path)
+                # Never forward a stale argument handoff from the process that launched us.
+                env.pop(PLUGIN_ARGS_ENV, None)
+                if arguments:
+                    env[PLUGIN_ARGS_ENV] = arguments_json
+                child = _Child(
+                    self._command(
+                        _options(
+                            workspace, token, model, effort, resume, name, title, permission, system_prompt, arguments
+                        )
+                    ),
+                    workspace,
+                    log,
+                    env=env,
+                )
+            record = self._await(child, token, START_SECONDS)
+            if record is None:
+                raise SpawnFailed(_tail(log_path), log_path)
+        except BaseException as error:
+            # Includes interrupted waits, launch errors, timeout, and a child that removed its starting record.
+            # Never delete the descriptor that made this resume possible.
+            try:
+                if child is not None:
+                    child.abandon()
+                self._forget(token, previous)
+            except (OSError, SpawnFailed) as cleanup_error:
+                # Preserve the launch failure; cleanup may race another start or a record lock.
+                if previous is not None:
+                    previous.log(f"failed-start cleanup could not restore the record: {cleanup_error}")
+            finally:
+                _clear(early, log_path)
+            if isinstance(error, OSError):
+                raise SpawnFailed(f"the daemon could not be launched: {error}", log_path) from error
+            raise
         _clear(early, log_path)
         return record
 
@@ -208,8 +268,20 @@ class Daemons:
             None,
         )
 
-    def _forget(self, token: str) -> None:
-        """Remove the record a failed start left behind, so it is not listed as a daemon that once ran."""
+    def _forget(self, token: str, previous: Record | None = None) -> None:
+        """Undo a failed start, restoring a resumed daemon's descriptor instead of deleting it."""
+        if previous is not None and previous.state is not None:
+            saved = previous.state
+            previous.folder.mkdir(parents=True, exist_ok=True)
+
+            def restore(current: State | None) -> State:
+                if current is not None and current.token not in (token, saved.token):
+                    raise SpawnFailed("another start replaced this daemon's record; refusing to overwrite it")
+                return saved
+
+            previous.change(restore)
+            previous.end_beat()
+            return
         record = self._ours(token)
         if record is not None:
             record.remove()
@@ -529,6 +601,7 @@ class Daemons:
                 permission=level,
                 system_prompt=state.system_prompt,
                 plugin_arguments=state.plugin_arguments,
+                plugin_state=state.plugin_state,
             )
         except SpawnFailed as error:
             return f"{said}; and it could not be started again: {error}"
@@ -560,6 +633,7 @@ class Daemons:
                 permission=permission,
                 system_prompt=state.system_prompt,
                 plugin_arguments=state.plugin_arguments,
+                plugin_state=state.plugin_state,
             )
         except SpawnFailed as error:
             raise UpdateFailed(

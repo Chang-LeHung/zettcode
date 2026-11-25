@@ -34,10 +34,14 @@ sandboxed: read the source before you install it.
 | `zettcode-recap` | `/recap`: a summary of where the session is, for when you step away | `zettcode[recap]` |
 | `zettcode-monitor` | `/monitor`: every model call and its answer, exported as HTML, unredacted | `zettcode[monitor]` |
 | `zettcode-code-agents` | Codex and Claude Code as members of sessions and groups | `zettcode[code-agents]` |
+| `zettcode-ssh` | Terminal `/ssh` panel: choose an SSH host and sign in with a key/agent or a password, then work on remote files through one persistent connection | `zettcode[ssh]` |
 
-`zettcode[all]` installs all four; the last is a gateway plugin and adds nothing to the terminal.
+`zettcode[all]` installs all five; `code-agents` is a gateway plugin and adds nothing to the terminal.
+The `/ssh` panel lists literal hosts from `~/.ssh/config`, supports manual entry, and requires full permission.
+A password is asked for in the panel and kept in memory only; no password is saved or inherited by a daemon.
+Remote Python 3.10+ is required; no remote ZettCode installation is needed.
 
-`/monitor` is the one with a panel of its own: two switches for this session — record its model calls, and keep the
+`/monitor` has a panel of its own: two switches for this session — record its model calls, and keep the
 image data in them — and a row that writes everything recorded so far into an HTML file in the workspace, unredacted.
 
 ![The /monitor panel: a switch for recording, a switch for keeping images, and the row that writes the report](/screens/monitor.svg)

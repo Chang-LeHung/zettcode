@@ -270,7 +270,13 @@ def _build_parser(
         return parser, ()
     from zettcode.engine.plugins.cli import add_options, load_cached_options
 
-    return parser, add_options(spawn, load_cached_options(wait=True))
+    added = add_options(spawn, load_cached_options(wait=True))
+    # Absence must remain distinguishable from a plugin's declared default on resume (including booleans).
+    plugin_keys = {key for _, _, key in added}
+    for action in spawn._actions:
+        if action.dest in plugin_keys:
+            action.default = argparse.SUPPRESS
+    return parser, added
 
 
 def daemon_program(argv: Sequence[str] | None = None) -> int:
@@ -283,9 +289,19 @@ def daemon_program(argv: Sequence[str] | None = None) -> int:
     if args.command == "model":
         return _models(args.workspace, args.json)
     if args.command == "spawn":
-        from zettcode.engine.plugins.cli import values as plugin_values
+        plugin_values: dict[str, dict[str, object]] = {}
+        if args.resume:
+            from .state import Registry
 
-        return _spawn(args, plugin_values(args, plugin_added))
+            saved = Registry().find(args.resume)
+            if saved is not None and saved.state is not None and saved.state.plugin_arguments is not None:
+                plugin_values = {origin: dict(table) for origin, table in saved.state.plugin_arguments.items()}
+        for origin, option, key in plugin_added:
+            if hasattr(args, key):
+                plugin_values.setdefault(origin, {})[option.dest] = getattr(args, key)
+            elif not args.resume:
+                plugin_values.setdefault(origin, {})[option.dest] = option.default
+        return _spawn(args, plugin_values if plugin_values or not args.resume else None)
     if args.command == "update":
         return _update(args)
     if args.command == "prompt":
@@ -408,7 +424,7 @@ def _record_json(record: Record) -> dict[str, object]:
     }
 
 
-def _spawn(args: argparse.Namespace, plugin_arguments: dict[str, dict[str, object]]) -> int:
+def _spawn(args: argparse.Namespace, plugin_arguments: dict[str, dict[str, object]] | None) -> int:
     """Start one daemon, wait until it can be messaged, and print what to do with it."""
     from zettcode.sdk.daemons import default_effort
 
@@ -427,6 +443,7 @@ def _spawn(args: argparse.Namespace, plugin_arguments: dict[str, dict[str, objec
             permission=args.permission,
             system_prompt=args.system,
             plugin_arguments=plugin_arguments,
+            plugin_state=_plugin_state(),
         )
     except SpawnFailed as error:
         sys.stderr.write(f"zettcode daemon: could not start: {error}\n")
@@ -709,6 +726,7 @@ def _run(args: argparse.Namespace) -> int:
         permission=args.permission,
         system_prompt=args.system,
         plugin_arguments=_plugin_arguments(),
+        plugin_state=_plugin_state(),
     )
     try:
         return asyncio.run(serve(options))
@@ -716,18 +734,26 @@ def _run(args: argparse.Namespace) -> int:
         return EXIT_OK
 
 
+def _plugin_state() -> dict[str, dict[str, object]]:
+    """Consume the strict inherited-state handoff, never treating malformed state as no backend."""
+    import os
+
+    from zettcode.engine.plugins.children import decode_child_state
+
+    from . import CHILD_STATE_ENV
+
+    raw = os.environ.pop(CHILD_STATE_ENV, None)
+    return {} if raw is None else decode_child_state(raw)
+
+
 def _plugin_arguments() -> dict[str, dict[str, object]]:
     """Read and remove the spawn handoff before the daemon starts anything of its own."""
     import os
 
+    from zettcode.engine.plugins.children import decode_child_state
+
     raw = os.environ.pop(PLUGIN_ARGS_ENV, None)
-    if not raw:
-        return {}
-    try:
-        parsed = json.loads(raw)
-    except ValueError:
-        return {}
-    return {str(origin): table for origin, table in parsed.items() if isinstance(table, dict)}
+    return {} if raw is None else decode_child_state(raw)
 
 
 def _positive(text: str) -> int:

@@ -111,12 +111,31 @@ def main(argv: list[str] | None = None) -> None:
         f"· token {token}",
         flush=True,
     )
-    uvicorn.run(
-        create_app(settings),
-        host=settings.host,
-        port=settings.port,
-        log_level=settings.log_level,
-    )
+    import asyncio
+
+    from zettcode.sdk.errors import ConfigurationError
+
+    app = create_app(settings)
+    config = uvicorn.Config(app, host=settings.host, port=settings.port, log_level=settings.log_level, lifespan="off")
+
+    async def serve() -> None:
+        # Own startup outside uvicorn's lifespan wrapper so configuration errors print one line, not a traceback.
+        async with app.router.lifespan_context(app):
+            await uvicorn.Server(config).serve()
+
+    try:
+        if hasattr(config, "get_loop_factory"):
+            # Uvicorn 0.36+ supplies a runner shim for Python versions without asyncio.run(loop_factory=...).
+            from uvicorn._compat import asyncio_run
+
+            asyncio_run(serve(), loop_factory=config.get_loop_factory())
+        else:
+            config.setup_event_loop()
+            asyncio.run(serve())
+    except ConfigurationError as error:
+        raise SystemExit(f"zettcode-server: {error}") from error
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":

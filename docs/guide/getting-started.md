@@ -23,8 +23,8 @@ pip install "zettcode[all]"
 :::
 
 Keep the quotes: `fish` and `zsh` read an unquoted `[all]` as a pattern. Plain `zettcode` is the terminal, gateway,
-server and SDK. `[all]` adds the four plugins: `/monitor`, `/recap`, the vendor models, and Codex and Claude Code as
-agents.
+server and SDK. `[all]` adds five plugins: `/monitor`, `/recap`, the vendor models, Codex and Claude Code as
+agents, and `/ssh` for remote workspaces.
 
 ## Connect a model
 

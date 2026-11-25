@@ -110,18 +110,114 @@ def test_help_exits_without_importing_fastapi_or_the_agent():
 def test_serving_builds_the_app_and_hands_it_to_uvicorn(monkeypatch, tmp_path: Path):
     served: dict[str, object] = {}
 
-    def fake_run(app: object, **options: object) -> None:
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def lifespan(app):
+        served["started"] = True
+        yield
+        served["closed"] = True
+
+    app = types.SimpleNamespace(router=types.SimpleNamespace(lifespan_context=lifespan))
+
+    def config(app: object, **options: object):
         served["app"] = app
         served.update(options)
+        return types.SimpleNamespace(setup_event_loop=lambda: served.update(loop_setup=True))
 
-    monkeypatch.setitem(sys.modules, "uvicorn", types.SimpleNamespace(run=fake_run))
-    monkeypatch.setattr("zettcode.server.app.create_app", lambda settings: ("app for", settings.workspace))
+    class Server:
+        def __init__(self, config):
+            pass
+
+        async def serve(self):
+            assert served["started"]
+
+    monkeypatch.setitem(sys.modules, "uvicorn", types.SimpleNamespace(Config=config, Server=Server))
+    monkeypatch.setattr("zettcode.server.app.create_app", lambda settings: app)
 
     main(["-w", str(tmp_path), "--port", "9100", "--log-level", "warning"])
 
-    assert served["app"] == ("app for", tmp_path.resolve())
+    assert served["app"] is app
+    assert served["closed"] and served["lifespan"] == "off"
+    assert served["loop_setup"]
     assert served["host"] == "127.0.0.1" and served["port"] == 9100
     assert served["log_level"] == "warning"
+
+
+@pytest.mark.parametrize("failure", [None, RuntimeError, KeyboardInterrupt])
+def test_cli_runs_real_app_lifespan_and_cleanup(monkeypatch, tmp_path, failure):
+    import asyncio
+
+    import uvicorn
+
+    from zettcode.server.app import create_app
+    from zettcode.server.runner import Runner
+
+    events = []
+    apps = []
+    close = Runner.close
+
+    def factory():
+        events.append("started")
+        return None
+
+    def build(settings):
+        app = create_app(settings, client_factory=factory)
+        apps.append(app)
+        return app
+
+    async def closed(runner):
+        await close(runner)
+        events.append("closed")
+
+    async def serve(server):
+        assert events == ["started"]
+        assert server.config.app is apps[0]
+        assert server.config.lifespan == "off"
+        assert apps[0].state.runner.maybe_client is None
+        assert asyncio.get_running_loop().is_running()
+        if failure is not None:
+            raise failure("HTTP serve failed")
+
+    monkeypatch.setattr("zettcode.server.app.create_app", build)
+    monkeypatch.setattr(Runner, "close", closed)
+    monkeypatch.setattr(uvicorn.Server, "serve", serve)
+    if failure is RuntimeError:
+        with pytest.raises(RuntimeError, match="HTTP serve failed"):
+            main(["-w", str(tmp_path)])
+    else:
+        main(["-w", str(tmp_path)])
+    assert events == ["started", "closed"]
+
+
+def test_startup_configuration_failure_is_one_sentence(monkeypatch, tmp_path):
+    from contextlib import asynccontextmanager
+
+    from zettcode.sdk.errors import ConfigurationError
+
+    @asynccontextmanager
+    async def lifespan(app):
+        raise ConfigurationError("Cannot inherit plugin 'backend': unavailable")
+        yield  # pragma: no cover - async context-manager shape
+
+    app = types.SimpleNamespace(router=types.SimpleNamespace(lifespan_context=lifespan))
+    monkeypatch.setattr("zettcode.server.app.create_app", lambda settings: app)
+    with pytest.raises(SystemExit) as stopped:
+        main(["-w", str(tmp_path)])
+    assert str(stopped.value) == "zettcode-server: Cannot inherit plugin 'backend': unavailable"
+
+
+async def test_server_factory_propagates_inherited_configuration_failure(tmp_path):
+    from zettcode.sdk.errors import ConfigurationError
+    from zettcode.server.runner import Runner
+
+    def factory():
+        raise ConfigurationError("Cannot inherit plugin 'backend': unavailable")
+
+    runner = Runner(settings_from(["-w", str(tmp_path)]), factory)
+    with pytest.raises(ConfigurationError, match="Cannot inherit.*backend"):
+        await runner.start()
+    assert runner._client is None
 
 
 def test_the_parser_is_what_help_describes():

@@ -128,10 +128,21 @@ class ShellSandbox(Sandboxer):
         Raises:
             RuntimeError: The machine has no sandbox; check :attr:`available` first.
         """
+        # Keep permission importable without loading the tool/schema library during plugin discovery.
+        from zettcode.tools.shell import shell_environment_values
+
+        from ..plugins.children import CHILD_STATE_ENV, decode_child_state, encode_child_state
+
         self._probe()
         if self._sandbox is None:
             raise RuntimeError(self._reason or "no sandbox")
-        wrapped = self._sandbox.wrap(command, cwd=cwd if cwd is not None else Path.cwd())
+        # Only this bounded, validated task handoff crosses env -i. Never forward the whole overlay (which a
+        # backend may use for credentials), or a stale process-level handoff.
+        extra: dict[str, str] = {}
+        raw = shell_environment_values().get(CHILD_STATE_ENV)
+        if raw is not None:
+            extra[CHILD_STATE_ENV] = encode_child_state(decode_child_state(raw))
+        wrapped = self._sandbox.wrap(command, cwd=cwd if cwd is not None else Path.cwd(), env=extra)
         assignments = [f"{name}={value}" for name, value in wrapped.env.items()]
         return shlex.join(["env", "-i", *assignments, *wrapped.argv])
 

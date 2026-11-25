@@ -10,6 +10,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zett_agent.extensions.base import AgentExtension
     from zett_agent.model import AgentModel
 
+    from .plugin import Plugins
+
 
 @dataclass(frozen=True, slots=True)
 class AgentBuild:
@@ -21,9 +23,12 @@ class AgentBuild:
 
     Attributes:
         model: The provider the agent starts on.
+        plugins: The active collection; ``Plugins.agent_extensions`` supplies it when not passed explicitly.
     """
 
     model: AgentModel
+    #: The loaded collection, so factories can ask each active plugin for fresh child extensions at call time.
+    plugins: Plugins | None = None
 
 
 #: Builds an extension once the agent is being built; ``None`` means this run has none to add.

@@ -680,7 +680,10 @@ class ZettCodeEngine:
         # store, the shell approval, the compaction ... see `zettcode.sdk.builtins`) in the order
         # they are listed there, then any a third-party plugin brings, and last the one host that drives
         # the plugins' hooks, which places itself at the earliest priority any plugin asked for.
-        extensions = [*self.plugins.agent_extensions(AgentBuild(model=model)), *self.plugins.extensions]
+        extensions = [
+            *self.plugins.agent_extensions(AgentBuild(model=model, plugins=self.plugins)),
+            *self.plugins.extensions,
+        ]
         client = await create_agent(
             model,
             config=AgentRunConfig(session_id=self.session_id),

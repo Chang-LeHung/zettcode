@@ -34,6 +34,7 @@ from zettcode.engine.plugins import (
     load_plugins,
 )
 from zettcode.engine.plugins import services as names
+from zettcode.engine.plugins.children import CHILD_STATE
 from zettcode.instructions import ProjectInstructions
 from zettcode.messaging.messenger import SESSION_LINK, Messenger
 from zettcode.sdk.builtins import AGENT_PLUGINS, load_agent_plugins
@@ -144,7 +145,7 @@ def test_a_plugin_that_fails_after_registering_leaves_nothing_behind(tmp_path):
 
     plugins = load(tmp_path, Late)
 
-    assert plugins.contributed == () and set(plugins.services) == set()
+    assert plugins.contributed == () and set(plugins.services) - {CHILD_STATE} == set()
     assert any("boom" in f for f in plugins.failures)
 
 
@@ -305,7 +306,8 @@ def test_a_service_name_is_provided_once(tmp_path):
 
     plugins = load(tmp_path, Twice, offering("one", service="shared"), offering("two", service="shared"))
 
-    assert set(plugins.services) == {"shared"}
+    # The loader always provides the inherited-child table; it is the framework's key, not a plugin's.
+    assert set(plugins.services) - {CHILD_STATE} == {"shared"}
     assert any("Service already provided: x" in f for f in plugins.failures)
     assert any("two: service shared is already provided" in f for f in plugins.failures)
 
@@ -320,7 +322,9 @@ def test_a_plugin_cannot_provide_a_name_the_runtime_handed_over(tmp_path):
 def test_a_service_name_cannot_be_blank(tmp_path):
     plugins = load(tmp_path, offering("blank", service=" "))
 
-    assert set(plugins.services) == set() and any("Service name cannot be empty" in f for f in plugins.failures)
+    assert set(plugins.services) - {CHILD_STATE} == set() and any(
+        "Service name cannot be empty" in f for f in plugins.failures
+    )
 
 
 # -- the built-in plugins that carry the agent's own extensions -----------------------------------
@@ -354,6 +358,7 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_in_reg
     assert [extension.name for extension in extensions] == [
         "AskUserExtension",
         "CodingBundle",
+        "PluginChildEnvironment",
         "DaemonGuideExtension",
         "SwitchedHarness",
         "LongOutputExtension",
@@ -381,6 +386,7 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_in_reg
         "AgentsMdExtension",
         "DaemonGuideExtension",
         "ShellDenyExtension",
+        "PluginChildEnvironment",
         "AskUserExtension",
         "CodingBundle",
         "LongOutputExtension",
@@ -414,6 +420,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     # `messaging` part sorts there among the rank-0 activations.
     assert shared == [
         "CodingBundle",
+        "PluginChildEnvironment",
         "DaemonGuideExtension",
         "LongOutputExtension",
         "OneSystemMessage",
@@ -426,7 +433,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     assert "ParentModelSubAgents" not in shared and "SwitchedHarness" not in shared, "no task, no harness"
     assert "AskUserExtension" not in shared, "a child works through its task; it does not ask the person"
     assert "TodoWriteExtension" not in shared, "its plan would be drawn for nobody"
-    assert with_messaging == [*shared[:3], "SessionMessagingExtension", *shared[3:]]
+    assert with_messaging == [*shared[:4], "SessionMessagingExtension", *shared[4:]]
 
 
 def test_every_switch_adds_its_extension_at_its_place(tmp_path):
@@ -441,6 +448,7 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
         # `capabilities`.
         "AskUserExtension",
         "CodingBundle",
+        "PluginChildEnvironment",
         "DaemonGuideExtension",
         "SwitchedHarness",
         "LongOutputExtension",
@@ -484,6 +492,7 @@ def test_the_order_the_agent_runs_them_in_is_the_priority_of_each(tmp_path):
         "DaemonGuideExtension",
         "ShellDenyExtension",
         "SkillExtension",
+        "PluginChildEnvironment",
         "AskUserExtension",
         "CodingBundle",
         "LongOutputExtension",

@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 
 from zettcode.config import DEFAULT_SUBAGENT_MAX_ITERATIONS
 
+from ..plugins.children import ChildSession
 from ..storage import SessionStore
 from .capabilities import ModelCapabilities
 
@@ -264,10 +265,12 @@ def _extension_class() -> Callable[..., SubAgentExtension]:
             *,
             capabilities: ModelCapabilities,
             shares: Callable[[AgentExtension], bool] | None = None,
+            child_extensions: Callable[[ChildSession], tuple[AgentExtension, ...]] | None = None,
         ) -> None:
             super().__init__(subagents)
             self._capabilities = capabilities
             self._shares = shares
+            self._child_extensions = child_extensions
 
         def _levels(self, context: AgentRunContext) -> tuple[ReasoningEffort, ...]:
             """Return the levels the parent's model takes: every one for a model the runtime has no entry for."""
@@ -295,12 +298,20 @@ def _extension_class() -> Callable[..., SubAgentExtension]:
             config = self._capabilities.config_of(parent)
             if config is not None:
                 effort = config.accepted_effort(effort)
+            fresh = (
+                ()
+                if self._child_extensions is None
+                else self._child_extensions(ChildSession("subagent", definition.name))
+            )
+            names = {extension.name for extension in fresh}
+            defaults = (*definition.extensions, *self._inherited(definition, context))
+            extensions = (*(extension for extension in defaults if extension.name not in names), *fresh)
             child = await RelayingAgent.create(
                 parent,
                 config=AgentRunConfig(session_id=child_session_id, parent_session_id=context.session_id),
                 system_prompt=definition.system_prompt,
                 tools=definition.tools,
-                extensions=(*definition.extensions, *self._inherited(definition, context)),
+                extensions=extensions,
                 reasoning_effort=effort,
                 max_iterations=definition.max_iterations,
             )
@@ -358,6 +369,7 @@ def subagent_extension(
     workspace: Path | None = None,
     max_iterations: int = DEFAULT_SUBAGENT_MAX_ITERATIONS,
     shares: Callable[[AgentExtension], bool] | None = None,
+    child_extensions: Callable[[ChildSession], tuple[AgentExtension, ...]] | None = None,
 ) -> AgentExtension:
     """Return the ``task`` tool with ZettCode's profiles and their tool boundaries.
 
@@ -390,4 +402,5 @@ def subagent_extension(
         ),
         capabilities=capabilities,
         shares=shares,
+        child_extensions=child_extensions,
     )

@@ -858,8 +858,12 @@ async def launch(options: Options) -> None:
             app = await asyncio.to_thread(build_application, options, terminal=tui)
         except Exception as error:
             # Imported here, where the build has already loaded it: the boot frame must not pay for the engine.
-            from zettcode.engine.plugins.loader import RequiredPluginError
+            from zettcode.engine.plugins.loader import PluginActivationError, RequiredPluginError
 
+            if isinstance(error, PluginActivationError):
+                raise SystemExit(
+                    f"zettcode: {error}\nCheck this plugin's configuration before starting again."
+                ) from error
             if not isinstance(error, RequiredPluginError):
                 raise
             # A sentence on the plain terminal once the screen is given back, not a traceback behind the frame.
