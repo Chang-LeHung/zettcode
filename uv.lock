@@ -3582,7 +3582,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "pydantic", specifier = ">=2,<3" },
-    { name = "zett-agent", specifier = ">=0.3.0,<0.4" },
+    { name = "zett-agent", specifier = ">=0.3.1,<0.4" },
     { name = "zettcode-plugin-api", editable = "packages/zettcode-plugin-api" },
 ]
 

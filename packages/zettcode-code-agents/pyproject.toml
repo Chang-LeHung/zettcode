@@ -21,8 +21,8 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "zettcode-broker>=0.5.1,<0.6",
-  "zettcode-gateway>=0.5.1,<0.6",
+  "zettcode-broker>=0.5.2,<0.6",
+  "zettcode-gateway>=0.5.2,<0.6",
 ]
 
 [project.urls]

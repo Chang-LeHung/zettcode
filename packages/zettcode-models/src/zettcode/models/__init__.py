@@ -26,7 +26,7 @@ from zettcode.plugin_api import Plugin, PluginContext, ProvidedModel, Provider
 logger = logging.getLogger("zettcode.models")
 
 #: The one place the version is written; ``pyproject.toml`` reads it from here.
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 
 @dataclass(frozen=True, slots=True)

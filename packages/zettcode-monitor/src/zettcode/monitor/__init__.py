@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from zettcode.plugin_api import Widget
 
 #: The one place the version is written; ``pyproject.toml`` reads it from here.
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 __all__ = ["MonitorExtension", "MonitorPlugin", "__version__", "render_report"]
 
