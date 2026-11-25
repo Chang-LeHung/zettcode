@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   # The plugin base classes and the switch the runtime provides.
-  "zettcode-engine>=0.5.1,<0.6",
+  "zettcode-engine>=0.5.2,<0.6",
   # The extension the factory builds.
   "zett-agent>=0.3.1,<0.4",
 ]

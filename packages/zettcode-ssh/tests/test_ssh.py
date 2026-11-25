@@ -438,7 +438,7 @@ def test_package_metadata():
     from importlib.metadata import distribution
 
     package = distribution("zettcode-ssh")
-    assert package.version == __version__ == "0.5.1"
+    assert package.version == __version__ == "0.5.2"
     assert [(point.name, point.value) for point in package.entry_points] == [("ssh", "zettcode.ssh:SSHPlugin")]
     assert any(line.startswith("zettcode-plugin-api") for line in package.requires)
 

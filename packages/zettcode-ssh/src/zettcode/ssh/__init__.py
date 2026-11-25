@@ -2,5 +2,5 @@
 
 from .plugin import SSHPlugin
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 __all__ = ["SSHPlugin"]

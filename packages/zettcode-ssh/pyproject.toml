@@ -19,7 +19,7 @@ classifiers = [
   "Programming Language :: Python :: 3.15",
   "Typing :: Typed",
 ]
-dependencies = ["zettcode-plugin-api>=0.5.1,<0.6", "zett-agent>=0.3.0,<0.4", "pydantic>=2,<3"]
+dependencies = ["zettcode-plugin-api>=0.5.2,<0.6", "zett-agent>=0.3.1,<0.4", "pydantic>=2,<3"]
 
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode/tree/main/packages/zettcode-ssh"
