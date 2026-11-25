@@ -96,6 +96,22 @@ async def test_cancelled_request_closes_channel_and_cannot_desynchronize(connect
     assert transport._process is not process
 
 
+@pytest.mark.parametrize("persistent", [False, True])
+async def test_local_transport_deadline_follows_long_bash_request(connection, monkeypatch, persistent):
+    transport, _ = connection
+    transport.persistent = persistent
+    deadlines = []
+    original = asyncio.wait_for
+
+    async def capture(awaitable, timeout):
+        deadlines.append(timeout)
+        return await original(awaitable, timeout)
+
+    monkeypatch.setattr(asyncio, "wait_for", capture)
+    assert await transport.run("bash", {"command": "true", "timeout_seconds": 600}) == ""
+    assert 615 in deadlines
+
+
 async def test_terminal_command_only_and_connection_apply(connection):
     from zettcode.plugin_api import POLICY, CommandContext, PluginContext, ShellPolicy, ZettCodeConfig
 

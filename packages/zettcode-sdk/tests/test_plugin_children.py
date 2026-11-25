@@ -254,8 +254,11 @@ def test_unreadable_daemon_state_is_not_treated_as_missing(tmp_path, monkeypatch
         return original(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "stat", denied)
+    assert registry.find("saved") is not None  # Permission errors must not hide the durable descriptor.
     with pytest.raises(SpawnFailed, match="cannot be read.*zettcode daemon kill saved"):
         Daemons(registry).start(tmp_path, resume="saved")
+    with pytest.raises(PermissionError, match="access denied"):
+        record.change(lambda current: pytest.fail("An unreadable descriptor must not be overwritten"))
     assert path.read_text(encoding="utf-8") == raw
 
 

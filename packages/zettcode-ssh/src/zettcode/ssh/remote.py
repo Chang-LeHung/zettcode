@@ -18,6 +18,9 @@ from typing import Any
 
 MAX_FILE = 16 * 1024 * 1024
 MAX_OUTPUT = 50 * 1024
+MAX_TIMEOUT = 600
+ALARM_MARGIN = 5
+DEFAULT_ALARM = 125
 MAX_IMAGE = 4 * 1024 * 1024
 MAX_REQUEST = 4 * 1024 * 1024
 TRUNCATED = "\n... [truncated; narrow the request]"
@@ -45,11 +48,23 @@ def duration(value: object) -> float:
     if (
         isinstance(value, bool)
         or not isinstance(value, (int, float))
+        or not 0 < value <= MAX_TIMEOUT
         or not math.isfinite(value)
-        or not 0 < value <= 120
     ):
-        raise ValueError("timeout_seconds must be a finite number greater than 0 and at most 120")
+        raise ValueError(f"timeout_seconds must be a finite number greater than 0 and at most {MAX_TIMEOUT}")
     return float(value)
+
+
+def alarm_for(request: dict[str, Any]) -> int:
+    """Leave bash time to kill and report its process group before the remote backstop fires."""
+    if request.get("operation") == "bash":
+        arguments = request.get("arguments")
+        if isinstance(arguments, dict):
+            try:
+                return math.ceil(duration(arguments.get("timeout_seconds", 60))) + ALARM_MARGIN
+            except ValueError:
+                pass
+    return DEFAULT_ALARM
 
 
 def prefix(value: str, size: int = MAX_OUTPUT) -> str:
@@ -350,7 +365,7 @@ def serve() -> None:
     """Process bounded newline-framed requests until the owning SSH channel closes."""
 
     def expired(signum: int, frame: Any) -> None:
-        raise TimeoutError("Remote operation exceeded 125 seconds")
+        raise TimeoutError("Remote operation exceeded its deadline")
 
     signal.signal(signal.SIGALRM, expired)
     output = sys.stdout.buffer
@@ -360,10 +375,11 @@ def serve() -> None:
             return
         if len(raw) > MAX_REQUEST + 1 or not raw.endswith(b"\n"):
             return  # A corrupt/oversized frame cannot be safely resynchronized.
-        signal.alarm(125)
+        signal.alarm(DEFAULT_ALARM)
         request: dict[str, Any] = {}
         try:
             request = json.loads(raw)
+            signal.alarm(alarm_for(request))
             result = dispatch(request)
             response = {"ok": True, "result": result, "id": request["id"]}
         except Exception as error:
@@ -379,20 +395,24 @@ def main() -> None:
     # The transport timeout is the outer bound. The remote alarm also bounds regexes and filesystem traversal
     # if the SSH connection is lost; bash has its own, shorter deadline and kills its process group.
     def expired(signum: int, frame: Any) -> None:
-        raise TimeoutError("Remote operation exceeded 125 seconds")
+        raise TimeoutError("Remote operation exceeded its deadline")
 
     signal.signal(signal.SIGALRM, expired)
-    signal.alarm(125)
+    signal.alarm(DEFAULT_ALARM)
     try:
         raw = sys.stdin.buffer.read(MAX_REQUEST + 1)
         if len(raw) > MAX_REQUEST:
             raise ValueError("Remote request exceeds 4 MiB")
-        result = dispatch(json.loads(raw))
+        request = json.loads(raw)
+        signal.alarm(alarm_for(request))
+        result = dispatch(request)
         response = {"ok": True, "result": result}
     except Exception as error:
         # Shell failures carry the same bounded output as successes, not just an exception summary.
         size = MAX_OUTPUT + 1000 if isinstance(error, CommandFailed) else 4000
         response = {"ok": False, "error": prefix(f"{type(error).__name__}: {error}", size)}
+    finally:
+        signal.alarm(0)
     sys.stdout.buffer.write(json.dumps(response, ensure_ascii=False).encode("utf-8"))
     sys.stdout.buffer.flush()
 

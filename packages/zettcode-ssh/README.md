@@ -121,7 +121,9 @@ of those names, adding the tools stops that request with a sentence naming the s
   An interrupted request is not replayed; a later new request may reconnect. Closing or replacing the target
   permanently invalidates its old channels.
 - Remote Python operations have a 125-second remote deadline and a 135-second local SSH deadline. `bash` has a
-  configurable 0–120-second deadline (default 60), continuously drains output to a 50 KiB preview, reports the
+  configurable deadline greater than zero and at most 600 seconds (default 60); its remote alarm allows five
+  extra seconds (rounded up), and its local SSH deadline allows fifteen extra seconds. It continuously drains
+  output to a 50 KiB preview, reports the
   remote exit code, and kills its process group on completion or timeout. Cancellation kills and reaps the local
   SSH process. A lost SSH connection is not a guarantee of immediate remote termination; remote deadlines remain
   the backstop. Processes deliberately escaping their process group are not a supported daemon mechanism.
@@ -150,7 +152,9 @@ bash. An independently started local CLI has no active client's runtime descript
 From this uv workspace: `make -C packages/zettcode-ssh test lint typecheck`, `uv build --package zettcode-ssh`.
 Tests use mocked SSH processes and a temporary fake `ssh` executable to execute the fixed Python payload locally;
 no network, remote credentials or real SSH server is needed. These are unit/fake-process checks, **not real SSH
-acceptance**. Before release, run the checklist below against a disposable POSIX sshd and record OS, OpenSSH and
+acceptance**. This suite is skipped on Windows because its fake executables, paths and process groups require
+POSIX; it does not test Windows SSH support. Generic SDK and application alias tests remain enabled there.
+Before release, run the checklist below against a disposable POSIX sshd and record OS, OpenSSH and
 remote Python versions plus pass/fail evidence. Do not use production credentials or workspaces.
 
 ### Manual acceptance checklist (not yet executed by the unit suite)
