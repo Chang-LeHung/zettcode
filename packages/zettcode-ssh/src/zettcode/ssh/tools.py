@@ -23,7 +23,7 @@ FilePath = Annotated[str, Field(min_length=1)]
 Offset = Annotated[int, Field(ge=1)]
 Limit = Annotated[int, Field(ge=1, le=2000)]
 MaxResults = Annotated[int, Field(ge=1, le=5000)]
-Timeout = Annotated[float, Field(gt=0, le=120)]
+Timeout = Annotated[float, Field(gt=0, le=600)]
 
 
 def tool_name(operation: str) -> str:

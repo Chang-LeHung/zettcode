@@ -330,8 +330,13 @@ class Record:
             raise OSError("another process is writing the daemon's state")
         try:
             current = State.load(self.folder)
-            if current is None and (self.folder / STATE_FILE).exists():
-                raise OSError("the daemon state is malformed; refusing to overwrite its saved descriptor")
+            if current is None:
+                try:
+                    (self.folder / STATE_FILE).stat()
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise OSError("the daemon state is malformed; refusing to overwrite its saved descriptor")
             state = produce(current)
             state.save(self.folder)
             self.state = state
@@ -425,8 +430,15 @@ class Registry:
         found: list[Record] = []
         for workspace in self._folders(self.root):
             for folder in self._folders(workspace):
-                if any((folder / name).exists() for name in (STATE_FILE, BEAT_FILE, LOG_FILE)):
+                for name in (STATE_FILE, BEAT_FILE, LOG_FILE):
+                    try:
+                        (folder / name).stat()
+                    except FileNotFoundError:
+                        continue
+                    except OSError:
+                        pass  # Denied access is not proof of absence; keep the record for explicit recovery.
                     found.append(Record(folder))
+                    break
         return tuple(found)
 
     def find(self, session_id: str) -> Record | None:
